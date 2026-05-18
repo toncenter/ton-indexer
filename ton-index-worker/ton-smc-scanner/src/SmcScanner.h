@@ -7,7 +7,10 @@
 #   define INTERFACES_DETECTOR_TYPES                                  \
         JettonWalletDetectorR, JettonMasterDetectorR,                 \
         NftItemDetectorR,  NftCollectionDetectorR,                    \
-        MultisigContract,  MultisigOrder,  VestingContract
+        GetGemsNftAuction, GetGemsNftFixPriceSale,                   \
+        GetGemsNftFixPriceSaleV4,                                     \
+        MultisigContract, MultisigOrder,                              \
+        VestingContract, TelemintContract, DedustPoolDetector
 #endif
 
 

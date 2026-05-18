@@ -71,12 +71,14 @@ int main(int argc, char *argv[]) {
   td::uint32 threads = 7;
   std::string db_root;
   std::string pg_dsn;
+  kvrocks_state::KvrocksConfig kvrocks_config;
   Options options_;
   bool is_testnet = false;
+  std::int32_t max_data_depth = 0;
   std::string jemalloc_profile_prefix = "/tmp/ton-smc-scanner.heap";
   
   td::OptionParser p;
-  p.set_description("Scan all accounts at some seqno, detect interfaces and save them to postgres");
+  p.set_description("Scan all accounts at some seqno, detect interfaces and save them to Postgres and/or Kvrocks");
   p.add_option('\0', "help", "prints_help", [&]() {
     char b[10240];
     td::StringBuilder sb(td::MutableSlice{b, 10000});
@@ -135,13 +137,64 @@ int main(int argc, char *argv[]) {
   p.add_option('d', "pg", "PostgreSQL connection string", [&](td::Slice value) {
     pg_dsn = value.str();
   });
+  p.add_option('\0', "kvrocks", "Kvrocks direct Redis URI, e.g. tcp://127.0.0.1:6666/0", [&](td::Slice value) {
+    kvrocks_config.enabled = true;
+    kvrocks_config.uri = value.str();
+  });
+  p.add_checked_option('\0', "kvrocks-sentinels", "Comma-separated Kvrocks Sentinel nodes, e.g. 127.0.0.1:26379,127.0.0.1:26380", [&](td::Slice value) {
+    try {
+      kvrocks_config.enabled = true;
+      kvrocks_config.sentinel_nodes = kvrocks_state::parse_kvrocks_sentinel_nodes(value.str());
+    } catch (const std::exception& e) {
+      return td::Status::Error(PSLICE() << "bad value for --kvrocks-sentinels: " << e.what());
+    }
+    return td::Status::OK();
+  });
+  p.add_option('\0', "kvrocks-master", "Kvrocks Sentinel master name", [&](td::Slice value) {
+    kvrocks_config.sentinel_master_name = value.str();
+  });
+  p.add_option('\0', "kvrocks-user", "Kvrocks username", [&](td::Slice value) {
+    kvrocks_config.user = value.str();
+  });
+  p.add_option('\0', "kvrocks-password", "Kvrocks password", [&](td::Slice value) {
+    kvrocks_config.password = value.str();
+  });
+  p.add_checked_option('\0', "kvrocks-db", "Kvrocks logical database number", [&](td::Slice value) {
+    int v;
+    try {
+      v = std::stoi(value.str());
+    } catch (...) {
+      return td::Status::Error("bad value for --kvrocks-db: not a number");
+    }
+    if (v < 0) {
+      return td::Status::Error("bad value for --kvrocks-db: must be non-negative");
+    }
+    kvrocks_config.db = v;
+    return td::Status::OK();
+  });
+  p.add_option('\0', "kvrocks-sentinel-user", "Kvrocks Sentinel username", [&](td::Slice value) {
+    kvrocks_config.sentinel_user = value.str();
+  });
+  p.add_option('\0', "kvrocks-sentinel-password", "Kvrocks Sentinel password", [&](td::Slice value) {
+    kvrocks_config.sentinel_password = value.str();
+  });
+  p.add_checked_option('\0', "max-data-depth", "Max data cell depth to store in latest account states", [&](td::Slice value) {
+    int v;
+    try {
+      v = std::stoi(value.str());
+    } catch (...) {
+      return td::Status::Error("bad value for --max-data-depth: not a number");
+    }
+    max_data_depth = v;
+    return td::Status::OK();
+  });
   p.add_option('W', "working-dir", "Path for working directory, for storing checkpoints", [&](td::Slice fname) {
     options_.working_dir_ = fname.str();
   });
   p.add_option('\0', "interfaces", "Detect interfaces", [&] {
     options_.index_interfaces_ = true;
   });
-  p.add_option('\0', "account-states", "Detect interfaces", [&] {
+  p.add_option('\0', "account-states", "Index account states", [&] {
     options_.index_account_states_ = true;
   });
   p.add_option('\0', "testnet", "Use for testnet. It is used for correct indexing of .ton DNS entries (in testnet .ton collection has a different address)", [&]() {
@@ -169,6 +222,22 @@ int main(int argc, char *argv[]) {
 
   if (options_.seqno_ == 0) {
     LOG(ERROR) << "You must specify --seqno option";
+    std::exit(2);
+  }
+
+  if (kvrocks_config.enabled) {
+    if (kvrocks_config.use_sentinel() && !kvrocks_config.uri.empty()) {
+      LOG(ERROR) << "Use either --kvrocks or --kvrocks-sentinels, not both";
+      std::exit(2);
+    }
+    if (kvrocks_config.use_sentinel() && kvrocks_config.sentinel_master_name.empty()) {
+      LOG(ERROR) << "--kvrocks-master is required with --kvrocks-sentinels";
+      std::exit(2);
+    }
+  }
+
+  if (pg_dsn.empty() && !kvrocks_config.enabled) {
+    LOG(ERROR) << "You must specify at least one sink: --pg or --kvrocks/--kvrocks-sentinels";
     std::exit(2);
   }
 
@@ -204,7 +273,13 @@ int main(int argc, char *argv[]) {
   // });
   scheduler.run_in_context([&] { 
     db_scanner = td::actor::create_actor<DbScanner>("scanner", db_root, dbs_readonly);
-    insert_manager = td::actor::create_actor<PostgreSQLInsertManager>("insert_manager", pg_dsn, options_.batch_size_);
+    ScannerInsertConfig insert_config;
+    insert_config.postgres_connection_string = pg_dsn;
+    insert_config.postgres_enabled = !pg_dsn.empty();
+    insert_config.kvrocks_config = kvrocks_config;
+    insert_config.source_mc_seqno = options_.seqno_;
+    insert_config.max_data_depth = max_data_depth;
+    insert_manager = td::actor::create_actor<PostgreSQLInsertManager>("insert_manager", insert_config, options_.batch_size_);
     options_.insert_manager_ = insert_manager.get();
     td::actor::create_actor<SmcScanner>("smcscanner", db_scanner.get(), options_).release();
   });

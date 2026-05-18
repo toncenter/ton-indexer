@@ -50,6 +50,7 @@ endfunction()
 add_ton_indexer_opentelemetry_cpp()
 
 add_subdirectory(tondb-scanner)
+add_subdirectory(ton-kvrocks-state)
 add_subdirectory(ton-marker)
 add_subdirectory(ton-observability)
 add_subdirectory(ton-index-postgres)

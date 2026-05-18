@@ -6,9 +6,9 @@
 #include "Statistics.h"
 #include "version.h"
 #include "postgresql_tools.h"
+#include "KvrocksState.h"
 
 #include <algorithm>
-#include <array>
 #include <limits>
 #include <map>
 #include <memory>
@@ -749,6 +749,319 @@ struct InsertBatchPostgresPrepareState {
 
 namespace {
 
+kvrocks_state::StateBatch make_kvrocks_state_batch(const PreparedBatchPostgres& batch) {
+  kvrocks_state::StateBatch result;
+
+  result.message_contents.reserve(batch.message_contents.size());
+  for (const auto& row : batch.message_contents) {
+    result.message_contents.push_back({
+      .hash = row.hash,
+      .body = row.body,
+      .source_mc_seqno = row.source_mc_seqno,
+    });
+  }
+
+  result.account_states.reserve(batch.account_states.size());
+  for (const auto& row : batch.account_states) {
+    result.account_states.push_back({
+      .hash = row.hash,
+      .account = row.account,
+      .balance = row.balance,
+      .balance_extra_currencies = row.balance_extra_currencies,
+      .account_status = row.account_status,
+      .frozen_hash = row.frozen_hash,
+      .code_hash = row.code_hash,
+      .data_hash = row.data_hash,
+      .source_mc_seqno = row.source_mc_seqno,
+    });
+  }
+
+  result.latest_account_states.reserve(batch.latest_account_states.size());
+  for (const auto& row : batch.latest_account_states) {
+    result.latest_account_states.push_back({
+      .account = row.account,
+      .account_friendly = row.account_friendly,
+      .hash = row.hash,
+      .balance = row.balance,
+      .balance_extra_currencies = row.balance_extra_currencies,
+      .account_status = row.account_status,
+      .timestamp = row.timestamp,
+      .last_trans_hash = row.last_trans_hash,
+      .last_trans_lt = row.last_trans_lt,
+      .frozen_hash = row.frozen_hash,
+      .data_hash = row.data_hash,
+      .code_hash = row.code_hash,
+      .data_boc = row.data_boc,
+      .code_boc = row.code_boc,
+      .source_mc_seqno = row.source_mc_seqno,
+    });
+  }
+
+  result.jetton_masters.reserve(batch.jetton_masters.size());
+  for (const auto& row : batch.jetton_masters) {
+    result.jetton_masters.push_back({
+      .address = row.address,
+      .total_supply = row.total_supply,
+      .mintable = row.mintable,
+      .admin_address = row.admin_address,
+      .jetton_content = row.jetton_content,
+      .jetton_wallet_code_hash = row.jetton_wallet_code_hash,
+      .last_transaction_lt = row.last_transaction_lt,
+      .code_hash = row.code_hash,
+      .data_hash = row.data_hash,
+      .source_mc_seqno = row.source_mc_seqno,
+    });
+  }
+
+  result.jetton_wallets.reserve(batch.jetton_wallets.size());
+  for (const auto& row : batch.jetton_wallets) {
+    result.jetton_wallets.push_back({
+      .balance = row.balance,
+      .address = row.address,
+      .owner = row.owner,
+      .jetton = row.jetton,
+      .last_transaction_lt = row.last_transaction_lt,
+      .code_hash = row.code_hash,
+      .data_hash = row.data_hash,
+      .mintless_is_claimed = row.mintless_is_claimed,
+      .source_mc_seqno = row.source_mc_seqno,
+    });
+  }
+
+  result.mintless_jetton_masters.reserve(batch.mintless_jetton_masters.size());
+  for (const auto& row : batch.mintless_jetton_masters) {
+    result.mintless_jetton_masters.push_back({
+      .address = row.address,
+      .is_indexed = row.is_indexed,
+      .source_mc_seqno = row.source_mc_seqno,
+    });
+  }
+
+  result.nft_collections.reserve(batch.nft_collections.size());
+  for (const auto& row : batch.nft_collections) {
+    result.nft_collections.push_back({
+      .address = row.address,
+      .next_item_index = row.next_item_index,
+      .owner_address = row.owner_address,
+      .collection_content = row.collection_content,
+      .last_transaction_lt = row.last_transaction_lt,
+      .code_hash = row.code_hash,
+      .data_hash = row.data_hash,
+      .source_mc_seqno = row.source_mc_seqno,
+    });
+  }
+
+  result.nft_items.reserve(batch.nft_items.size());
+  for (const auto& row : batch.nft_items) {
+    result.nft_items.push_back({
+      .address = row.address,
+      .init = row.init,
+      .index = row.index,
+      .collection_address = row.collection_address,
+      .owner_address = row.owner_address,
+      .content = row.content,
+      .last_transaction_lt = row.last_transaction_lt,
+      .code_hash = row.code_hash,
+      .data_hash = row.data_hash,
+      .real_owner = row.real_owner,
+      .source_mc_seqno = row.source_mc_seqno,
+    });
+  }
+
+  result.dns_entries.reserve(batch.dns_entries.size());
+  for (const auto& row : batch.dns_entries) {
+    result.dns_entries.push_back({
+      .nft_item_address = row.nft_item_address,
+      .nft_item_owner = row.nft_item_owner,
+      .domain = row.domain,
+      .dns_next_resolver = row.dns_next_resolver,
+      .dns_wallet = row.dns_wallet,
+      .dns_site_adnl = row.dns_site_adnl,
+      .dns_storage_bag_id = row.dns_storage_bag_id,
+      .last_transaction_lt = row.last_transaction_lt,
+      .source_mc_seqno = row.source_mc_seqno,
+    });
+  }
+
+  result.getgems_nft_sales.reserve(batch.getgems_nft_sales.size());
+  for (const auto& row : batch.getgems_nft_sales) {
+    result.getgems_nft_sales.push_back({
+      .address = row.address,
+      .is_complete = row.is_complete,
+      .created_at = row.created_at,
+      .marketplace_address = row.marketplace_address,
+      .nft_address = row.nft_address,
+      .nft_owner_address = row.nft_owner_address,
+      .full_price = row.full_price,
+      .marketplace_fee_address = row.marketplace_fee_address,
+      .marketplace_fee = row.marketplace_fee,
+      .royalty_address = row.royalty_address,
+      .royalty_amount = row.royalty_amount,
+      .sold_at = row.sold_at,
+      .sold_query_id = row.sold_query_id,
+      .jetton_price_dict = row.jetton_price_dict,
+      .last_transaction_lt = row.last_transaction_lt,
+      .code_hash = row.code_hash,
+      .data_hash = row.data_hash,
+      .source_mc_seqno = row.source_mc_seqno,
+    });
+  }
+
+  result.getgems_nft_auctions.reserve(batch.getgems_nft_auctions.size());
+  for (const auto& row : batch.getgems_nft_auctions) {
+    result.getgems_nft_auctions.push_back({
+      .address = row.address,
+      .end_flag = row.end_flag,
+      .end_time = row.end_time,
+      .mp_addr = row.mp_addr,
+      .nft_addr = row.nft_addr,
+      .nft_owner = row.nft_owner,
+      .last_bid = row.last_bid,
+      .last_member = row.last_member,
+      .min_step = row.min_step,
+      .mp_fee_addr = row.mp_fee_addr,
+      .mp_fee_factor = row.mp_fee_factor,
+      .mp_fee_base = row.mp_fee_base,
+      .royalty_fee_addr = row.royalty_fee_addr,
+      .royalty_fee_factor = row.royalty_fee_factor,
+      .royalty_fee_base = row.royalty_fee_base,
+      .max_bid = row.max_bid,
+      .min_bid = row.min_bid,
+      .created_at = row.created_at,
+      .last_bid_at = row.last_bid_at,
+      .is_canceled = row.is_canceled,
+      .activated = row.activated,
+      .step_time = row.step_time,
+      .last_query_id = row.last_query_id,
+      .jetton_wallet = row.jetton_wallet,
+      .jetton_master = row.jetton_master,
+      .is_broken_state = row.is_broken_state,
+      .public_key = row.public_key,
+      .last_transaction_lt = row.last_transaction_lt,
+      .code_hash = row.code_hash,
+      .data_hash = row.data_hash,
+      .source_mc_seqno = row.source_mc_seqno,
+    });
+  }
+
+  result.multisig_contracts.reserve(batch.multisig_contracts.size());
+  for (const auto& row : batch.multisig_contracts) {
+    result.multisig_contracts.push_back({
+      .address = row.address,
+      .next_order_seqno = row.next_order_seqno,
+      .threshold = row.threshold,
+      .signers = row.signers,
+      .proposers = row.proposers,
+      .last_transaction_lt = row.last_transaction_lt,
+      .code_hash = row.code_hash,
+      .data_hash = row.data_hash,
+      .source_mc_seqno = row.source_mc_seqno,
+    });
+  }
+
+  result.multisig_orders.reserve(batch.multisig_orders.size());
+  for (const auto& row : batch.multisig_orders) {
+    result.multisig_orders.push_back({
+      .address = row.address,
+      .multisig_address = row.multisig_address,
+      .order_seqno = row.order_seqno,
+      .threshold = row.threshold,
+      .sent_for_execution = row.sent_for_execution,
+      .approvals_mask = row.approvals_mask,
+      .approvals_num = row.approvals_num,
+      .expiration_date = row.expiration_date,
+      .order_boc = row.order_boc,
+      .signers = row.signers,
+      .last_transaction_lt = row.last_transaction_lt,
+      .code_hash = row.code_hash,
+      .data_hash = row.data_hash,
+      .source_mc_seqno = row.source_mc_seqno,
+    });
+  }
+
+  result.dedust_pools.reserve(batch.dedust_pools.size());
+  for (const auto& row : batch.dedust_pools) {
+    result.dedust_pools.push_back({
+      .address = row.address,
+      .asset_1 = row.asset_1,
+      .asset_2 = row.asset_2,
+      .reserve_1 = row.reserve_1,
+      .reserve_2 = row.reserve_2,
+      .pool_type = row.pool_type,
+      .dex = row.dex,
+      .fee = row.fee,
+      .last_transaction_lt = row.last_transaction_lt,
+      .code_hash = row.code_hash,
+      .data_hash = row.data_hash,
+      .source_mc_seqno = row.source_mc_seqno,
+    });
+  }
+
+  result.vesting_contracts.reserve(batch.vesting_contracts.size());
+  for (const auto& row : batch.vesting_contracts) {
+    result.vesting_contracts.push_back({
+      .address = row.address,
+      .vesting_start_time = row.vesting_start_time,
+      .vesting_total_duration = row.vesting_total_duration,
+      .unlock_period = row.unlock_period,
+      .cliff_duration = row.cliff_duration,
+      .vesting_total_amount = row.vesting_total_amount,
+      .vesting_sender_address = row.vesting_sender_address,
+      .owner_address = row.owner_address,
+      .last_transaction_lt = row.last_transaction_lt,
+      .code_hash = row.code_hash,
+      .data_hash = row.data_hash,
+      .source_mc_seqno = row.source_mc_seqno,
+    });
+  }
+
+  result.vesting_whitelist.reserve(batch.vesting_whitelist.size());
+  for (const auto& row : batch.vesting_whitelist) {
+    result.vesting_whitelist.push_back({
+      .vesting_contract_address = row.vesting_contract_address,
+      .wallet_address = row.wallet_address,
+      .source_mc_seqno = row.source_mc_seqno,
+    });
+  }
+
+  result.telemint_nft_items.reserve(batch.telemint_nft_items.size());
+  for (const auto& row : batch.telemint_nft_items) {
+    result.telemint_nft_items.push_back({
+      .address = row.address,
+      .token_name = row.token_name,
+      .bidder_address = row.bidder_address,
+      .bid = row.bid,
+      .bid_ts = row.bid_ts,
+      .min_bid = row.min_bid,
+      .end_time = row.end_time,
+      .beneficiary_address = row.beneficiary_address,
+      .initial_min_bid = row.initial_min_bid,
+      .max_bid = row.max_bid,
+      .min_bid_step = row.min_bid_step,
+      .min_extend_time = row.min_extend_time,
+      .duration = row.duration,
+      .royalty_numerator = row.royalty_numerator,
+      .royalty_denominator = row.royalty_denominator,
+      .royalty_destination = row.royalty_destination,
+      .last_transaction_lt = row.last_transaction_lt,
+      .code_hash = row.code_hash,
+      .data_hash = row.data_hash,
+      .source_mc_seqno = row.source_mc_seqno,
+    });
+  }
+
+  result.contract_methods.reserve(batch.contract_methods.size());
+  for (const auto& row : batch.contract_methods) {
+    result.contract_methods.push_back({
+      .code_hash = row.code_hash,
+      .methods = row.methods,
+      .source_mc_seqno = row.source_mc_seqno,
+    });
+  }
+
+  return result;
+}
+
 std::string to_bits256_base64(const td::Bits256& value) {
   return td::base64_encode(value.as_slice());
 }
@@ -822,951 +1135,6 @@ class PrepareLatestAccountStatesChunkActor final : public td::actor::Actor {
   std::vector<LatestAccountStateSourceRow> rows_;
   std::int32_t max_data_depth_;
   td::Promise<std::shared_ptr<LatestAccountStatesChunkPreparedResult>> promise_;
-};
-
-constexpr std::size_t KVROCKS_PIPELINE_FLUSH_SIZE = 1000;
-
-const std::string& kvrocks_set_once_script() {
-  static const std::string script = R"(
-local exists = redis.call('EXISTS', KEYS[1])
-if exists == 0 then
-  redis.call('HSET', KEYS[1], 'source_mc_seqno', ARGV[1])
-  redis.call('SET', KEYS[2], ARGV[2])
-  return 1
-end
-return 0
-)";
-  return script;
-}
-
-const std::string& kvrocks_set_current_script() {
-  static const std::string script = R"(
-local current = redis.call('HGET', KEYS[1], 'source_mc_seqno')
-if (not current) or tonumber(current) <= tonumber(ARGV[1]) then
-  redis.call('HSET', KEYS[1], 'source_mc_seqno', ARGV[1])
-  redis.call('SET', KEYS[2], ARGV[2])
-  return 1
-end
-return 0
-)";
-  return script;
-}
-
-const std::string& kvrocks_set_indexed_current_script() {
-  static const std::string script = R"(
-local current = redis.call('HGET', KEYS[1], 'source_mc_seqno')
-if current and tonumber(current) > tonumber(ARGV[1]) then
-  return 0
-end
-
-local old_count = tonumber(redis.call('HGET', KEYS[1], 'idx_count') or '0')
-for i = 1, old_count do
-  local old_key = redis.call('HGET', KEYS[1], 'idx_key_' .. i)
-  local old_member = redis.call('HGET', KEYS[1], 'idx_member_' .. i)
-  if old_key and old_member then
-    redis.call('ZREM', old_key, old_member)
-  end
-end
-
-local first_seen = redis.call('HGET', KEYS[1], 'first_seen_seqno')
-if not first_seen then
-  first_seen = ARGV[1]
-end
-
-redis.call('HSET', KEYS[1],
-  'source_mc_seqno', ARGV[1],
-  'first_seen_seqno', first_seen)
-redis.call('SET', KEYS[2], ARGV[2])
-
-local idx_count = tonumber(ARGV[3])
-redis.call('HSET', KEYS[1], 'idx_count', idx_count)
-local pos = 4
-for i = 1, idx_count do
-  local idx_key = ARGV[pos]
-  local idx_member = ARGV[pos + 1]
-  local idx_score = ARGV[pos + 2]
-  if idx_score == '__first_seen__' then
-    idx_score = first_seen
-  end
-  redis.call('ZADD', idx_key, idx_score, idx_member)
-  redis.call('HSET', KEYS[1],
-    'idx_key_' .. i, idx_key,
-    'idx_member_' .. i, idx_member)
-  pos = pos + 3
-end
-
-for i = idx_count + 1, old_count do
-  redis.call('HDEL', KEYS[1], 'idx_key_' .. i, 'idx_member_' .. i)
-end
-
-return 1
-)";
-  return script;
-}
-
-const std::string& kvrocks_set_indexed_once_script() {
-  static const std::string script = R"(
-local exists = redis.call('EXISTS', KEYS[1])
-if exists ~= 0 then
-  return 0
-end
-
-redis.call('HSET', KEYS[1],
-  'source_mc_seqno', ARGV[1],
-  'first_seen_seqno', ARGV[1])
-redis.call('SET', KEYS[2], ARGV[2])
-
-local idx_count = tonumber(ARGV[3])
-redis.call('HSET', KEYS[1], 'idx_count', idx_count)
-local pos = 4
-for i = 1, idx_count do
-  local idx_key = ARGV[pos]
-  local idx_member = ARGV[pos + 1]
-  local idx_score = ARGV[pos + 2]
-  if idx_score == '__first_seen__' then
-    idx_score = ARGV[1]
-  end
-  redis.call('ZADD', idx_key, idx_score, idx_member)
-  redis.call('HSET', KEYS[1],
-    'idx_key_' .. i, idx_key,
-    'idx_member_' .. i, idx_member)
-  pos = pos + 3
-end
-
-return 1
-)";
-  return script;
-}
-
-std::string redis_script_sha1(const std::string& script) {
-  std::array<unsigned char, 20> digest{};
-  td::sha1(td::Slice(script.data(), script.size()), digest.data());
-  return td::hex_encode(td::Slice(reinterpret_cast<const char*>(digest.data()), digest.size()));
-}
-
-const std::string& kvrocks_set_once_script_sha() {
-  static const std::string sha = redis_script_sha1(kvrocks_set_once_script());
-  return sha;
-}
-
-const std::string& kvrocks_set_current_script_sha() {
-  static const std::string sha = redis_script_sha1(kvrocks_set_current_script());
-  return sha;
-}
-
-const std::string& kvrocks_set_indexed_current_script_sha() {
-  static const std::string sha = redis_script_sha1(kvrocks_set_indexed_current_script());
-  return sha;
-}
-
-const std::string& kvrocks_set_indexed_once_script_sha() {
-  static const std::string sha = redis_script_sha1(kvrocks_set_indexed_once_script());
-  return sha;
-}
-
-void load_kvrocks_scripts(sw::redis::Redis& redis) {
-  auto set_once_sha = redis.script_load(kvrocks_set_once_script());
-  auto set_current_sha = redis.script_load(kvrocks_set_current_script());
-  auto set_indexed_current_sha = redis.script_load(kvrocks_set_indexed_current_script());
-  auto set_indexed_once_sha = redis.script_load(kvrocks_set_indexed_once_script());
-  if (set_once_sha != kvrocks_set_once_script_sha() || set_current_sha != kvrocks_set_current_script_sha() ||
-      set_indexed_current_sha != kvrocks_set_indexed_current_script_sha() ||
-      set_indexed_once_sha != kvrocks_set_indexed_once_script_sha()) {
-    throw std::runtime_error("Kvrocks returned an unexpected script SHA");
-  }
-}
-
-bool is_kvrocks_no_script_error(const std::exception& e) {
-  const std::string message = e.what();
-  return message.find("NOSCRIPT") != std::string::npos || message.find("No matching script") != std::string::npos;
-}
-
-std::string kvrocks_key(const std::string& table, const std::string& id) {
-  return "ton-index:v1:" + table + ":" + id;
-}
-
-std::string kvrocks_payload_key(const std::string& table, const std::string& id) {
-  return kvrocks_key(table, id) + ":payload";
-}
-
-std::string kvrocks_index_key(const std::string& table, const std::string& name) {
-  return "ton-index:v1:idx:" + table + ":" + name;
-}
-
-std::string address_key(const block::StdAddress& address) {
-  return convert::to_raw_address(address);
-}
-
-std::string hash_key(const td::Bits256& hash) {
-  return to_bits256_base64(hash);
-}
-
-struct KvrocksIndexEntry {
-  std::string key;
-  std::string member;
-  std::string score;
-};
-
-std::string pad_unsigned_decimal(std::string value, std::size_t width) {
-  if (value.size() >= width) {
-    return value;
-  }
-  return std::string(width - value.size(), '0') + value;
-}
-
-std::string int256_key(const td::RefInt256& value, std::size_t width = 80) {
-  return pad_unsigned_decimal(value->to_dec_string(), width);
-}
-
-std::string u64_key(std::uint64_t value, std::size_t width = 20) {
-  return pad_unsigned_decimal(std::to_string(value), width);
-}
-
-std::string size_key(std::size_t value, std::size_t width = 10) {
-  return pad_unsigned_decimal(std::to_string(value), width);
-}
-
-std::string optional_address_key(const std::optional<block::StdAddress>& value) {
-  return value ? address_key(*value) : "_";
-}
-
-void add_by_id_index(std::vector<KvrocksIndexEntry>& indexes, const std::string& table, const std::string& name,
-                     const std::string& id) {
-  indexes.push_back({kvrocks_index_key(table, name), id, "__first_seen__"});
-}
-
-void add_lex_index(std::vector<KvrocksIndexEntry>& indexes, const std::string& table, const std::string& name,
-                   const std::string& member) {
-  indexes.push_back({kvrocks_index_key(table, name), member, "0"});
-}
-
-void json_put_null(td::JsonObjectScope& obj, td::Slice field) {
-  obj(field, td::JsonNull());
-}
-
-void json_put_bool(td::JsonObjectScope& obj, td::Slice field, bool value) {
-  obj(field, td::JsonBool(value));
-}
-
-void json_put_i64(td::JsonObjectScope& obj, td::Slice field, std::int64_t value) {
-  obj(field, td::JsonLong(value));
-}
-
-void json_put_u64_string(td::JsonObjectScope& obj, td::Slice field, std::uint64_t value) {
-  obj(field, std::to_string(value));
-}
-
-void json_put_string(td::JsonObjectScope& obj, td::Slice field, const std::string& value) {
-  obj(field, value);
-}
-
-void json_put_raw_json(td::JsonObjectScope& obj, td::Slice field, const std::string& value) {
-  obj(field, td::JsonRaw(value));
-}
-
-void json_put_int256(td::JsonObjectScope& obj, td::Slice field, const td::RefInt256& value) {
-  obj(field, value->to_dec_string());
-}
-
-void json_put_hash(td::JsonObjectScope& obj, td::Slice field, const td::Bits256& value) {
-  obj(field, hash_key(value));
-}
-
-void json_put_optional_hash(td::JsonObjectScope& obj, td::Slice field, const std::optional<td::Bits256>& value) {
-  if (value) {
-    json_put_hash(obj, field, *value);
-  } else {
-    json_put_null(obj, field);
-  }
-}
-
-void json_put_address(td::JsonObjectScope& obj, td::Slice field, const block::StdAddress& value) {
-  obj(field, address_key(value));
-}
-
-void json_put_optional_address(td::JsonObjectScope& obj, td::Slice field, const std::optional<block::StdAddress>& value) {
-  if (value) {
-    json_put_address(obj, field, *value);
-  } else {
-    json_put_null(obj, field);
-  }
-}
-
-void json_put_optional_string(td::JsonObjectScope& obj, td::Slice field, const std::optional<std::string>& value) {
-  if (value) {
-    json_put_string(obj, field, *value);
-  } else {
-    json_put_null(obj, field);
-  }
-}
-
-void json_put_optional_bool(td::JsonObjectScope& obj, td::Slice field, const std::optional<bool>& value) {
-  if (value) {
-    json_put_bool(obj, field, *value);
-  } else {
-    json_put_null(obj, field);
-  }
-}
-
-void json_put_optional_u32(td::JsonObjectScope& obj, td::Slice field, const std::optional<std::uint32_t>& value) {
-  if (value) {
-    json_put_i64(obj, field, *value);
-  } else {
-    json_put_null(obj, field);
-  }
-}
-
-void json_put_optional_u64_string(td::JsonObjectScope& obj, td::Slice field, const std::optional<std::uint64_t>& value) {
-  if (value) {
-    json_put_u64_string(obj, field, *value);
-  } else {
-    json_put_null(obj, field);
-  }
-}
-
-void json_put_optional_raw_json(td::JsonObjectScope& obj, td::Slice field, const std::optional<std::string>& value) {
-  if (value) {
-    json_put_raw_json(obj, field, *value);
-  } else {
-    json_put_null(obj, field);
-  }
-}
-
-std::string address_array_json(const std::vector<block::StdAddress>& addresses) {
-  td::JsonBuilder jb;
-  auto arr = jb.enter_array();
-  for (const auto& address : addresses) {
-    arr(address_key(address));
-  }
-  arr.leave();
-  return jb.string_builder().as_cslice().str();
-}
-
-void json_put_common(td::JsonObjectScope& obj, std::uint32_t source_mc_seqno) {
-  json_put_i64(obj, "schema_version", 1);
-  json_put_i64(obj, "source_mc_seqno", source_mc_seqno);
-}
-
-template <typename Fn>
-std::string build_json_payload(Fn fn) {
-  td::JsonBuilder jb;
-  auto obj = jb.enter_object();
-  fn(obj);
-  obj.leave();
-  return jb.string_builder().as_cslice().str();
-}
-
-std::string build_payload(const PreparedMessageContentRow& row) {
-  return build_json_payload([&](td::JsonObjectScope& obj) {
-    json_put_common(obj, row.source_mc_seqno);
-    json_put_hash(obj, "hash", row.hash);
-    json_put_string(obj, "body", row.body);
-  });
-}
-
-std::string build_payload(const PreparedAccountStateRow& row) {
-  return build_json_payload([&](td::JsonObjectScope& obj) {
-    json_put_common(obj, row.source_mc_seqno);
-    json_put_hash(obj, "hash", row.hash);
-    json_put_address(obj, "account", row.account);
-    json_put_int256(obj, "balance", row.balance);
-    json_put_raw_json(obj, "balance_extra_currencies", row.balance_extra_currencies);
-    json_put_string(obj, "account_status", row.account_status);
-    json_put_optional_hash(obj, "frozen_hash", row.frozen_hash);
-    json_put_optional_hash(obj, "code_hash", row.code_hash);
-    json_put_optional_hash(obj, "data_hash", row.data_hash);
-  });
-}
-
-std::string build_payload(const PreparedLatestAccountStateRow& row) {
-  return build_json_payload([&](td::JsonObjectScope& obj) {
-    json_put_common(obj, row.source_mc_seqno);
-    json_put_address(obj, "account", row.account);
-    json_put_optional_address(obj, "account_friendly", row.account_friendly);
-    json_put_hash(obj, "hash", row.hash);
-    json_put_int256(obj, "balance", row.balance);
-    json_put_raw_json(obj, "balance_extra_currencies", row.balance_extra_currencies);
-    json_put_string(obj, "account_status", row.account_status);
-    json_put_i64(obj, "timestamp", row.timestamp);
-    json_put_hash(obj, "last_trans_hash", row.last_trans_hash);
-    json_put_u64_string(obj, "last_trans_lt", row.last_trans_lt);
-    json_put_optional_hash(obj, "frozen_hash", row.frozen_hash);
-    json_put_optional_hash(obj, "data_hash", row.data_hash);
-    json_put_optional_hash(obj, "code_hash", row.code_hash);
-    json_put_optional_string(obj, "data_boc", row.data_boc);
-    json_put_optional_string(obj, "code_boc", row.code_boc);
-  });
-}
-
-std::string build_payload(const PreparedJettonMasterRow& row) {
-  return build_json_payload([&](td::JsonObjectScope& obj) {
-    json_put_common(obj, row.source_mc_seqno);
-    json_put_address(obj, "address", row.address);
-    json_put_int256(obj, "total_supply", row.total_supply);
-    json_put_bool(obj, "mintable", row.mintable);
-    json_put_optional_address(obj, "admin_address", row.admin_address);
-    json_put_optional_raw_json(obj, "jetton_content", row.jetton_content);
-    json_put_hash(obj, "jetton_wallet_code_hash", row.jetton_wallet_code_hash);
-    json_put_u64_string(obj, "last_transaction_lt", row.last_transaction_lt);
-    json_put_hash(obj, "code_hash", row.code_hash);
-    json_put_hash(obj, "data_hash", row.data_hash);
-  });
-}
-
-std::string build_payload(const PreparedJettonWalletRow& row) {
-  return build_json_payload([&](td::JsonObjectScope& obj) {
-    json_put_common(obj, row.source_mc_seqno);
-    json_put_int256(obj, "balance", row.balance);
-    json_put_address(obj, "address", row.address);
-    json_put_address(obj, "owner", row.owner);
-    json_put_address(obj, "jetton", row.jetton);
-    json_put_u64_string(obj, "last_transaction_lt", row.last_transaction_lt);
-    json_put_hash(obj, "code_hash", row.code_hash);
-    json_put_hash(obj, "data_hash", row.data_hash);
-    json_put_optional_bool(obj, "mintless_is_claimed", row.mintless_is_claimed);
-  });
-}
-
-std::string build_payload(const PreparedMintlessMasterRow& row) {
-  return build_json_payload([&](td::JsonObjectScope& obj) {
-    json_put_common(obj, row.source_mc_seqno);
-    json_put_address(obj, "address", row.address);
-    json_put_bool(obj, "is_indexed", row.is_indexed);
-    json_put_null(obj, "custom_payload_api_uri");
-  });
-}
-
-std::string build_payload(const PreparedNftCollectionRow& row) {
-  return build_json_payload([&](td::JsonObjectScope& obj) {
-    json_put_common(obj, row.source_mc_seqno);
-    json_put_address(obj, "address", row.address);
-    json_put_int256(obj, "next_item_index", row.next_item_index);
-    json_put_optional_address(obj, "owner_address", row.owner_address);
-    json_put_optional_raw_json(obj, "collection_content", row.collection_content);
-    json_put_u64_string(obj, "last_transaction_lt", row.last_transaction_lt);
-    json_put_hash(obj, "code_hash", row.code_hash);
-    json_put_hash(obj, "data_hash", row.data_hash);
-  });
-}
-
-std::string build_payload(const PreparedNftItemRow& row) {
-  return build_json_payload([&](td::JsonObjectScope& obj) {
-    json_put_common(obj, row.source_mc_seqno);
-    json_put_address(obj, "address", row.address);
-    json_put_bool(obj, "init", row.init);
-    json_put_int256(obj, "index", row.index);
-    json_put_optional_address(obj, "collection_address", row.collection_address);
-    json_put_optional_address(obj, "owner_address", row.owner_address);
-    json_put_optional_raw_json(obj, "content", row.content);
-    json_put_u64_string(obj, "last_transaction_lt", row.last_transaction_lt);
-    json_put_hash(obj, "code_hash", row.code_hash);
-    json_put_hash(obj, "data_hash", row.data_hash);
-    json_put_optional_address(obj, "real_owner", row.real_owner);
-  });
-}
-
-std::string build_payload(const PreparedDnsEntryRow& row) {
-  return build_json_payload([&](td::JsonObjectScope& obj) {
-    json_put_common(obj, row.source_mc_seqno);
-    json_put_address(obj, "nft_item_address", row.nft_item_address);
-    json_put_optional_address(obj, "nft_item_owner", row.nft_item_owner);
-    json_put_string(obj, "domain", row.domain);
-    json_put_optional_address(obj, "dns_next_resolver", row.dns_next_resolver);
-    json_put_optional_address(obj, "dns_wallet", row.dns_wallet);
-    json_put_optional_hash(obj, "dns_site_adnl", row.dns_site_adnl);
-    json_put_optional_hash(obj, "dns_storage_bag_id", row.dns_storage_bag_id);
-    json_put_u64_string(obj, "last_transaction_lt", row.last_transaction_lt);
-  });
-}
-
-std::string build_payload(const PreparedGetgemsSaleRow& row) {
-  return build_json_payload([&](td::JsonObjectScope& obj) {
-    json_put_common(obj, row.source_mc_seqno);
-    json_put_address(obj, "address", row.address);
-    json_put_bool(obj, "is_complete", row.is_complete);
-    json_put_i64(obj, "created_at", row.created_at);
-    json_put_address(obj, "marketplace_address", row.marketplace_address);
-    json_put_address(obj, "nft_address", row.nft_address);
-    json_put_optional_address(obj, "nft_owner_address", row.nft_owner_address);
-    json_put_int256(obj, "full_price", row.full_price);
-    json_put_address(obj, "marketplace_fee_address", row.marketplace_fee_address);
-    json_put_int256(obj, "marketplace_fee", row.marketplace_fee);
-    json_put_address(obj, "royalty_address", row.royalty_address);
-    json_put_int256(obj, "royalty_amount", row.royalty_amount);
-    json_put_optional_u32(obj, "sold_at", row.sold_at);
-    json_put_optional_u64_string(obj, "sold_query_id", row.sold_query_id);
-    json_put_optional_raw_json(obj, "jetton_price_dict", row.jetton_price_dict);
-    json_put_u64_string(obj, "last_transaction_lt", row.last_transaction_lt);
-    json_put_hash(obj, "code_hash", row.code_hash);
-    json_put_hash(obj, "data_hash", row.data_hash);
-  });
-}
-
-std::string build_payload(const PreparedGetgemsAuctionRow& row) {
-  return build_json_payload([&](td::JsonObjectScope& obj) {
-    json_put_common(obj, row.source_mc_seqno);
-    json_put_address(obj, "address", row.address);
-    json_put_bool(obj, "end_flag", row.end_flag);
-    json_put_i64(obj, "end_time", row.end_time);
-    json_put_address(obj, "mp_addr", row.mp_addr);
-    json_put_address(obj, "nft_addr", row.nft_addr);
-    json_put_optional_address(obj, "nft_owner", row.nft_owner);
-    json_put_int256(obj, "last_bid", row.last_bid);
-    json_put_optional_address(obj, "last_member", row.last_member);
-    json_put_i64(obj, "min_step", row.min_step);
-    json_put_address(obj, "mp_fee_addr", row.mp_fee_addr);
-    json_put_i64(obj, "mp_fee_factor", row.mp_fee_factor);
-    json_put_i64(obj, "mp_fee_base", row.mp_fee_base);
-    json_put_address(obj, "royalty_fee_addr", row.royalty_fee_addr);
-    json_put_i64(obj, "royalty_fee_factor", row.royalty_fee_factor);
-    json_put_i64(obj, "royalty_fee_base", row.royalty_fee_base);
-    json_put_int256(obj, "max_bid", row.max_bid);
-    json_put_int256(obj, "min_bid", row.min_bid);
-    json_put_i64(obj, "created_at", row.created_at);
-    json_put_i64(obj, "last_bid_at", row.last_bid_at);
-    json_put_bool(obj, "is_canceled", row.is_canceled);
-    json_put_optional_bool(obj, "activated", row.activated);
-    json_put_optional_u32(obj, "step_time", row.step_time);
-    json_put_optional_u64_string(obj, "last_query_id", row.last_query_id);
-    json_put_optional_address(obj, "jetton_wallet", row.jetton_wallet);
-    json_put_optional_address(obj, "jetton_master", row.jetton_master);
-    json_put_optional_bool(obj, "is_broken_state", row.is_broken_state);
-    json_put_optional_string(obj, "public_key", row.public_key);
-    json_put_u64_string(obj, "last_transaction_lt", row.last_transaction_lt);
-    json_put_hash(obj, "code_hash", row.code_hash);
-    json_put_hash(obj, "data_hash", row.data_hash);
-  });
-}
-
-std::string build_payload(const PreparedMultisigContractRow& row) {
-  return build_json_payload([&](td::JsonObjectScope& obj) {
-    json_put_common(obj, row.source_mc_seqno);
-    json_put_address(obj, "address", row.address);
-    json_put_int256(obj, "next_order_seqno", row.next_order_seqno);
-    json_put_i64(obj, "threshold", row.threshold);
-    json_put_raw_json(obj, "signers", address_array_json(row.signers));
-    json_put_raw_json(obj, "proposers", address_array_json(row.proposers));
-    json_put_u64_string(obj, "last_transaction_lt", row.last_transaction_lt);
-    json_put_hash(obj, "code_hash", row.code_hash);
-    json_put_hash(obj, "data_hash", row.data_hash);
-  });
-}
-
-std::string build_payload(const PreparedMultisigOrderRow& row) {
-  return build_json_payload([&](td::JsonObjectScope& obj) {
-    json_put_common(obj, row.source_mc_seqno);
-    json_put_address(obj, "address", row.address);
-    json_put_address(obj, "multisig_address", row.multisig_address);
-    json_put_int256(obj, "order_seqno", row.order_seqno);
-    json_put_i64(obj, "threshold", row.threshold);
-    json_put_bool(obj, "sent_for_execution", row.sent_for_execution);
-    json_put_int256(obj, "approvals_mask", row.approvals_mask);
-    json_put_i64(obj, "approvals_num", row.approvals_num);
-    json_put_int256(obj, "expiration_date", row.expiration_date);
-    json_put_optional_string(obj, "order_boc", row.order_boc);
-    json_put_raw_json(obj, "signers", address_array_json(row.signers));
-    json_put_u64_string(obj, "last_transaction_lt", row.last_transaction_lt);
-    json_put_hash(obj, "code_hash", row.code_hash);
-    json_put_hash(obj, "data_hash", row.data_hash);
-  });
-}
-
-std::string build_payload(const PreparedDedustPoolRow& row) {
-  return build_json_payload([&](td::JsonObjectScope& obj) {
-    json_put_common(obj, row.source_mc_seqno);
-    json_put_address(obj, "address", row.address);
-    json_put_optional_address(obj, "asset_1", row.asset_1);
-    json_put_optional_address(obj, "asset_2", row.asset_2);
-    json_put_int256(obj, "reserve_1", row.reserve_1);
-    json_put_int256(obj, "reserve_2", row.reserve_2);
-    json_put_string(obj, "pool_type", row.pool_type);
-    json_put_string(obj, "dex", row.dex);
-    obj("fee", td::JsonFloat(row.fee));
-    json_put_u64_string(obj, "last_transaction_lt", row.last_transaction_lt);
-    json_put_hash(obj, "code_hash", row.code_hash);
-    json_put_hash(obj, "data_hash", row.data_hash);
-  });
-}
-
-std::string build_payload(const PreparedVestingContractRow& row) {
-  return build_json_payload([&](td::JsonObjectScope& obj) {
-    json_put_common(obj, row.source_mc_seqno);
-    json_put_address(obj, "address", row.address);
-    json_put_i64(obj, "vesting_start_time", row.vesting_start_time);
-    json_put_i64(obj, "vesting_total_duration", row.vesting_total_duration);
-    json_put_i64(obj, "unlock_period", row.unlock_period);
-    json_put_i64(obj, "cliff_duration", row.cliff_duration);
-    json_put_int256(obj, "vesting_total_amount", row.vesting_total_amount);
-    json_put_address(obj, "vesting_sender_address", row.vesting_sender_address);
-    json_put_address(obj, "owner_address", row.owner_address);
-    json_put_u64_string(obj, "last_transaction_lt", row.last_transaction_lt);
-    json_put_hash(obj, "code_hash", row.code_hash);
-    json_put_hash(obj, "data_hash", row.data_hash);
-  });
-}
-
-std::string build_payload(const PreparedVestingWhitelistRow& row) {
-  return build_json_payload([&](td::JsonObjectScope& obj) {
-    json_put_common(obj, row.source_mc_seqno);
-    json_put_address(obj, "vesting_contract_address", row.vesting_contract_address);
-    json_put_address(obj, "wallet_address", row.wallet_address);
-  });
-}
-
-std::string build_payload(const PreparedTelemintRow& row) {
-  return build_json_payload([&](td::JsonObjectScope& obj) {
-    json_put_common(obj, row.source_mc_seqno);
-    json_put_address(obj, "address", row.address);
-    json_put_string(obj, "token_name", row.token_name);
-    json_put_optional_address(obj, "bidder_address", row.bidder_address);
-    json_put_int256(obj, "bid", row.bid);
-    json_put_i64(obj, "bid_ts", row.bid_ts);
-    json_put_int256(obj, "min_bid", row.min_bid);
-    json_put_i64(obj, "end_time", row.end_time);
-    json_put_optional_address(obj, "beneficiary_address", row.beneficiary_address);
-    json_put_int256(obj, "initial_min_bid", row.initial_min_bid);
-    json_put_int256(obj, "max_bid", row.max_bid);
-    json_put_int256(obj, "min_bid_step", row.min_bid_step);
-    json_put_i64(obj, "min_extend_time", row.min_extend_time);
-    json_put_i64(obj, "duration", row.duration);
-    json_put_i64(obj, "royalty_numerator", row.royalty_numerator);
-    json_put_i64(obj, "royalty_denominator", row.royalty_denominator);
-    json_put_address(obj, "royalty_destination", row.royalty_destination);
-    json_put_u64_string(obj, "last_transaction_lt", row.last_transaction_lt);
-    json_put_hash(obj, "code_hash", row.code_hash);
-    json_put_hash(obj, "data_hash", row.data_hash);
-  });
-}
-
-std::string build_payload(const PreparedContractMethodsRow& row) {
-  return build_json_payload([&](td::JsonObjectScope& obj) {
-    json_put_common(obj, row.source_mc_seqno);
-    json_put_hash(obj, "code_hash", row.code_hash);
-    json_put_string(obj, "methods", row.methods);
-  });
-}
-
-std::vector<KvrocksIndexEntry> build_indexes(const PreparedLatestAccountStateRow& row) {
-  std::vector<KvrocksIndexEntry> indexes;
-  const auto id = address_key(row.account);
-  add_by_id_index(indexes, "latest_account_states", "all:by_account", id);
-  if (row.code_hash) {
-    add_by_id_index(indexes, "latest_account_states", "code_hash:" + hash_key(*row.code_hash) + ":by_account", id);
-  }
-  add_lex_index(indexes, "latest_account_states", "balance", int256_key(row.balance) + ":" + id);
-  return indexes;
-}
-
-std::vector<KvrocksIndexEntry> build_indexes(const PreparedJettonMasterRow& row) {
-  std::vector<KvrocksIndexEntry> indexes;
-  const auto id = address_key(row.address);
-  add_by_id_index(indexes, "jetton_masters", "all:by_id", id);
-  if (row.admin_address) {
-    add_by_id_index(indexes, "jetton_masters", "admin:" + address_key(*row.admin_address) + ":by_id", id);
-  }
-  return indexes;
-}
-
-std::vector<KvrocksIndexEntry> build_indexes(const PreparedJettonWalletRow& row) {
-  std::vector<KvrocksIndexEntry> indexes;
-  const auto id = address_key(row.address);
-  const auto owner = address_key(row.owner);
-  const auto jetton = address_key(row.jetton);
-  const auto balance_str = row.balance->to_dec_string();
-  const auto balance_member = pad_unsigned_decimal(balance_str, 80) + ":" + id;
-  const auto nonzero = balance_str != "0" || (row.mintless_is_claimed && !*row.mintless_is_claimed);
-  add_by_id_index(indexes, "jetton_wallets", "all:by_id", id);
-  add_by_id_index(indexes, "jetton_wallets", "owner:" + owner + ":by_id", id);
-  add_by_id_index(indexes, "jetton_wallets", "jetton:" + jetton + ":by_id", id);
-  add_by_id_index(indexes, "jetton_wallets", "owner:" + owner + ":jetton:" + jetton + ":by_id", id);
-  add_lex_index(indexes, "jetton_wallets", "all:by_balance", balance_member);
-  add_lex_index(indexes, "jetton_wallets", "owner:" + owner + ":by_balance", balance_member);
-  add_lex_index(indexes, "jetton_wallets", "jetton:" + jetton + ":by_balance", balance_member);
-  add_lex_index(indexes, "jetton_wallets", "owner:" + owner + ":jetton:" + jetton + ":by_balance", balance_member);
-  if (nonzero) {
-    add_by_id_index(indexes, "jetton_wallets", "all:nonzero:by_id", id);
-    add_by_id_index(indexes, "jetton_wallets", "owner:" + owner + ":nonzero:by_id", id);
-    add_by_id_index(indexes, "jetton_wallets", "jetton:" + jetton + ":nonzero:by_id", id);
-    add_by_id_index(indexes, "jetton_wallets", "owner:" + owner + ":jetton:" + jetton + ":nonzero:by_id", id);
-    add_lex_index(indexes, "jetton_wallets", "all:nonzero:by_balance", balance_member);
-    add_lex_index(indexes, "jetton_wallets", "owner:" + owner + ":nonzero:by_balance", balance_member);
-    add_lex_index(indexes, "jetton_wallets", "jetton:" + jetton + ":nonzero:by_balance", balance_member);
-    add_lex_index(indexes, "jetton_wallets", "owner:" + owner + ":jetton:" + jetton + ":nonzero:by_balance", balance_member);
-  }
-  return indexes;
-}
-
-std::vector<KvrocksIndexEntry> build_indexes(const PreparedNftCollectionRow& row) {
-  std::vector<KvrocksIndexEntry> indexes;
-  const auto id = address_key(row.address);
-  add_by_id_index(indexes, "nft_collections", "all:by_id", id);
-  if (row.owner_address) {
-    add_by_id_index(indexes, "nft_collections", "owner:" + address_key(*row.owner_address) + ":by_id", id);
-  }
-  return indexes;
-}
-
-std::vector<KvrocksIndexEntry> build_indexes(const PreparedNftItemRow& row) {
-  std::vector<KvrocksIndexEntry> indexes;
-  const auto id = address_key(row.address);
-  const auto collection = optional_address_key(row.collection_address);
-  const auto index_member = collection + ":" + int256_key(row.index) + ":" + id;
-  const auto lt_member = u64_key(row.last_transaction_lt) + ":" + id;
-  add_by_id_index(indexes, "nft_items", "all:by_id", id);
-  add_lex_index(indexes, "nft_items", "all:by_last_transaction_lt", lt_member);
-  if (row.collection_address) {
-    add_lex_index(indexes, "nft_items", "collection:" + collection + ":by_index", int256_key(row.index) + ":" + id);
-    add_by_id_index(indexes, "nft_items", "collection:" + collection + ":index:" + int256_key(row.index), id);
-    add_lex_index(indexes, "nft_items", "collection:" + collection + ":by_last_transaction_lt", lt_member);
-  }
-  if (row.owner_address) {
-    const auto owner = address_key(*row.owner_address);
-    add_lex_index(indexes, "nft_items", "owner:" + owner + ":by_collection_index", index_member);
-    add_lex_index(indexes, "nft_items", "owner:" + owner + ":by_last_transaction_lt", lt_member);
-    if (row.collection_address) {
-      add_lex_index(indexes, "nft_items", "owner:" + owner + ":collection:" + collection + ":by_index",
-                    int256_key(row.index) + ":" + id);
-      add_lex_index(indexes, "nft_items", "owner:" + owner + ":collection:" + collection + ":by_last_transaction_lt",
-                    lt_member);
-    }
-  }
-  if (row.real_owner) {
-    const auto owner = address_key(*row.real_owner);
-    add_lex_index(indexes, "nft_items", "real_owner:" + owner + ":by_collection_index", index_member);
-    add_lex_index(indexes, "nft_items", "real_owner:" + owner + ":by_last_transaction_lt", lt_member);
-    if (row.collection_address) {
-      add_lex_index(indexes, "nft_items", "real_owner:" + owner + ":collection:" + collection + ":by_index",
-                    int256_key(row.index) + ":" + id);
-      add_lex_index(indexes, "nft_items", "real_owner:" + owner + ":collection:" + collection + ":by_last_transaction_lt",
-                    lt_member);
-    }
-  }
-  return indexes;
-}
-
-std::vector<KvrocksIndexEntry> build_indexes(const PreparedDnsEntryRow& row) {
-  std::vector<KvrocksIndexEntry> indexes;
-  const auto id = address_key(row.nft_item_address);
-  add_by_id_index(indexes, "dns_entries", "domain:" + row.domain + ":by_id", id);
-  if (row.dns_wallet) {
-    const auto domain_member = size_key(row.domain.size()) + ":" + row.domain + ":" + id;
-    add_lex_index(indexes, "dns_entries", "wallet:" + address_key(*row.dns_wallet) + ":by_domain",
-                  domain_member);
-    if (row.nft_item_owner && address_key(*row.nft_item_owner) == address_key(*row.dns_wallet)) {
-      add_lex_index(indexes, "dns_entries", "owner_wallet:" + address_key(*row.dns_wallet) + ":by_domain",
-                    domain_member);
-    }
-  }
-  return indexes;
-}
-
-std::vector<KvrocksIndexEntry> build_indexes(const PreparedMultisigContractRow& row) {
-  std::vector<KvrocksIndexEntry> indexes;
-  const auto id = address_key(row.address);
-  add_by_id_index(indexes, "multisig", "all:by_id", id);
-  for (const auto& signer : row.signers) {
-    add_by_id_index(indexes, "multisig", "wallet:" + address_key(signer) + ":by_id", id);
-  }
-  for (const auto& proposer : row.proposers) {
-    add_by_id_index(indexes, "multisig", "wallet:" + address_key(proposer) + ":by_id", id);
-  }
-  return indexes;
-}
-
-std::vector<KvrocksIndexEntry> build_indexes(const PreparedMultisigOrderRow& row) {
-  std::vector<KvrocksIndexEntry> indexes;
-  const auto id = address_key(row.address);
-  add_by_id_index(indexes, "multisig_orders", "all:by_id", id);
-  add_by_id_index(indexes, "multisig_orders", "multisig:" + address_key(row.multisig_address) + ":by_id", id);
-  return indexes;
-}
-
-std::vector<KvrocksIndexEntry> build_indexes(const PreparedVestingContractRow& row) {
-  std::vector<KvrocksIndexEntry> indexes;
-  const auto id = address_key(row.address);
-  add_by_id_index(indexes, "vesting_contracts", "all:by_id", id);
-  add_by_id_index(indexes, "vesting_contracts", "wallet:" + address_key(row.owner_address) + ":by_id", id);
-  add_by_id_index(indexes, "vesting_contracts", "wallet:" + address_key(row.vesting_sender_address) + ":by_id", id);
-  return indexes;
-}
-
-std::vector<KvrocksIndexEntry> build_indexes(const PreparedVestingWhitelistRow& row) {
-  std::vector<KvrocksIndexEntry> indexes;
-  const auto contract = address_key(row.vesting_contract_address);
-  const auto wallet = address_key(row.wallet_address);
-  add_lex_index(indexes, "vesting_whitelist", "contract:" + contract + ":by_wallet", wallet);
-  add_by_id_index(indexes, "vesting_contracts", "wallet_whitelist:" + wallet + ":by_id", contract);
-  return indexes;
-}
-
-class KvrocksBatchWriter {
- public:
-  KvrocksBatchWriter(sw::redis::Redis& redis, const PreparedBatchPostgres& batch)
-      : redis_(redis), pipeline_(redis.pipeline(false)), batch_(batch) {
-  }
-
-  void write() {
-    for (const auto& row : batch_.message_contents) {
-      queue_set_once("message_contents", hash_key(row.hash), row.source_mc_seqno, build_payload(row));
-    }
-    for (const auto& row : batch_.account_states) {
-      queue_set_once("account_states", hash_key(row.hash), row.source_mc_seqno, build_payload(row));
-    }
-    for (const auto& row : batch_.contract_methods) {
-      queue_set_once("contract_methods", hash_key(row.code_hash), row.source_mc_seqno, build_payload(row));
-    }
-
-    for (const auto& row : batch_.latest_account_states) {
-      queue_set_indexed_current("latest_account_states", address_key(row.account), row.source_mc_seqno, build_payload(row),
-                                build_indexes(row));
-    }
-    for (const auto& row : batch_.jetton_masters) {
-      queue_set_indexed_current("jetton_masters", address_key(row.address), row.source_mc_seqno, build_payload(row),
-                                build_indexes(row));
-    }
-    for (const auto& row : batch_.jetton_wallets) {
-      queue_set_indexed_current("jetton_wallets", address_key(row.address), row.source_mc_seqno, build_payload(row),
-                                build_indexes(row));
-    }
-    for (const auto& row : batch_.mintless_jetton_masters) {
-      queue_set_once("mintless_jetton_masters", address_key(row.address), row.source_mc_seqno, build_payload(row));
-    }
-    for (const auto& row : batch_.nft_collections) {
-      queue_set_indexed_current("nft_collections", address_key(row.address), row.source_mc_seqno, build_payload(row),
-                                build_indexes(row));
-    }
-    for (const auto& row : batch_.nft_items) {
-      queue_set_indexed_current("nft_items", address_key(row.address), row.source_mc_seqno, build_payload(row),
-                                build_indexes(row));
-    }
-    for (const auto& row : batch_.dns_entries) {
-      queue_set_indexed_current("dns_entries", address_key(row.nft_item_address), row.source_mc_seqno, build_payload(row),
-                                build_indexes(row));
-    }
-    for (const auto& row : batch_.getgems_nft_sales) {
-      queue_set_current("getgems_nft_sales", address_key(row.address), row.source_mc_seqno, build_payload(row));
-    }
-    for (const auto& row : batch_.getgems_nft_auctions) {
-      queue_set_current("getgems_nft_auctions", address_key(row.address), row.source_mc_seqno, build_payload(row));
-    }
-    for (const auto& row : batch_.multisig_contracts) {
-      queue_set_indexed_current("multisig", address_key(row.address), row.source_mc_seqno, build_payload(row),
-                                build_indexes(row));
-    }
-    for (const auto& row : batch_.multisig_orders) {
-      queue_set_indexed_current("multisig_orders", address_key(row.address), row.source_mc_seqno, build_payload(row),
-                                build_indexes(row));
-    }
-    for (const auto& row : batch_.vesting_contracts) {
-      queue_set_indexed_current("vesting_contracts", address_key(row.address), row.source_mc_seqno, build_payload(row),
-                                build_indexes(row));
-    }
-    for (const auto& row : batch_.vesting_whitelist) {
-      queue_set_indexed_once("vesting_whitelist", address_key(row.vesting_contract_address) + ":" + address_key(row.wallet_address),
-                             row.source_mc_seqno, build_payload(row), build_indexes(row));
-    }
-    for (const auto& row : batch_.telemint_nft_items) {
-      queue_set_current("telemint_nft_items", address_key(row.address), row.source_mc_seqno, build_payload(row));
-    }
-    for (const auto& row : batch_.dedust_pools) {
-      queue_set_current("dex_pools", address_key(row.address), row.source_mc_seqno, build_payload(row));
-    }
-
-    flush();
-    if (queued_ > 0) {
-      LOG(INFO) << "Inserted " << queued_ << " point-state rows into Kvrocks";
-    }
-  }
-
-  double exec_elapsed_millis() const {
-    return exec_elapsed_millis_;
-  }
-
- private:
-  void queue_set_once(const std::string& table, const std::string& id, std::uint32_t source_mc_seqno,
-                      const std::string& payload) {
-    const auto key = kvrocks_key(table, id);
-    const auto payload_key = kvrocks_payload_key(table, id);
-    const auto source = std::to_string(source_mc_seqno);
-    pipeline_.evalsha(kvrocks_set_once_script_sha(), {key, payload_key}, {source, payload});
-    ++pending_;
-    ++queued_;
-    flush_if_needed();
-  }
-
-  void queue_set_current(const std::string& table, const std::string& id, std::uint32_t source_mc_seqno,
-                         const std::string& payload) {
-    const auto key = kvrocks_key(table, id);
-    const auto payload_key = kvrocks_payload_key(table, id);
-    const auto source = std::to_string(source_mc_seqno);
-    pipeline_.evalsha(kvrocks_set_current_script_sha(), {key, payload_key}, {source, payload});
-    ++pending_;
-    ++queued_;
-    flush_if_needed();
-  }
-
-  void queue_set_indexed_current(const std::string& table, const std::string& id, std::uint32_t source_mc_seqno,
-                                 const std::string& payload, const std::vector<KvrocksIndexEntry>& indexes) {
-    queue_set_indexed(kvrocks_set_indexed_current_script_sha(), table, id, source_mc_seqno, payload, indexes);
-  }
-
-  void queue_set_indexed_once(const std::string& table, const std::string& id, std::uint32_t source_mc_seqno,
-                              const std::string& payload, const std::vector<KvrocksIndexEntry>& indexes) {
-    queue_set_indexed(kvrocks_set_indexed_once_script_sha(), table, id, source_mc_seqno, payload, indexes);
-  }
-
-  void queue_set_indexed(const std::string& script_sha, const std::string& table, const std::string& id,
-                         std::uint32_t source_mc_seqno, const std::string& payload,
-                         const std::vector<KvrocksIndexEntry>& indexes) {
-    const auto key = kvrocks_key(table, id);
-    const auto payload_key = kvrocks_payload_key(table, id);
-    std::vector<std::string> args;
-    args.reserve(3 + indexes.size() * 3);
-    args.push_back(std::to_string(source_mc_seqno));
-    args.push_back(payload);
-    args.push_back(std::to_string(indexes.size()));
-    for (const auto& index : indexes) {
-      args.push_back(index.key);
-      args.push_back(index.member);
-      args.push_back(index.score);
-    }
-    std::array<std::string, 2> keys{key, payload_key};
-    pipeline_.evalsha(script_sha, keys.begin(), keys.end(), args.begin(), args.end());
-    ++pending_;
-    ++queued_;
-    flush_if_needed();
-  }
-
-  void flush_if_needed() {
-    if (pending_ >= KVROCKS_PIPELINE_FLUSH_SIZE) {
-      flush();
-    }
-  }
-
-  void flush() {
-    if (pending_ == 0) {
-      return;
-    }
-
-    td::Timer exec_timer;
-    auto replies = pipeline_.exec();
-    if (replies.size() != pending_) {
-      throw std::runtime_error("Kvrocks pipeline reply count mismatch");
-    }
-    for (std::size_t i = 0; i < replies.size(); ++i) {
-      replies.get<long long>(i);
-    }
-    exec_timer.pause();
-    exec_elapsed_millis_ += exec_timer.elapsed() * 1e3;
-    pending_ = 0;
-  }
-
-  sw::redis::Redis& redis_;
-  sw::redis::Pipeline pipeline_;
-  const PreparedBatchPostgres& batch_;
-  std::size_t pending_{0};
-  std::size_t queued_{0};
-  double exec_elapsed_millis_{0.0};
 };
 
 void collect_and_prepare_batch_rows(const std::vector<InsertTaskStruct>& insert_tasks, PreparedBatchPostgres& prepared_batch,
@@ -3126,21 +2494,22 @@ void InsertBatchPostgres::insert_kvrocks() {
 
   td::Timer kvrocks_timer;
   double exec_elapsed_millis = 0.0;
+  auto kvrocks_batch = make_kvrocks_state_batch(*prepared_batch_);
   try {
-    KvrocksBatchWriter writer(*kvrocks_, *prepared_batch_);
+    kvrocks_state::KvrocksBatchWriter writer(*kvrocks_, kvrocks_batch);
     writer.write();
     exec_elapsed_millis = writer.exec_elapsed_millis();
   } catch (const sw::redis::Error& e) {
-    if (!is_kvrocks_no_script_error(e)) {
+    if (!kvrocks_state::is_kvrocks_no_script_error(e)) {
       throw;
     }
 
     LOG(WARNING) << "Kvrocks script cache is missing, reloading scripts and retrying batch: " << e.what();
     td::Timer script_load_timer;
-    load_kvrocks_scripts(*kvrocks_);
+    kvrocks_state::load_kvrocks_scripts(*kvrocks_);
     script_load_timer.pause();
 
-    KvrocksBatchWriter writer(*kvrocks_, *prepared_batch_);
+    kvrocks_state::KvrocksBatchWriter writer(*kvrocks_, kvrocks_batch);
     writer.write();
     exec_elapsed_millis = script_load_timer.elapsed() * 1e3 + writer.exec_elapsed_millis();
   }
@@ -3951,7 +3320,7 @@ void InsertManagerPostgres::start_up() {
       if (ping_response != "PONG") {
         throw std::runtime_error("unexpected Kvrocks PING response: " + ping_response);
       }
-      load_kvrocks_scripts(*kvrocks_);
+      kvrocks_state::load_kvrocks_scripts(*kvrocks_);
       LOG(INFO) << "Kvrocks connection ready: " << kvrocks_config_.describe();
     } catch (const std::exception &e) {
       LOG(ERROR) << "Error connecting to Kvrocks: " << e.what();

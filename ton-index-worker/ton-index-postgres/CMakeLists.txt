@@ -15,6 +15,7 @@ target_compile_features(ton-index-postgres PRIVATE cxx_std_20)
 target_link_libraries(
     ton-index-postgres
     tondb-scanner
+    ton-kvrocks-state
     ton-observability
     pqxx
     hiredis
