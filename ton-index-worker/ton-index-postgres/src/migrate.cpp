@@ -328,7 +328,7 @@ void run_1_3_0_migrations(const std::string& connection_string, bool custom_type
       "data_hash tonhash, "
       "code_hash tonhash, "
       "data_boc text, "
-      "code_boc text) with (autovacuum_vacuum_scale_factor = 0.03);\n"
+      "code_boc text) with (fillfactor = 70, autovacuum_vacuum_scale_factor = 0.03);\n"
     );
 
     query += (
@@ -340,7 +340,7 @@ void run_1_3_0_migrations(const std::string& connection_string, bool custom_type
       "collection_content jsonb, "
       "last_transaction_lt bigint, "
       "code_hash tonhash, "
-      "data_hash tonhash);\n"
+      "data_hash tonhash) with (fillfactor = 70);\n"
     );
 
     query += (
@@ -354,7 +354,7 @@ void run_1_3_0_migrations(const std::string& connection_string, bool custom_type
       "content jsonb, "
       "last_transaction_lt bigint, "
       "code_hash tonhash, "
-      "data_hash tonhash);\n"
+      "data_hash tonhash) with (fillfactor = 70);\n"
     );
 
     query += (
@@ -391,7 +391,7 @@ void run_1_3_0_migrations(const std::string& connection_string, bool custom_type
       "jetton_wallet_code_hash tonhash, "
       "last_transaction_lt bigint, "
       "code_hash tonhash, "
-      "data_hash tonhash);\n"
+      "data_hash tonhash) with (fillfactor = 70);\n"
     );
 
     query += (
@@ -415,7 +415,7 @@ void run_1_3_0_migrations(const std::string& connection_string, bool custom_type
       "mintless_is_claimed boolean, "
       "mintless_amount numeric, "
       "mintless_start_from bigint, "
-      "mintless_expire_at bigint);\n"
+      "mintless_expire_at bigint) with (fillfactor = 70, autovacuum_vacuum_scale_factor = 0.03);\n"
     );
 
     query += (
@@ -477,7 +477,7 @@ void run_1_3_0_migrations(const std::string& connection_string, bool custom_type
       "royalty_amount numeric, "
       "last_transaction_lt bigint, "
       "code_hash tonhash, "
-      "data_hash tonhash);\n"
+      "data_hash tonhash) with (fillfactor = 70);\n"
     );
 
     query += (
@@ -505,7 +505,7 @@ void run_1_3_0_migrations(const std::string& connection_string, bool custom_type
       "is_canceled boolean, "
       "last_transaction_lt bigint, "
       "code_hash tonhash, "
-      "data_hash tonhash);\n"
+      "data_hash tonhash) with (fillfactor = 70);\n"
     );
 
     query += (
@@ -518,7 +518,7 @@ void run_1_3_0_migrations(const std::string& connection_string, bool custom_type
       "proposers tonaddr[], "
       "last_transaction_lt bigint, "
       "code_hash tonhash, "
-      "data_hash tonhash);\n"
+      "data_hash tonhash) with (fillfactor = 70);\n"
     );
 
     query += (
@@ -536,7 +536,7 @@ void run_1_3_0_migrations(const std::string& connection_string, bool custom_type
       "signers tonaddr[], "
       "last_transaction_lt bigint, "
       "code_hash tonhash, "
-      "data_hash tonhash);\n"
+      "data_hash tonhash) with (fillfactor = 70);\n"
     );
 
     query += (
@@ -640,7 +640,7 @@ void run_1_3_0_migrations(const std::string& connection_string, bool custom_type
       "dns_wallet tonaddr, "
       "dns_site_adnl varchar(64), "
       "dns_storage_bag_id varchar(64), "
-      "last_transaction_lt bigint);\n"
+      "last_transaction_lt bigint) with (fillfactor = 70);\n"
     );
 
     query += (
@@ -656,7 +656,7 @@ void run_1_3_0_migrations(const std::string& connection_string, bool custom_type
       "owner_address          tonaddr, "
       "last_transaction_lt    bigint, "
       "code_hash              tonhash, "
-      "data_hash              tonhash);\n"
+      "data_hash              tonhash) with (fillfactor = 70);\n"
     );
 
     query += (
@@ -854,7 +854,7 @@ execute procedure advance_ton_indexer_progress_func();
       "fee double precision, "
       "last_transaction_lt bigint, "
       "code_hash tonhash, "
-      "data_hash tonhash);\n"
+      "data_hash tonhash) with (fillfactor = 70);\n"
     );
 
     query += "ALTER TABLE nft_items ADD COLUMN IF NOT EXISTS real_owner tonaddr;\n";
@@ -918,7 +918,7 @@ execute procedure advance_ton_indexer_progress_func();
       "royalty_destination  tonaddr, "
       "last_transaction_lt  bigint, "
       "code_hash            tonhash, "
-      "data_hash            tonhash);\n"
+      "data_hash            tonhash) with (fillfactor = 70);\n"
     );
 
     query += "ALTER TABLE getgems_nft_sales ADD COLUMN IF NOT EXISTS sold_at numeric;\n";
