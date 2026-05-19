@@ -420,7 +420,6 @@ std::string build_payload(const PreparedLatestAccountStateRow& row) {
   return build_json_payload([&](td::JsonObjectScope& obj) {
     json_put_common(obj, row.source_mc_seqno);
     json_put_address(obj, "account", row.account);
-    json_put_optional_address(obj, "account_friendly", row.account_friendly);
     json_put_hash(obj, "hash", row.hash);
     json_put_int256(obj, "balance", row.balance);
     json_put_raw_json(obj, "balance_extra_currencies", row.balance_extra_currencies);
@@ -1332,7 +1331,6 @@ PreparedLatestAccountStateRow prepare_latest_account_state_row(const LatestAccou
 
   return PreparedLatestAccountStateRow{
     .account = account_state.account,
-    .account_friendly = std::nullopt,
     .hash = account_state.hash,
     .balance = account_state.balance.grams,
     .balance_extra_currencies = extra_currencies_to_json_string(account_state.balance.extra_currencies),

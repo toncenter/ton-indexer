@@ -65,7 +65,7 @@ void PostgreSQLInserter::insert_postgres(const kvrocks_state::StateBatch& batch)
 
 void PostgreSQLInserter::insert_latest_account_states(pqxx::work& txn, const kvrocks_state::StateBatch& batch) {
   std::initializer_list<std::string_view> columns = {
-    "account", "account_friendly", "hash", "balance", "balance_extra_currencies", "account_status", "timestamp",
+    "account", "hash", "balance", "balance_extra_currencies", "account_status", "timestamp",
     "last_trans_hash", "last_trans_lt", "frozen_hash", "data_hash", "code_hash", "data_boc", "code_boc"
   };
   PopulateTableStream stream(txn, "latest_account_states", columns, 1000, false);

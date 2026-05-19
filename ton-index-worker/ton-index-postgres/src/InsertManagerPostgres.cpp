@@ -333,7 +333,6 @@ struct PreparedAccountStateRow {
 
 struct PreparedLatestAccountStateRow {
   block::StdAddress account;
-  std::optional<block::StdAddress> account_friendly;
   td::Bits256 hash;
   td::RefInt256 balance;
   std::string balance_extra_currencies;
@@ -348,7 +347,7 @@ struct PreparedLatestAccountStateRow {
   std::optional<std::string> code_boc;
   std::uint32_t source_mc_seqno;
 
-  PREPARED_ROW_AS_TUPLE(account, account_friendly, hash, balance, balance_extra_currencies, account_status,
+  PREPARED_ROW_AS_TUPLE(account, hash, balance, balance_extra_currencies, account_status,
                         timestamp, last_trans_hash, last_trans_lt, frozen_hash, data_hash, code_hash,
                         data_boc, code_boc);
 };
@@ -786,7 +785,6 @@ kvrocks_state::StateBatch make_kvrocks_state_batch(const PreparedBatchPostgres& 
   for (const auto& row : batch.latest_account_states) {
     result.latest_account_states.push_back({
       .account = row.account,
-      .account_friendly = row.account_friendly,
       .hash = row.hash,
       .balance = row.balance,
       .balance_extra_currencies = row.balance_extra_currencies,
@@ -1099,7 +1097,6 @@ PreparedLatestAccountStateRow prepare_latest_account_state_row(const LatestAccou
 
   return PreparedLatestAccountStateRow{
     .account = account_state.account,
-    .account_friendly = std::nullopt,
     .hash = account_state.hash,
     .balance = account_state.balance.grams,
     .balance_extra_currencies = extra_currencies_to_json_string(account_state.balance.extra_currencies),
@@ -3029,7 +3026,7 @@ void InsertBatchPostgres::insert_account_states(pqxx::work &txn, bool with_copy)
 
 std::string InsertBatchPostgres::insert_latest_account_states(pqxx::work &txn) {
   std::initializer_list<std::string_view> columns = {
-    "account", "account_friendly", "hash", "balance", "balance_extra_currencies", "account_status", "timestamp",
+    "account", "hash", "balance", "balance_extra_currencies", "account_status", "timestamp",
     "last_trans_hash", "last_trans_lt", "frozen_hash", "data_hash", "code_hash", "data_boc", "code_boc"
   };
   PopulateTableStream stream(txn, "latest_account_states", columns, 1000, false);

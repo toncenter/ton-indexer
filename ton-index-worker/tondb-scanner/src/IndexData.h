@@ -288,7 +288,6 @@ struct MasterchainBlockShard {
 struct AccountState {
   td::Bits256 hash;           // Note: hash is not unique in case account_status is "nonexist"
   block::StdAddress account;
-  std::string account_friendly;  // TODO: add account friendly
   uint32_t timestamp;
   CurrencyCollection balance;
   std::string account_status; // "uninit", "frozen", "active", "nonexist"

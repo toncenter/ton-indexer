@@ -87,7 +87,6 @@ struct PreparedAccountStateRow {
 
 struct PreparedLatestAccountStateRow {
   block::StdAddress account;
-  std::optional<block::StdAddress> account_friendly;
   td::Bits256 hash;
   td::RefInt256 balance;
   std::string balance_extra_currencies;
@@ -102,7 +101,7 @@ struct PreparedLatestAccountStateRow {
   std::optional<std::string> code_boc;
   std::uint32_t source_mc_seqno;
 
-  KVROCKS_PREPARED_ROW_AS_TUPLE(account, account_friendly, hash, balance, balance_extra_currencies, account_status,
+  KVROCKS_PREPARED_ROW_AS_TUPLE(account, hash, balance, balance_extra_currencies, account_status,
                                 timestamp, last_trans_hash, last_trans_lt, frozen_hash, data_hash, code_hash,
                                 data_boc, code_boc);
 };
