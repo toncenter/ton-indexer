@@ -15,6 +15,7 @@
 #include "TraceInserter.h"
 #include "BlockEmulator.h"
 #include "IndexData.h"
+#include "ExternalMessageAdmission.h"
 #include "InvalidatedTraceTracker.h"
 #include "auto/tl/ton_api.h"
 #include "DbEventListener.h"
@@ -51,6 +52,7 @@ class TraceEmulatorScheduler : public td::actor::Actor {
 
     td::actor::ActorOwn<OverlayListener> overlay_listener_;
     td::actor::ActorOwn<RedisListener> redis_listener_;
+    std::shared_ptr<ExternalMessageAdmission> external_message_admission_;
     td::actor::ActorOwn<ITraceInsertManager> insert_manager_;
     td::actor::ActorOwn<InvalidatedTraceTracker> invalidated_trace_tracker_;
     std::unique_ptr<sw::redis::Redis> health_redis_;
@@ -89,6 +91,7 @@ class TraceEmulatorScheduler : public td::actor::Actor {
       insert_trace_ = [insert_manager = insert_manager_.get()](Trace trace, td::Promise<td::Unit> promise, MeasurementPtr measurement) {
         td::actor::send_closure(insert_manager, &ITraceInsertManager::insert, std::move(trace), std::move(promise), measurement);
       };
+      external_message_admission_ = std::make_shared<ExternalMessageAdmission>();
       invalidated_trace_tracker_ = td::actor::create_actor<InvalidatedTraceTracker>("InvalidatedTraceTracker", redis_dsn_);
     };
 

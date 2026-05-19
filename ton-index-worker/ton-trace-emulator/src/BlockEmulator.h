@@ -81,7 +81,9 @@ private:
     void trace_finished(td::Bits256, MeasurementPtr measurement);
 
 public:
-    McBlockEmulator(schema::MasterchainBlockDataState mc_data_state, std::function<void(Trace, td::Promise<td::Unit>, MeasurementPtr)> trace_processor, td::Promise<> promise);
+    McBlockEmulator(schema::MasterchainBlockDataState mc_data_state,
+                    std::function<void(Trace, td::Promise<td::Unit>, MeasurementPtr)> trace_processor,
+                    td::Promise<> promise);
 
     virtual void start_up() override;
 };

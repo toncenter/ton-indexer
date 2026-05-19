@@ -12,6 +12,7 @@
 #include <fcntl.h>
 #include <errno.h>
 #include <chrono>
+#include <cstdint>
 
 namespace {
 constexpr const char* kHealthKey = "health:ton-trace-emulator";
@@ -69,13 +70,15 @@ void TraceEmulatorScheduler::start_up() {
     if (global_config_path_.empty() || inet_addr_.empty()) {
         LOG(WARNING) << "Global config path or inet addr is empty. OverlayListener was not started.";
     } else {
-        overlay_listener_ = td::actor::create_actor<OverlayListener>("OverlayListener", global_config_path_, inet_addr_, insert_trace_);
+        overlay_listener_ = td::actor::create_actor<OverlayListener>("OverlayListener", global_config_path_, inet_addr_,
+                                                                     insert_trace_, external_message_admission_);
     }
 
     if (input_redis_channel_.empty()) {
         LOG(WARNING) << "Input redis queue name is empty. RedisListener was not started.";
     } else {
-        redis_listener_ = td::actor::create_actor<RedisListener>("RedisListener", redis_dsn_, input_redis_channel_, insert_trace_);
+        redis_listener_ = td::actor::create_actor<RedisListener>("RedisListener", redis_dsn_, input_redis_channel_,
+                                                                 insert_trace_, external_message_admission_);
     }
 
     if (db_event_fifo_path_.empty()) {
@@ -138,7 +141,7 @@ void TraceEmulatorScheduler::fetch_seqnos() {
 }
 
 void TraceEmulatorScheduler::fetch_error(std::uint32_t seqno, td::Status error) {
-    LOG(ERROR) << "Failed to fetch seqno " << seqno << ": " << std::move(error);
+    LOG(ERROR) << "Failed to fetch seqno " << seqno << ": " << error;
     seqnos_to_fetch_.insert(seqno);
     alarm_timestamp() = td::Timestamp::in(0.1);
 }

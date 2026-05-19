@@ -6,6 +6,8 @@
 #include <overlay/overlays.h>
 #include <validator/impl/external-message.hpp>
 #include <emulator/transaction-emulator.h>
+#include <memory>
+#include "ExternalMessageAdmission.h"
 #include "IndexData.h"
 #include "Measurement.h"
 #include "TraceEmulator.h"
@@ -17,6 +19,7 @@ private:
     std::string global_config_path_;
     std::string inet_addr_;
     TraceProcessorFn trace_processor_;
+    std::shared_ptr<ExternalMessageAdmission> external_message_admission_;
 
     td::actor::ActorOwn<ton::overlay::Overlays> overlays_;
     td::actor::ActorOwn<ton::adnl::Adnl> adnl_;
@@ -25,7 +28,6 @@ private:
     td::actor::ActorOwn<ton::adnl::AdnlNetworkManager> adnl_network_manager_;
 
     schema::MasterchainBlockDataState mc_data_state_;
-    std::unordered_set<td::Bits256> known_ext_msgs_;
     
     int traces_cnt_{0};
 
@@ -36,13 +38,18 @@ private:
     void finish_processing(Trace trace, MeasurementPtr measurement);
 
 public:
-    OverlayListener(std::string global_config_path, std::string inet_addr, TraceProcessorFn trace_processor)
-        : global_config_path_(std::move(global_config_path)), inet_addr_(std::move(inet_addr)), trace_processor_(std::move(trace_processor)) {};
+    OverlayListener(std::string global_config_path, std::string inet_addr, TraceProcessorFn trace_processor,
+                    std::shared_ptr<ExternalMessageAdmission> external_message_admission = nullptr)
+        : global_config_path_(std::move(global_config_path)), inet_addr_(std::move(inet_addr)),
+          trace_processor_(std::move(trace_processor)), external_message_admission_(std::move(external_message_admission)) {
+        if (!external_message_admission_) {
+            external_message_admission_ = std::make_shared<ExternalMessageAdmission>();
+        }
+    };
 
     virtual void start_up() override;
 
     void set_mc_data_state(schema::MasterchainBlockDataState mc_data_state) {
         mc_data_state_ = std::move(mc_data_state);
-        known_ext_msgs_.clear();
     }
 };
