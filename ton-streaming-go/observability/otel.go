@@ -150,9 +150,18 @@ func (s *StageSpan) MarkError(errorType, message string) {
 	if s == nil {
 		return
 	}
+	if message == "" {
+		message = errorType
+	}
 	s.ErrorType = errorType
 	s.ErrorMessage = message
-	s.Attributes["ton.error.type"] = errorType
+	if errorType != "" {
+		s.Attributes["ton.error.type"] = errorType
+		s.Attributes["error.type"] = errorType
+	}
+	if message != "" {
+		s.Attributes["ton.error.message"] = message
+	}
 }
 
 func (s *StageSpan) PreparePropagationFields() map[string]string {

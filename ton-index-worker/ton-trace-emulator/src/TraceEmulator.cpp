@@ -1,4 +1,5 @@
 #include <fstream>
+#include <cstdint>
 #include <sstream>
 #include <string>
 #include <emulator/transaction-emulator.h>
@@ -269,6 +270,10 @@ void MasterchainBlockEmulator::start_up() {
             return;
         }
     }
+    if (measurement_) {
+        measurement_->set_otel_attribute("ton.emulator.input_messages_count", static_cast<std::int64_t>(in_msgs_.size()));
+        measurement_->set_otel_attribute("ton.emulator.shards_count", static_cast<std::int64_t>(buckets.size()));
+    }
 
     td::MultiPromise mp;
     auto ig = mp.init_guard();
@@ -378,6 +383,9 @@ void MasterchainBlockEmulator::all_shards_emulated() {
     }
 
     if (context_.is_limit_exceeded()) {
+        if (measurement_) {
+            measurement_->set_otel_attribute("ton.trace.tx_limit_exceeded", true);
+        }
         promise_.set_result(std::move(result_));
         stop();
         return;
@@ -397,6 +405,9 @@ void MasterchainBlockEmulator::all_shards_emulated() {
         promise_.set_result(std::move(result_));
         stop();
         return;
+    }
+    if (measurement_) {
+        measurement_->set_otel_attribute("ton.emulator.next_messages_count", static_cast<std::int64_t>(to_emulate_in_next_mc_block.size()));
     }
 
     auto P = td::PromiseCreator::lambda([SelfId = actor_id(this)](td::Result<std::vector<std::unique_ptr<TraceNode>>> R) {
@@ -509,6 +520,9 @@ void TraceEmulator::finish(td::Result<std::vector<std::unique_ptr<TraceNode>>> r
         return;
     }
 
+    if (measurement_) {
+        measurement_->start_otel_child_span("build_trace_tree");
+    }
     Trace result;
     auto ext_in_msg_hash_norm = ext_in_msg_get_normalized_hash(in_msg_);
     if (ext_in_msg_hash_norm.is_ok()) {
@@ -521,6 +535,9 @@ void TraceEmulator::finish(td::Result<std::vector<std::unique_ptr<TraceNode>>> r
     result.rand_seed = context_->get_rand_seed();
     result.emulated_accounts = context_->release_account_states();
     result.tx_limit_exceeded = context_->is_limit_exceeded();
+    if (measurement_) {
+        measurement_->end_otel_child_span("build_trace_tree");
+    }
     promise_.set_result(std::move(result));
     g_statistics.record_time(EMULATE_TRACE, timer_.elapsed() * 1e3);
     stop();

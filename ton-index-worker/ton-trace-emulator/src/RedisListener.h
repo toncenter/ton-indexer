@@ -3,7 +3,9 @@
 #include <validator/impl/external-message.hpp>
 #include <emulator/transaction-emulator.h>
 #include <sw/redis++/redis++.h>
+#include <memory>
 #include "IndexData.h"
+#include "ExternalMessageAdmission.h"
 #include "TraceEmulator.h"
 #include "TraceInterfaceDetector.h"
 #include "Measurement.h"
@@ -31,16 +33,16 @@ private:
   std::string redis_dsn_;
   std::string channel_name_;
   TraceProcessorFn trace_processor_;
+  std::shared_ptr<ExternalMessageAdmission> external_message_admission_;
 
   schema::MasterchainBlockDataState mc_data_state_;
   std::vector<td::Ref<vm::Cell>> shard_states_;
 
-  std::unordered_set<td::Bits256> known_ext_msgs_;
-
   td::actor::ActorOwn<ChannelListener> channel_listener_;
 
 public:
-  RedisListener(std::string redis_dsn, std::string channel_name, TraceProcessorFn trace_processor);
+  RedisListener(std::string redis_dsn, std::string channel_name, TraceProcessorFn trace_processor,
+                std::shared_ptr<ExternalMessageAdmission> external_message_admission = nullptr);
   void start_up() override;
   void set_mc_data_state(schema::MasterchainBlockDataState mc_data_state);
 private:

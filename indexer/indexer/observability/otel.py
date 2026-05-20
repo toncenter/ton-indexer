@@ -219,9 +219,14 @@ class StageSpan:
             self.attributes[key] = value
 
     def mark_error(self, error_type: str, message: str | None = None) -> None:
+        message = message or error_type
         self.error_type = error_type
         self.error_message = message
-        self.attributes["ton.error.type"] = error_type
+        if error_type:
+            self.attributes["ton.error.type"] = error_type
+            self.attributes["error.type"] = error_type
+        if message:
+            self.attributes["ton.error.message"] = message
 
     def propagation_fields(self) -> dict[str, str]:
         if self.span is None:
@@ -235,8 +240,9 @@ class StageSpan:
         self.span.set_attributes(self.attributes)
 
         if self.error_type:
+            error_message = self.error_message or self.error_type
             self.span.set_status(
-                Status(StatusCode.ERROR, self.error_message or self.error_type)
+                Status(StatusCode.ERROR, error_message)
             )
 
         self.span.end(end_time=time.time_ns())

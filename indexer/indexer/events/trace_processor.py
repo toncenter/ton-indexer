@@ -4,6 +4,7 @@ from typing import Optional, List
 
 from indexer.core.database import Action, Trace
 from indexer.events.blocks.utils.block_tree_serializer import serialize_blocks
+from indexer.events.blocks.utils.partial_trace_observer import observe_classification_result
 from indexer.events.event_processing import (
     process_event_async_with_postprocessing,
     try_classify_unknown_trace,
@@ -42,6 +43,8 @@ class TraceProcessor:
             # Unknown trace fallback
             if len(actions) == 0 and len(trace.transactions) > 0 and self.use_unknown_fallback:
                 actions = await try_classify_unknown_trace(trace)
+
+            observe_classification_result(trace, actions)
 
             return TraceProcessingResult(
                 trace_id=trace.trace_id,

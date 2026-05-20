@@ -1,6 +1,7 @@
 #include "TraceInserter.h"
 #include "Serializer.hpp"
 #include "Statistics.h"
+#include <cstdint>
 #include <optional>
 #include <queue>
 
@@ -48,6 +49,7 @@ public:
 
             trace_key_ = td::base64_encode(trace_.ext_in_msg_hash_norm.as_slice());
             auto existing_fields_count = transaction_.redis().hlen(trace_key_);
+            measurement_->set_otel_attribute("ton.redis.existing_fields_count", static_cast<std::int64_t>(existing_fields_count));
             if (existing_fields_count > static_cast<long long>(kMaxExistingTraceFields)) {
                 LOG(WARNING) << "Skipping trace insert for " << trace_key_
                              << ": existing trace hash is too large (" << existing_fields_count << " fields)";
@@ -98,10 +100,13 @@ public:
             }
 
             if (flattened_trace.empty()) {
+                measurement_->set_otel_attribute("ton.redis.flattened_nodes_count", static_cast<std::int64_t>(0));
                 promise_.set_value(td::Unit());
                 stop();
                 return;
             }
+            measurement_->set_otel_attribute("ton.redis.flattened_nodes_count", static_cast<std::int64_t>(flattened_trace.size()));
+            measurement_->set_otel_attribute("ton.redis.deleted_nodes_count", static_cast<std::int64_t>(tx_keys_to_delete.size()));
 
             // delete previously emulated trace
             if (tx_keys_to_delete.size() > 0) {

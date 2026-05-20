@@ -406,15 +406,20 @@ public:
             return;
         }
 
+        const auto normalized_error_message = error_message.empty() ? error_type : error_message;
         error_type_ = error_type;
-        error_message_ = error_message.empty() ? error_type : error_message;
+        error_message_ = normalized_error_message;
         attributes_["ton.error.type"] = error_type;
+        attributes_["error.type"] = error_type;
+        attributes_["ton.error.message"] = error_message_;
 
         if (!span_ || ended_) {
             return;
         }
 
-        span_->SetAttribute("ton.error.type", error_type);
+        set_span_attribute(span_, "ton.error.type", attributes_["ton.error.type"]);
+        set_span_attribute(span_, "error.type", attributes_["error.type"]);
+        set_span_attribute(span_, "ton.error.message", attributes_["ton.error.message"]);
         span_->SetStatus(trace_api::StatusCode::kError, error_message_);
     }
 

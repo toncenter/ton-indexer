@@ -9,6 +9,8 @@ from collections import defaultdict
 from typing import List, Tuple, Set, Dict, Optional
 
 import msgpack
+from redis.exceptions import ConnectionError as RedisConnectionError
+from redis.exceptions import TimeoutError as RedisTimeoutError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import sessionmaker
 import multiprocessing as mp
@@ -39,6 +41,7 @@ HEALTH_KEY_EVENT_CLASSIFIER = "health:event-classifier"
 HEALTH_LAST_CLASSIFIED_FIELD = "last_classified_trace_time"
 HEALTH_HEARTBEAT_INTERVAL = 5
 HEALTH_HEARTBEAT_TTL = 20
+REDIS_PUBSUB_RETRY_ERRORS = (RedisConnectionError, RedisTimeoutError, OSError)
 
 
 async def update_last_classified_trace_time():
@@ -304,8 +307,6 @@ async def start_emulated_traces_processing(settings: Settings,
                                            batch_window: float = 0.1, max_batch_size: int = 50, pool_size=5,
                                            max_queue_size=10):
     asyncio.create_task(health_heartbeat_loop())
-    pubsub = redis.client.pubsub()
-    await pubsub.subscribe(settings.emulated_traces_redis_channel)
     use_combined = settings.use_combined_repository
     if use_combined:
         logger.info("Combined repository mode enabled")
@@ -334,9 +335,22 @@ async def start_emulated_traces_processing(settings: Settings,
 
     pending_traces: list[str] = []
     last_process_time: float = time.time()
+    pubsub = redis.client.pubsub()
+    await pubsub.subscribe(settings.emulated_traces_redis_channel)
     try:
         while True:
-            message = await pubsub.get_message(timeout=0.01)
+            try:
+                message = await pubsub.get_message(timeout=0.01)
+            except REDIS_PUBSUB_RETRY_ERRORS as exc:
+                logger.warning("Redis pubsub disconnected: %s. Reconnecting in 1 second.", exc)
+                try:
+                    await pubsub.close()
+                except Exception:
+                    pass
+                await asyncio.sleep(1)
+                pubsub = redis.client.pubsub()
+                await pubsub.subscribe(settings.emulated_traces_redis_channel)
+                continue
 
             current_time = time.time()
             window_elapsed = current_time - last_process_time
@@ -364,9 +378,9 @@ async def start_emulated_traces_processing(settings: Settings,
 
     except asyncio.CancelledError:
         logger.info("Emulated trace processing cancelled")
-    except Exception as e:
-        logger.error(f"Error in emulated trace processing: {e}")
-        logger.exception(e)
     finally:
-        await pubsub.unsubscribe()
+        try:
+            await pubsub.close()
+        except Exception:
+            pass
         logger.info("Emulated trace processing stopped")

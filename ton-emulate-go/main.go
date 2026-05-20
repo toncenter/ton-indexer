@@ -160,6 +160,7 @@ var (
 )
 
 var pool *crud.DbClient
+var redisClient *redis.Client
 
 func generateTaskID() string {
 	const letters = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
@@ -224,10 +225,7 @@ func emulateTrace(c *fiber.Ctx) error {
 		return fiber.NewError(fiber.StatusBadRequest, "failed to serialize task: "+err.Error())
 	}
 
-	// Initialize Redis client
-	rdb := redis.NewClient(&redis.Options{
-		Addr: *redisAddr, // Redis server address
-	})
+	rdb := redisClient
 
 	// Subscribe to the result channel
 	pubsub := rdb.Subscribe(ctx, "emulator_channel_"+taskID)
@@ -346,10 +344,7 @@ func emulateTonConnect(c *fiber.Ctx) error {
 		return fiber.NewError(fiber.StatusBadRequest, "failed to serialize task: "+err.Error())
 	}
 
-	// Initialize Redis client
-	rdb := redis.NewClient(&redis.Options{
-		Addr: *redisAddr, // Redis server address
-	})
+	rdb := redisClient
 
 	// Subscribe to the result channel
 	pubsub := rdb.Subscribe(ctx, "emulator_channel_"+taskID)
@@ -429,6 +424,11 @@ func ExtractHeader(ctx *fiber.Ctx, header string) (string, bool) {
 
 func main() {
 	flag.Parse()
+
+	redisClient = redis.NewClient(&redis.Options{
+		Addr: *redisAddr,
+	})
+	defer redisClient.Close()
 
 	var err error
 	if *pg == "" {

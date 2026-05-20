@@ -15,6 +15,7 @@
 #include "TraceInserter.h"
 #include "BlockEmulator.h"
 #include "IndexData.h"
+#include "ExternalMessageAdmission.h"
 #include "InvalidatedTraceTracker.h"
 #include "auto/tl/ton_api.h"
 #include "DbEventListener.h"
@@ -42,6 +43,8 @@ class TraceEmulatorScheduler : public td::actor::Actor {
     std::unordered_set<ton::BlockSeqno> seqnos_to_fetch_;
     std::map<ton::BlockSeqno, schema::MasterchainBlockDataState> blocks_to_emulate_;
     std::deque<ton::BlockIdExt> signed_block_queue_;
+    std::deque<ton::BlockIdExt> seen_signed_block_order_;
+    std::unordered_set<ton::BlockIdExt, BlockIdExtHasher> seen_signed_blocks_;
     std::unordered_set<ton::BlockIdExt, BlockIdExtHasher> signed_blocks_inflight_;
     std::unordered_map<ton::BlockIdExt, schema::BlockDataState, BlockIdExtHasher> signed_block_storage_;
     std::shared_ptr<block::ConfigInfo> latest_config_;
@@ -49,6 +52,7 @@ class TraceEmulatorScheduler : public td::actor::Actor {
 
     td::actor::ActorOwn<OverlayListener> overlay_listener_;
     td::actor::ActorOwn<RedisListener> redis_listener_;
+    std::shared_ptr<ExternalMessageAdmission> external_message_admission_;
     td::actor::ActorOwn<ITraceInsertManager> insert_manager_;
     td::actor::ActorOwn<InvalidatedTraceTracker> invalidated_trace_tracker_;
     std::unique_ptr<sw::redis::Redis> health_redis_;
@@ -68,6 +72,7 @@ class TraceEmulatorScheduler : public td::actor::Actor {
     void signed_block_fetched(ton::BlockIdExt block_id, schema::BlockDataState block_data_state);
     void signed_block_error(ton::BlockIdExt block_id, td::Status error);
     void process_signed_blocks();
+    bool remember_seen_signed_block(ton::BlockIdExt block_id);
     std::function<void(Trace, td::Promise<td::Unit>, MeasurementPtr)> make_signed_trace_processor(const ton::BlockIdExt& block_id_ext);
     std::function<void(Trace, td::Promise<td::Unit>, MeasurementPtr)> make_finalized_trace_processor(const schema::MasterchainBlockDataState& mc_data_state);
     void publish_health();
@@ -86,6 +91,7 @@ class TraceEmulatorScheduler : public td::actor::Actor {
       insert_trace_ = [insert_manager = insert_manager_.get()](Trace trace, td::Promise<td::Unit> promise, MeasurementPtr measurement) {
         td::actor::send_closure(insert_manager, &ITraceInsertManager::insert, std::move(trace), std::move(promise), measurement);
       };
+      external_message_admission_ = std::make_shared<ExternalMessageAdmission>();
       invalidated_trace_tracker_ = td::actor::create_actor<InvalidatedTraceTracker>("InvalidatedTraceTracker", redis_dsn_);
     };
 

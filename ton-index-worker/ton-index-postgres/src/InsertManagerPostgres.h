@@ -21,7 +21,11 @@ public:
   };
 private:
   Credential credential_;
+  td::actor::ActorOwn<> leader_heartbeat_;
+  std::string worker_id_;
   std::int32_t max_data_depth_{0};
+  std::int32_t latest_states_prepare_parallelism_{4};
+  std::int32_t latest_states_prepare_chunk_size_{128};
 public:
   InsertManagerPostgres(Credential credential) :
     credential_(credential) {}
@@ -29,6 +33,8 @@ public:
   void start_up() override;
 
   void set_max_data_depth(std::int32_t value);
+  void set_latest_states_prepare_parallelism(std::int32_t value);
+  void set_latest_states_prepare_chunk_size(std::int32_t value);
 
   void create_insert_actor(std::vector<InsertTaskStruct> insert_tasks,
                            td::Promise<InsertManagerInterface::InsertResult> promise) override;
