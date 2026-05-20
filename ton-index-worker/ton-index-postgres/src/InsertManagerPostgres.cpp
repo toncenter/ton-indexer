@@ -2887,6 +2887,7 @@ void InsertBatchPostgres::commit_prepared_batch() {
   // Keep Postgres as the durable progress source without holding a Postgres
   // transaction open while Kvrocks performs network writes.
   insert_kvrocks();
+  const bool kvrocks_state_only = kvrocks_ != nullptr;
 
   td::Timer connect_timer;
   pqxx::connection c(connection_string_);
@@ -2902,29 +2903,35 @@ void InsertBatchPostgres::commit_prepared_batch() {
   insert_shard_state(txn, with_copy_);
   insert_transactions(txn, with_copy_);
   insert_messages(txn, with_copy_);
-  insert_account_states(txn, with_copy_);
-  insert_message_contents(txn);
+  if (!kvrocks_state_only) {
+    insert_account_states(txn, with_copy_);
+    insert_message_contents(txn);
+  }
   insert_jetton_transfers(txn, with_copy_);
   insert_jetton_burns(txn, with_copy_);
   insert_nft_transfers(txn, with_copy_);
   insert_traces(txn, with_copy_);
-  insert_contract_methods(txn);
+  if (!kvrocks_state_only) {
+    insert_contract_methods(txn);
+  }
   data_timer.pause();
 
   td::Timer states_timer;
   std::string upsert_query;
-  upsert_query += insert_jetton_masters(txn);
-  upsert_query += insert_jetton_wallets(txn);
-  upsert_query += insert_nft_collections(txn);
-  upsert_query += insert_getgems_nft_auctions(txn);
-  upsert_query += insert_getgems_nft_sales(txn);
-  upsert_query += insert_nft_items(txn);
-  upsert_query += insert_multisig_contracts(txn);
-  upsert_query += insert_multisig_orders(txn);
-  upsert_query += insert_dedust_pools(txn);
-  upsert_query += insert_latest_account_states(txn);
-  upsert_query += insert_vesting(txn);
-  upsert_query += insert_telemint(txn);
+  if (!kvrocks_state_only) {
+    upsert_query += insert_jetton_masters(txn);
+    upsert_query += insert_jetton_wallets(txn);
+    upsert_query += insert_nft_collections(txn);
+    upsert_query += insert_getgems_nft_auctions(txn);
+    upsert_query += insert_getgems_nft_sales(txn);
+    upsert_query += insert_nft_items(txn);
+    upsert_query += insert_multisig_contracts(txn);
+    upsert_query += insert_multisig_orders(txn);
+    upsert_query += insert_dedust_pools(txn);
+    upsert_query += insert_latest_account_states(txn);
+    upsert_query += insert_vesting(txn);
+    upsert_query += insert_telemint(txn);
+  }
 
   td::Timer commit_timer{true};
   if (!upsert_query.empty()) {
@@ -3791,7 +3798,8 @@ void InsertManagerPostgres::start_up() {
         throw std::runtime_error("unexpected Kvrocks PING response: " + ping_response);
       }
       kvrocks_state::load_kvrocks_scripts(*kvrocks_);
-      LOG(INFO) << "Kvrocks connection ready: " << kvrocks_config_.describe();
+      LOG(INFO) << "Kvrocks connection ready: " << kvrocks_config_.describe()
+                << "; state and kv tables will be written to Kvrocks only";
     } catch (const std::exception &e) {
       LOG(ERROR) << "Error connecting to Kvrocks: " << e.what();
       std::_Exit(2);
