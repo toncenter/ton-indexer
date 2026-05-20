@@ -115,6 +115,16 @@ func decodeMetadataField(payload string, field string) (map[string]interface{}, 
 	return metadata, nil
 }
 
+func payloadDestroyed(payload string) (bool, error) {
+	var row struct {
+		Destroyed bool `json:"destroyed"`
+	}
+	if err := json.Unmarshal([]byte(payload), &row); err != nil {
+		return false, err
+	}
+	return row.Destroyed, nil
+}
+
 func (s *KvrocksStore) getCommonMetadata(ctx context.Context, task FetchTask) (map[string]interface{}, error) {
 	var fieldName string
 	switch task.Type {
@@ -132,6 +142,11 @@ func (s *KvrocksStore) getCommonMetadata(ctx context.Context, task FetchTask) (m
 	if !ok {
 		return nil, fmt.Errorf("failed to fetch metadata: %s %s not found in kvrocks", task.Type, task.Address)
 	}
+	if destroyed, err := payloadDestroyed(payload); err != nil {
+		return nil, fmt.Errorf("failed to decode metadata: %v", err)
+	} else if destroyed {
+		return nil, fmt.Errorf("failed to fetch metadata: %s %s is destroyed", task.Type, task.Address)
+	}
 	metadata, err := decodeMetadataField(payload, fieldName)
 	if err != nil {
 		return nil, fmt.Errorf("failed to unmarshal metadata: %v", err)
@@ -148,6 +163,11 @@ func (s *KvrocksStore) getNftMetadata(ctx context.Context, task FetchTask) (map[
 	if !ok {
 		return nil, fmt.Errorf("failed to fetch metadata: nft_items %s not found in kvrocks", task.Address)
 	}
+	if destroyed, err := payloadDestroyed(payload); err != nil {
+		return nil, fmt.Errorf("failed to decode metadata: %v", err)
+	} else if destroyed {
+		return nil, fmt.Errorf("failed to fetch metadata: nft_items %s is destroyed", task.Address)
+	}
 	metadata, err := decodeMetadataField(payload, "content")
 	if err != nil {
 		return nil, fmt.Errorf("failed to unmarshal metadata: %v", err)
@@ -157,12 +177,13 @@ func (s *KvrocksStore) getNftMetadata(ctx context.Context, task FetchTask) (map[
 		return nil, fmt.Errorf("failed to fetch dns metadata: %v", err)
 	} else if ok {
 		var dnsRow struct {
-			Domain *string `json:"domain"`
+			Destroyed bool    `json:"destroyed"`
+			Domain    *string `json:"domain"`
 		}
 		if err := json.Unmarshal([]byte(dnsPayload), &dnsRow); err != nil {
 			return nil, fmt.Errorf("failed to unmarshal dns metadata: %v", err)
 		}
-		if dnsRow.Domain != nil {
+		if !dnsRow.Destroyed && dnsRow.Domain != nil {
 			metadata["domain"] = *dnsRow.Domain
 		}
 	}

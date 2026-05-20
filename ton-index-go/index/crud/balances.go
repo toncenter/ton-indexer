@@ -380,7 +380,7 @@ func checkJettonWallets(jetton_wallet_candidates mapset.Set[models.AccountAddres
 	var query = `
 		SELECT address, owner, jetton
 		FROM jetton_wallets
-		WHERE address = ANY($1)`
+		WHERE address = ANY($1) AND NOT destroyed`
 	rows, err := conn.Query(context.Background(), query, jetton_wallet_candidates.ToSlice())
 	if err != nil {
 		return nil, err

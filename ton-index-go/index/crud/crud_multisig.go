@@ -11,7 +11,7 @@ import (
 )
 
 func buildMultisigQuery(multisig_req models.MultisigRequest, lim_req models.LimitRequest, settings models.RequestSettings) (string, error) {
-	var conditions []string
+	conditions := []string{"not m.destroyed"}
 
 	if len(multisig_req.Address) > 0 {
 		conditions = append(conditions, filterByArray("m.address", multisig_req.Address))
@@ -59,7 +59,7 @@ func buildMultisigQuery(multisig_req models.MultisigRequest, lim_req models.Limi
 }
 
 func buildMultisigOrderQuery(order_req models.MultisigOrderRequest, lim_req models.LimitRequest, settings models.RequestSettings) (string, error) {
-	var conditions []string
+	conditions := []string{"not destroyed"}
 
 	if len(order_req.Address) > 0 {
 		conditions = append(conditions, filterByArray("address", order_req.Address))
@@ -216,7 +216,7 @@ func (db *DbClient) QueryMultisigs(
 			"address, multisig_address, order_seqno, threshold, sent_for_execution, approvals_mask, approvals_num, expiration_date, " +
 			"order_boc, signers, last_transaction_lt, code_hash, data_hash " +
 			"FROM multisig_orders m " +
-			"WHERE multisig_address = ANY($1) " +
+			"WHERE multisig_address = ANY($1) AND NOT m.destroyed " +
 			"ORDER BY id")
 		orders, err := queryMultisigOrderImpl(ordersQuery, conn, settings, addresses)
 		if err != nil {

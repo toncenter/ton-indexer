@@ -121,18 +121,23 @@ func (h *Handler) handleDnsEntries(ctx context.Context, event repl.ChangeEvent) 
 	entry.DnsSiteAdnl = getStringPtr(event.Data, "dns_site_adnl")
 	entry.DnsStorageBagId = getStringPtr(event.Data, "dns_storage_bag_id")
 	entry.LastTransactionLt = getInt64Ptr(event.Data, "last_transaction_lt")
+	destroyed := getBool(event.Data, "destroyed")
 
-	// For UPDATE: remove from old owner's sorted set if it was self-resolving
-	if event.Operation == repl.Update {
-		if oldEntry, err := h.cache.DnsEntries.Get(ctx, entry.NftItemAddress); err == nil {
-			if oldEntry.NftItemOwner != nil && oldEntry.DnsWallet != nil &&
-				*oldEntry.NftItemOwner == *oldEntry.DnsWallet {
-				// Old entry was self-resolving, remove from old owner's set
-				if err := h.cache.DnsByOwner.Remove(ctx, *oldEntry.NftItemOwner, entry.NftItemAddress); err != nil {
-					log.Printf("Warning: failed to remove from old owner's dns set: %v", err)
-				}
+	oldEntry, oldEntryErr := h.cache.DnsEntries.Get(ctx, entry.NftItemAddress)
+	if oldEntryErr == nil && oldEntry.NftItemOwner != nil && oldEntry.DnsWallet != nil &&
+		*oldEntry.NftItemOwner == *oldEntry.DnsWallet {
+		if err := h.cache.DnsByOwner.Remove(ctx, *oldEntry.NftItemOwner, entry.NftItemAddress); err != nil {
+			log.Printf("Warning: failed to remove from old owner's dns set: %v", err)
+		}
+	}
+
+	if destroyed {
+		if entry.NftItemOwner != nil {
+			if err := h.cache.DnsByOwner.Remove(ctx, *entry.NftItemOwner, entry.NftItemAddress); err != nil {
+				log.Printf("Warning: failed to remove from owner's dns set: %v", err)
 			}
 		}
+		return h.cache.DnsEntries.Delete(ctx, entry.NftItemAddress)
 	}
 
 	// Update main DNS cache
@@ -213,10 +218,14 @@ func (h *Handler) handleJettonWallets(ctx context.Context, event repl.ChangeEven
 
 	switch event.Operation {
 	case repl.Insert, repl.Update:
-		data.JettonWallet = &models.JettonWalletData{
-			Owner:   getString(event.Data, "owner"),
-			Jetton:  getString(event.Data, "jetton"),
-			Balance: getStringPtr(event.Data, "balance"),
+		if getBool(event.Data, "destroyed") {
+			data.JettonWallet = nil
+		} else {
+			data.JettonWallet = &models.JettonWalletData{
+				Owner:   getString(event.Data, "owner"),
+				Jetton:  getString(event.Data, "jetton"),
+				Balance: getStringPtr(event.Data, "balance"),
+			}
 		}
 	case repl.Delete:
 		data.JettonWallet = nil
@@ -238,8 +247,12 @@ func (h *Handler) handleNftItems(ctx context.Context, event repl.ChangeEvent) er
 
 	switch event.Operation {
 	case repl.Insert, repl.Update:
-		data.NftItem = &models.NftItemData{
-			Index: getStringPtr(event.Data, "index"),
+		if getBool(event.Data, "destroyed") {
+			data.NftItem = nil
+		} else {
+			data.NftItem = &models.NftItemData{
+				Index: getStringPtr(event.Data, "index"),
+			}
 		}
 	case repl.Delete:
 		data.NftItem = nil
@@ -261,7 +274,7 @@ func (h *Handler) handleNftCollections(ctx context.Context, event repl.ChangeEve
 
 	switch event.Operation {
 	case repl.Insert, repl.Update:
-		data.NftCollection = true
+		data.NftCollection = !getBool(event.Data, "destroyed")
 	case repl.Delete:
 		data.NftCollection = false
 	}
@@ -282,7 +295,7 @@ func (h *Handler) handleJettonMasters(ctx context.Context, event repl.ChangeEven
 
 	switch event.Operation {
 	case repl.Insert, repl.Update:
-		data.JettonMaster = true
+		data.JettonMaster = !getBool(event.Data, "destroyed")
 	case repl.Delete:
 		data.JettonMaster = false
 	}
@@ -325,7 +338,7 @@ func (h *Handler) fetchCompleteAddressData(ctx context.Context, addr string) (mo
 	var owner, jetton string
 	var balance *string
 	err := h.db.QueryRow(ctx, `
-		SELECT owner, jetton, balance FROM jetton_wallets WHERE address = $1
+		SELECT owner, jetton, balance FROM jetton_wallets WHERE address = $1 AND NOT destroyed
 	`, addr).Scan(&owner, &jetton, &balance)
 	if err == nil {
 		data.JettonWallet = &models.JettonWalletData{
@@ -338,17 +351,17 @@ func (h *Handler) fetchCompleteAddressData(ctx context.Context, addr string) (mo
 		SELECT 'nft_items' as type, m.valid, m.name, m.symbol, m.description, m.image, m.extra, n.index
 		FROM nft_items n 
 		LEFT JOIN address_metadata m ON n.address = m.address AND m.type = 'nft_items'
-		WHERE n.address = $1
+		WHERE n.address = $1 AND NOT n.destroyed
 		UNION ALL
 		SELECT 'nft_collections' as type, m.valid, m.name, m.symbol, m.description, m.image, m.extra, null
 		FROM nft_collections c 
 		LEFT JOIN address_metadata m ON c.address = m.address AND m.type = 'nft_collections'
-		WHERE c.address = $1
+		WHERE c.address = $1 AND NOT c.destroyed
 		UNION ALL
 		SELECT 'jetton_masters' as type, m.valid, m.name, m.symbol, m.description, m.image, m.extra, null
 		FROM jetton_masters j 
 		LEFT JOIN address_metadata m ON j.address = m.address AND m.type = 'jetton_masters'
-		WHERE j.address = $1
+		WHERE j.address = $1 AND NOT j.destroyed
 	`, addr)
 	if err != nil {
 		return data, err
@@ -443,6 +456,13 @@ func getBoolPtr(data map[string]interface{}, key string) *bool {
 		return &v
 	}
 	return nil
+}
+
+func getBool(data map[string]interface{}, key string) bool {
+	if v, ok := data[key].(bool); ok {
+		return v
+	}
+	return false
 }
 
 func getMap(data map[string]interface{}, key string) map[string]interface{} {

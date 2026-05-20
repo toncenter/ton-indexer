@@ -123,6 +123,10 @@ def _dedust_pool_from_payload(payload: dict) -> DedustPool:
     return DedustPool(address=payload.get("address"), assets=assets)
 
 
+def _is_destroyed(payload: dict | None) -> bool:
+    return bool(payload and payload.get("destroyed"))
+
+
 def _jetton_wallet_from_interface(data: dict) -> JettonWallet:
     return JettonWallet(
         balance=data["balance"],
@@ -237,7 +241,7 @@ class KvRocksRepository(InterfaceRepository):
             return None
         payloads = await kvrocks.get_payloads(table, [address], normalize=kvrocks.normalize_address_id)
         payload = payloads.get(address)
-        if payload is None:
+        if payload is None or _is_destroyed(payload):
             return None
         return converter(payload)
 
@@ -297,7 +301,7 @@ class KvRocksRepository(InterfaceRepository):
             return None
         payloads = await kvrocks.get_payloads("dex_pools", [address], normalize=kvrocks.normalize_address_id)
         payload = payloads.get(address)
-        if payload is None:
+        if payload is None or _is_destroyed(payload):
             return None
         return _dedust_pool_from_payload(payload)
 
@@ -816,6 +820,8 @@ async def gather_interfaces_from_kvrocks(
 
         nft_batch = batch.copy()
         for payload in auctions.values():
+            if _is_destroyed(payload):
+                continue
             nft_addr = kvrocks.normalize_address_id(payload.get("nft_addr"))
             if nft_addr is not None:
                 nft_batch.append(nft_addr)
@@ -827,22 +833,32 @@ async def gather_interfaces_from_kvrocks(
         states = await kvrocks.get_payloads("latest_account_states", batch, normalize=kvrocks.normalize_address_id)
 
         for payload in wallets.values():
+            if _is_destroyed(payload):
+                continue
             address = kvrocks.normalize_address_id(payload.get("address"))
             if address is not None:
                 result[address]["JettonWallet"] = _jetton_wallet_interface(payload)
         for payload in nft_items.values():
+            if _is_destroyed(payload):
+                continue
             address = kvrocks.normalize_address_id(payload.get("address"))
             if address is not None:
                 result[address]["NftItem"] = _nft_item_interface(payload)
         for payload in sales.values():
+            if _is_destroyed(payload):
+                continue
             address = kvrocks.normalize_address_id(payload.get("address"))
             if address is not None:
                 result[address]["NftSale"] = _nft_sale_interface(payload)
         for payload in auctions.values():
+            if _is_destroyed(payload):
+                continue
             address = kvrocks.normalize_address_id(payload.get("address"))
             if address is not None:
                 result[address]["NftAuction"] = _nft_auction_interface(payload)
         for payload in orders.values():
+            if _is_destroyed(payload):
+                continue
             address = kvrocks.normalize_address_id(payload.get("address"))
             if address is not None:
                 result[address]["MultisigOrder"] = _multisig_order_interface(payload)
@@ -910,15 +926,35 @@ async def _gather_data_from_db(
     account_list = list(accounts)
     for i in range(0, len(account_list), 5000):
         batch = account_list[i:i + 5000]
-        auctions = await session.execute(select(NftAuction).filter(NftAuction.address.in_(batch)))
+        auctions = await session.execute(
+            select(NftAuction)
+            .filter(NftAuction.address.in_(batch))
+            .filter(NftAuction.destroyed.is_(False))
+        )
         auctions = list(auctions.scalars().all())
         nft_batch = batch.copy()
         for auction in auctions:
             nft_batch.append(auction.nft_addr)
-        wallets = await session.execute(select(JettonWallet).filter(JettonWallet.address.in_(batch)))
-        nft = await session.execute(select(NFTItem).filter(NFTItem.address.in_(nft_batch)))
-        sales = await session.execute(select(NftSale).filter(NftSale.address.in_(batch)))
-        orders = await session.execute(select(MultisigOrder).filter(MultisigOrder.address.in_(batch)))
+        wallets = await session.execute(
+            select(JettonWallet)
+            .filter(JettonWallet.address.in_(batch))
+            .filter(JettonWallet.destroyed.is_(False))
+        )
+        nft = await session.execute(
+            select(NFTItem)
+            .filter(NFTItem.address.in_(nft_batch))
+            .filter(NFTItem.destroyed.is_(False))
+        )
+        sales = await session.execute(
+            select(NftSale)
+            .filter(NftSale.address.in_(batch))
+            .filter(NftSale.destroyed.is_(False))
+        )
+        orders = await session.execute(
+            select(MultisigOrder)
+            .filter(MultisigOrder.address.in_(batch))
+            .filter(MultisigOrder.destroyed.is_(False))
+        )
         pools = await session.execute(select(LatestAccountState)
                                                 .filter(LatestAccountState.account.in_(batch))
                                                 .filter(LatestAccountState.code_hash == NOMINATOR_POOL_CODE_HASH))

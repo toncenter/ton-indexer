@@ -131,6 +131,16 @@ func (s *KvrocksStore) getPayloads(ctx context.Context, table string, ids []stri
 	return payloads, nil
 }
 
+func kvrocksPayloadDestroyed(id string, table string, payload string) (bool, error) {
+	var row struct {
+		Destroyed bool `json:"destroyed"`
+	}
+	if err := json.Unmarshal([]byte(payload), &row); err != nil {
+		return false, fmt.Errorf("decode %s %s destroyed flag: %w", table, id, err)
+	}
+	return row.Destroyed, nil
+}
+
 func (s *KvrocksStore) indexKey(table string, name string) string {
 	return kvrocksKeyPrefix + ":idx:" + table + ":" + name
 }
@@ -438,6 +448,13 @@ func (s *KvrocksStore) orderedJettonMasters(ctx context.Context, ids []string) (
 		if !ok {
 			continue
 		}
+		destroyed, err := kvrocksPayloadDestroyed(id, "jetton_masters", payload)
+		if err != nil {
+			return nil, err
+		}
+		if destroyed {
+			continue
+		}
 		var row models.JettonMaster
 		if err := json.Unmarshal([]byte(payload), &row); err != nil {
 			return nil, fmt.Errorf("decode jetton_masters %s: %w", id, err)
@@ -456,6 +473,13 @@ func (s *KvrocksStore) orderedJettonWallets(ctx context.Context, ids []string) (
 	for _, id := range ids {
 		payload, ok := payloads[id]
 		if !ok {
+			continue
+		}
+		destroyed, err := kvrocksPayloadDestroyed(id, "jetton_wallets", payload)
+		if err != nil {
+			return nil, err
+		}
+		if destroyed {
 			continue
 		}
 		row, err := decodeJettonWalletPayload(id, payload)
@@ -478,6 +502,13 @@ func (s *KvrocksStore) orderedNFTCollections(ctx context.Context, ids []string) 
 		if !ok {
 			continue
 		}
+		destroyed, err := kvrocksPayloadDestroyed(id, "nft_collections", payload)
+		if err != nil {
+			return nil, err
+		}
+		if destroyed {
+			continue
+		}
 		var row models.NFTCollection
 		if err := json.Unmarshal([]byte(payload), &row); err != nil {
 			return nil, fmt.Errorf("decode nft_collections %s: %w", id, err)
@@ -496,6 +527,13 @@ func (s *KvrocksStore) orderedNFTItems(ctx context.Context, ids []string) ([]mod
 	for _, id := range ids {
 		payload, ok := payloads[id]
 		if !ok {
+			continue
+		}
+		destroyed, err := kvrocksPayloadDestroyed(id, "nft_items", payload)
+		if err != nil {
+			return nil, err
+		}
+		if destroyed {
 			continue
 		}
 		var row models.NFTItem
@@ -814,6 +852,13 @@ func (s *KvrocksStore) GetJettonWallets(ctx context.Context, addresses []models.
 
 	res := make(map[models.AccountAddress]*models.JettonWallet, len(payloads))
 	for id, payload := range payloads {
+		destroyed, err := kvrocksPayloadDestroyed(id, "jetton_wallets", payload)
+		if err != nil {
+			return nil, err
+		}
+		if destroyed {
+			continue
+		}
 		row, err := decodeJettonWalletPayload(id, payload)
 		if err != nil {
 			return nil, err
@@ -869,6 +914,13 @@ func (s *KvrocksStore) GetJettonMasters(ctx context.Context, addresses []models.
 	}
 	res := make(map[models.AccountAddress]*models.JettonMaster, len(payloads))
 	for id, payload := range payloads {
+		destroyed, err := kvrocksPayloadDestroyed(id, "jetton_masters", payload)
+		if err != nil {
+			return nil, err
+		}
+		if destroyed {
+			continue
+		}
 		var row models.JettonMaster
 		if err := json.Unmarshal([]byte(payload), &row); err != nil {
 			return nil, fmt.Errorf("decode jetton_masters %s: %w", id, err)
@@ -1069,6 +1121,13 @@ func (s *KvrocksStore) GetNFTItems(ctx context.Context, addresses []models.Accou
 
 	res := make(map[models.AccountAddress]*models.NFTItem, len(payloads))
 	for id, payload := range payloads {
+		destroyed, err := kvrocksPayloadDestroyed(id, "nft_items", payload)
+		if err != nil {
+			return nil, err
+		}
+		if destroyed {
+			continue
+		}
 		var row models.NFTItem
 		if err := json.Unmarshal([]byte(payload), &row); err != nil {
 			return nil, fmt.Errorf("decode nft_items %s: %w", id, err)
@@ -1090,6 +1149,13 @@ func (s *KvrocksStore) GetNFTCollections(ctx context.Context, addresses []models
 
 	res := make(map[models.AccountAddress]*models.NFTCollection, len(payloads))
 	for id, payload := range payloads {
+		destroyed, err := kvrocksPayloadDestroyed(id, "nft_collections", payload)
+		if err != nil {
+			return nil, err
+		}
+		if destroyed {
+			continue
+		}
 		var row models.NFTCollection
 		if err := json.Unmarshal([]byte(payload), &row); err != nil {
 			return nil, fmt.Errorf("decode nft_collections %s: %w", id, err)
@@ -1430,6 +1496,13 @@ func (s *KvrocksStore) orderedDNSRecords(ctx context.Context, ids []string) ([]m
 		if !ok {
 			continue
 		}
+		destroyed, err := kvrocksPayloadDestroyed(id, "dns_entries", payload)
+		if err != nil {
+			return nil, err
+		}
+		if destroyed {
+			continue
+		}
 		var row models.DNSRecord
 		if err := json.Unmarshal([]byte(payload), &row); err != nil {
 			return nil, fmt.Errorf("decode dns_entries %s: %w", id, err)
@@ -1537,6 +1610,13 @@ func (s *KvrocksStore) getGetgemsSales(ctx context.Context, addresses []models.A
 
 	res := make([]models.RawNFTSale, 0, len(payloads))
 	for id, payload := range payloads {
+		destroyed, err := kvrocksPayloadDestroyed(id, "getgems_nft_sales", payload)
+		if err != nil {
+			return nil, err
+		}
+		if destroyed {
+			continue
+		}
 		var row kvGetgemsSalePayload
 		if err := json.Unmarshal([]byte(payload), &row); err != nil {
 			return nil, fmt.Errorf("decode getgems_nft_sales %s: %w", id, err)
@@ -1558,6 +1638,13 @@ func (s *KvrocksStore) getGetgemsAuctions(ctx context.Context, addresses []model
 
 	res := make([]models.RawNFTSale, 0, len(payloads))
 	for id, payload := range payloads {
+		destroyed, err := kvrocksPayloadDestroyed(id, "getgems_nft_auctions", payload)
+		if err != nil {
+			return nil, err
+		}
+		if destroyed {
+			continue
+		}
 		var row kvGetgemsAuctionPayload
 		if err := json.Unmarshal([]byte(payload), &row); err != nil {
 			return nil, fmt.Errorf("decode getgems_nft_auctions %s: %w", id, err)
@@ -1579,6 +1666,13 @@ func (s *KvrocksStore) getTelemintItems(ctx context.Context, addresses []models.
 
 	res := make([]models.RawNFTSale, 0, len(payloads))
 	for id, payload := range payloads {
+		destroyed, err := kvrocksPayloadDestroyed(id, "telemint_nft_items", payload)
+		if err != nil {
+			return nil, err
+		}
+		if destroyed {
+			continue
+		}
 		var row kvTelemintPayload
 		if err := json.Unmarshal([]byte(payload), &row); err != nil {
 			return nil, fmt.Errorf("decode telemint_nft_items %s: %w", id, err)
@@ -1838,6 +1932,13 @@ func (s *KvrocksStore) GetMultisigs(ctx context.Context, addresses []models.Acco
 	}
 	res := make(map[models.AccountAddress]*models.Multisig, len(payloads))
 	for id, payload := range payloads {
+		destroyed, err := kvrocksPayloadDestroyed(id, "multisig", payload)
+		if err != nil {
+			return nil, err
+		}
+		if destroyed {
+			continue
+		}
 		var row models.Multisig
 		if err := json.Unmarshal([]byte(payload), &row); err != nil {
 			return nil, fmt.Errorf("decode multisig %s: %w", id, err)
@@ -1858,6 +1959,13 @@ func (s *KvrocksStore) orderedMultisigs(ctx context.Context, ids []string) ([]mo
 		if !ok {
 			continue
 		}
+		destroyed, err := kvrocksPayloadDestroyed(id, "multisig", payload)
+		if err != nil {
+			return nil, err
+		}
+		if destroyed {
+			continue
+		}
 		var row models.Multisig
 		if err := json.Unmarshal([]byte(payload), &row); err != nil {
 			return nil, fmt.Errorf("decode multisig %s: %w", id, err)
@@ -1874,6 +1982,13 @@ func (s *KvrocksStore) GetMultisigOrders(ctx context.Context, addresses []models
 	}
 	res := make(map[models.AccountAddress]*models.MultisigOrder, len(payloads))
 	for id, payload := range payloads {
+		destroyed, err := kvrocksPayloadDestroyed(id, "multisig_orders", payload)
+		if err != nil {
+			return nil, err
+		}
+		if destroyed {
+			continue
+		}
 		row, err := decodeMultisigOrderPayload(id, payload)
 		if err != nil {
 			return nil, err
@@ -1892,6 +2007,13 @@ func (s *KvrocksStore) orderedMultisigOrders(ctx context.Context, ids []string) 
 	for _, id := range ids {
 		payload, ok := payloads[id]
 		if !ok {
+			continue
+		}
+		destroyed, err := kvrocksPayloadDestroyed(id, "multisig_orders", payload)
+		if err != nil {
+			return nil, err
+		}
+		if destroyed {
 			continue
 		}
 		row, err := decodeMultisigOrderPayload(id, payload)
@@ -2160,6 +2282,13 @@ func (s *KvrocksStore) orderedVestingContracts(ctx context.Context, ids []string
 	for _, id := range ids {
 		payload, ok := payloads[id]
 		if !ok {
+			continue
+		}
+		destroyed, err := kvrocksPayloadDestroyed(id, "vesting_contracts", payload)
+		if err != nil {
+			return nil, err
+		}
+		if destroyed {
 			continue
 		}
 		var row kvVestingContractPayload

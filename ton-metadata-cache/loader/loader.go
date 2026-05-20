@@ -97,7 +97,7 @@ func (l *Loader) LoadDnsEntries(ctx context.Context) error {
 			SELECT nft_item_address, nft_item_owner, domain, dns_next_resolver, 
 			       dns_wallet, dns_site_adnl, dns_storage_bag_id, last_transaction_lt 
 			FROM dns_entries
-			WHERE nft_item_address > $1
+			WHERE nft_item_address > $1 AND NOT destroyed
 			ORDER BY nft_item_address
 			LIMIT $2
 		`, lastKey, batchSize)
@@ -199,7 +199,7 @@ func (l *Loader) LoadJettonMasters(ctx context.Context) error {
 			SELECT j.address, m.valid, m.name, m.symbol, m.description, m.image, m.extra
 			FROM jetton_masters j
 			LEFT JOIN address_metadata m ON j.address = m.address AND m.type = 'jetton_masters'
-			WHERE j.address > $1
+			WHERE j.address > $1 AND NOT j.destroyed
 			ORDER BY j.address
 			LIMIT $2
 		`, lastKey, batchSize)
@@ -619,7 +619,7 @@ func (l *Loader) fetchAddressDataBatch(ctx context.Context, addresses []string) 
 
 	// Query 1: Jetton wallets
 	rows, err := l.pool.Query(ctx, `
-		SELECT address, owner, jetton, balance FROM jetton_wallets WHERE address = ANY($1)
+		SELECT address, owner, jetton, balance FROM jetton_wallets WHERE address = ANY($1) AND NOT destroyed
 	`, addresses)
 	if err == nil {
 		for rows.Next() {
@@ -640,17 +640,17 @@ func (l *Loader) fetchAddressDataBatch(ctx context.Context, addresses []string) 
 		SELECT n.address, 'nft_items' as type, m.valid, m.name, m.symbol, m.description, m.image, m.extra, n.index
 		FROM nft_items n 
 		LEFT JOIN address_metadata m ON n.address = m.address AND m.type = 'nft_items'
-		WHERE n.address = ANY($1)
+		WHERE n.address = ANY($1) AND NOT n.destroyed
 		UNION ALL
 		SELECT c.address, 'nft_collections' as type, m.valid, m.name, m.symbol, m.description, m.image, m.extra, null
 		FROM nft_collections c 
 		LEFT JOIN address_metadata m ON c.address = m.address AND m.type = 'nft_collections'
-		WHERE c.address = ANY($1)
+		WHERE c.address = ANY($1) AND NOT c.destroyed
 		UNION ALL
 		SELECT j.address, 'jetton_masters' as type, m.valid, m.name, m.symbol, m.description, m.image, m.extra, null
 		FROM jetton_masters j 
 		LEFT JOIN address_metadata m ON j.address = m.address AND m.type = 'jetton_masters'
-		WHERE j.address = ANY($1)
+		WHERE j.address = ANY($1) AND NOT j.destroyed
 	`, addresses)
 	if err != nil {
 		return result, err

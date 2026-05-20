@@ -16,7 +16,7 @@ func buildJettonMastersQuery(jetton_req models.JettonMasterRequest, lim_req mode
 	clmn_query := ` J.address, J.total_supply, J.mintable, J.admin_address, J.jetton_content, 
 		J.jetton_wallet_code_hash, J.code_hash, J.data_hash, J.last_transaction_lt`
 	from_query := ` jetton_masters as J`
-	filter_list := []string{}
+	filter_list := []string{"not J.destroyed"}
 	filter_query := ``
 	orderby_query := ` order by id asc`
 	limit_query, err := limitQuery(lim_req, settings)
@@ -54,7 +54,7 @@ func buildJettonWalletsQuery(jetton_req models.JettonWalletRequest, lim_req mode
 	clmn_query := `J.address, J.balance, J.owner, J.jetton, J.last_transaction_lt, J.code_hash, J.data_hash, 
 		J.mintless_is_claimed, J.mintless_amount, J.mintless_start_from, J.mintless_expire_at, MJM.custom_payload_api_uri`
 	from_query := `jetton_wallets as J left join mintless_jetton_masters as MJM on J.jetton = MJM.address`
-	filter_list := []string{}
+	filter_list := []string{"not J.destroyed"}
 	filter_query := ``
 	limit_query, err := limitQuery(lim_req, settings)
 	if err != nil {
@@ -276,7 +276,7 @@ func queryJettonWalletsTokenInfo(addr_list []string, conn *pgxpool.Conn, ctx con
 
 	query := `SELECT jw.address, jw.owner, jw.balance, jw.jetton 
 			  FROM jetton_wallets jw 
-			  WHERE jw.address = ANY($1)`
+			  WHERE jw.address = ANY($1) AND NOT jw.destroyed`
 
 	rows, err := conn.Query(ctx, query, pq.Array(addr_list))
 	if err != nil {

@@ -187,7 +187,7 @@ func getCommonMetadataFromDb(ctx context.Context, tx pgx.Tx, task FetchTask) (ma
 	case "jetton_masters":
 		field_name = "jetton_content"
 	}
-	query := fmt.Sprintf("SELECT %s as metadata FROM %s WHERE address = $1", field_name, task.Type)
+	query := fmt.Sprintf("SELECT %s as metadata FROM %s WHERE address = $1 AND NOT destroyed", field_name, task.Type)
 	err := tx.QueryRow(ctx, query, task.Address).Scan(&metadata_bytes)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch metadata: %v", err)
@@ -209,8 +209,8 @@ func getCommonMetadataFromDb(ctx context.Context, tx pgx.Tx, task FetchTask) (ma
 
 func getNftMetadataFromDb(ctx context.Context, tx pgx.Tx, task FetchTask) (map[string]interface{}, error) {
 	query := `SELECT n.content, d.domain FROM nft_items n
-        LEFT JOIN dns_entries d ON d.nft_item_address = n.address
-        WHERE n.address = $1`
+        LEFT JOIN dns_entries d ON d.nft_item_address = n.address AND NOT d.destroyed
+        WHERE n.address = $1 AND NOT n.destroyed`
 	var content_bytes []byte
 	var domain *string
 	err := tx.QueryRow(ctx, query, task.Address).Scan(&content_bytes, &domain)

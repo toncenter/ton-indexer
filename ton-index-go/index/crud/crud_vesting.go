@@ -106,7 +106,7 @@ func buildVestingContractsQuery(vesting_req models.VestingContractsRequest, lim_
 		V.vesting_sender_address, V.owner_address, V.vesting_total_amount`
 
 	from_query := `vesting_contracts V`
-	filter_list := []string{}
+	filter_list := []string{"not V.destroyed"}
 	filter_query := ``
 	orderby_query := ` ORDER BY V.id ASC`
 

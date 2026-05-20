@@ -15,7 +15,7 @@ func buildNFTCollectionsQuery(nft_req models.NFTCollectionRequest, lim_req model
 	clmn_query := ` N.address, N.next_item_index, N.owner_address, N.collection_content, 
 				    N.data_hash, N.code_hash, N.last_transaction_lt`
 	from_query := ` nft_collections as N`
-	filter_list := []string{}
+	filter_list := []string{"not N.destroyed"}
 	filter_query := ``
 	orderby_query := ` order by id asc`
 	limit_query, err := limitQuery(lim_req, settings)
@@ -59,10 +59,10 @@ func buildNFTItemsQuery(nft_req models.NFTItemRequest, lim_req models.LimitReque
                 S.address, S.nft_owner_address,
                 A.address, A.nft_owner`
 	from_query := ` nft_items as N 
-                left join nft_collections as C on N.collection_address = C.address
-                left join getgems_nft_sales as S on N.owner_address = S.address and N.address = S.nft_address
-                left join getgems_nft_auctions as A on N.owner_address = A.address and N.address = A.nft_addr`
-	filter_list := []string{}
+                left join nft_collections as C on N.collection_address = C.address and not C.destroyed
+                left join getgems_nft_sales as S on N.owner_address = S.address and N.address = S.nft_address and not S.destroyed
+                left join getgems_nft_auctions as A on N.owner_address = A.address and N.address = A.nft_addr and not A.destroyed`
+	filter_list := []string{"not N.destroyed"}
 	filter_query := ``
 	orderby_query := ` order by N.id asc`
 	limit_query, err := limitQuery(lim_req, settings)

@@ -340,7 +340,8 @@ void run_1_3_0_migrations(const std::string& connection_string, bool custom_type
       "collection_content jsonb, "
       "last_transaction_lt bigint, "
       "code_hash tonhash, "
-      "data_hash tonhash) with (fillfactor = 70);\n"
+      "data_hash tonhash, "
+      "destroyed boolean not null default false) with (fillfactor = 70);\n"
     );
 
     query += (
@@ -354,7 +355,8 @@ void run_1_3_0_migrations(const std::string& connection_string, bool custom_type
       "content jsonb, "
       "last_transaction_lt bigint, "
       "code_hash tonhash, "
-      "data_hash tonhash) with (fillfactor = 70);\n"
+      "data_hash tonhash, "
+      "destroyed boolean not null default false) with (fillfactor = 70);\n"
     );
 
     query += (
@@ -391,7 +393,8 @@ void run_1_3_0_migrations(const std::string& connection_string, bool custom_type
       "jetton_wallet_code_hash tonhash, "
       "last_transaction_lt bigint, "
       "code_hash tonhash, "
-      "data_hash tonhash) with (fillfactor = 70);\n"
+      "data_hash tonhash, "
+      "destroyed boolean not null default false) with (fillfactor = 70);\n"
     );
 
     query += (
@@ -415,7 +418,8 @@ void run_1_3_0_migrations(const std::string& connection_string, bool custom_type
       "mintless_is_claimed boolean, "
       "mintless_amount numeric, "
       "mintless_start_from bigint, "
-      "mintless_expire_at bigint) with (fillfactor = 70, autovacuum_vacuum_scale_factor = 0.03);\n"
+      "mintless_expire_at bigint, "
+      "destroyed boolean not null default false) with (fillfactor = 70, autovacuum_vacuum_scale_factor = 0.03);\n"
     );
 
     query += (
@@ -477,7 +481,8 @@ void run_1_3_0_migrations(const std::string& connection_string, bool custom_type
       "royalty_amount numeric, "
       "last_transaction_lt bigint, "
       "code_hash tonhash, "
-      "data_hash tonhash) with (fillfactor = 70);\n"
+      "data_hash tonhash, "
+      "destroyed boolean not null default false) with (fillfactor = 70);\n"
     );
 
     query += (
@@ -505,7 +510,8 @@ void run_1_3_0_migrations(const std::string& connection_string, bool custom_type
       "is_canceled boolean, "
       "last_transaction_lt bigint, "
       "code_hash tonhash, "
-      "data_hash tonhash) with (fillfactor = 70);\n"
+      "data_hash tonhash, "
+      "destroyed boolean not null default false) with (fillfactor = 70);\n"
     );
 
     query += (
@@ -518,7 +524,8 @@ void run_1_3_0_migrations(const std::string& connection_string, bool custom_type
       "proposers tonaddr[], "
       "last_transaction_lt bigint, "
       "code_hash tonhash, "
-      "data_hash tonhash) with (fillfactor = 70);\n"
+      "data_hash tonhash, "
+      "destroyed boolean not null default false) with (fillfactor = 70);\n"
     );
 
     query += (
@@ -536,7 +543,8 @@ void run_1_3_0_migrations(const std::string& connection_string, bool custom_type
       "signers tonaddr[], "
       "last_transaction_lt bigint, "
       "code_hash tonhash, "
-      "data_hash tonhash) with (fillfactor = 70);\n"
+      "data_hash tonhash, "
+      "destroyed boolean not null default false) with (fillfactor = 70);\n"
     );
 
     query += (
@@ -640,7 +648,8 @@ void run_1_3_0_migrations(const std::string& connection_string, bool custom_type
       "dns_wallet tonaddr, "
       "dns_site_adnl varchar(64), "
       "dns_storage_bag_id varchar(64), "
-      "last_transaction_lt bigint) with (fillfactor = 70);\n"
+      "last_transaction_lt bigint, "
+      "destroyed boolean not null default false) with (fillfactor = 70);\n"
     );
 
     query += (
@@ -656,7 +665,8 @@ void run_1_3_0_migrations(const std::string& connection_string, bool custom_type
       "owner_address          tonaddr, "
       "last_transaction_lt    bigint, "
       "code_hash              tonhash, "
-      "data_hash              tonhash) with (fillfactor = 70);\n"
+      "data_hash              tonhash, "
+      "destroyed              boolean not null default false) with (fillfactor = 70);\n"
     );
 
     query += (
@@ -854,7 +864,8 @@ execute procedure advance_ton_indexer_progress_func();
       "fee double precision, "
       "last_transaction_lt bigint, "
       "code_hash tonhash, "
-      "data_hash tonhash) with (fillfactor = 70);\n"
+      "data_hash tonhash, "
+      "destroyed boolean not null default false) with (fillfactor = 70);\n"
     );
 
     query += "ALTER TABLE nft_items ADD COLUMN IF NOT EXISTS real_owner tonaddr;\n";
@@ -862,11 +873,12 @@ execute procedure advance_ton_indexer_progress_func();
     query += (
         "CREATE OR REPLACE FUNCTION update_nft_real_owner() RETURNS TRIGGER AS $$ "
         "BEGIN "
+        "   IF NEW.destroyed THEN RETURN NEW; END IF; "
         "   IF NEW.real_owner IS NULL OR NEW.real_owner = NEW.owner_address THEN "
-        "     SELECT nft_owner_address INTO NEW.real_owner FROM getgems_nft_sales WHERE address = NEW.owner_address "
+        "     SELECT nft_owner_address INTO NEW.real_owner FROM getgems_nft_sales WHERE address = NEW.owner_address AND NOT destroyed "
         "      AND nft_address = NEW.address LIMIT 1; "
         "     IF NEW.real_owner IS NULL THEN "
-        "       SELECT nft_owner INTO NEW.real_owner FROM getgems_nft_auctions WHERE address = NEW.owner_address "
+        "       SELECT nft_owner INTO NEW.real_owner FROM getgems_nft_auctions WHERE address = NEW.owner_address AND NOT destroyed "
         "        AND nft_addr = NEW.address LIMIT 1; "
         "     END IF; "
         "     IF NEW.real_owner IS NULL THEN NEW.real_owner := NEW.owner_address; END IF; "
@@ -918,7 +930,8 @@ execute procedure advance_ton_indexer_progress_func();
       "royalty_destination  tonaddr, "
       "last_transaction_lt  bigint, "
       "code_hash            tonhash, "
-      "data_hash            tonhash) with (fillfactor = 70);\n"
+      "data_hash            tonhash, "
+      "destroyed            boolean not null default false) with (fillfactor = 70);\n"
     );
 
     query += "ALTER TABLE getgems_nft_sales ADD COLUMN IF NOT EXISTS sold_at numeric;\n";

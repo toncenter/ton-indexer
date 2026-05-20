@@ -51,9 +51,9 @@ func queryGetgemsSalesImpl(addresses []models.AccountAddress, conn *pgxpool.Conn
 			C.code_hash as collection_code_hash,
 			C.last_transaction_lt as collection_last_transaction_lt
 		FROM getgems_nft_sales as s
-		LEFT JOIN nft_items N ON s.nft_address = N.address
-		LEFT JOIN nft_collections C ON N.collection_address = C.address
-		WHERE s.address = ANY($1)
+		LEFT JOIN nft_items N ON s.nft_address = N.address AND NOT N.destroyed
+		LEFT JOIN nft_collections C ON N.collection_address = C.address AND NOT C.destroyed
+		WHERE s.address = ANY($1) AND NOT s.destroyed
 	`
 
 	ctx, cancel_ctx := context.WithTimeout(context.Background(), settings.Timeout)
@@ -166,9 +166,9 @@ func queryGetgemsAuctionsImpl(addresses []models.AccountAddress, conn *pgxpool.C
 			C.code_hash as collection_code_hash,
 			C.last_transaction_lt as collection_last_transaction_lt
 		FROM getgems_nft_auctions as a
-		LEFT JOIN nft_items N ON a.nft_addr = N.address
-		LEFT JOIN nft_collections C ON N.collection_address = C.address
-		WHERE a.address = ANY($1)
+		LEFT JOIN nft_items N ON a.nft_addr = N.address AND NOT N.destroyed
+		LEFT JOIN nft_collections C ON N.collection_address = C.address AND NOT C.destroyed
+		WHERE a.address = ANY($1) AND NOT a.destroyed
 	`
 
 	ctx, cancel_ctx := context.WithTimeout(context.Background(), settings.Timeout)
@@ -270,7 +270,7 @@ func queryTelemintImpl(addresses []models.AccountAddress, conn *pgxpool.Conn, se
 			t.code_hash,
 			t.data_hash
 		FROM telemint_nft_items as t
-		WHERE t.address = ANY($1)
+		WHERE t.address = ANY($1) AND NOT t.destroyed
 	`
 
 	ctx, cancel_ctx := context.WithTimeout(context.Background(), settings.Timeout)

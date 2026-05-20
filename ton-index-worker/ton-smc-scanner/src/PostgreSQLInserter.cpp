@@ -79,7 +79,7 @@ void PostgreSQLInserter::insert_latest_account_states(pqxx::work& txn, const kvr
 void PostgreSQLInserter::insert_jetton_masters(pqxx::work& txn, const kvrocks_state::StateBatch& batch) {
   std::initializer_list<std::string_view> columns = {
     "address", "total_supply", "mintable", "admin_address", "jetton_content",
-    "jetton_wallet_code_hash", "last_transaction_lt", "code_hash", "data_hash"
+    "jetton_wallet_code_hash", "last_transaction_lt", "code_hash", "data_hash", "destroyed"
   };
   PopulateTableStream stream(txn, "jetton_masters", columns, 1000, false);
   stream.setConflictDoUpdate({"address"}, "jetton_masters.last_transaction_lt < EXCLUDED.last_transaction_lt");
@@ -91,7 +91,7 @@ void PostgreSQLInserter::insert_jetton_masters(pqxx::work& txn, const kvrocks_st
 
 void PostgreSQLInserter::insert_jetton_wallets(pqxx::work& txn, const kvrocks_state::StateBatch& batch) {
   std::initializer_list<std::string_view> columns = {
-    "balance", "address", "owner", "jetton", "last_transaction_lt", "code_hash", "data_hash", "mintless_is_claimed"
+    "balance", "address", "owner", "jetton", "last_transaction_lt", "code_hash", "data_hash", "mintless_is_claimed", "destroyed"
   };
   PopulateTableStream stream(txn, "jetton_wallets", columns, 1000, false);
   stream.setConflictDoUpdate({"address"}, "jetton_wallets.last_transaction_lt < EXCLUDED.last_transaction_lt");
@@ -110,7 +110,7 @@ void PostgreSQLInserter::insert_jetton_wallets(pqxx::work& txn, const kvrocks_st
 
 void PostgreSQLInserter::insert_nft_collections(pqxx::work& txn, const kvrocks_state::StateBatch& batch) {
   std::initializer_list<std::string_view> columns = {
-    "address", "next_item_index", "owner_address", "collection_content", "last_transaction_lt", "code_hash", "data_hash"
+    "address", "next_item_index", "owner_address", "collection_content", "last_transaction_lt", "code_hash", "data_hash", "destroyed"
   };
   PopulateTableStream stream(txn, "nft_collections", columns, 1000, false);
   stream.setConflictDoUpdate({"address"}, "nft_collections.last_transaction_lt < EXCLUDED.last_transaction_lt");
@@ -123,7 +123,7 @@ void PostgreSQLInserter::insert_nft_collections(pqxx::work& txn, const kvrocks_s
 void PostgreSQLInserter::insert_nft_items(pqxx::work& txn, const kvrocks_state::StateBatch& batch) {
   std::initializer_list<std::string_view> columns = {
     "address", "init", "index", "collection_address", "owner_address", "content", "last_transaction_lt",
-    "code_hash", "data_hash", "real_owner"
+    "code_hash", "data_hash", "real_owner", "destroyed"
   };
   PopulateTableStream stream(txn, "nft_items", columns, 1000, false);
   stream.setConflictDoUpdate({"address"}, "nft_items.last_transaction_lt < EXCLUDED.last_transaction_lt");
@@ -134,7 +134,7 @@ void PostgreSQLInserter::insert_nft_items(pqxx::work& txn, const kvrocks_state::
 
   std::initializer_list<std::string_view> dns_columns = {
     "nft_item_address", "nft_item_owner", "domain", "dns_next_resolver", "dns_wallet", "dns_site_adnl",
-    "dns_storage_bag_id", "last_transaction_lt"
+    "dns_storage_bag_id", "last_transaction_lt", "destroyed"
   };
   PopulateTableStream dns_stream(txn, "dns_entries", dns_columns, 1000, false);
   dns_stream.setConflictDoUpdate({"nft_item_address"}, "dns_entries.last_transaction_lt < EXCLUDED.last_transaction_lt");
@@ -158,7 +158,7 @@ void PostgreSQLInserter::reconcile_nft_real_owners(pqxx::work& txn, const kvrock
   }
 
   for (const auto& row : batch.getgems_nft_sales) {
-    if (!row.nft_owner_address) {
+    if (row.destroyed || !row.nft_owner_address) {
       continue;
     }
     txn.exec(R"(
@@ -171,7 +171,7 @@ void PostgreSQLInserter::reconcile_nft_real_owners(pqxx::work& txn, const kvrock
   }
 
   for (const auto& row : batch.getgems_nft_auctions) {
-    if (!row.nft_owner) {
+    if (row.destroyed || !row.nft_owner) {
       continue;
     }
     txn.exec(R"(
@@ -184,7 +184,7 @@ void PostgreSQLInserter::reconcile_nft_real_owners(pqxx::work& txn, const kvrock
   }
 
   for (const auto& row : batch.nft_items) {
-    if (!row.owner_address) {
+    if (row.destroyed || !row.owner_address) {
       continue;
     }
     txn.exec(R"(
@@ -196,6 +196,8 @@ void PostgreSQLInserter::reconcile_nft_real_owners(pqxx::work& txn, const kvrock
         AND s.address = n.owner_address
         AND s.nft_address = n.address
         AND s.nft_owner_address IS NOT NULL
+        AND NOT s.destroyed
+        AND NOT n.destroyed
         AND n.real_owner IS DISTINCT FROM s.nft_owner_address
     )", pqxx::params{row.address, *row.owner_address});
 
@@ -208,6 +210,8 @@ void PostgreSQLInserter::reconcile_nft_real_owners(pqxx::work& txn, const kvrock
         AND a.address = n.owner_address
         AND a.nft_addr = n.address
         AND a.nft_owner IS NOT NULL
+        AND NOT a.destroyed
+        AND NOT n.destroyed
         AND n.real_owner IS DISTINCT FROM a.nft_owner
     )", pqxx::params{row.address, *row.owner_address});
   }
@@ -218,7 +222,7 @@ void PostgreSQLInserter::insert_getgems_nft_sales(pqxx::work& txn, const kvrocks
     "address", "is_complete", "created_at", "marketplace_address", "nft_address", "nft_owner_address", "full_price",
     "marketplace_fee_address", "marketplace_fee", "royalty_address", "royalty_amount",
     "sold_at", "sold_query_id", "jetton_price_dict",
-    "last_transaction_lt", "code_hash", "data_hash"
+    "last_transaction_lt", "code_hash", "data_hash", "destroyed"
   };
   PopulateTableStream stream(txn, "getgems_nft_sales", columns, 1000, false);
   stream.setConflictDoUpdate({"address"}, "getgems_nft_sales.last_transaction_lt < EXCLUDED.last_transaction_lt");
@@ -234,7 +238,7 @@ void PostgreSQLInserter::insert_getgems_nft_auctions(pqxx::work& txn, const kvro
     "min_step", "mp_fee_addr", "mp_fee_factor", "mp_fee_base", "royalty_fee_addr", "royalty_fee_factor",
     "royalty_fee_base", "max_bid", "min_bid", "created_at", "last_bid_at", "is_canceled", "activated",
     "step_time", "last_query_id", "jetton_wallet", "jetton_master", "is_broken_state", "public_key",
-    "last_transaction_lt", "code_hash", "data_hash"
+    "last_transaction_lt", "code_hash", "data_hash", "destroyed"
   };
   PopulateTableStream stream(txn, "getgems_nft_auctions", columns, 1000, false);
   stream.setConflictDoUpdate({"address"}, "getgems_nft_auctions.last_transaction_lt < EXCLUDED.last_transaction_lt");
@@ -246,7 +250,7 @@ void PostgreSQLInserter::insert_getgems_nft_auctions(pqxx::work& txn, const kvro
 
 void PostgreSQLInserter::insert_multisig_contracts(pqxx::work& txn, const kvrocks_state::StateBatch& batch) {
   std::initializer_list<std::string_view> columns = {
-    "address", "next_order_seqno", "threshold", "signers", "proposers", "last_transaction_lt", "code_hash", "data_hash"
+    "address", "next_order_seqno", "threshold", "signers", "proposers", "last_transaction_lt", "code_hash", "data_hash", "destroyed"
   };
   PopulateTableStream stream(txn, "multisig", columns, 1000, false);
   stream.setConflictDoUpdate({"address"}, "multisig.last_transaction_lt < EXCLUDED.last_transaction_lt");
@@ -259,7 +263,7 @@ void PostgreSQLInserter::insert_multisig_contracts(pqxx::work& txn, const kvrock
 void PostgreSQLInserter::insert_multisig_orders(pqxx::work& txn, const kvrocks_state::StateBatch& batch) {
   std::initializer_list<std::string_view> columns = {
     "address", "multisig_address", "order_seqno", "threshold", "sent_for_execution", "approvals_mask",
-    "approvals_num", "expiration_date", "order_boc", "signers", "last_transaction_lt", "code_hash", "data_hash"
+    "approvals_num", "expiration_date", "order_boc", "signers", "last_transaction_lt", "code_hash", "data_hash", "destroyed"
   };
   PopulateTableStream stream(txn, "multisig_orders", columns, 1000, false);
   stream.setConflictDoUpdate({"address"}, "multisig_orders.last_transaction_lt < EXCLUDED.last_transaction_lt");
@@ -273,7 +277,7 @@ void PostgreSQLInserter::insert_vesting_contracts(pqxx::work& txn, const kvrocks
   std::initializer_list<std::string_view> vesting_columns = {
     "address", "vesting_start_time", "vesting_total_duration", "unlock_period",
     "cliff_duration", "vesting_total_amount", "vesting_sender_address", "owner_address",
-    "last_transaction_lt", "code_hash", "data_hash"
+    "last_transaction_lt", "code_hash", "data_hash", "destroyed"
   };
   PopulateTableStream vesting_stream(txn, "vesting_contracts", vesting_columns, 1000, false);
   vesting_stream.setConflictDoUpdate({"address"}, "vesting_contracts.last_transaction_lt < EXCLUDED.last_transaction_lt");
@@ -294,7 +298,7 @@ void PostgreSQLInserter::insert_telemint_contracts(pqxx::work& txn, const kvrock
   std::initializer_list<std::string_view> columns = {
     "address", "token_name", "bidder_address", "bid", "bid_ts", "min_bid", "end_time",
     "beneficiary_address", "initial_min_bid", "max_bid", "min_bid_step", "min_extend_time", "duration",
-    "royalty_numerator", "royalty_denominator", "royalty_destination", "last_transaction_lt", "code_hash", "data_hash"
+    "royalty_numerator", "royalty_denominator", "royalty_destination", "last_transaction_lt", "code_hash", "data_hash", "destroyed"
   };
   PopulateTableStream stream(txn, "telemint_nft_items", columns, 1000, false);
   stream.setConflictDoUpdate({"address"}, "telemint_nft_items.last_transaction_lt < EXCLUDED.last_transaction_lt");
@@ -307,7 +311,7 @@ void PostgreSQLInserter::insert_telemint_contracts(pqxx::work& txn, const kvrock
 void PostgreSQLInserter::insert_dedust_pools(pqxx::work& txn, const kvrocks_state::StateBatch& batch) {
   std::initializer_list<std::string_view> columns = {
     "address", "asset_1", "asset_2", "reserve_1", "reserve_2", "pool_type", "dex", "fee",
-    "last_transaction_lt", "code_hash", "data_hash"
+    "last_transaction_lt", "code_hash", "data_hash", "destroyed"
   };
   PopulateTableStream stream(txn, "dex_pools", columns, 1000, false);
   stream.setConflictDoUpdate({"address"}, "dex_pools.last_transaction_lt < EXCLUDED.last_transaction_lt");

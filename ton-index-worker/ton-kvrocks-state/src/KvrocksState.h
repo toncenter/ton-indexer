@@ -116,10 +116,11 @@ struct PreparedJettonMasterRow {
   std::uint64_t last_transaction_lt;
   td::Bits256 code_hash;
   td::Bits256 data_hash;
+  bool destroyed;
   std::uint32_t source_mc_seqno;
 
   KVROCKS_PREPARED_ROW_AS_TUPLE(address, total_supply, mintable, admin_address, jetton_content, jetton_wallet_code_hash,
-                                last_transaction_lt, code_hash, data_hash);
+                                last_transaction_lt, code_hash, data_hash, destroyed);
 };
 
 struct PreparedJettonWalletRow {
@@ -131,10 +132,11 @@ struct PreparedJettonWalletRow {
   td::Bits256 code_hash;
   td::Bits256 data_hash;
   std::optional<bool> mintless_is_claimed;
+  bool destroyed;
   std::uint32_t source_mc_seqno;
 
   KVROCKS_PREPARED_ROW_AS_TUPLE(balance, address, owner, jetton, last_transaction_lt, code_hash, data_hash,
-                                mintless_is_claimed);
+                                mintless_is_claimed, destroyed);
 };
 
 struct PreparedMintlessMasterRow {
@@ -153,10 +155,11 @@ struct PreparedNftCollectionRow {
   std::uint64_t last_transaction_lt;
   td::Bits256 code_hash;
   td::Bits256 data_hash;
+  bool destroyed;
   std::uint32_t source_mc_seqno;
 
   KVROCKS_PREPARED_ROW_AS_TUPLE(address, next_item_index, owner_address, collection_content, last_transaction_lt,
-                                code_hash, data_hash);
+                                code_hash, data_hash, destroyed);
 };
 
 struct PreparedNftItemRow {
@@ -170,10 +173,11 @@ struct PreparedNftItemRow {
   td::Bits256 code_hash;
   td::Bits256 data_hash;
   std::optional<block::StdAddress> real_owner;
+  bool destroyed;
   std::uint32_t source_mc_seqno;
 
   KVROCKS_PREPARED_ROW_AS_TUPLE(address, init, index, collection_address, owner_address, content, last_transaction_lt,
-                                code_hash, data_hash, real_owner);
+                                code_hash, data_hash, real_owner, destroyed);
 };
 
 struct PreparedDnsEntryRow {
@@ -185,10 +189,11 @@ struct PreparedDnsEntryRow {
   std::optional<td::Bits256> dns_site_adnl;
   std::optional<td::Bits256> dns_storage_bag_id;
   std::uint64_t last_transaction_lt;
+  bool destroyed;
   std::uint32_t source_mc_seqno;
 
   KVROCKS_PREPARED_ROW_AS_TUPLE(nft_item_address, nft_item_owner, domain, dns_next_resolver, dns_wallet,
-                                dns_site_adnl, dns_storage_bag_id, last_transaction_lt);
+                                dns_site_adnl, dns_storage_bag_id, last_transaction_lt, destroyed);
 };
 
 struct PreparedGetgemsSaleRow {
@@ -209,11 +214,13 @@ struct PreparedGetgemsSaleRow {
   std::uint64_t last_transaction_lt;
   td::Bits256 code_hash;
   td::Bits256 data_hash;
+  bool destroyed;
   std::uint32_t source_mc_seqno;
 
   KVROCKS_PREPARED_ROW_AS_TUPLE(address, is_complete, created_at, marketplace_address, nft_address, nft_owner_address,
                                 full_price, marketplace_fee_address, marketplace_fee, royalty_address, royalty_amount,
-                                sold_at, sold_query_id, jetton_price_dict, last_transaction_lt, code_hash, data_hash);
+                                sold_at, sold_query_id, jetton_price_dict, last_transaction_lt, code_hash, data_hash,
+                                destroyed);
 };
 
 struct PreparedGetgemsAuctionRow {
@@ -247,13 +254,14 @@ struct PreparedGetgemsAuctionRow {
   std::uint64_t last_transaction_lt;
   td::Bits256 code_hash;
   td::Bits256 data_hash;
+  bool destroyed;
   std::uint32_t source_mc_seqno;
 
   KVROCKS_PREPARED_ROW_AS_TUPLE(address, end_flag, end_time, mp_addr, nft_addr, nft_owner, last_bid, last_member,
                                 min_step, mp_fee_addr, mp_fee_factor, mp_fee_base, royalty_fee_addr, royalty_fee_factor,
                                 royalty_fee_base, max_bid, min_bid, created_at, last_bid_at, is_canceled, activated,
                                 step_time, last_query_id, jetton_wallet, jetton_master, is_broken_state, public_key,
-                                last_transaction_lt, code_hash, data_hash);
+                                last_transaction_lt, code_hash, data_hash, destroyed);
 };
 
 struct PreparedMultisigContractRow {
@@ -265,10 +273,11 @@ struct PreparedMultisigContractRow {
   std::uint64_t last_transaction_lt;
   td::Bits256 code_hash;
   td::Bits256 data_hash;
+  bool destroyed;
   std::uint32_t source_mc_seqno;
 
   KVROCKS_PREPARED_ROW_AS_TUPLE(address, next_order_seqno, threshold, signers, proposers, last_transaction_lt,
-                                code_hash, data_hash);
+                                code_hash, data_hash, destroyed);
 };
 
 struct PreparedMultisigOrderRow {
@@ -285,11 +294,12 @@ struct PreparedMultisigOrderRow {
   std::uint64_t last_transaction_lt;
   td::Bits256 code_hash;
   td::Bits256 data_hash;
+  bool destroyed;
   std::uint32_t source_mc_seqno;
 
   KVROCKS_PREPARED_ROW_AS_TUPLE(address, multisig_address, order_seqno, threshold, sent_for_execution, approvals_mask,
                                 approvals_num, expiration_date, order_boc, signers, last_transaction_lt, code_hash,
-                                data_hash);
+                                data_hash, destroyed);
 };
 
 struct PreparedDedustPoolRow {
@@ -304,10 +314,11 @@ struct PreparedDedustPoolRow {
   std::uint64_t last_transaction_lt;
   td::Bits256 code_hash;
   td::Bits256 data_hash;
+  bool destroyed;
   std::uint32_t source_mc_seqno;
 
   KVROCKS_PREPARED_ROW_AS_TUPLE(address, asset_1, asset_2, reserve_1, reserve_2, pool_type, dex, fee,
-                                last_transaction_lt, code_hash, data_hash);
+                                last_transaction_lt, code_hash, data_hash, destroyed);
 };
 
 struct PreparedVestingContractRow {
@@ -322,11 +333,12 @@ struct PreparedVestingContractRow {
   std::uint64_t last_transaction_lt;
   td::Bits256 code_hash;
   td::Bits256 data_hash;
+  bool destroyed;
   std::uint32_t source_mc_seqno;
 
   KVROCKS_PREPARED_ROW_AS_TUPLE(address, vesting_start_time, vesting_total_duration, unlock_period, cliff_duration,
                                 vesting_total_amount, vesting_sender_address, owner_address, last_transaction_lt,
-                                code_hash, data_hash);
+                                code_hash, data_hash, destroyed);
 };
 
 struct PreparedVestingWhitelistRow {
@@ -357,12 +369,13 @@ struct PreparedTelemintRow {
   std::uint64_t last_transaction_lt;
   td::Bits256 code_hash;
   td::Bits256 data_hash;
+  bool destroyed;
   std::uint32_t source_mc_seqno;
 
   KVROCKS_PREPARED_ROW_AS_TUPLE(address, token_name, bidder_address, bid, bid_ts, min_bid, end_time,
                                 beneficiary_address, initial_min_bid, max_bid, min_bid_step, min_extend_time,
                                 duration, royalty_numerator, royalty_denominator, royalty_destination,
-                                last_transaction_lt, code_hash, data_hash);
+                                last_transaction_lt, code_hash, data_hash, destroyed);
 };
 
 struct PreparedContractMethodsRow {

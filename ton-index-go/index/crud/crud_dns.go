@@ -51,12 +51,12 @@ func (db *DbClient) QueryDNSRecords(lim_req models.LimitRequest, req models.DNSR
         FROM dns_entries`
 	if req.WalletAddress != nil {
 		query += `
-        WHERE dns_wallet = $1
+        WHERE dns_wallet = $1 AND NOT destroyed
 		ORDER BY LENGTH(domain), domain ASC ` + limit_query
 		queryArg = req.WalletAddress
 	} else {
 		query += `
-        WHERE domain = $1
+        WHERE domain = $1 AND NOT destroyed
 		ORDER BY LENGTH(domain), domain ASC ` + limit_query
 		queryArg = req.Domain
 	}

@@ -800,6 +800,7 @@ class JettonWallet(Base):
     last_transaction_lt = Column(BigInteger)
     code_hash = Column(String)
     data_hash = Column(String)
+    destroyed = Column(Boolean, default=False)
 
     transfers: List["JettonTransfer"] = relationship("JettonTransfer",
                                                      foreign_keys=[address],
@@ -826,6 +827,7 @@ class JettonMaster(Base):
     code_hash = Column(String)
     data_hash = Column(String)
     last_transaction_lt = Column(BigInteger)
+    destroyed = Column(Boolean, default=False)
 
 
 class JettonTransfer(Base):
@@ -873,6 +875,7 @@ class NFTCollection(Base):
     data_hash = Column(String)
     code_hash = Column(String)
     last_transaction_lt = Column(BigInteger)
+    destroyed = Column(Boolean, default=False)
 
     items: List["NFTItem"] = relationship('NFTItem',
                                           foreign_keys=[address],
@@ -890,6 +893,7 @@ class NFTItem(Base):
     last_transaction_lt = Column(BigInteger)
     code_hash = Column(String)
     data_hash = Column(String)
+    destroyed = Column(Boolean, default=False)
 
     collection: Optional[NFTCollection] = relationship('NFTCollection',
                                                        foreign_keys=[collection_address],
@@ -933,6 +937,7 @@ class NftSale(Base):
     royalty_address = Column(String)
     royalty_amount = Column(Numeric)
     code_hash = Column(String)
+    destroyed = Column(Boolean, default=False)
 
 
 class NftAuction(Base):
@@ -951,6 +956,7 @@ class NftAuction(Base):
     max_bid = Column(Numeric)
     min_bid = Column(Numeric)
     code_hash = Column(String)
+    destroyed = Column(Boolean, default=False)
 
 
 class MultisigOrder(Base):
@@ -970,6 +976,7 @@ class MultisigOrder(Base):
     last_transaction_lt = Column(BigInteger)
     code_hash = Column(String)
     data_hash = Column(String)
+    destroyed = Column(Boolean, default=False)
 
 
 class LatestAccountState(Base):
