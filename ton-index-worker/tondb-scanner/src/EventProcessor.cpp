@@ -156,9 +156,9 @@ void EventProcessor::process_transactions(const std::vector<schema::Transaction>
     // template lambda to process td::Result<T> event
     auto process = [events, &tx, &ig](auto&& event, td::Promise<> promise) mutable {
       if (event.is_error()) {
-        LOG(DEBUG) << "Failed to parse event (tx hash " << tx.hash << "): " << event.move_as_error();
+        LOG(DEBUG) << "Failed to parse event (tx hash " << tx.hash.to_hex() << "): " << event.move_as_error();
       } else {
-        LOG(DEBUG) << "Event: " << event.ok().transaction_hash;
+        LOG(DEBUG) << "Event: " << event.ok().transaction_hash.to_hex();
         std::lock_guard<std::mutex> guard(events_mutex);
         events->push_back(event.move_as_ok());
       }

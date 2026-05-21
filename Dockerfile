@@ -4,7 +4,7 @@ FROM ubuntu:24.04 AS core-builder
 RUN DEBIAN_FRONTEND=noninteractive TZ=Etc/UTC apt-get update -y && apt-get -y install tzdata && rm -rf /var/lib/{apt,dpkg,cache,log}/
 RUN apt-get update -y \
     && apt-get install -y build-essential cmake clang-20 openssl libssl-dev zlib1g-dev \
-                   gperf wget git curl ccache libmicrohttpd-dev liblz4-dev \
+                   gperf wget git curl ccache libcurl4-openssl-dev libmicrohttpd-dev liblz4-dev \
                    pkg-config libsecp256k1-dev libsodium-dev libhiredis-dev python3-dev libpq-dev \
                    automake libjemalloc-dev lsb-release software-properties-common gnupg \
                    autoconf libtool \
@@ -20,6 +20,7 @@ COPY ton-index-worker/ton-trace-emulator/ /app/ton-trace-emulator/
 COPY ton-index-worker/ton-trace-task-emulator/ /app/ton-trace-task-emulator/
 COPY ton-index-worker/tondb-scanner/ /app/tondb-scanner/
 COPY ton-index-worker/ton-marker/ /app/ton-marker/
+COPY ton-index-worker/ton-observability/ /app/ton-observability/
 COPY ton-index-worker/CMakeLists.txt /app/
 
 WORKDIR /app/build

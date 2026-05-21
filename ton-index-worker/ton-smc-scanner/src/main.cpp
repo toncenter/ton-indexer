@@ -200,7 +200,7 @@ int main(int argc, char *argv[]) {
   td::actor::ActorOwn<PostgreSQLInsertManager> insert_manager;
 
   // auto watcher = td::create_shared_destructor([] {
-  //   td::actor::SchedulerContext::get()->stop();
+  //   td::actor::SchedulerContext::get().stop();
   // });
   scheduler.run_in_context([&] { 
     db_scanner = td::actor::create_actor<DbScanner>("scanner", db_root, dbs_readonly);

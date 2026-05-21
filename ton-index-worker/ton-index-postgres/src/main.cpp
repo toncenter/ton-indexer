@@ -308,7 +308,7 @@ int main(int argc, char *argv[]) {
   NftItemDetectorR::is_testnet = testnet;
 
   auto watcher = td::create_shared_destructor([] {
-    td::actor::SchedulerContext::get()->stop();
+    td::actor::SchedulerContext::get().stop();
   });
 
   td::actor::Scheduler scheduler({td::actor::Scheduler::NodeInfo{threads, io_workers}});

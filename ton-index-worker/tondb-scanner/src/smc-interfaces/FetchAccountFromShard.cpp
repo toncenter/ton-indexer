@@ -35,7 +35,7 @@ void FetchAccountFromShardV2::start_up()
         block::gen::ShardAccount::Record acc_info;
         if (!tlb::csr_unpack(std::move(shard_account_csr), acc_info))
         {
-            LOG(ERROR) << "Failed to unpack ShardAccount " << address_.addr;
+            LOG(ERROR) << "Failed to unpack ShardAccount " << address_.addr.to_hex();
             stop();
             return;
         }

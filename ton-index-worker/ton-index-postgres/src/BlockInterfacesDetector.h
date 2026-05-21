@@ -70,8 +70,13 @@ public:
                 continue;
             }
             td::actor::create_actor<FullDetector>("InterfacesDetector", account_state.account, account_state.code, account_state.data, shard_states, block_->mc_block_.config_, 
-                td::PromiseCreator::lambda([SelfId = actor_id(this), account_state, promise = ig.get_promise()](std::vector<typename FullDetector::DetectedInterface> interfaces) mutable {
-                    td::actor::send_closure(SelfId, &BlockInterfaceProcessor::process_address_interfaces, account_state.account, std::move(interfaces), 
+                td::PromiseCreator::lambda([SelfId = actor_id(this), account_state, promise = ig.get_promise()](td::Result<std::vector<typename FullDetector::DetectedInterface>> interfaces) mutable {
+                    if (interfaces.is_error()) {
+                        promise.set_error(interfaces.move_as_error());
+                        return;
+                    }
+                    auto detected_interfaces = interfaces.move_as_ok();
+                    td::actor::send_closure(SelfId, &BlockInterfaceProcessor::process_address_interfaces, account_state.account, std::move(detected_interfaces), 
                                             account_state.code_hash.value(), account_state.data_hash.value(), account_state.last_trans_lt, account_state.timestamp, std::move(promise));
             })).release();
         }

@@ -25,8 +25,12 @@ void TraceInterfaceDetector::start_up() {
         trace_.interfaces[address] = {};
         td::actor::create_actor<Trace::Detector>
             ("InterfacesDetector", address, account.code, account.data, shard_states_, config_,
-            td::PromiseCreator::lambda([SelfId = actor_id(this), address, promise = ig.get_promise()](std::vector<typename Trace::Detector::DetectedInterface> interfaces) mutable {
-                td::actor::send_closure(SelfId, &TraceInterfaceDetector::got_interfaces, address, std::move(interfaces), false, std::move(promise));
+            td::PromiseCreator::lambda([SelfId = actor_id(this), address, promise = ig.get_promise()](td::Result<std::vector<typename Trace::Detector::DetectedInterface>> interfaces) mutable {
+                if (interfaces.is_error()) {
+                    promise.set_error(interfaces.move_as_error());
+                    return;
+                }
+                td::actor::send_closure(SelfId, &TraceInterfaceDetector::got_interfaces, address, interfaces.move_as_ok(), false, std::move(promise));
             })).release();
         emulated_detector_tasks++;
     }
@@ -74,8 +78,12 @@ void TraceInterfaceDetector::start_up() {
 
         if (account_state->status == block::Account::acc_active && account_state->code.not_null() && account_state->data.not_null()) {
             td::actor::create_actor<Trace::Detector>("InterfacesDetector", address, account_state->code, account_state->data, shard_states_, config_,
-                td::PromiseCreator::lambda([SelfId = actor_id(this), address, promise = ig.get_promise()](std::vector<typename Trace::Detector::DetectedInterface> interfaces) mutable {
-                    td::actor::send_closure(SelfId, &TraceInterfaceDetector::got_interfaces, address, std::move(interfaces), true, std::move(promise));
+                td::PromiseCreator::lambda([SelfId = actor_id(this), address, promise = ig.get_promise()](td::Result<std::vector<typename Trace::Detector::DetectedInterface>> interfaces) mutable {
+                    if (interfaces.is_error()) {
+                        promise.set_error(interfaces.move_as_error());
+                        return;
+                    }
+                    td::actor::send_closure(SelfId, &TraceInterfaceDetector::got_interfaces, address, interfaces.move_as_ok(), true, std::move(promise));
                 })).release();
         } else {
             // Account is not active, skip interface detection
