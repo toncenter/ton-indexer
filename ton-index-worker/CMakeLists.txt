@@ -28,6 +28,12 @@ add_subdirectory(external/libpqxx EXCLUDE_FROM_ALL)
 # that configured library instead of adding its bundled target with the same
 # plain name.
 set(WITH_SYSTEM_LZ4 ON CACHE BOOL "Use configured LZ4 for clickhouse-cpp" FORCE)
+set(WITH_SYSTEM_ABSEIL ON CACHE BOOL "Use configured Abseil for clickhouse-cpp" FORCE)
+if (TARGET absl::int128)
+    # clickhouse-cpp calls find_package(absl); route it to TON's in-tree Abseil
+    # targets instead of importing a second system Abseil package.
+    set(absl_DIR "${CMAKE_CURRENT_LIST_DIR}/cmake/absl" CACHE PATH "Use TON-provided Abseil targets for clickhouse-cpp" FORCE)
+endif()
 add_subdirectory(external/clickhouse-cpp EXCLUDE_FROM_ALL)
 set(REDIS_PLUS_PLUS_BUILD_TEST OFF CACHE BOOL "disable test" FORCE)
 
