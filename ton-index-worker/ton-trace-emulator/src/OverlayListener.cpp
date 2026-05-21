@@ -9,7 +9,8 @@ void OverlayListener::start_up() {
     auto pk = ton::PrivateKey{ton::privkeys::Ed25519::random()};
     auto pub = pk.compute_public_key();
     keyring_ = ton::keyring::Keyring::create("");
-    td::actor::send_closure(keyring_, &ton::keyring::Keyring::add_key, std::move(pk), true, [](td::Unit) {});
+    td::actor::send_closure(keyring_, &ton::keyring::Keyring::add_key, std::move(pk), true,
+                            td::PromiseCreator::lambda([](td::Result<td::Unit>) {}));
 
     adnl_ = ton::adnl::Adnl::create("", keyring_.get());
 
@@ -89,10 +90,8 @@ void OverlayListener::start_up() {
 
     td::actor::send_closure(adnl_, &ton::adnl::Adnl::register_network_manager, adnl_network_manager_.get());
 
-    ton::adnl::AdnlAddress x = ton::adnl::AdnlAddressImpl::create(
-        ton::create_tl_object<ton::ton_api::adnl_address_udp>(addr.get_ipv4(), addr.get_port()));
     ton::adnl::AdnlAddressList addr_list;
-    addr_list.add_addr(x);
+    addr_list.add_udp_adnl_address(addr).ensure();
     addr_list.set_version(static_cast<td::int32>(td::Clocks::system()));
     addr_list.set_reinit_date(ton::adnl::Adnl::adnl_start_time());
     td::actor::send_closure(adnl_, &ton::adnl::Adnl::add_id, ton::adnl::AdnlNodeIdFull{pub}, std::move(addr_list),

@@ -113,7 +113,7 @@ int main(int argc, char *argv[]) {
   td::actor::ActorOwn<DbScanner> db_scanner;
 
   auto watcher = td::create_shared_destructor([] {
-    td::actor::SchedulerContext::get()->stop();
+    td::actor::SchedulerContext::get().stop();
   });
 
   scheduler.run_in_context([&, watcher = std::move(watcher)] { 

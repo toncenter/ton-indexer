@@ -23,6 +23,11 @@ endif()
 list(APPEND CMAKE_MODULE_PATH ${CMAKE_SOURCE_DIR}/cmake)
 add_subdirectory(external/ton EXCLUDE_FROM_ALL)
 add_subdirectory(external/libpqxx EXCLUDE_FROM_ALL)
+
+# The TON subtree already provides an lz4 target.  Tell clickhouse-cpp to use
+# that configured library instead of adding its bundled target with the same
+# plain name.
+set(WITH_SYSTEM_LZ4 ON CACHE BOOL "Use configured LZ4 for clickhouse-cpp" FORCE)
 add_subdirectory(external/clickhouse-cpp EXCLUDE_FROM_ALL)
 set(REDIS_PLUS_PLUS_BUILD_TEST OFF CACHE BOOL "disable test" FORCE)
 

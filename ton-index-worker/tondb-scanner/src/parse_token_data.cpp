@@ -2,6 +2,8 @@
 #include "tokens-tlb.h"
 #include "common/checksum.h"
 
+#include "td/utils/utf8.h"
+
 
 td::Result<std::string> parse_snake_data(td::Ref<vm::CellSlice> data) {
   size_t bsize = 1024 * 8;

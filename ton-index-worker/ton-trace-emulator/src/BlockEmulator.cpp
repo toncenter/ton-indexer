@@ -137,7 +137,7 @@ public:
                     res.push_back(tx_info);
                 }
             }
-        } catch (vm::VmError err) {
+        } catch (const vm::VmError& err) {
             promise_.set_error(td::Status::Error(PSLICE() << "error while parsing AccountBlocks : " << err.get_msg()));
             stop();
             return;

@@ -52,7 +52,7 @@ TEST(convert, to_std_address_with_anycast) {
 
 TEST(TonDbScanner, JettonWalletDetector_parse_burn) {
   td::actor::Scheduler scheduler({1});
-  auto watcher = td::create_shared_destructor([] { td::actor::SchedulerContext::get()->stop(); });
+  auto watcher = td::create_shared_destructor([] { td::actor::SchedulerContext::get().stop(); });
 
   block::StdAddress addr(std::string("EQDKC7jQ_tIJuYyrWfI4FIAN-hFHakG3GrATpOiqBVtsGOd5"));
   // message payload for tx xiOZW3mVbHkCtgLxQqXVAg4DIgxrTE3j9lHw6H3P/Yg=, correct layout
@@ -104,7 +104,7 @@ TEST(TonDbScanner, JettonWalletDetector_parse_burn) {
 
 // TEST(TonDbScanner, JettonWalletDetector) {
 //   td::actor::Scheduler scheduler({1});
-//   auto watcher = td::create_shared_destructor([] { td::actor::SchedulerContext::get()->stop(); });
+//   auto watcher = td::create_shared_destructor([] { td::actor::SchedulerContext::get().stop(); });
 
 //   block::StdAddress addr(std::string("EQDKC7jQ_tIJuYyrWfI4FIAN-hFHakG3GrATpOiqBVtsGOd5"));
 //   auto code_cell = vm::std_boc_deserialize(td::base64_decode(td::Slice("te6cckECEgEAAzEAART/APSkE/S88sgLAQIBYgIDAgLLBAUAG6D2BdqJofQB9IH0gahhAgEgBgcCAWILDAIBSAgJAfH4Hpn/0AfSAQ+AH2omh9AH0gfSBqGCibUKkVY4L5cWCUYX/5cWEqGiE4KhAJqgoB5CgCfQEsZ4sA54tmZJFkZYCJegB6AGWAZJB8gDg6ZGWBZQPl/+ToAn0gegIY/QAQa6ThAHlxYjvADGRlgqgEZ4s4fQEL5bWJ5kCgC3QgxwCSXwTgAdDTAwFxsJUTXwPwEuD6QPpAMfoAMXHXIfoAMfoAMALTHyGCEA+KfqW6lTE0WfAP4CGCEBeNRRm6ljFERAPwEOA1ghBZXwe8upNZ8BHgXwSED/LwgAEV+kQwcLry4U2ACughAXjUUZyMsfGcs/UAf6AiLPFlAGzxYl+gJQA88WyVAFzCORcpFx4lAIqBOgggiYloCqAIIImJaAoKAUvPLixQTJgED7ABAjyFAE+gJYzxYBzxbMye1UAgEgDQ4AgUgCDXIe1E0PoA+kD6QNQwBNMfIYIQF41FGboCghB73ZfeuhKx8uLF0z8x+gAwE6BQI8hQBPoCWM8WAc8WzMntVIA/c7UTQ+gD6QPpA1DAI0z/6AFFRoAX6QPpAU1vHBVRzbXBUIBNUFAPIUAT6AljPFgHPFszJIsjLARL0APQAywDJ+QBwdMjLAsoHy//J0FANxwUcsfLiwwr6AFGooYIImJaAggiYloAStgihggiYloCgGKEn4w8l1wsBwwAjgDxARAOM7UTQ+gD6QPpA1DAH0z/6APpA9AQwUWKhUkrHBfLiwSjC//LiwoIImJaAqgAXoBe88uLDghB73ZfeyMsfyz9QBfoCIc8WUAPPFvQAyXGAGMjLBSTPFnD6AstqzMmAQPsAQBPIUAT6AljPFgHPFszJ7VSAAcFJ5oBihghBzYtCcyMsfUjDLP1j6AlAHzxZQB88WyXGAEMjLBSTPFlAG+gIVy2oUzMlx+wAQJBAjAA4QSRA4N18EAHbCALCOIYIQ1TJ223CAEMjLBVAIzxZQBPoCFstqEssfEss/yXL7AJM1bCHiA8hQBPoCWM8WAc8WzMntVLp4DOo=")).move_as_ok()).move_as_ok();
