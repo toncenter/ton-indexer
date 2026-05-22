@@ -6,12 +6,13 @@ import (
 	"encoding/base64"
 	"flag"
 	"fmt"
-	"github.com/toncenter/ton-indexer/ton-index-go/index/crud"
-	indexModels "github.com/toncenter/ton-indexer/ton-index-go/index/models"
 	"log"
 	"math/rand"
 	"strconv"
 	"time"
+
+	"github.com/toncenter/ton-indexer/ton-index-go/index/crud"
+	indexModels "github.com/toncenter/ton-indexer/ton-index-go/index/models"
 
 	"github.com/go-redis/redis/v8"
 	"github.com/gofiber/fiber/v2"
@@ -436,7 +437,7 @@ func main() {
 		log.Print("AddressBook and Metadata will not be available")
 	} else {
 		log.Print("PostgreSQL connection string: ", *pg)
-		pool, err = crud.NewDbClient(*pg, 100, 0)
+		pool, err = crud.NewDbClient(*pg, 100, 0, nil) // FIXME: Support kvrocks
 		if err != nil {
 			log.Print("failed to connect to PostgreSQL: ", err)
 			log.Print("AddressBook and Metadata will not be available")

@@ -939,6 +939,11 @@ func (a *Action) ToRawAction() (*models.RawAction, error) {
 
 	traceExternalHash := models.HashType(a.TraceExternalHash)
 
+	accounts := make([]models.AccountAddress, 0, len(a.Accounts))
+	for _, acc := range a.Accounts {
+		accounts = append(accounts, models.AccountAddress(acc))
+	}
+
 	raw := &models.RawAction{
 		TraceId:               ptrHashType(a.TraceId),
 		ActionId:              models.HashType(a.ActionId),
@@ -968,7 +973,7 @@ func (a *Action) ToRawAction() (*models.RawAction, error) {
 		TraceExternalHashNorm: traceExternalHashNorm,
 		ExtraCurrencies:       map[string]string{},
 		AncestorType:          a.AncestorType,
-		Accounts:              a.Accounts,
+		Accounts:              accounts,
 	}
 
 	if a.TonTransferData != nil {
@@ -1506,12 +1511,12 @@ func (m *trMessage) toMessage(traceId string, direction string, txLt uint64, txH
 		Bounced:              m.Bounced,
 		ImportFee:            m.ImportFee,
 		BodyHash:             &bodyHashType,
-		MessageContent:       &models.MessageContent{Hash: &bodyHashType, Body: &m.BodyBoc},
+		MessageContent:       &models.MessageContent{Hash: &bodyHashType, Body: new(models.BytesType(m.BodyBoc))},
 		InitStateHash:        initStateHash,
 		MsgHashNorm:          hashNorm,
 	}
 	if initStateBoc != nil {
-		msg.InitState = &models.MessageContent{Hash: initStateHash, Body: initStateBoc}
+		msg.InitState = &models.MessageContent{Hash: initStateHash, Body: new(models.BytesType(*initStateBoc))}
 	}
 
 	return msg, nil

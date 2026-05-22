@@ -1,13 +1,8 @@
 module imgproxy-url-resigner
 
-go 1.23
+go 1.26.3
 
-toolchain go1.23.6
-
-require (
-	github.com/jackc/pgx/v5 v5.7.1
-
-)
+require github.com/jackc/pgx/v5 v5.7.1
 
 require (
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect

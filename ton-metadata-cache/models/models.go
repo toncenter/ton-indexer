@@ -83,5 +83,5 @@ type AddressInfoRequest struct {
 // Uses index.AddressMetadata and index.AddressBook from ton-index-go.
 type AddressInfoResponse struct {
 	Metadata    map[string]models.AddressMetadata `json:"metadata,omitempty"`
-	AddressBook models.AddressBook                `json:"address_book,omitempty"`
+	AddressBook models.GenericAddressBook         `json:"address_book,omitempty"`
 }
