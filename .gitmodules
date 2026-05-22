@@ -7,8 +7,8 @@
 	url = https://github.com/jtv/libpqxx.git
 [submodule "external/clickhouse-cpp"]
 	path = ton-index-worker/external/clickhouse-cpp
-	url = https://github.com/kdimentionaltree/clickhouse-cpp.git
-  branch = absl-fix
+	url = https://github.com/clickhouse/clickhouse-cpp.git
+	branch = master
 [submodule "external/redis-plus-plus"]
 	path = ton-index-worker/external/redis-plus-plus
 	url = https://github.com/sewenew/redis-plus-plus.git
