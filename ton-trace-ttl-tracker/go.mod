@@ -1,10 +1,9 @@
 module redis-ttl-tracker
 
-go 1.23.2
+go 1.26.3
 
 require (
 	github.com/deckarep/golang-set v1.8.0
-	github.com/mattn/go-sqlite3 v1.14.24
 	github.com/redis/go-redis/v9 v9.7.0
 	github.com/sirupsen/logrus v1.9.3
 	github.com/vmihailenco/msgpack/v5 v5.4.1

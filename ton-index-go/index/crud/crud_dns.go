@@ -2,28 +2,30 @@ package crud
 
 import (
 	"context"
+
 	"github.com/toncenter/ton-indexer/ton-index-go/index/models"
 )
 
-func (db *DbClient) QueryDNSRecords(lim_req models.LimitRequest, req models.DNSRecordsRequest, settings models.RequestSettings) ([]models.DNSRecord, models.AddressBook, error) {
+func (db *DbClient) QueryDNSRecords(req models.DNSRecordsRequest, settings models.RequestSettings) ([]models.DNSRecord, models.AddressBook, error) {
+	lim_req := req.GetLimitParams()
 	ctx, cancel_ctx := context.WithTimeout(context.Background(), settings.Timeout)
 	defer cancel_ctx()
 
 	if db.Kvrocks != nil {
-		records, err := db.Kvrocks.QueryDNSRecords(ctx, lim_req, req, settings)
+		records, err := db.Kvrocks.QueryDNSRecords(ctx, req, settings)
 		if err != nil {
 			return nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 		}
 		book := models.AddressBook{}
 		if !settings.NoAddressBook {
-			addr_list := []string{}
+			addr_list := []models.AccountAddress{}
 			for _, r := range records {
-				addr_list = append(addr_list, string(r.NftItemAddress))
+				addr_list = append(addr_list, r.NftItemAddress)
 				if r.NftItemOwner != nil {
-					addr_list = append(addr_list, string(*r.NftItemOwner))
+					addr_list = append(addr_list, *r.NftItemOwner)
 				}
 				if r.Wallet != nil {
-					addr_list = append(addr_list, string(*r.Wallet))
+					addr_list = append(addr_list, *r.Wallet)
 				}
 			}
 			book, err = db.queryKvrocksAddressBook(addr_list, settings)
@@ -78,14 +80,14 @@ func (db *DbClient) QueryDNSRecords(lim_req models.LimitRequest, req models.DNSR
 	}
 	book := models.AddressBook{}
 	if !settings.NoAddressBook {
-		addr_list := []string{}
+		addr_list := []models.AccountAddress{}
 		for _, r := range records {
-			addr_list = append(addr_list, string(r.NftItemAddress))
+			addr_list = append(addr_list, r.NftItemAddress)
 			if r.NftItemOwner != nil {
-				addr_list = append(addr_list, string(*r.NftItemOwner))
+				addr_list = append(addr_list, *r.NftItemOwner)
 			}
 			if r.Wallet != nil {
-				addr_list = append(addr_list, string(*r.Wallet))
+				addr_list = append(addr_list, *r.Wallet)
 			}
 		}
 		if len(addr_list) > 0 {

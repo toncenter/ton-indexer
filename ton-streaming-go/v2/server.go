@@ -229,8 +229,8 @@ func (rl *RateLimiter) GetAddressLimit(limitingKey string) int {
 ////////////////////////////////////////////////////////////////////////////////
 
 type eventSet map[EventType]struct{}
-type AddressSet map[string]struct{}
-type TraceSet map[string]struct{}
+type AddressSet map[indexModels.AccountAddress]struct{}
+type TraceSet map[indexModels.HashType]struct{}
 
 type Subscription struct {
 	SubscribedAddresses  AddressSet
@@ -251,7 +251,7 @@ func makeEventSet(types []EventType) eventSet {
 	return s
 }
 
-func makeAddressSet(addrs []string) AddressSet {
+func makeAddressSet(addrs []indexModels.AccountAddress) AddressSet {
 	s := make(AddressSet, len(addrs))
 	for _, addr := range addrs {
 		s[addr] = struct{}{}
@@ -259,7 +259,7 @@ func makeAddressSet(addrs []string) AddressSet {
 	return s
 }
 
-func makeTraceSet(traces []string) TraceSet {
+func makeTraceSet(traces []indexModels.HashType) TraceSet {
 	s := make(TraceSet, len(traces))
 	for _, trace := range traces {
 		s[trace] = struct{}{}
@@ -267,28 +267,28 @@ func makeTraceSet(traces []string) TraceSet {
 	return s
 }
 
-func (s *Subscription) Replace(addresses []string, eventTypes []EventType) {
+func (s *Subscription) Replace(addresses []indexModels.AccountAddress, eventTypes []EventType) {
 	s.SubscribedAddresses = makeAddressSet(addresses)
 	s.EventTypes = makeEventSet(eventTypes)
 }
 
-func (s *Subscription) ReplaceTraces(traces []string) {
+func (s *Subscription) ReplaceTraces(traces []indexModels.HashType) {
 	s.SubscribedTraces = makeTraceSet(traces)
 }
 
-func (s *Subscription) Unsubscribe(addresses []string) {
+func (s *Subscription) Unsubscribe(addresses []indexModels.AccountAddress) {
 	for _, addr := range addresses {
 		delete(s.SubscribedAddresses, addr)
 	}
 }
 
-func (s *Subscription) UnsubscribeTraces(traces []string) {
+func (s *Subscription) UnsubscribeTraces(traces []indexModels.HashType) {
 	for _, trace := range traces {
 		delete(s.SubscribedTraces, trace)
 	}
 }
 
-func (s *Subscription) InterestedIn(eventType EventType, eventAddresses []string) bool {
+func (s *Subscription) InterestedIn(eventType EventType, eventAddresses []indexModels.AccountAddress) bool {
 	if s.EventTypes == nil {
 		return false
 	}
@@ -303,7 +303,7 @@ func (s *Subscription) InterestedIn(eventType EventType, eventAddresses []string
 	return false
 }
 
-func (s *Subscription) InterestedInTrace(eventType EventType, traceExternalHashNorm string) bool {
+func (s *Subscription) InterestedInTrace(eventType EventType, traceExternalHashNorm indexModels.HashType) bool {
 	if s.EventTypes == nil {
 		return false
 	}
@@ -331,7 +331,7 @@ type Client struct {
 	LimitingKey                    string
 	Connected                      bool
 	Subscription                   Subscription
-	TracesForPotentialInvalidation map[string]bool // traceExternalHashNorm -> true
+	TracesForPotentialInvalidation map[indexModels.HashType]bool // traceExternalHashNorm -> true
 	SendEvent                      func([]byte) error
 	sendChan                       chan []byte
 	mu                             sync.Mutex
@@ -390,7 +390,7 @@ func NewClientManager() *ClientManager {
 // - is interested in any of the given event types for given addresses
 // - AND has IncludeAddressBook / IncludeMetadata true
 // AND will actually receive this event with given finality.
-func (manager *ClientManager) shouldFetchAddressBookAndMetadata(eventTypes []EventType, eventFinality indexModels.FinalityState, addressesToNotify []string) (bool, bool) {
+func (manager *ClientManager) shouldFetchAddressBookAndMetadata(eventTypes []EventType, eventFinality indexModels.FinalityState, addressesToNotify []indexModels.AccountAddress) (bool, bool) {
 	shouldFetchAddressBook := false
 	shouldFetchMetadata := false
 
@@ -423,7 +423,7 @@ func (manager *ClientManager) shouldFetchAddressBookAndMetadata(eventTypes []Eve
 
 // shouldFetchAddressBookAndMetadataForTrace checks if any connected client
 // subscribed to the trace will receive this event and needs address book or metadata.
-func (manager *ClientManager) shouldFetchAddressBookAndMetadataForTrace(eventFinality indexModels.FinalityState, traceExternalHashNorm string) (bool, bool) {
+func (manager *ClientManager) shouldFetchAddressBookAndMetadataForTrace(eventFinality indexModels.FinalityState, traceExternalHashNorm indexModels.HashType) (bool, bool) {
 	shouldFetchAddressBook := false
 	shouldFetchMetadata := false
 
@@ -502,7 +502,7 @@ func (manager *ClientManager) Run() {
 // Address book / metadata fetching
 ////////////////////////////////////////////////////////////////////////////////
 
-func fetchAddressBookAndMetadata(ctx context.Context, addrBookAddresses []string, metadataAddresses []string, includeAddressBook bool, includeMetadata bool) (*indexModels.AddressBook, *indexModels.Metadata) {
+func fetchAddressBookAndMetadata(ctx context.Context, addrBookAddresses []indexModels.AccountAddress, metadataAddresses []indexModels.AccountAddress, includeAddressBook bool, includeMetadata bool) (*indexModels.AddressBook, *indexModels.Metadata) {
 	var addressBook *indexModels.AddressBook
 	var metadata *indexModels.Metadata
 
@@ -551,8 +551,8 @@ func fetchAddressBookAndMetadata(ctx context.Context, addrBookAddresses []string
 ////////////////////////////////////////////////////////////////////////////////
 
 type TraceInvalidatedNotification struct {
-	Type                  EventType `json:"type"`
-	TraceExternalHashNorm string    `json:"trace_external_hash_norm"`
+	Type                  EventType            `json:"type"`
+	TraceExternalHashNorm indexModels.HashType `json:"trace_external_hash_norm"`
 }
 
 var _ Notification = (*TraceInvalidatedNotification)(nil)
@@ -566,13 +566,13 @@ func (n *TraceInvalidatedNotification) AdjustForClient(client *Client) any {
 }
 
 type ActionsNotification struct {
-	Type                  EventType                 `json:"type"` // always "actions"
-	Finality              indexModels.FinalityState `json:"finality,string"`
-	TraceExternalHashNorm string                    `json:"trace_external_hash_norm"`
-	Actions               []*indexModels.Action     `json:"actions"`
-	ActionAddresses       [][]string                `json:"-"` // used internally
-	AddressBook           *indexModels.AddressBook  `json:"address_book,omitempty"`
-	Metadata              *indexModels.Metadata     `json:"metadata,omitempty"`
+	Type                  EventType                      `json:"type"` // always "actions"
+	Finality              indexModels.FinalityState      `json:"finality,string"`
+	TraceExternalHashNorm indexModels.HashType           `json:"trace_external_hash_norm"`
+	Actions               []*indexModels.Action          `json:"actions"`
+	ActionAddresses       [][]indexModels.AccountAddress `json:"-"` // used internally
+	AddressBook           *indexModels.AddressBook       `json:"address_book,omitempty"`
+	Metadata              *indexModels.Metadata          `json:"metadata,omitempty"`
 }
 
 var _ Notification = (*ActionsNotification)(nil)
@@ -584,7 +584,7 @@ func (n *ActionsNotification) AdjustForClient(client *Client) any {
 	}
 
 	var adjustedActions []*indexModels.Action
-	var adjustedActionAddresses [][]string
+	var adjustedActionAddresses [][]indexModels.AccountAddress
 	var adjustedAddressBook *indexModels.AddressBook
 	var adjustedMetadata *indexModels.Metadata
 	if n.AddressBook != nil {
@@ -593,7 +593,7 @@ func (n *ActionsNotification) AdjustForClient(client *Client) any {
 	if n.Metadata != nil {
 		adjustedMetadata = &indexModels.Metadata{}
 	}
-	allAddresses := map[string]bool{}
+	allAddresses := map[indexModels.AccountAddress]bool{}
 
 	supportedActionsSet := mapset.NewSet(client.Subscription.SupportedActionTypes...)
 	filterActionsSet := mapset.NewSet(client.Subscription.ActionTypes...)
@@ -657,7 +657,7 @@ func (n *ActionsNotification) AdjustForClient(client *Client) any {
 type TransactionsNotification struct {
 	Type                  EventType                 `json:"type"` // always "transactions"
 	Finality              indexModels.FinalityState `json:"finality"`
-	TraceExternalHashNorm string                    `json:"trace_external_hash_norm"`
+	TraceExternalHashNorm indexModels.HashType      `json:"trace_external_hash_norm"`
 	Transactions          []indexModels.Transaction `json:"transactions"`
 	AddressBook           *indexModels.AddressBook  `json:"address_book,omitempty"`
 	Metadata              *indexModels.Metadata     `json:"metadata,omitempty"`
@@ -681,20 +681,20 @@ func (n *TransactionsNotification) AdjustForClient(client *Client) any {
 		adjustedMetadata = &indexModels.Metadata{}
 	}
 
-	allAddresses := map[string]bool{}
+	allAddresses := map[indexModels.AccountAddress]bool{}
 	for _, tx := range n.Transactions {
-		account := string(tx.Account)
+		account := tx.Account
 
-		if client.Subscription.InterestedIn(EventTransactions, []string{account}) {
+		if client.Subscription.InterestedIn(EventTransactions, []indexModels.AccountAddress{account}) {
 			adjustedTransactions = append(adjustedTransactions, tx)
 			allAddresses[account] = true
 
 			if tx.InMsg != nil && tx.InMsg.Source != nil {
-				allAddresses[string(*tx.InMsg.Source)] = true
+				allAddresses[*tx.InMsg.Source] = true
 			}
 			for _, outMsg := range tx.OutMsgs {
 				if outMsg.Destination != nil {
-					allAddresses[string(*outMsg.Destination)] = true
+					allAddresses[*outMsg.Destination] = true
 				}
 			}
 		}
@@ -736,7 +736,7 @@ func (n *TransactionsNotification) AdjustForClient(client *Client) any {
 type TraceNotification struct {
 	Type                  EventType                                         `json:"type"` // always "trace"
 	Finality              indexModels.FinalityState                         `json:"finality"`
-	TraceExternalHashNorm string                                            `json:"trace_external_hash_norm"`
+	TraceExternalHashNorm indexModels.HashType                              `json:"trace_external_hash_norm"`
 	Trace                 indexModels.TraceNode                             `json:"trace"`
 	Transactions          map[indexModels.HashType]*indexModels.Transaction `json:"transactions"`
 	Actions               *[]*indexModels.Action                            `json:"actions,omitempty"`
@@ -795,10 +795,10 @@ func (n *TraceNotification) AdjustForClient(client *Client) any {
 }
 
 type AccountStateNotification struct {
-	Type     EventType                 `json:"type"`
-	Finality indexModels.FinalityState `json:"finality"` // confirmed / finalized
-	Account  string                    `json:"account"`
-	State    indexModels.AccountState  `json:"state"`
+	Type     EventType                  `json:"type"`
+	Finality indexModels.FinalityState  `json:"finality"` // confirmed / finalized
+	Account  indexModels.AccountAddress `json:"account"`
+	State    indexModels.AccountState   `json:"state"`
 }
 
 var _ Notification = (*AccountStateNotification)(nil)
@@ -807,7 +807,7 @@ func (n *AccountStateNotification) AdjustForClient(client *Client) any {
 	if n.Finality < client.Subscription.MinFinality {
 		return nil
 	}
-	if client.Subscription.InterestedIn(EventAccountStateChange, []string{n.Account}) {
+	if client.Subscription.InterestedIn(EventAccountStateChange, []indexModels.AccountAddress{n.Account}) {
 		return n
 	}
 	return nil
@@ -827,8 +827,8 @@ func (n *JettonsNotification) AdjustForClient(client *Client) any {
 	if n.Finality < client.Subscription.MinFinality {
 		return nil
 	}
-	if client.Subscription.InterestedIn(EventJettonsChange, []string{n.Jetton.Address.String()}) ||
-		client.Subscription.InterestedIn(EventJettonsChange, []string{n.Jetton.Owner.String()}) {
+	if client.Subscription.InterestedIn(EventJettonsChange, []indexModels.AccountAddress{n.Jetton.Address}) ||
+		client.Subscription.InterestedIn(EventJettonsChange, []indexModels.AccountAddress{n.Jetton.Owner}) {
 		return n
 	}
 	return nil
@@ -850,16 +850,16 @@ func SubscribeToTraces(ctx context.Context, rdb *redis.Client, manager *ClientMa
 			log.Printf("[v2] Error receiving pending trace message: %v", err)
 			continue
 		}
-		traceExternalHashNorm := msg.Payload
+		traceExternalHashNorm := indexModels.HashType(msg.Payload)
 		go ProcessNewTrace(ctx, rdb, traceExternalHashNorm, manager, channel)
 	}
 }
 
 // pending (emulated) trace
-func ProcessNewTrace(ctx context.Context, rdb *redis.Client, traceExternalHashNorm string, manager *ClientManager, channel string) {
+func ProcessNewTrace(ctx context.Context, rdb *redis.Client, traceExternalHashNorm indexModels.HashType, manager *ClientManager, channel string) {
 	startTimeUnix := observability.NowUnixNano()
 	repository := &emulated.EmulatedTracesRepository{Rdb: rdb}
-	rawTraces, err := repository.LoadRawTraces([]string{traceExternalHashNorm})
+	rawTraces, err := repository.LoadRawTraces([]string{traceExternalHashNorm.String()})
 	if err != nil {
 		log.Printf("[v2] Error loading raw traces (pending): %v, trace key: %s", err, traceExternalHashNorm)
 		return
@@ -867,8 +867,8 @@ func ProcessNewTrace(ctx context.Context, rdb *redis.Client, traceExternalHashNo
 	stage := NewTraceProcessingStage(
 		startTimeUnix,
 		rawTraceSpanName,
-		rawTraces[traceExternalHashNorm],
-		traceExternalHashNorm,
+		rawTraces[traceExternalHashNorm.String()],
+		traceExternalHashNorm.String(),
 		channel,
 	)
 
@@ -903,11 +903,11 @@ func ProcessNewTrace(ctx context.Context, rdb *redis.Client, traceExternalHashNo
 		}
 	}
 
-	allAddresses := []string{}
+	allAddresses := []indexModels.AccountAddress{}
 	var txHashes []string
 	for _, t := range txs {
 		txHashes = append(txHashes, string(t.Hash))
-		allAddresses = append(allAddresses, string(t.Account))
+		allAddresses = append(allAddresses, t.Account)
 	}
 
 	if len(txHashes) > 0 {
@@ -918,12 +918,12 @@ func ProcessNewTrace(ctx context.Context, rdb *redis.Client, traceExternalHashNo
 			if msg.Direction == "in" {
 				txs[txsMap[msg.TxHash]].InMsg = msg
 				if msg.Source != nil {
-					allAddresses = append(allAddresses, string(*msg.Source))
+					allAddresses = append(allAddresses, *msg.Source)
 				}
 			} else {
 				txs[txsMap[msg.TxHash]].OutMsgs = append(txs[txsMap[msg.TxHash]].OutMsgs, msg)
 				if msg.Destination != nil {
-					allAddresses = append(allAddresses, string(*msg.Destination))
+					allAddresses = append(allAddresses, *msg.Destination)
 				}
 			}
 		}
@@ -1006,8 +1006,14 @@ func SubscribeToConfirmedTransactions(ctx context.Context, rdb *redis.Client, ma
 			log.Printf("[v2] Invalid confirmed txs message format: %s", msg.Payload)
 			continue
 		}
-		traceExternalHashNorm := parts[0]
-		txHashes := strings.Split(parts[1], ",")
+		traceExternalHashNorm := indexModels.HashType(parts[0])
+		txHashStrings := strings.Split(parts[1], ",")
+		txHashes := make([]indexModels.HashType, 0, len(txHashStrings))
+
+		for _, txHashString := range txHashStrings {
+			txHashes = append(txHashes, indexModels.HashType(txHashString))
+		}
+
 		if len(txHashes) == 0 {
 			log.Printf("[v2] No transaction hashes found in confirmed txs message: %s", msg.Payload)
 			continue
@@ -1038,8 +1044,14 @@ func SubscribeToFinalizedTransactions(ctx context.Context, rdb *redis.Client, ma
 			log.Printf("[v2] Invalid finalized txs message format: %s", msg.Payload)
 			continue
 		}
-		traceExternalHashNorm := parts[0]
-		txHashes := strings.Split(parts[1], ",")
+		traceExternalHashNorm := indexModels.HashType(parts[0])
+		txHashStrings := strings.Split(parts[1], ",")
+		txHashes := make([]indexModels.HashType, 0, len(txHashStrings))
+
+		for _, txHashString := range txHashStrings {
+			txHashes = append(txHashes, indexModels.HashType(txHashString))
+		}
+
 		if len(txHashes) == 0 {
 			log.Printf("[v2] No transaction hashes found in finalized txs message: %s", msg.Payload)
 			continue
@@ -1051,7 +1063,7 @@ func SubscribeToFinalizedTransactions(ctx context.Context, rdb *redis.Client, ma
 
 // ProcessNewConfirmedTxs now emits a FULL TRACE SNAPSHOT (not a fragment).
 // txHashes is ignored for payload building; it only serves as a "trace changed" signal.
-func ProcessNewConfirmedTxs(ctx context.Context, rdb *redis.Client, traceExternalHashNorm string, txHashes []string, manager *ClientManager, channel string) {
+func ProcessNewConfirmedTxs(ctx context.Context, rdb *redis.Client, traceExternalHashNorm indexModels.HashType, txHashes []indexModels.HashType, manager *ClientManager, channel string) {
 	processTransactionsTraceSnapshot(
 		ctx,
 		rdb,
@@ -1062,7 +1074,7 @@ func ProcessNewConfirmedTxs(ctx context.Context, rdb *redis.Client, traceExterna
 	)
 }
 
-func ProcessNewFinalizedTxs(ctx context.Context, rdb *redis.Client, traceExternalHashNorm string, txHashes []string, manager *ClientManager, channel string) {
+func ProcessNewFinalizedTxs(ctx context.Context, rdb *redis.Client, traceExternalHashNorm indexModels.HashType, txHashes []indexModels.HashType, manager *ClientManager, channel string) {
 	processTransactionsTraceSnapshot(
 		ctx,
 		rdb,
@@ -1081,14 +1093,14 @@ func ProcessNewFinalizedTxs(ctx context.Context, rdb *redis.Client, traceExterna
 func processTransactionsTraceSnapshot(
 	ctx context.Context,
 	rdb *redis.Client,
-	traceExternalHashNorm string,
+	traceExternalHashNorm indexModels.HashType,
 	manager *ClientManager,
 	channelHint string,
 	channel string,
 ) {
 	startTimeUnix := observability.NowUnixNano()
 	repository := &emulated.EmulatedTracesRepository{Rdb: rdb}
-	rawTraces, err := repository.LoadRawTraces([]string{traceExternalHashNorm})
+	rawTraces, err := repository.LoadRawTraces([]string{traceExternalHashNorm.String()})
 	if err != nil {
 		log.Printf("[v2] Error loading raw traces (%s): %v, trace key: %s", channelHint, err, traceExternalHashNorm)
 		return
@@ -1096,8 +1108,8 @@ func processTransactionsTraceSnapshot(
 	stage := NewTraceProcessingStage(
 		startTimeUnix,
 		rawTraceSpanName,
-		rawTraces[traceExternalHashNorm],
-		traceExternalHashNorm,
+		rawTraces[traceExternalHashNorm.String()],
+		traceExternalHashNorm.String(),
 		channel,
 	)
 
@@ -1147,11 +1159,11 @@ func processTransactionsTraceSnapshot(
 
 	// Collect tx hashes & initial addresses (accounts).
 	hashes := make([]string, 0, len(txs))
-	allAddresses := make([]string, 0, len(txs)*3)
+	allAddresses := make([]indexModels.AccountAddress, 0, len(txs)*3)
 
 	for _, t := range txs {
 		hashes = append(hashes, string(t.Hash))
-		allAddresses = append(allAddresses, string(t.Account))
+		allAddresses = append(allAddresses, t.Account)
 	}
 
 	// Attach messages for ALL transactions in snapshot.
@@ -1167,12 +1179,12 @@ func processTransactionsTraceSnapshot(
 			if msg.Direction == "in" {
 				txs[txIdx].InMsg = msg
 				if msg.Source != nil {
-					allAddresses = append(allAddresses, string(*msg.Source))
+					allAddresses = append(allAddresses, *msg.Source)
 				}
 			} else {
 				txs[txIdx].OutMsgs = append(txs[txIdx].OutMsgs, msg)
 				if msg.Destination != nil {
-					allAddresses = append(allAddresses, string(*msg.Destination))
+					allAddresses = append(allAddresses, *msg.Destination)
 				}
 			}
 		}
@@ -1255,7 +1267,7 @@ func SubscribeToAccountStateUpdates(ctx context.Context, rdb *redis.Client, mana
 	}
 }
 
-func parseAccountStateChannelPayload(payload string) (indexModels.FinalityState, string, error) {
+func parseAccountStateChannelPayload(payload string) (indexModels.FinalityState, indexModels.AccountAddress, error) {
 	parts := strings.SplitN(payload, ":", 2)
 	if len(parts) != 2 {
 		return 0, "", fmt.Errorf("unexpected payload format")
@@ -1275,7 +1287,15 @@ func parseAccountStateChannelPayload(payload string) (indexModels.FinalityState,
 		return 0, "", fmt.Errorf("missing address")
 	}
 
-	return finality, parts[1], nil
+	addr, err := indexModels.ParseAccountAddress(parts[1])
+	if err != nil {
+		return 0, "", fmt.Errorf("invalid address format: %v", err)
+	}
+	if addr == nil || !addr.IsAddressStd() {
+		return 0, "", fmt.Errorf("standard address required, got: %v", err)
+	}
+
+	return finality, *addr, nil
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1295,16 +1315,16 @@ func SubscribeToClassifiedTraces(ctx context.Context, rdb *redis.Client, manager
 			continue
 		}
 
-		traceExternalHashNorm := msg.Payload
+		traceExternalHashNorm := indexModels.HashType(msg.Payload)
 		go ProcessNewClassifiedTrace(ctx, rdb, traceExternalHashNorm, manager, channel)
 	}
 }
 
-func ProcessNewClassifiedTrace(ctx context.Context, rdb *redis.Client, traceExternalHashNorm string, manager *ClientManager, channel string) {
+func ProcessNewClassifiedTrace(ctx context.Context, rdb *redis.Client, traceExternalHashNorm indexModels.HashType, manager *ClientManager, channel string) {
 	startTimeUnix := observability.NowUnixNano()
 
 	repository := &emulated.EmulatedTracesRepository{Rdb: rdb}
-	rawTraces, err := repository.LoadRawTraces([]string{traceExternalHashNorm})
+	rawTraces, err := repository.LoadRawTraces([]string{traceExternalHashNorm.String()})
 	if err != nil {
 		log.Printf("[v2] Error loading raw traces (classified): %v, trace key: %s", err, traceExternalHashNorm)
 		return
@@ -1312,11 +1332,11 @@ func ProcessNewClassifiedTrace(ctx context.Context, rdb *redis.Client, traceExte
 	stage := NewTraceProcessingStage(
 		startTimeUnix,
 		classifiedTraceSpanName,
-		rawTraces[traceExternalHashNorm],
-		traceExternalHashNorm,
+		rawTraces[traceExternalHashNorm.String()],
+		traceExternalHashNorm.String(),
 		channel,
 	)
-	traceRootHash := indexModels.HashType(rawTraces[traceExternalHashNorm]["root_node"])
+	traceRootHash := indexModels.HashType(rawTraces[traceExternalHashNorm.String()]["root_node"])
 	stage.Span.AddAttr("ton.trace.external_message_hash", string(traceRootHash))
 
 	emulatedContext := crud.NewEmptyContext(false)
@@ -1386,10 +1406,10 @@ func ProcessNewClassifiedTrace(ctx context.Context, rdb *redis.Client, traceExte
 	}
 
 	var actions []*indexModels.Action
-	var actionsAddresses [][]string
+	var actionsAddresses [][]indexModels.AccountAddress
 
 	for _, rawAction := range emulatedContext.GetAllActions() { // ascending order
-		actionAddrMap := map[string]bool{}
+		actionAddrMap := map[indexModels.AccountAddress]bool{}
 		parse.CollectAddressesFromAction(&actionAddrMap, rawAction)
 
 		action, err := parse.ParseRawAction(rawAction)
@@ -1397,7 +1417,7 @@ func ProcessNewClassifiedTrace(ctx context.Context, rdb *redis.Client, traceExte
 			log.Printf("[v2] Error parsing raw action: %v", err)
 			continue
 		}
-		actionAddresses := []string{}
+		actionAddresses := []indexModels.AccountAddress{}
 		for addr := range actionAddrMap {
 			actionAddresses = append(actionAddresses, addr)
 		}
@@ -1410,7 +1430,7 @@ func ProcessNewClassifiedTrace(ctx context.Context, rdb *redis.Client, traceExte
 
 	var addressBook *indexModels.AddressBook
 	var metadata *indexModels.Metadata
-	var allAddresses []string
+	var allAddresses []indexModels.AccountAddress
 	for _, aa := range actionsAddresses {
 		allAddresses = append(allAddresses, aa...)
 	}
@@ -1464,7 +1484,7 @@ func ProcessNewClassifiedTrace(ctx context.Context, rdb *redis.Client, traceExte
 		return
 	}
 
-	traceAddrSet := map[string]bool{}
+	traceAddrSet := map[indexModels.AccountAddress]bool{}
 	for idx := range txs {
 		collectAddressesFromTransaction(traceAddrSet, &txs[idx])
 	}
@@ -1473,7 +1493,7 @@ func ProcessNewClassifiedTrace(ctx context.Context, rdb *redis.Client, traceExte
 			traceAddrSet[addr] = true
 		}
 	}
-	traceAddresses := make([]string, 0, len(traceAddrSet))
+	traceAddresses := make([]indexModels.AccountAddress, 0, len(traceAddrSet))
 	for addr := range traceAddrSet {
 		traceAddresses = append(traceAddresses, addr)
 	}
@@ -1529,7 +1549,7 @@ func SubscribeToInvalidatedTraces(ctx context.Context, rdb *redis.Client, manage
 			continue
 		}
 
-		traceExternalHashNorm := msg.Payload
+		traceExternalHashNorm := indexModels.HashType(msg.Payload)
 		manager.broadcast <- &TraceInvalidatedNotification{
 			Type:                  EventTraceInvalidated,
 			TraceExternalHashNorm: traceExternalHashNorm,
@@ -1541,7 +1561,7 @@ func SubscribeToInvalidatedTraces(ctx context.Context, rdb *redis.Client, manage
 // Account state & jettons (confirmed & finalized, no pending)
 ////////////////////////////////////////////////////////////////////////////////
 
-func ProcessNewAccountStates(ctx context.Context, rdb *redis.Client, addr string, finality indexModels.FinalityState, manager *ClientManager) {
+func ProcessNewAccountStates(ctx context.Context, rdb *redis.Client, addr indexModels.AccountAddress, finality indexModels.FinalityState, manager *ClientManager) {
 	var key string
 	switch finality {
 	case indexModels.FinalityStateConfirmed:
@@ -1598,8 +1618,8 @@ func ProcessNewAccountStates(ctx context.Context, rdb *redis.Client, addr string
 		return
 	}
 
-	addrBookAddresses := []string{notification.Jetton.Address.String(), notification.Jetton.Owner.String(), notification.Jetton.Jetton.String()}
-	metadataAddresses := []string{notification.Jetton.Owner.String(), notification.Jetton.Jetton.String()}
+	addrBookAddresses := []indexModels.AccountAddress{notification.Jetton.Address, notification.Jetton.Owner, notification.Jetton.Jetton}
+	metadataAddresses := []indexModels.AccountAddress{notification.Jetton.Owner, notification.Jetton.Jetton}
 	shouldFetchAddressBook, shouldFetchMetadata := manager.shouldFetchAddressBookAndMetadata(
 		[]EventType{EventJettonsChange},
 		finality,
@@ -1663,52 +1683,43 @@ func ParseRateLimitHeaders(headers map[string][]string) (string, RateLimitConfig
 
 	return limitingKey, config
 }
-
-func convertAddress(s string) (string, error) {
-	raw := indexModels.AccountAddressConverter(s)
-	if !raw.IsValid() {
-		return "", fmt.Errorf("invalid address: %s", s)
-	}
-	return string(raw.Interface().(indexModels.AccountAddress)), nil
-}
-
-func validateAddressesAndTypes(addresses []string, types []EventType) ([]string, error) {
+func validateAddressesAndTypes(addresses []string, types []EventType) ([]indexModels.AccountAddress, error) {
 	for _, t := range types {
 		if _, ok := validEventTypes[t]; !ok {
 			return nil, fmt.Errorf("invalid event type: %s", t)
 		}
 	}
 
-	uniqueAddrs := make([]string, 0, len(addresses))
-	addrsSet := make(map[string]struct{}, len(addresses))
+	uniqueAddrs := make([]indexModels.AccountAddress, 0, len(addresses))
+	addrsSet := make(map[indexModels.AccountAddress]struct{}, len(addresses))
 	for _, a := range addresses {
-		cnv, err := convertAddress(a)
-		if err != nil {
+		cnv, err := indexModels.ParseAccountAddress(a)
+		if err != nil || cnv == nil || !cnv.IsAddressStd() {
 			return nil, err
 		}
-		if _, exists := addrsSet[cnv]; exists {
+		if _, exists := addrsSet[*cnv]; exists {
 			continue
 		}
-		addrsSet[cnv] = struct{}{}
-		uniqueAddrs = append(uniqueAddrs, cnv)
+		addrsSet[*cnv] = struct{}{}
+		uniqueAddrs = append(uniqueAddrs, *cnv)
 	}
 
 	return uniqueAddrs, nil
 }
 
-func validateTraceExternalHashNorms(traces []string) ([]string, error) {
-	unique := make([]string, 0, len(traces))
-	seen := make(map[string]struct{}, len(traces))
+func validateTraceExternalHashNorms(traces []string) ([]indexModels.HashType, error) {
+	unique := make([]indexModels.HashType, 0, len(traces))
+	seen := make(map[indexModels.HashType]struct{}, len(traces))
 	for _, trace := range traces {
-		trace = strings.TrimSpace(trace)
-		if trace == "" {
+		traceHash, err := indexModels.ParseHashType(trace)
+		if err != nil || traceHash == nil {
 			return nil, fmt.Errorf("trace_external_hash_norms contains empty value")
 		}
-		if _, exists := seen[trace]; exists {
+		if _, exists := seen[*traceHash]; exists {
 			continue
 		}
-		seen[trace] = struct{}{}
-		unique = append(unique, trace)
+		seen[*traceHash] = struct{}{}
+		unique = append(unique, *traceHash)
 	}
 	return unique, nil
 }
@@ -1731,23 +1742,23 @@ func hasNonTraceEventTypes(types []EventType) bool {
 	return false
 }
 
-func collectAddressesFromTransaction(addrSet map[string]bool, tx *indexModels.Transaction) {
-	addrSet[string(tx.Account)] = true
+func collectAddressesFromTransaction(addrSet map[indexModels.AccountAddress]bool, tx *indexModels.Transaction) {
+	addrSet[tx.Account] = true
 	if tx.InMsg != nil && tx.InMsg.Source != nil {
-		addrSet[string(*tx.InMsg.Source)] = true
+		addrSet[*tx.InMsg.Source] = true
 	}
 	for _, outMsg := range tx.OutMsgs {
 		if outMsg.Destination != nil {
-			addrSet[string(*outMsg.Destination)] = true
+			addrSet[*outMsg.Destination] = true
 		}
 	}
 }
 
-func buildActionsFromContext(emulatedContext *crud.EmulatedTracesContext) ([]*indexModels.Action, [][]string) {
+func buildActionsFromContext(emulatedContext *crud.EmulatedTracesContext) ([]*indexModels.Action, [][]indexModels.AccountAddress) {
 	actions := make([]*indexModels.Action, 0)
-	actionsAddresses := make([][]string, 0)
+	actionsAddresses := make([][]indexModels.AccountAddress, 0)
 	for _, rawAction := range emulatedContext.GetAllActions() {
-		actionAddrMap := map[string]bool{}
+		actionAddrMap := map[indexModels.AccountAddress]bool{}
 		parse.CollectAddressesFromAction(&actionAddrMap, rawAction)
 
 		action, err := parse.ParseRawAction(rawAction)
@@ -1756,7 +1767,7 @@ func buildActionsFromContext(emulatedContext *crud.EmulatedTracesContext) ([]*in
 			continue
 		}
 
-		actionAddresses := make([]string, 0, len(actionAddrMap))
+		actionAddresses := make([]indexModels.AccountAddress, 0, len(actionAddrMap))
 		for addr := range actionAddrMap {
 			actionAddresses = append(actionAddresses, addr)
 		}
@@ -1868,7 +1879,7 @@ type SSERequest struct {
 	IncludeMetadata        *bool                      `json:"include_metadata"`
 }
 
-func ValidateSSERequest(req *SSERequest) ([]string, []string, indexModels.FinalityState, error) {
+func ValidateSSERequest(req *SSERequest) ([]indexModels.AccountAddress, []indexModels.HashType, indexModels.FinalityState, error) {
 	if len(req.Types) == 0 {
 		return nil, nil, defaultMinFinality(), fmt.Errorf("types are required for subscription")
 	}
@@ -1956,7 +1967,7 @@ func SSEHandler(manager *ClientManager) fiber.Handler {
 				SupportedActionTypes: indexModels.ExpandActionTypeShortcuts(req.SupportedActionTypes),
 				MinFinality:          minFinality,
 			},
-			TracesForPotentialInvalidation: make(map[string]bool),
+			TracesForPotentialInvalidation: make(map[indexModels.HashType]bool),
 			SendEvent: func(b []byte) error {
 				select {
 				case eventCh <- b:
@@ -2072,7 +2083,7 @@ func WebSocketHandler(manager *ClientManager) func(*websocket.Conn) {
 				IncludeMetadata:      false,
 				MinFinality:          defaultMinFinality(),
 			},
-			TracesForPotentialInvalidation: make(map[string]bool),
+			TracesForPotentialInvalidation: make(map[indexModels.HashType]bool),
 			SendEvent:                      func(b []byte) error { return c.WriteMessage(websocket.TextMessage, b) },
 		}
 		manager.register <- client
@@ -2107,17 +2118,18 @@ func WebSocketHandler(manager *ClientManager) func(*websocket.Conn) {
 					continue
 				}
 
-				var cnvAddrs []string
+				var cnvAddrs []indexModels.AccountAddress
 				if len(req.Addresses) > 0 {
-					cnvAddrs = make([]string, len(req.Addresses))
+					cnvAddrs = make([]indexModels.AccountAddress, len(req.Addresses))
 					addrsValid := true
 					for i, a := range req.Addresses {
-						cnvAddrs[i], err = convertAddress(a)
-						if err != nil {
+						cnv, err := indexModels.ParseAccountAddress(a)
+						if err != nil || cnv == nil || !cnv.IsAddressStd() {
 							addrsValid = false
 							sendWSJSONErr(c, client, env.Id, err)
 							break
 						}
+						cnvAddrs[i] = *cnv
 					}
 					if !addrsValid {
 						continue

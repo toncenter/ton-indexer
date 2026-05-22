@@ -145,7 +145,7 @@ func (s *KvrocksStore) indexKey(table string, name string) string {
 	return kvrocksKeyPrefix + ":idx:" + table + ":" + name
 }
 
-func kvrocksLimitOffset(lim models.LimitRequest, settings models.RequestSettings) (int64, int64, error) {
+func kvrocksLimitOffset(lim models.LimitParams, settings models.RequestSettings) (int64, int64, error) {
 	limit := int32(settings.DefaultLimit)
 	if lim.Limit != nil {
 		limit = *lim.Limit
@@ -167,7 +167,7 @@ func kvrocksLimitOffset(lim models.LimitRequest, settings models.RequestSettings
 	return int64(limit), int64(offset), nil
 }
 
-func kvrocksSortDesc(lim models.LimitRequest, defaultDesc bool) (bool, error) {
+func kvrocksSortDesc(lim models.LimitParams, defaultDesc bool) (bool, error) {
 	if lim.Sort == nil {
 		return defaultDesc, nil
 	}
@@ -558,8 +558,8 @@ func (s *KvrocksStore) GetMessageContents(ctx context.Context, hashes []models.H
 	res := make(map[models.HashType]*models.MessageContent, len(payloads))
 	for id, payload := range payloads {
 		var row struct {
-			Hash models.HashType `json:"hash"`
-			Body *string         `json:"body"`
+			Hash models.HashType   `json:"hash"`
+			Body *models.BytesType `json:"body"`
 		}
 		if err := json.Unmarshal([]byte(payload), &row); err != nil {
 			return nil, fmt.Errorf("decode message_contents %s: %w", id, err)
@@ -620,8 +620,8 @@ type kvLatestAccountStatePayload struct {
 	FrozenHash             *models.HashType      `json:"frozen_hash"`
 	DataHash               *models.HashType      `json:"data_hash"`
 	CodeHash               *models.HashType      `json:"code_hash"`
-	DataBoc                *string               `json:"data_boc"`
-	CodeBoc                *string               `json:"code_boc"`
+	DataBoc                *models.BytesType     `json:"data_boc"`
+	CodeBoc                *models.BytesType     `json:"code_boc"`
 	ContractMethods        *[]uint32             `json:"-"`
 }
 
@@ -816,7 +816,9 @@ func (s *KvrocksStore) QueryAccountStates(ctx context.Context, accountReq models
 	return states, nil
 }
 
-func (s *KvrocksStore) QueryTopAccountBalances(ctx context.Context, limReq models.LimitRequest, settings models.RequestSettings) ([]models.AccountBalance, error) {
+func (s *KvrocksStore) QueryTopAccountBalances(ctx context.Context, req models.TopAccountsByBalanceRequest, settings models.RequestSettings) ([]models.AccountBalance, error) {
+	limReq := req.GetLimitParams()
+
 	limit, offset, err := kvrocksLimitOffset(limReq, settings)
 	if err != nil {
 		return nil, err
@@ -930,7 +932,9 @@ func (s *KvrocksStore) GetJettonMasters(ctx context.Context, addresses []models.
 	return res, nil
 }
 
-func (s *KvrocksStore) QueryJettonMasters(ctx context.Context, req models.JettonMasterRequest, limReq models.LimitRequest, settings models.RequestSettings) ([]models.JettonMaster, error) {
+func (s *KvrocksStore) QueryJettonMasters(ctx context.Context, req models.JettonMasterRequest, settings models.RequestSettings) ([]models.JettonMaster, error) {
+	limReq := req.GetLimitParams()
+
 	limit, offset, err := kvrocksLimitOffset(limReq, settings)
 	if err != nil {
 		return nil, err
@@ -992,7 +996,9 @@ func (s *KvrocksStore) QueryJettonMasters(ctx context.Context, req models.Jetton
 	return masters, nil
 }
 
-func (s *KvrocksStore) QueryJettonWallets(ctx context.Context, req models.JettonWalletRequest, limReq models.LimitRequest, settings models.RequestSettings) ([]models.JettonWallet, error) {
+func (s *KvrocksStore) QueryJettonWallets(ctx context.Context, req models.JettonWalletRequest, settings models.RequestSettings) ([]models.JettonWallet, error) {
+	limReq := req.GetLimitParams()
+
 	limit, offset, err := kvrocksLimitOffset(limReq, settings)
 	if err != nil {
 		return nil, err
@@ -1165,7 +1171,9 @@ func (s *KvrocksStore) GetNFTCollections(ctx context.Context, addresses []models
 	return res, nil
 }
 
-func (s *KvrocksStore) QueryNFTCollections(ctx context.Context, req models.NFTCollectionRequest, limReq models.LimitRequest, settings models.RequestSettings) ([]models.NFTCollection, error) {
+func (s *KvrocksStore) QueryNFTCollections(ctx context.Context, req models.NFTCollectionRequest, settings models.RequestSettings) ([]models.NFTCollection, error) {
+	limReq := req.GetLimitParams()
+
 	limit, offset, err := kvrocksLimitOffset(limReq, settings)
 	if err != nil {
 		return nil, err
@@ -1299,7 +1307,9 @@ func (s *KvrocksStore) attachNFTItemDetails(ctx context.Context, items []models.
 	return nil
 }
 
-func (s *KvrocksStore) QueryNFTItems(ctx context.Context, req models.NFTItemRequest, limReq models.LimitRequest, settings models.RequestSettings) ([]models.NFTItem, error) {
+func (s *KvrocksStore) QueryNFTItems(ctx context.Context, req models.NFTItemRequest, settings models.RequestSettings) ([]models.NFTItem, error) {
+	limReq := req.GetLimitParams()
+
 	if len(req.Index) > 0 && len(req.CollectionAddress) == 0 {
 		return nil, models.IndexError{Code: 422, Message: "index parameter is not allowed without the collection_address"}
 	}
@@ -1512,7 +1522,9 @@ func (s *KvrocksStore) orderedDNSRecords(ctx context.Context, ids []string) ([]m
 	return res, nil
 }
 
-func (s *KvrocksStore) QueryDNSRecords(ctx context.Context, limReq models.LimitRequest, req models.DNSRecordsRequest, settings models.RequestSettings) ([]models.DNSRecord, error) {
+func (s *KvrocksStore) QueryDNSRecords(ctx context.Context, req models.DNSRecordsRequest, settings models.RequestSettings) ([]models.DNSRecord, error) {
+	limReq := req.GetLimitParams()
+
 	limit, offset, err := kvrocksLimitOffset(limReq, settings)
 	if err != nil {
 		return nil, err
@@ -2069,7 +2081,9 @@ func decodeMultisigOrderPayload(id string, payload string) (models.MultisigOrder
 	}, nil
 }
 
-func (s *KvrocksStore) QueryMultisigs(ctx context.Context, req models.MultisigRequest, limReq models.LimitRequest, settings models.RequestSettings) ([]models.Multisig, error) {
+func (s *KvrocksStore) QueryMultisigs(ctx context.Context, req models.MultisigRequest, settings models.RequestSettings) ([]models.Multisig, error) {
+	limReq := req.GetLimitParams()
+
 	limit, offset, err := kvrocksLimitOffset(limReq, settings)
 	if err != nil {
 		return nil, err
@@ -2179,7 +2193,9 @@ func (s *KvrocksStore) attachMultisigOrders(ctx context.Context, multisigs []mod
 	return nil
 }
 
-func (s *KvrocksStore) QueryMultisigOrders(ctx context.Context, req models.MultisigOrderRequest, limReq models.LimitRequest, settings models.RequestSettings) ([]models.MultisigOrder, error) {
+func (s *KvrocksStore) QueryMultisigOrders(ctx context.Context, req models.MultisigOrderRequest, settings models.RequestSettings) ([]models.MultisigOrder, error) {
+	limReq := req.GetLimitParams()
+
 	limit, offset, err := kvrocksLimitOffset(limReq, settings)
 	if err != nil {
 		return nil, err
@@ -2317,7 +2333,8 @@ func (s *KvrocksStore) attachVestingWhitelist(ctx context.Context, vestings []mo
 	return nil
 }
 
-func (s *KvrocksStore) QueryVestingContracts(ctx context.Context, req models.VestingContractsRequest, limReq models.LimitRequest, settings models.RequestSettings) ([]models.VestingInfo, error) {
+func (s *KvrocksStore) QueryVestingContracts(ctx context.Context, req models.VestingContractsRequest, settings models.RequestSettings) ([]models.VestingInfo, error) {
+	limReq := req.GetLimitParams()
 	if len(req.ContractAddress) == 0 && len(req.WalletAddress) == 0 {
 		return nil, models.IndexError{Code: 422, Message: "at least one of contract_address or wallet_address is required"}
 	}
@@ -2364,7 +2381,7 @@ func (s *KvrocksStore) QueryVestingContracts(ctx context.Context, req models.Ves
 	return s.orderedVestingContracts(ctx, ids)
 }
 
-func QueryAddressBookImplKvrocks(addrList []string, store *KvrocksStore, settings models.RequestSettings) (models.AddressBook, error) {
+func QueryAddressBookImplKvrocks(addrList []models.AccountAddress, store *KvrocksStore, settings models.RequestSettings) (models.AddressBook, error) {
 	if settings.UseCache {
 		book, err := services.AddressInfoCacheClient.GetAddressBook(addrList)
 		if err != nil {
@@ -2378,30 +2395,15 @@ func QueryAddressBookImplKvrocks(addrList []string, store *KvrocksStore, setting
 		return book, nil
 	}
 
-	rawToOriginal := map[models.AccountAddress][]string{}
-	rawAddresses := []models.AccountAddress{}
-	for _, addr := range addrList {
-		addrVal := models.AccountAddressConverter(addr)
-		if addrVal.IsValid() {
-			if raw, ok := addrVal.Interface().(models.AccountAddress); ok {
-				rawToOriginal[raw] = append(rawToOriginal[raw], addr)
-				rawAddresses = append(rawAddresses, raw)
-				continue
-			}
-		}
-		emptyInterfaces := []string{}
-		book[addr] = models.AddressBookRow{UserFriendly: nil, Domain: nil, Interfaces: &emptyInterfaces}
-	}
-
 	ctx, cancel := context.WithTimeout(context.Background(), settings.Timeout)
 	defer cancel()
-	states, err := store.GetLatestAccountStates(ctx, rawAddresses, false)
+	states, err := store.GetLatestAccountStates(ctx, addrList, false)
 	if err != nil {
 		return nil, err
 	}
 	domains := map[models.AccountAddress]*string{}
-	for raw := range rawToOriginal {
-		members, err := store.rangeByLex(ctx, "dns_entries", "owner_wallet:"+string(raw)+":by_domain", 1, 0, false)
+	for _, raw := range addrList {
+		members, err := store.rangeByLex(ctx, "dns_entries", "owner_wallet:"+raw.String()+":by_domain", 1, 0, false)
 		if err != nil {
 			return nil, err
 		}
@@ -2416,13 +2418,13 @@ func QueryAddressBookImplKvrocks(addrList []string, store *KvrocksStore, setting
 		}
 	}
 
-	for raw, originals := range rawToOriginal {
+	for _, raw := range addrList {
 		state := states[raw]
-		var codeHash *string
+		var codeHash *models.HashType
 		interfaces := []string{}
 		if state != nil {
 			if state.CodeHash != nil {
-				codeHashValue := string(*state.CodeHash)
+				codeHashValue := *state.CodeHash
 				codeHash = &codeHashValue
 			}
 			if state.Interfaces != nil {
@@ -2434,64 +2436,61 @@ func QueryAddressBookImplKvrocks(addrList []string, store *KvrocksStore, setting
 				}
 				codeHashStr := ""
 				if state.CodeHash != nil {
-					codeHashStr = string(*state.CodeHash)
+					codeHashStr = state.CodeHash.String()
 				}
 				interfaces = detect.DetectInterface(codeHashStr, methods)
 			}
 		}
-		friendly := models.GetAccountAddressFriendly(string(raw), codeHash, settings.IsTestnet)
-		for _, original := range originals {
-			interfacesCopy := append([]string(nil), interfaces...)
-			book[original] = models.AddressBookRow{
-				UserFriendly: &friendly,
-				Domain:       domains[raw],
-				Interfaces:   &interfacesCopy,
-			}
+		friendly := models.GetAccountAddressFriendly(raw, codeHash, settings.IsTestnet)
+		book[raw] = models.AddressBookRow{
+			UserFriendly: &friendly,
+			Domain:       domains[raw],
+			Interfaces:   &interfaces,
 		}
 	}
 	return book, nil
 }
 
-func (s *KvrocksStore) queryJettonWalletsTokenInfo(ctx context.Context, addrList []string) (map[string]models.TokenInfo, []string, error) {
+func (s *KvrocksStore) queryJettonWalletsTokenInfo(ctx context.Context, addrList []models.AccountAddress) (map[models.AccountAddress]models.TokenInfo, []models.AccountAddress, error) {
 	if len(addrList) == 0 {
-		return map[string]models.TokenInfo{}, []string{}, nil
+		return map[models.AccountAddress]models.TokenInfo{}, []models.AccountAddress{}, nil
 	}
 	addresses := make([]models.AccountAddress, 0, len(addrList))
-	addrSet := map[string]bool{}
+	addrSet := map[models.AccountAddress]bool{}
 	for _, addr := range addrList {
 		addrSet[addr] = true
-		addresses = append(addresses, models.AccountAddress(addr))
+		addresses = append(addresses, addr)
 	}
 	wallets, err := s.GetJettonWallets(ctx, addresses)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	tokenInfoMap := make(map[string]models.TokenInfo)
-	additionalAddresses := map[string]bool{}
+	tokenInfoMap := make(map[models.AccountAddress]models.TokenInfo)
+	additionalAddresses := map[models.AccountAddress]bool{}
 	valid := true
 	tokenType := "jetton_wallets"
 	for _, wallet := range wallets {
 		extra := map[string]interface{}{
-			"owner":  string(wallet.Owner),
-			"jetton": string(wallet.Jetton),
+			"owner":  wallet.Owner.String(),
+			"jetton": wallet.Jetton.String(),
 		}
 		if wallet.Balance != "" {
 			extra["balance"] = wallet.Balance
 		}
-		tokenInfoMap[string(wallet.Address)] = models.TokenInfo{
-			Address: string(wallet.Address),
+		tokenInfoMap[wallet.Address] = models.TokenInfo{
+			Address: wallet.Address,
 			Type:    &tokenType,
 			Extra:   extra,
 			Indexed: true,
 			Valid:   &valid,
 		}
-		if !addrSet[string(wallet.Jetton)] {
-			additionalAddresses[string(wallet.Jetton)] = true
+		if !addrSet[wallet.Jetton] {
+			additionalAddresses[wallet.Jetton] = true
 		}
 	}
 
-	additional := make([]string, 0, len(additionalAddresses))
+	additional := make([]models.AccountAddress, 0, len(additionalAddresses))
 	for addr := range additionalAddresses {
 		additional = append(additional, addr)
 	}
@@ -2499,12 +2498,12 @@ func (s *KvrocksStore) queryJettonWalletsTokenInfo(ctx context.Context, addrList
 }
 
 type metadataKey struct {
-	address string
+	address models.AccountAddress
 	typ     string
 }
 
-func addressMetadataID(address string, typ string) string {
-	return strings.TrimSpace(address) + ":" + strings.TrimSpace(typ)
+func addressMetadataID(address models.AccountAddress, typ string) string {
+	return address.String() + ":" + strings.TrimSpace(typ)
 }
 
 func (s *KvrocksStore) GetAddressMetadata(ctx context.Context, keys []metadataKey) (map[metadataKey]models.TokenInfo, error) {
@@ -2527,7 +2526,7 @@ func (s *KvrocksStore) GetAddressMetadata(ctx context.Context, keys []metadataKe
 	for id, payload := range payloads {
 		key := idToKey[id]
 		var row struct {
-			Address     string                 `json:"address"`
+			Address     models.AccountAddress  `json:"address"`
 			Type        *string                `json:"type"`
 			Valid       *bool                  `json:"valid"`
 			Name        *string                `json:"name"`
@@ -2561,7 +2560,7 @@ func (s *KvrocksStore) GetAddressMetadata(ctx context.Context, keys []metadataKe
 	return res, nil
 }
 
-func QueryMetadataImplKvrocks(addrList []string, settings models.RequestSettings, store *KvrocksStore) (models.Metadata, error) {
+func QueryMetadataImplKvrocks(addrList []models.AccountAddress, settings models.RequestSettings, store *KvrocksStore) (models.Metadata, error) {
 	if store == nil {
 		return models.Metadata{}, nil
 	}
@@ -2569,7 +2568,7 @@ func QueryMetadataImplKvrocks(addrList []string, settings models.RequestSettings
 	ctx, cancel := context.WithTimeout(context.Background(), settings.Timeout)
 	defer cancel()
 
-	tokenInfoMap := map[string][]models.TokenInfo{}
+	tokenInfoMap := map[models.AccountAddress][]models.TokenInfo{}
 	jettonWalletInfos, additionalAddrs, err := store.queryJettonWalletsTokenInfo(ctx, addrList)
 	if err != nil {
 		return nil, err
@@ -2577,11 +2576,10 @@ func QueryMetadataImplKvrocks(addrList []string, settings models.RequestSettings
 	for addr, info := range jettonWalletInfos {
 		tokenInfoMap[addr] = append(tokenInfoMap[addr], info)
 	}
+	addresses := addrList
 	if len(additionalAddrs) > 0 {
-		addrList = append(addrList, additionalAddrs...)
+		addresses = append(addresses, additionalAddrs...)
 	}
-
-	addresses := stringsToAddresses(addrList)
 	nftItems, err := store.GetNFTItems(ctx, addresses)
 	if err != nil {
 		return nil, err
@@ -2598,9 +2596,8 @@ func QueryMetadataImplKvrocks(addrList []string, settings models.RequestSettings
 	known := map[metadataKey]models.TokenInfo{}
 	addKnown := func(addr models.AccountAddress, typ string, nftIndex *string) {
 		typeCopy := typ
-		address := string(addr)
-		known[metadataKey{address: address, typ: typ}] = models.TokenInfo{
-			Address:  address,
+		known[metadataKey{address: addr, typ: typ}] = models.TokenInfo{
+			Address:  addr,
 			Type:     &typeCopy,
 			NftIndex: nftIndex,
 			Indexed:  false,

@@ -1,8 +1,6 @@
 module github.com/toncenter/ton-indexer/ton-emulate-go
 
-go 1.24.0
-
-toolchain go1.24.11
+go 1.26.3
 
 require (
 	github.com/go-redis/redis/v8 v8.11.5

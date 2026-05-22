@@ -3,12 +3,13 @@ package crud
 import (
 	"context"
 	"fmt"
-	"github.com/toncenter/ton-indexer/ton-index-go/index/detect"
-	"github.com/toncenter/ton-indexer/ton-index-go/index/models"
-	"github.com/toncenter/ton-indexer/ton-index-go/index/parse"
 	"log"
 	"sort"
 	"strings"
+
+	"github.com/toncenter/ton-indexer/ton-index-go/index/detect"
+	"github.com/toncenter/ton-indexer/ton-index-go/index/models"
+	"github.com/toncenter/ton-indexer/ton-index-go/index/parse"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -27,7 +28,7 @@ func (db *DbClient) QueryPendingActions(settings models.RequestSettings, emulate
 
 	actions := []models.Action{}
 	book := models.AddressBook{}
-	addr_map := map[string]bool{}
+	addr_map := map[models.AccountAddress]bool{}
 	metadata := models.Metadata{}
 
 	for _, raw_action := range raw_actions {
@@ -40,7 +41,7 @@ func (db *DbClient) QueryPendingActions(settings models.RequestSettings, emulate
 	}
 
 	if len(addr_map) > 0 {
-		var addr_list []string
+		var addr_list []models.AccountAddress
 		for k := range addr_map {
 			addr_list = append(addr_list, k)
 		}
@@ -150,17 +151,17 @@ func (db *DbClient) QueryPendingTransactions(
 		return nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
 
-	var addr_list []string
+	var addr_list []models.AccountAddress
 	for _, t := range txs {
-		addr_list = append(addr_list, string(t.Account))
+		addr_list = append(addr_list, t.Account)
 		if t.InMsg != nil {
 			if t.InMsg.Source != nil {
-				addr_list = append(addr_list, string(*t.InMsg.Source))
+				addr_list = append(addr_list, *t.InMsg.Source)
 			}
 		}
 		for _, m := range t.OutMsgs {
 			if m.Destination != nil {
-				addr_list = append(addr_list, string(*m.Destination))
+				addr_list = append(addr_list, *m.Destination)
 			}
 		}
 	}
@@ -264,7 +265,7 @@ func QueryPendingTransactionsImpl(emulatedContext *EmulatedTracesContext, conn *
 	{
 		emulatedTxs := emulatedContext.GetTransactions()
 		for _, tx := range emulatedTxs {
-			if external_hash, ok := emulatedContext.txHashTraceExternalHash[string(tx.Hash)]; ok {
+			if external_hash, ok := emulatedContext.txHashTraceExternalHash[tx.Hash.String()]; ok {
 				hash := models.HashType(external_hash)
 				tx.TraceExternalHash = &hash
 			}
@@ -275,7 +276,7 @@ func QueryPendingTransactionsImpl(emulatedContext *EmulatedTracesContext, conn *
 
 	var hash_list []string
 	for _, t := range txs {
-		hash_list = append(hash_list, string(t.Hash))
+		hash_list = append(hash_list, t.Hash.String())
 	}
 	if len(txs) == 0 {
 		return txs, nil
@@ -296,7 +297,7 @@ func QueryPendingTransactionsImpl(emulatedContext *EmulatedTracesContext, conn *
 	if err := detect.MarkMessagesByPtr(msgPtrs); err != nil {
 		hashes := make([]string, len(msgPtrs))
 		for i, msg := range msgPtrs {
-			hashes[i] = string(msg.MsgHash)
+			hashes[i] = msg.MsgHash.String()
 		}
 		log.Printf("Error marking messages with hashes %v: %v", hashes, err)
 	}
@@ -315,7 +316,7 @@ func QueryPendingTransactionsImpl(emulatedContext *EmulatedTracesContext, conn *
 	return txs, nil
 }
 
-func queryPendingTracesImpl(emulatedContext *EmulatedTracesContext, conn *pgxpool.Conn, settings models.RequestSettings, request models.PendingTracesRequest) ([]models.Trace, []string, error) {
+func queryPendingTracesImpl(emulatedContext *EmulatedTracesContext, conn *pgxpool.Conn, settings models.RequestSettings, request models.PendingTracesRequest) ([]models.Trace, []models.AccountAddress, error) {
 	var traces []models.Trace
 	completed_traces, err := queryCompletedEmulatedTraces(emulatedContext, conn, settings, true)
 	if err != nil {
@@ -331,7 +332,7 @@ func queryPendingTracesImpl(emulatedContext *EmulatedTracesContext, conn *pgxpoo
 	}
 	events_map := map[models.HashType]int{}
 	var trace_id_list []models.HashType
-	addr_map := map[string]bool{}
+	addr_map := map[models.AccountAddress]bool{}
 	for idx := range traces {
 		events_map[*traces[idx].ExternalHash] = idx
 		trace_id_list = append(trace_id_list, *traces[idx].ExternalHash)
@@ -371,7 +372,7 @@ func queryPendingTracesImpl(emulatedContext *EmulatedTracesContext, conn *pgxpoo
 			}
 		}
 	}
-	var addr_list []string
+	var addr_list []models.AccountAddress
 	actions := make([]models.RawAction, 0)
 	for _, rawAction := range emulatedContext.GetActions(request.SupportedActionTypes) {
 		actions = append(actions, *rawAction)

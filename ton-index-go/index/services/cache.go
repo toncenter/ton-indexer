@@ -4,22 +4,23 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
-	"github.com/toncenter/ton-indexer/ton-index-go/index/models"
 	"net/http"
 	"net/url"
 	"sync/atomic"
 	"time"
+
+	"github.com/toncenter/ton-indexer/ton-index-go/index/models"
 )
 
 type AddressInfoRequest struct {
-	Addresses          []string `json:"addresses"`
-	IncludeAddressBook bool     `json:"include_address_book"`
-	IncludeMetadata    bool     `json:"include_metadata"`
+	Addresses          []models.AccountAddress `json:"addresses"`
+	IncludeAddressBook bool                    `json:"include_address_book"`
+	IncludeMetadata    bool                    `json:"include_metadata"`
 }
 
 type AddressInfoResponse struct {
-	Metadata    map[string]models.AddressMetadata `json:"metadata,omitempty"`
-	AddressBook models.AddressBook                `json:"address_book,omitempty"`
+	Metadata    map[models.AccountAddress]models.AddressMetadata `json:"metadata,omitempty"`
+	AddressBook models.AddressBook                               `json:"address_book,omitempty"`
 }
 
 var ErrServiceUnavailable = errors.New("cache service is unavailable")
@@ -101,7 +102,7 @@ func (r *CacheClient) Stop() {
 	close(r.stopCheck)
 }
 
-func (r *CacheClient) getAddressInfo(addresses []string, includeMetadata bool, includeAddressBook bool) (*AddressInfoResponse, error) {
+func (r *CacheClient) getAddressInfo(addresses []models.AccountAddress, includeMetadata bool, includeAddressBook bool) (*AddressInfoResponse, error) {
 	// Fail fast if service is unhealthy
 	if !r.healthy.Load() {
 		return nil, ErrServiceUnavailable
@@ -140,7 +141,7 @@ func (r *CacheClient) getAddressInfo(addresses []string, includeMetadata bool, i
 	return &response, nil
 }
 
-func (r *CacheClient) GetMetadata(addresses []string) (models.Metadata, error) {
+func (r *CacheClient) GetMetadata(addresses []models.AccountAddress) (models.Metadata, error) {
 	res, err := r.getAddressInfo(addresses, true, false)
 	if err != nil {
 		return models.Metadata{}, err
@@ -148,7 +149,7 @@ func (r *CacheClient) GetMetadata(addresses []string) (models.Metadata, error) {
 	return res.Metadata, err
 }
 
-func (r *CacheClient) GetAddressBook(addresses []string) (models.AddressBook, error) {
+func (r *CacheClient) GetAddressBook(addresses []models.AccountAddress) (models.AddressBook, error) {
 	res, err := r.getAddressInfo(addresses, false, true)
 	if err != nil {
 		return models.AddressBook{}, err

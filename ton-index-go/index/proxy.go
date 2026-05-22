@@ -3,13 +3,13 @@ package index
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/toncenter/ton-indexer/ton-index-go/index/models"
 	"log"
 	"math/big"
 	"net/url"
 	"reflect"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/toncenter/ton-indexer/ton-index-go/index/models"
 )
 
 func GetV2AddressInformation(state_req models.V2AccountRequest, settings models.RequestSettings) (*models.V2AddressInformation, error) {
@@ -104,7 +104,6 @@ func GetV2WalletInformation(state_req models.V2AccountRequest, settings models.R
 	if len(errs) > 0 {
 		return nil, models.IndexError{Code: 500, Message: errs[0].Error()}
 	}
-
 	var jsn map[string]interface{}
 	if err = json.Unmarshal(body, &jsn); err != nil {
 		return nil, models.IndexError{Code: 500, Message: err.Error()}

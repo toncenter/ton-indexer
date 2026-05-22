@@ -1,8 +1,6 @@
 module github.com/toncenter/ton-indexer/ton-index-go
 
-go 1.24.0
-
-toolchain go1.24.11
+go 1.26.3
 
 require (
 	github.com/deckarep/golang-set/v2 v2.7.0

@@ -4,9 +4,10 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"github.com/toncenter/ton-indexer/ton-index-go/index/crud"
 	"log"
 	"time"
+
+	"github.com/toncenter/ton-indexer/ton-index-go/index/crud"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/logger"
@@ -60,7 +61,7 @@ func main() {
 	var dbClient *crud.DbClient
 	if *pg != "" {
 		log.Printf("Connecting to PostgreSQL: %s", *pg)
-		dbClient, err = crud.NewDbClient(*pg, 100, 0)
+		dbClient, err = crud.NewDbClient(*pg, 100, 0, nil) // FIXME: support kvrocks
 		if err != nil {
 			log.Printf("Failed to connect to PostgreSQL: %v", err)
 			log.Printf("AddressBook and Metadata will not be available")

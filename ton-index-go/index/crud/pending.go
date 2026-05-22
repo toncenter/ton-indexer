@@ -1,9 +1,9 @@
 package crud
 
 import (
-	"github.com/toncenter/ton-indexer/ton-index-go/index/models"
 	"log"
-	"strconv"
+
+	"github.com/toncenter/ton-indexer/ton-index-go/index/models"
 
 	"sort"
 
@@ -189,7 +189,7 @@ func (c *EmulatedTracesContext) FillFromRawData(rawData map[string]map[string]st
 		traceModel := &models.Trace{
 			TraceId:      (*models.HashType)(trace.TraceId),
 			ExternalHash: &externalHash,
-			McSeqnoStart: "0",
+			McSeqnoStart: 0,
 			StartLt:      0,
 			StartUtime:   0,
 			TraceMeta: models.TraceMeta{
@@ -219,7 +219,7 @@ func (c *EmulatedTracesContext) FillFromRawData(rawData map[string]map[string]st
 			if node.Key == trace.ExternalHash {
 				traceModel.StartLt = uint64(tx.Lt)
 				traceModel.StartUtime = uint32(tx.Now)
-				traceModel.McSeqnoStart = models.HashType(strconv.FormatInt(int64(tx.McSeqno), 10))
+				traceModel.McSeqnoStart = tx.McSeqno
 			}
 
 			txLt := uint64(tx.Lt)
@@ -257,7 +257,7 @@ func (c *EmulatedTracesContext) FillFromRawData(rawData map[string]map[string]st
 		traceModel.EndLt = &maxLt
 		endUtime := maxUtime
 		traceModel.EndUtime = &endUtime
-		traceModel.McSeqnoEnd = models.HashType(strconv.FormatUint(uint64(maxMcSeqno), 10))
+		traceModel.McSeqnoEnd = int32(maxMcSeqno)
 		traceModel.TraceMeta.Transactions = transaction_count
 		traceModel.TraceMeta.Messages = message_count
 		traceModel.TraceMeta.PendingMessages = pending_messages

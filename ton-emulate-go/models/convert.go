@@ -3,14 +3,15 @@ package models
 import (
 	"context"
 	"fmt"
-	"github.com/toncenter/ton-indexer/ton-index-go/index/crud"
-	indexModels "github.com/toncenter/ton-indexer/ton-index-go/index/models"
-	"github.com/toncenter/ton-indexer/ton-index-go/index/parse"
 	"log"
 	"maps"
 	"slices"
 	"strconv"
 	"time"
+
+	"github.com/toncenter/ton-indexer/ton-index-go/index/crud"
+	indexModels "github.com/toncenter/ton-indexer/ton-index-go/index/models"
+	"github.com/toncenter/ton-indexer/ton-index-go/index/parse"
 
 	msgpack "github.com/vmihailenco/msgpack/v5"
 )
@@ -107,7 +108,7 @@ func TransformToAPIResponse(hset map[string]string, pool *crud.DbClient,
 	for _, rawAction := range emulatedContext.GetActions(supportedActionTypes) {
 		rawActions = append(rawActions, *rawAction)
 	}
-	addr_map := map[string]bool{}
+	addr_map := map[indexModels.AccountAddress]bool{}
 	for idx := range rawActions {
 		rawAction := &rawActions[idx]
 		parse.CollectAddressesFromAction(&addr_map, rawAction)
@@ -133,7 +134,7 @@ func TransformToAPIResponse(hset map[string]string, pool *crud.DbClient,
 		if tx.AccountStateAfter != nil {
 			tx.AccountStateAfter = convertToIndexAccountState(&tx.AccountStateHashAfter, accountStates)
 		}
-		addr_map[string(tx.Account)] = true
+		addr_map[tx.Account] = true
 	}
 
 	var book *indexModels.AddressBook = nil
@@ -167,7 +168,7 @@ func TransformToAPIResponse(hset map[string]string, pool *crud.DbClient,
 
 			// append raw interfaces data to metadata (e.g. token is being deployed in emulated trace)
 			for _, addr := range addr_list {
-				interfacesMsgPacked, hasInterfaces := hset[addr]
+				interfacesMsgPacked, hasInterfaces := hset[addr.String()]
 				if !hasInterfaces {
 					continue
 				}
