@@ -286,7 +286,7 @@ int main(int argc, char *argv[]) {
     LOG(ERROR) << "Please specify working directory with -W or --working-dir";
     std::_Exit(2);
   }
-  td::mkdir(working_dir).ensure();
+  td::mkpath(working_dir + "/").ensure();
 
   if (max_queue_size > 0) {
     max_queue.mc_blocks_ = max_queue_size;
