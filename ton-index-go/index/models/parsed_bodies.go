@@ -1,8 +1,53 @@
 package models
 
+// ParsedBody interface for different message body types
 type ParsedBody interface {
 	GetType() string
 }
+
+type JettonTransferBody struct {
+	QueryID          uint64                 `json:"query_id"`
+	Amount           *string                `json:"amount"`
+	Destination      *AccountAddress        `json:"destination"`
+	Response         *AccountAddress        `json:"response"`
+	CustomPayload    []byte                 `json:"custom_payload"`
+	ForwardAmount    *string                `json:"forward_amount"`
+	Comment          string                 `json:"comment"`
+	EncryptedComment bool                   `json:"encrypted_comment"`
+	ForwardPayload   []byte                 `json:"forward_payload"`
+	PayloadSumType   string                 `json:"payload_sum_type"`
+	StonfiSwapBody   map[string]interface{} `json:"stonfi_swap_body"`
+}
+
+func (jt *JettonTransferBody) GetType() string { return "jetton_transfer" }
+
+type JettonBurnBody struct {
+	QueryID             uint64          `json:"query_id"`
+	Amount              *string         `json:"amount"`
+	ResponseDestination *AccountAddress `json:"response_destination"`
+}
+
+func (jb *JettonBurnBody) GetType() string { return "jetton_burn" }
+
+type JettonMinterBody struct {
+	Opcode                uint32          `json:"opcode"`
+	QueryID               uint64          `json:"query_id"`
+	ToAddress             *AccountAddress `json:"to_address"`
+	TonAmount             *string         `json:"ton_amount"`
+	MasterMsgQueryID      uint64          `json:"master_msg_query_id"`
+	MasterMsgJettonAmount *string         `json:"master_msg_jetton_amount"`
+}
+
+func (mjm *JettonMinterBody) GetType() string { return "jetton_mint" }
+
+type JettonMintBody struct {
+	QueryID      uint64          `json:"query_id"`
+	ToAddress    *AccountAddress `json:"to_address"`
+	TonAmount    *string         `json:"ton_amount"`
+	JettonAmount *string         `json:"jetton_amount"`
+}
+
+func (mjm *JettonMintBody) GetType() string { return "jetton_mint" }
 
 type NFTTransferBody struct {
 	QueryID             uint64          `json:"query_id"`
@@ -64,50 +109,6 @@ type JettonSetStatusBody struct {
 }
 
 func (jss *JettonSetStatusBody) GetType() string { return "jetton_set_status" }
-
-type JettonTransferBody struct {
-	QueryID          uint64                 `json:"query_id"`
-	Amount           *string                `json:"amount"`
-	Destination      *AccountAddress        `json:"destination"`
-	Response         *AccountAddress        `json:"response"`
-	CustomPayload    []byte                 `json:"custom_payload"`
-	ForwardAmount    *string                `json:"forward_amount"`
-	Comment          string                 `json:"comment"`
-	EncryptedComment bool                   `json:"encrypted_comment"`
-	ForwardPayload   []byte                 `json:"forward_payload"`
-	PayloadSumType   string                 `json:"payload_sum_type"`
-	StonfiSwapBody   map[string]interface{} `json:"stonfi_swap_body"`
-}
-
-func (jt *JettonTransferBody) GetType() string { return "jetton_transfer" }
-
-type JettonBurnBody struct {
-	QueryID             uint64          `json:"query_id"`
-	Amount              *string         `json:"amount"`
-	ResponseDestination *AccountAddress `json:"response_destination"`
-}
-
-func (jb *JettonBurnBody) GetType() string { return "jetton_burn" }
-
-type JettonMinterBody struct {
-	Opcode                uint32          `json:"opcode"`
-	QueryID               uint64          `json:"query_id"`
-	ToAddress             *AccountAddress `json:"to_address"`
-	TonAmount             *string         `json:"ton_amount"`
-	MasterMsgQueryID      uint64          `json:"master_msg_query_id"`
-	MasterMsgJettonAmount *string         `json:"master_msg_jetton_amount"`
-}
-
-func (mjm *JettonMinterBody) GetType() string { return "jetton_mint" }
-
-type JettonMintBody struct {
-	QueryID      uint64          `json:"query_id"`
-	ToAddress    *AccountAddress `json:"to_address"`
-	TonAmount    *string         `json:"ton_amount"`
-	JettonAmount *string         `json:"jetton_amount"`
-}
-
-func (mjm *JettonMintBody) GetType() string { return "jetton_mint" }
 
 type SingleNominatorWithdrawBody struct {
 	QueryID uint64  `json:"query_id"`
