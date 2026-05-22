@@ -74,6 +74,10 @@ func ParseAccountAddressStruct(value string) (*AccountAddressStruct, error) {
 	if strings.HasPrefix(value, "addr_ext$") {
 		value = strings.TrimPrefix(value, "addr_ext$")
 		parts := strings.SplitN(value, ":", 2)
+		if len(parts) != 2 {
+			return nil, fmt.Errorf("invalid address format: %s", value)
+		}
+
 		res := AccountAddressStruct{Kind: AddressExt}
 
 		extLen, err := strconv.ParseInt(parts[0], 10, 32)

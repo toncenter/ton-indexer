@@ -2124,8 +2124,14 @@ func WebSocketHandler(manager *ClientManager) func(*websocket.Conn) {
 					addrsValid := true
 					for i, a := range req.Addresses {
 						cnv, err := indexModels.ParseAccountAddress(a)
-						if err != nil || cnv == nil || !cnv.IsAddressStd() {
+						if err != nil || cnv == nil {
 							addrsValid = false
+							sendWSJSONErr(c, client, env.Id, err)
+							break
+						}
+						if !cnv.IsAddressStd() {
+							addrsValid = false
+							err := indexModels.IndexError{422, "address is not standard"}
 							sendWSJSONErr(c, client, env.Id, err)
 							break
 						}

@@ -493,6 +493,12 @@ func GetMessages(c *fiber.Ctx) error {
 	if err := c.QueryParser(&req); err != nil {
 		return models.IndexError{Code: 422, Message: err.Error()}
 	}
+	if req.LegacyMessageHash != nil && len(req.LegacyMessageHash) > 0 {
+		if req.MessageHash != nil && len(req.MessageHash) > 0 {
+			return models.IndexError{Code: 422, Message: "cannot use both legacy and new message hashes"}
+		}
+		req.MessageHash = req.LegacyMessageHash
+	}
 	msgs, book, metadata, err := pool.QueryMessages(req, request_settings)
 	if err != nil {
 		return err
