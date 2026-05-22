@@ -10,6 +10,12 @@ pg_master_host: postgres-host
 pg_master_user: postgres
 pg_master_password: REPLACEME
 
+clickhouse_host: clickhouse-host
+clickhouse_port: 9000
+clickhouse_database: ton_index
+clickhouse_user: default
+clickhouse_password: REPLACEME
+
 pendings_redis_password: REPLACEME
 
 # deploy config. Adjust this also
@@ -21,6 +27,8 @@ services:
     additional_args: -bind ":4100"
   index_postgres:
     additional_args: --working-dir /var/ton-index/ --db /var/ton-work/db --from 29000000
+  index_clickhouse:
+    additional_args: --working-dir /var/ton-index-clickhouse/ --db /var/ton-work/db --from 29000000
   metadata_fetcher:
     additional_args:
   emulate_api:
