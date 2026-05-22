@@ -2,8 +2,6 @@ package models
 
 import (
 	"encoding/json"
-
-	"github.com/toncenter/ton-indexer/ton-index-go/index/emulated"
 )
 
 type BlockId struct {
@@ -238,5 +236,5 @@ type Transaction struct {
 	AccountStateBefore       *AccountState          `json:"account_state_before"`
 	AccountStateAfter        *AccountState          `json:"account_state_after"`
 	Emulated                 bool                   `json:"emulated"`
-	Finality                 emulated.FinalityState `json:"finality"`
+	Finality                 FinalityState          `json:"finality"`
 } // @name Transaction

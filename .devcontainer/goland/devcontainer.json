@@ -1,0 +1,17 @@
+{
+  "name": "ton-indexer-dev-goland",
+  "dockerComposeFile": "../docker-compose.yaml",
+  "service": "goland-dev",
+  "workspaceFolder": "/workspaces/ton-indexer",
+  "remoteUser": "dev",
+
+  "shutdownAction": "none",
+
+  "customizations": {
+    "jetbrains": {
+      "backend": "GoLand"
+    }
+  },
+
+  "postCreateCommand": "git --version && go version"
+}

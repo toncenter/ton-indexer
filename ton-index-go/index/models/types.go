@@ -1,5 +1,11 @@
 package models
 
+import (
+    "fmt"
+    "strconv"
+    "encoding/json"
+)
+
 type FilterStringInterface interface {
 	FilterString() string
 }

@@ -1,0 +1,41 @@
+services:
+  clion-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ton-indexer/devcontainer:clion-ubuntu24
+    container_name: ton_indexer_clion_dev
+    command: sleep infinity
+    init: true
+    volumes:
+      - ..:/workspaces/ton-indexer:cached
+    working_dir: /workspaces/ton-indexer
+    networks:
+      - devnet
+    cap_add:
+      - SYS_PTRACE
+    security_opt:
+      - seccomp:unconfined
+
+  goland-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ton-indexer/devcontainer:goland-ubuntu24
+    container_name: ton_indexer_goland_dev
+    command: sleep infinity
+    init: true
+    volumes:
+      - ..:/workspaces/ton-indexer:cached
+    working_dir: /workspaces/ton-indexer
+    networks:
+      - devnet
+    cap_add:
+      - SYS_PTRACE
+    security_opt:
+      - seccomp:unconfined
+
+networks:
+  devnet:
+    external: true
+    name: docker_global
