@@ -64,12 +64,6 @@ type TopAccountsByBalanceRequest struct {
 }
 
 // requests
-type SortType string
-
-const (
-	DESC SortType = "desc"
-	ASC  SortType = "asc"
-)
 
 type BlocksRequest struct {
 	Workchain *int32    `query:"workchain"`
@@ -288,6 +282,32 @@ type VestingContractsRequest struct {
 	WalletAddress   []AccountAddress `query:"wallet_address"`
 	CheckWhitelist  *bool            `query:"check_whitelist"`
 	LimitParams
+}
+
+type NominatorPoolRequest struct {
+	Pool *AccountAddress `query:"pool"`
+}
+
+type NominatorRequest struct {
+	Nominator *AccountAddress `query:"nominator"`
+}
+
+type NominatorPoolNominatorRequest struct {
+	Pool      *AccountAddress `query:"pool"`
+	Nominator *AccountAddress `query:"nominator"`
+}
+
+type SortType string
+
+const (
+	DESC SortType = "desc"
+	ASC  SortType = "asc"
+)
+
+type LimitRequest struct {
+	Limit  *int32    `query:"limit"`
+	Offset *int32    `query:"offset"`
+	Sort   *SortType `query:"sort"`
 }
 
 type TestRequest struct {

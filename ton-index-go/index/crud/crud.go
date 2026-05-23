@@ -27,20 +27,23 @@ func getSortOrder(order models.SortType) (string, error) {
 }
 
 // query builders
-func limitQuery(lim models.LimitParams, settings models.RequestSettings) (string, error) {
-	query := ``
+func limitValue(lim models.LimitRequest, settings models.RequestSettings) (int, error) {
 	if lim.Limit == nil {
-		// set default value
-		lim.Limit = new(int32)
-		*lim.Limit = int32(settings.DefaultLimit)
+		return settings.DefaultLimit, nil
 	}
-	if lim.Limit != nil {
-		limit := max(1, *lim.Limit)
-		if limit > int32(settings.MaxLimit) {
-			return "", models.IndexError{Code: 422, Message: fmt.Sprintf("limit is not allowed: %d > %d", limit, settings.MaxLimit)}
-		}
-		query += fmt.Sprintf(" limit %d", limit)
+	limit := int(max(1, *lim.Limit))
+	if limit > settings.MaxLimit {
+		return 0, models.IndexError{Code: 422, Message: fmt.Sprintf("limit is not allowed: %d > %d", limit, settings.MaxLimit)}
 	}
+	return limit, nil
+}
+
+func limitQuery(lim models.LimitRequest, settings models.RequestSettings) (string, error) {
+	limit, err := limitValue(lim, settings)
+	if err != nil {
+		return "", err
+	}
+	query := fmt.Sprintf(" limit %d", limit)
 	if lim.Offset != nil {
 		offset := max(0, *lim.Offset)
 		query += fmt.Sprintf(" offset %d", offset)

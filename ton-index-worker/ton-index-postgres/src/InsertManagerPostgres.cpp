@@ -147,6 +147,7 @@ private:
   void insert_jetton_transfers(pqxx::work &txn, bool with_copy);
   void insert_jetton_burns(pqxx::work &txn, bool with_copy);
   void insert_nft_transfers(pqxx::work &txn, bool with_copy);
+  void insert_nominator_pool_incomes(pqxx::work &txn, bool with_copy);
   std::string insert_jetton_masters(pqxx::work &txn);
   std::string insert_jetton_wallets(pqxx::work &txn);
   std::string insert_nft_collections(pqxx::work &txn);
@@ -156,6 +157,7 @@ private:
   std::string insert_multisig_contracts(pqxx::work &txn);
   std::string insert_multisig_orders(pqxx::work &txn);
   std::string insert_vesting(pqxx::work &txn);
+  std::string insert_nominator_pools(pqxx::work &txn);
   std::string insert_telemint(pqxx::work &txn);
   std::string insert_dedust_pools(pqxx::work &txn);
   void insert_contract_methods(pqxx::work &txn);
@@ -203,6 +205,21 @@ std::string extra_currencies_to_json_string(const std::map<uint32_t, td::RefInt2
   obj.leave();
 
   return extra_currencies_json.string_builder().as_cslice().str();
+}
+
+std::string nominators_to_json_string(const std::vector<schema::NominatorPoolNominator>& nominators) {
+  td::JsonBuilder nominators_json;
+  auto arr = nominators_json.enter_array();
+  for (const auto& nominator : nominators) {
+    auto obj = arr.enter_value().enter_object();
+    obj("address", convert::to_raw_address(nominator.address));
+    obj("balance", nominator.balance->to_dec_string());
+    obj("pending_balance", nominator.pending_balance->to_dec_string());
+    obj.leave();
+  }
+  arr.leave();
+
+  return nominators_json.string_builder().as_cslice().str();
 }
 
 void PostgresLeaderHeartbeat::hold() {
@@ -595,6 +612,29 @@ struct PreparedVestingWhitelistRow {
   PREPARED_ROW_AS_TUPLE(vesting_contract_address, wallet_address);
 };
 
+struct PreparedNominatorPoolRow {
+  block::StdAddress address;
+  int32_t state;
+  int32_t nominators_count;
+  td::RefInt256 stake_amount_sent;
+  td::RefInt256 validator_amount;
+  int32_t validator_reward_share;
+  int32_t max_nominators_count;
+  td::RefInt256 min_validator_stake;
+  td::RefInt256 min_nominator_stake;
+  std::string active_nominators;
+  uint64_t last_transaction_lt;
+  td::Bits256 code_hash;
+  td::Bits256 data_hash;
+  bool destroyed;
+  std::uint32_t source_mc_seqno;
+
+  PREPARED_ROW_AS_TUPLE(address, state, nominators_count, stake_amount_sent, validator_amount,
+                        validator_reward_share, max_nominators_count, min_validator_stake,
+                        min_nominator_stake, active_nominators, last_transaction_lt,
+                        code_hash, data_hash, destroyed);
+};
+
 struct PreparedTelemintRow {
   block::StdAddress address;
   std::string token_name;
@@ -746,6 +786,7 @@ struct PreparedBatchPostgres {
   std::vector<PreparedDedustPoolRow> dedust_pools;
   std::vector<PreparedVestingContractRow> vesting_contracts;
   std::vector<PreparedVestingWhitelistRow> vesting_whitelist;
+  std::vector<PreparedNominatorPoolRow> nominator_pools;
   std::vector<PreparedTelemintRow> telemint_nft_items;
 
   std::vector<PreparedJettonTransferRow> jetton_transfers;
@@ -1052,6 +1093,27 @@ kvrocks_state::StateBatch make_kvrocks_state_batch(const PreparedBatchPostgres& 
     });
   }
 
+  result.nominator_pools.reserve(batch.nominator_pools.size());
+  for (const auto& row : batch.nominator_pools) {
+    result.nominator_pools.push_back({
+      .address = row.address,
+      .state = row.state,
+      .nominators_count = row.nominators_count,
+      .stake_amount_sent = row.stake_amount_sent,
+      .validator_amount = row.validator_amount,
+      .validator_reward_share = row.validator_reward_share,
+      .max_nominators_count = row.max_nominators_count,
+      .min_validator_stake = row.min_validator_stake,
+      .min_nominator_stake = row.min_nominator_stake,
+      .active_nominators = row.active_nominators,
+      .last_transaction_lt = row.last_transaction_lt,
+      .code_hash = row.code_hash,
+      .data_hash = row.data_hash,
+      .destroyed = row.destroyed,
+      .source_mc_seqno = row.source_mc_seqno,
+    });
+  }
+
   result.telemint_nft_items.reserve(batch.telemint_nft_items.size());
   for (const auto& row : batch.telemint_nft_items) {
     result.telemint_nft_items.push_back({
@@ -1318,6 +1380,26 @@ PreparedVestingContractRow make_destroyed_vesting_contract_row(const DestroyedAc
     .vesting_total_amount = zero_refint(),
     .vesting_sender_address = state.address,
     .owner_address = state.address,
+    .last_transaction_lt = state.last_transaction_lt,
+    .code_hash = zero_bits256(),
+    .data_hash = zero_bits256(),
+    .destroyed = true,
+    .source_mc_seqno = state.source_mc_seqno,
+  };
+}
+
+PreparedNominatorPoolRow make_destroyed_nominator_pool_row(const DestroyedAccountState& state) {
+  return {
+    .address = state.address,
+    .state = 0,
+    .nominators_count = 0,
+    .stake_amount_sent = zero_refint(),
+    .validator_amount = zero_refint(),
+    .validator_reward_share = 0,
+    .max_nominators_count = 0,
+    .min_validator_stake = zero_refint(),
+    .min_nominator_stake = zero_refint(),
+    .active_nominators = "[]",
     .last_transaction_lt = state.last_transaction_lt,
     .code_hash = zero_bits256(),
     .data_hash = zero_bits256(),
@@ -2423,6 +2505,62 @@ void collect_and_prepare_batch_rows(const std::vector<InsertTaskStruct>& insert_
   }
 
   {
+    struct NominatorPoolWithSource {
+      schema::NominatorPoolData value;
+      std::uint32_t source_mc_seqno;
+    };
+    std::unordered_map<block::StdAddress, NominatorPoolWithSource> nominator_pools;
+    for (auto i = insert_tasks.rbegin(); i != insert_tasks.rend(); ++i) {
+      const auto& task = *i;
+      for (const auto& pool : task.parsed_block_->get_accounts_v2<schema::NominatorPoolData>()) {
+        auto it = nominator_pools.find(pool.address);
+        if (it == nominator_pools.end() || it->second.value.last_transaction_lt < pool.last_transaction_lt) {
+          nominator_pools[pool.address] = NominatorPoolWithSource{
+            .value = pool,
+            .source_mc_seqno = task.mc_seqno_,
+          };
+        }
+      }
+    }
+    auto ordered_nominator_pools = get_ordered_map_values(nominator_pools, [](const auto& key, const auto&) {
+      return convert::to_raw_address(key);
+    });
+    prepared_batch.nominator_pools.reserve(ordered_nominator_pools.size());
+    for (const auto& [_, pool_with_source_ptr] : ordered_nominator_pools) {
+      const auto& pool = pool_with_source_ptr->value;
+      auto destroyed_it = destroyed_accounts.find(pool.address);
+      if (destroyed_it != destroyed_accounts.end() &&
+          pool.last_transaction_lt < destroyed_it->second.last_transaction_lt) {
+        continue;
+      }
+      prepared_batch.nominator_pools.push_back(PreparedNominatorPoolRow{
+        .address = pool.address,
+        .state = pool.state,
+        .nominators_count = pool.nominators_count,
+        .stake_amount_sent = pool.stake_amount_sent,
+        .validator_amount = pool.validator_amount,
+        .validator_reward_share = pool.validator_reward_share,
+        .max_nominators_count = pool.max_nominators_count,
+        .min_validator_stake = pool.min_validator_stake,
+        .min_nominator_stake = pool.min_nominator_stake,
+        .active_nominators = nominators_to_json_string(pool.nominators),
+        .last_transaction_lt = pool.last_transaction_lt,
+        .code_hash = pool.code_hash,
+        .data_hash = pool.data_hash,
+        .destroyed = false,
+        .source_mc_seqno = pool_with_source_ptr->source_mc_seqno,
+      });
+    }
+    for (const auto& [_, destroyed_ptr] : ordered_destroyed_accounts) {
+      auto it = nominator_pools.find(destroyed_ptr->address);
+      if (it == nominator_pools.end() ||
+          it->second.value.last_transaction_lt < destroyed_ptr->last_transaction_lt) {
+        prepared_batch.nominator_pools.push_back(make_destroyed_nominator_pool_row(*destroyed_ptr));
+      }
+    }
+  }
+
+  {
     struct TelemintWithSource {
       schema::TelemintData value;
       std::uint32_t source_mc_seqno;
@@ -2855,6 +2993,7 @@ void InsertBatchPostgres::commit_prepared_batch() {
   insert_jetton_transfers(txn, with_copy_);
   insert_jetton_burns(txn, with_copy_);
   insert_nft_transfers(txn, with_copy_);
+  insert_nominator_pool_incomes(txn, with_copy_);
   insert_traces(txn, with_copy_);
   if (!kvrocks_state_only) {
     insert_contract_methods(txn);
@@ -2875,6 +3014,7 @@ void InsertBatchPostgres::commit_prepared_batch() {
     upsert_query += insert_dedust_pools(txn);
     upsert_query += insert_latest_account_states(txn);
     upsert_query += insert_vesting(txn);
+    upsert_query += insert_nominator_pools(txn);
     upsert_query += insert_telemint(txn);
   }
 
@@ -3617,6 +3757,22 @@ std::string InsertBatchPostgres::insert_vesting(pqxx::work &txn) {
     return result + whitelist_stream.get_str();
 }
 
+std::string InsertBatchPostgres::insert_nominator_pools(pqxx::work &txn) {
+    std::initializer_list<std::string_view> columns = {
+        "address", "state", "nominators_count", "stake_amount_sent", "validator_amount",
+        "validator_reward_share", "max_nominators_count", "min_validator_stake",
+        "min_nominator_stake", "active_nominators", "last_transaction_lt",
+        "code_hash", "data_hash", "destroyed"
+    };
+    PopulateTableStream stream(txn, "nominator_pools", columns, 1000, false);
+    stream.setConflictDoUpdate({"address"}, "nominator_pools.last_transaction_lt < EXCLUDED.last_transaction_lt");
+    for (const auto& row : prepared_batch_->nominator_pools) {
+        stream.insert_row(row);
+    }
+
+    return stream.get_str();
+}
+
 std::string InsertBatchPostgres::insert_telemint(pqxx::work &txn) {
     std::initializer_list<std::string_view> telemint_columns = {
         "address", "token_name", "bidder_address", "bid", "bid_ts",
@@ -3687,6 +3843,36 @@ void InsertBatchPostgres::insert_jetton_transfers(pqxx::work &txn, bool with_cop
   }
   stream.finish();
 }
+
+void InsertBatchPostgres::insert_nominator_pool_incomes(pqxx::work &txn, bool with_copy) {
+  std::initializer_list<std::string_view> columns = {
+    "tx_hash", "tx_lt", "tx_now", "mc_seqno", "pool_address", "nominator_address",
+    "income_amount", "nominator_balance", "trace_id"
+  };
+  PopulateTableStream stream(txn, "nominator_pool_incomes", columns, 1000, with_copy);
+  if (!with_copy) {
+    stream.setConflictDoNothing();
+  }
+
+  for (const auto& task : insert_tasks_) {
+    for (const auto& income : task.parsed_block_->get_events<schema::NominatorPoolIncome>()) {
+      auto tuple = std::make_tuple(
+        income.transaction_hash,
+        income.transaction_lt,
+        income.transaction_now,
+        income.mc_seqno,
+        income.pool_address,
+        income.nominator_address,
+        income.income_amount,
+        income.nominator_balance,
+        income.trace_id
+      );
+      stream.insert_row(std::move(tuple));
+    }
+  }
+  stream.finish();
+}
+
 
 void InsertBatchPostgres::insert_jetton_burns(pqxx::work &txn, bool with_copy) {
   std::initializer_list<std::string_view> columns = {

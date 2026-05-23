@@ -12,7 +12,8 @@ using FullDetector = InterfacesDetector<JettonWalletDetectorR, JettonMasterDetec
                                      GetGemsNftAuction, GetGemsNftFixPriceSale,
                                      GetGemsNftFixPriceSaleV4,
                                      MultisigContract, MultisigOrder,
-                                     VestingContract, TelemintContract, DedustPoolDetector>;
+                                     VestingContract, NominatorPoolContract,
+                                     TelemintContract, DedustPoolDetector>;
 
 class BlockInterfaceProcessor: public td::actor::Actor {
 private:
@@ -257,6 +258,30 @@ public:
                     vesting_data.code_hash = code_hash;
                     vesting_data.data_hash = data_hash;
                     interfaces_[address].push_back(vesting_data);
+                } else if constexpr (std::is_same_v<T, NominatorPoolContract::Result>)
+                {
+                    schema::NominatorPoolData pool_data;
+                    pool_data.address = address;
+                    pool_data.state = arg.state;
+                    pool_data.nominators_count = arg.nominators_count;
+                    pool_data.stake_amount_sent = arg.stake_amount_sent;
+                    pool_data.validator_amount = arg.validator_amount;
+                    pool_data.validator_reward_share = arg.validator_reward_share;
+                    pool_data.max_nominators_count = arg.max_nominators_count;
+                    pool_data.min_validator_stake = arg.min_validator_stake;
+                    pool_data.min_nominator_stake = arg.min_nominator_stake;
+                    for (const auto& nominator : arg.nominators) {
+                        pool_data.nominators.push_back({
+                            .address = nominator.address,
+                            .balance = nominator.amount,
+                            .pending_balance = nominator.pending_deposit_amount,
+                        });
+                    }
+                    pool_data.last_transaction_lt = last_trans_lt;
+                    pool_data.last_transaction_now = last_trans_now;
+                    pool_data.code_hash = code_hash;
+                    pool_data.data_hash = data_hash;
+                    interfaces_[address].push_back(std::move(pool_data));
                 } else if constexpr (std::is_same_v<T, TelemintContract::Result>)
                 {
                     schema::TelemintData telemint_data;

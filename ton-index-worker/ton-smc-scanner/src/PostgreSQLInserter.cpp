@@ -58,6 +58,7 @@ void PostgreSQLInserter::insert_postgres(const kvrocks_state::StateBatch& batch)
   insert_multisig_contracts(txn, batch);
   insert_multisig_orders(txn, batch);
   insert_vesting_contracts(txn, batch);
+  insert_nominator_pools(txn, batch);
   insert_telemint_contracts(txn, batch);
   insert_dedust_pools(txn, batch);
   txn.commit();
@@ -292,6 +293,20 @@ void PostgreSQLInserter::insert_vesting_contracts(pqxx::work& txn, const kvrocks
     whitelist_stream.insert_row(row);
   }
   whitelist_stream.finish();
+}
+
+void PostgreSQLInserter::insert_nominator_pools(pqxx::work& txn, const kvrocks_state::StateBatch& batch) {
+  std::initializer_list<std::string_view> columns = {
+    "address", "state", "nominators_count", "stake_amount_sent", "validator_amount",
+    "validator_reward_share", "max_nominators_count", "min_validator_stake", "min_nominator_stake",
+    "active_nominators", "last_transaction_lt", "code_hash", "data_hash", "destroyed"
+  };
+  PopulateTableStream stream(txn, "nominator_pools", columns, 1000, false);
+  stream.setConflictDoUpdate({"address"}, "nominator_pools.last_transaction_lt < EXCLUDED.last_transaction_lt");
+  for (const auto& row : batch.nominator_pools) {
+    stream.insert_row(row);
+  }
+  stream.finish();
 }
 
 void PostgreSQLInserter::insert_telemint_contracts(pqxx::work& txn, const kvrocks_state::StateBatch& batch) {

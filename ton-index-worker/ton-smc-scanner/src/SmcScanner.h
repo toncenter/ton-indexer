@@ -10,7 +10,8 @@
         GetGemsNftAuction, GetGemsNftFixPriceSale,                   \
         GetGemsNftFixPriceSaleV4,                                     \
         MultisigContract, MultisigOrder,                              \
-        VestingContract, TelemintContract, DedustPoolDetector
+        VestingContract, NominatorPoolContract,                       \
+        TelemintContract, DedustPoolDetector
 #endif
 
 

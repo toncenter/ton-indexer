@@ -349,6 +349,29 @@ struct PreparedVestingWhitelistRow {
   KVROCKS_PREPARED_ROW_AS_TUPLE(vesting_contract_address, wallet_address);
 };
 
+struct PreparedNominatorPoolRow {
+  block::StdAddress address;
+  std::int32_t state;
+  std::int32_t nominators_count;
+  td::RefInt256 stake_amount_sent;
+  td::RefInt256 validator_amount;
+  std::int32_t validator_reward_share;
+  std::int32_t max_nominators_count;
+  td::RefInt256 min_validator_stake;
+  td::RefInt256 min_nominator_stake;
+  std::string active_nominators;
+  std::uint64_t last_transaction_lt;
+  td::Bits256 code_hash;
+  td::Bits256 data_hash;
+  bool destroyed;
+  std::uint32_t source_mc_seqno;
+
+  KVROCKS_PREPARED_ROW_AS_TUPLE(address, state, nominators_count, stake_amount_sent, validator_amount,
+                                validator_reward_share, max_nominators_count, min_validator_stake,
+                                min_nominator_stake, active_nominators, last_transaction_lt,
+                                code_hash, data_hash, destroyed);
+};
+
 struct PreparedTelemintRow {
   block::StdAddress address;
   std::string token_name;
@@ -407,6 +430,7 @@ struct StateBatch {
   std::vector<PreparedDedustPoolRow> dedust_pools;
   std::vector<PreparedVestingContractRow> vesting_contracts;
   std::vector<PreparedVestingWhitelistRow> vesting_whitelist;
+  std::vector<PreparedNominatorPoolRow> nominator_pools;
   std::vector<PreparedTelemintRow> telemint_nft_items;
 };
 
@@ -427,6 +451,7 @@ using PointStateData = std::variant<schema::AccountState,
                                     schema::MultisigContractData,
                                     schema::MultisigOrderData,
                                     schema::VestingData,
+                                    schema::NominatorPoolData,
                                     schema::TelemintData,
                                     schema::DedustPoolData>;
 

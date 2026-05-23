@@ -78,6 +78,7 @@ td::Status ParseQuery::parse_impl() {
   }
 
   result->mc_block_ = mc_block_;
+  result->cell_db_reader_ = cell_db_reader_;
   return td::Status::OK();
 }
 
@@ -640,6 +641,7 @@ td::Result<std::vector<schema::Transaction>> ParseQuery::parse_transactions(cons
 
         schema::Transaction schema_tx;
 
+        schema_tx.raw = tvalue;
         schema_tx.account = block::StdAddress(blk_id.id.workchain, cur_addr);
         schema_tx.hash = tvalue->get_hash().bits();
         schema_tx.lt = trans.lt;

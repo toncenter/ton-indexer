@@ -68,7 +68,7 @@ struct TrComputePhase_vm {
   td::Bits256 vm_final_state_hash;
 };
 
-using TrComputePhase = std::variant<TrComputePhase_skipped, 
+using TrComputePhase = std::variant<TrComputePhase_skipped,
                                     TrComputePhase_vm>;
 
 struct StorageUsed {
@@ -107,8 +107,8 @@ struct TrBouncePhase_ok {
   td::RefInt256 fwd_fees;
 };
 
-using TrBouncePhase = std::variant<TrBouncePhase_negfunds, 
-                                   TrBouncePhase_nofunds, 
+using TrBouncePhase = std::variant<TrBouncePhase_negfunds,
+                                   TrBouncePhase_nofunds,
                                    TrBouncePhase_ok>;
 
 struct SplitMergeInfo {
@@ -174,12 +174,12 @@ struct TransactionDescr_merge_install {
   bool destroyed;
 };
 
-using TransactionDescr = std::variant<TransactionDescr_ord, 
-                                       TransactionDescr_storage, 
-                                       TransactionDescr_tick_tock, 
-                                       TransactionDescr_split_prepare, 
-                                       TransactionDescr_split_install, 
-                                       TransactionDescr_merge_prepare, 
+using TransactionDescr = std::variant<TransactionDescr_ord,
+                                       TransactionDescr_storage,
+                                       TransactionDescr_tick_tock,
+                                       TransactionDescr_split_prepare,
+                                       TransactionDescr_split_install,
+                                       TransactionDescr_merge_prepare,
                                        TransactionDescr_merge_install>;
 
 struct Message {
@@ -209,6 +209,7 @@ struct Message {
 };
 
 struct Transaction {
+  td::Ref<vm::Cell> raw;
   td::Bits256 hash;
   block::StdAddress account;
   uint64_t lt;
@@ -248,7 +249,7 @@ struct Block {
   std::optional<int32_t> mc_block_workchain;
   std::optional<int64_t> mc_block_shard;
   std::optional<uint32_t> mc_block_seqno;
-  
+
   int32_t global_id;
   int32_t version;
   bool after_merge;
@@ -279,7 +280,7 @@ struct MasterchainBlockShard {
   uint32_t mc_seqno;
   uint64_t mc_block_start_lt;
   int32_t mc_block_gen_utime;
-  
+
   int32_t workchain;
   int64_t shard;
   uint32_t seqno;
@@ -321,7 +322,7 @@ struct TraceEdge {
     td::StringBuilder sb;
     sb << "TraceEdge("
        << trace_id << ", "
-       << msg_hash << ", " 
+       << msg_hash << ", "
        << (left_tx.has_value() ? td::base64_encode(left_tx.value().as_slice()) : "null") << ", "
        << (right_tx.has_value() ? td::base64_encode(right_tx.value().as_slice()) : "null") << ", "
        << (incomplete) << ", " << broken << ")";
@@ -335,7 +336,7 @@ struct Trace {
   std::optional<td::Bits256> external_hash_norm;
   std::int32_t mc_seqno_start;
   std::int32_t mc_seqno_end;
-  
+
   // meta
   std::uint64_t start_lt;
   std::uint32_t start_utime;
@@ -425,6 +426,29 @@ struct VestingData
   td::Bits256 data_hash;
 };
 
+struct NominatorPoolNominator {
+  block::StdAddress address;
+  td::RefInt256 balance;
+  td::RefInt256 pending_balance;
+};
+
+struct NominatorPoolData {
+  block::StdAddress address;
+  int state;
+  int nominators_count;
+  td::RefInt256 stake_amount_sent;
+  td::RefInt256 validator_amount;
+  int validator_reward_share;
+  int max_nominators_count;
+  td::RefInt256 min_validator_stake;
+  td::RefInt256 min_nominator_stake;
+  std::vector<NominatorPoolNominator> nominators;
+  uint64_t last_transaction_lt;
+  uint32_t last_transaction_now;
+  td::Bits256 code_hash;
+  td::Bits256 data_hash;
+};
+
 struct TelemintData
 {
   block::StdAddress address;
@@ -486,6 +510,19 @@ struct JettonBurn {
   td::RefInt256 amount;
   std::string response_destination;
   td::Ref<vm::Cell> custom_payload;
+};
+
+struct NominatorPoolIncome {
+  td::Bits256 trace_id;
+  td::Bits256 transaction_hash;
+  uint64_t transaction_lt;
+  uint32_t transaction_now;
+  uint32_t mc_seqno;
+
+  std::string pool_address;
+  std::string nominator_address;
+  td::RefInt256 income_amount;
+  td::RefInt256 nominator_balance;  // balance at income time
 };
 
 struct NFTCollectionData {
@@ -696,13 +733,14 @@ struct MasterchainBlockDataState {
   std::shared_ptr<block::ConfigInfo> config_;
 };
 
-using BlockchainEvent = std::variant<JettonTransfer, 
+using BlockchainEvent = std::variant<JettonTransfer,
                                      JettonBurn,
-                                     NFTTransfer>;
+                                     NFTTransfer,
+                                     NominatorPoolIncome>;
 
-using BlockchainInterface = std::variant<JettonMasterData, 
-                                         JettonWalletData, 
-                                         NFTCollectionData, 
+using BlockchainInterface = std::variant<JettonMasterData,
+                                         JettonWalletData,
+                                         NFTCollectionData,
                                          NFTItemData>;
 
 
@@ -716,6 +754,7 @@ using BlockchainInterfaceV2 = std::variant<JettonWalletDataV2,
                                            MultisigContractData,
                                            MultisigOrderData,
                                            VestingData,
+                                           NominatorPoolData,
                                            TelemintData,
                                            DedustPoolData>;
 }  // namespace schema
@@ -742,6 +781,7 @@ struct hash<block::StdAddress> {
 
 struct ParsedBlock {
   schema::MasterchainBlockDataState mc_block_;
+  std::shared_ptr<vm::CellDbReader> cell_db_reader_;  // for loading previous states
 
   std::vector<schema::Block> blocks_;
   std::vector<schema::AccountState> account_states_;
@@ -753,7 +793,7 @@ struct ParsedBlock {
   std::vector<schema::BlockchainInterface> interfaces_; // deprecated in favour of account_interfaces_
 
   std::unordered_map<block::StdAddress, std::vector<schema::BlockchainInterfaceV2>> account_interfaces_;
-  
+
   template <class T>
   std::vector<T> get_events() {
     std::vector<T> result;
