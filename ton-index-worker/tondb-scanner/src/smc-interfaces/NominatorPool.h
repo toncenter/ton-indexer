@@ -29,6 +29,7 @@ struct ParsedStorage {
   int nominators_count;
   td::RefInt256 stake_amount_sent;
   td::RefInt256 validator_amount;
+  block::StdAddress validator_address;
   int validator_reward_share;
   int max_nominators_count;
   td::RefInt256 min_validator_stake;
@@ -48,6 +49,7 @@ public:
     int nominators_count;
     td::RefInt256 stake_amount_sent;
     td::RefInt256 validator_amount;
+    block::StdAddress validator_address;
     int validator_reward_share;
     int max_nominators_count;
     td::RefInt256 min_validator_stake;

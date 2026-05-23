@@ -266,6 +266,7 @@ public:
                     pool_data.nominators_count = arg.nominators_count;
                     pool_data.stake_amount_sent = arg.stake_amount_sent;
                     pool_data.validator_amount = arg.validator_amount;
+                    pool_data.validator_address = arg.validator_address;
                     pool_data.validator_reward_share = arg.validator_reward_share;
                     pool_data.max_nominators_count = arg.max_nominators_count;
                     pool_data.min_validator_stake = arg.min_validator_stake;

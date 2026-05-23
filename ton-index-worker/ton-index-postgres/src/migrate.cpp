@@ -684,6 +684,7 @@ void run_1_3_0_migrations(const std::string& connection_string, bool custom_type
       "nominators_count integer, "
       "stake_amount_sent numeric, "
       "validator_amount numeric, "
+      "validator_address tonaddr, "
       "validator_reward_share integer, "
       "max_nominators_count integer, "
       "min_validator_stake numeric, "

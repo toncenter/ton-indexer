@@ -298,7 +298,7 @@ void PostgreSQLInserter::insert_vesting_contracts(pqxx::work& txn, const kvrocks
 void PostgreSQLInserter::insert_nominator_pools(pqxx::work& txn, const kvrocks_state::StateBatch& batch) {
   std::initializer_list<std::string_view> columns = {
     "address", "state", "nominators_count", "stake_amount_sent", "validator_amount",
-    "validator_reward_share", "max_nominators_count", "min_validator_stake", "min_nominator_stake",
+    "validator_address", "validator_reward_share", "max_nominators_count", "min_validator_stake", "min_nominator_stake",
     "active_nominators", "last_transaction_lt", "code_hash", "data_hash", "destroyed"
   };
   PopulateTableStream stream(txn, "nominator_pools", columns, 1000, false);

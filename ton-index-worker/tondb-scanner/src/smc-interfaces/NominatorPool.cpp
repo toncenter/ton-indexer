@@ -21,6 +21,20 @@ block::StdAddress nominator_address_from_hash(const td::BitArray<256>& addr_hash
   return address;
 }
 
+td::Result<block::StdAddress> validator_address_from_hash(td::RefInt256 addr_hash) {
+  if (addr_hash.is_null()) {
+    return td::Status::Error("Validator address is null");
+  }
+  td::BitArray<256> bits;
+  if (!addr_hash->export_bytes(bits.data(), 32, false)) {
+    return td::Status::Error("Failed to parse validator address");
+  }
+  block::StdAddress address;
+  address.workchain = ton::masterchainId;
+  address.addr = bits;
+  return address;
+}
+
 }  // namespace
 
 namespace nominator_pool {
@@ -44,12 +58,14 @@ td::Result<ParsedStorage> parse_storage(td::Ref<vm::Cell> data_cell) {
   }
   TRY_RESULT(min_validator_stake, parse_grams(pool_config.min_validator_stake, "min_validator_stake"));
   TRY_RESULT(min_nominator_stake, parse_grams(pool_config.min_nominator_stake, "min_nominator_stake"));
+  TRY_RESULT(validator_address, validator_address_from_hash(pool_config.validator_address));
 
   ParsedStorage result{
       .state = pool_storage.state,
       .nominators_count = pool_storage.nominators_count,
       .stake_amount_sent = stake_amount_sent,
       .validator_amount = validator_amount,
+      .validator_address = validator_address,
       .validator_reward_share = pool_config.validator_reward_share,
       .max_nominators_count = pool_config.max_nominators_count,
       .min_validator_stake = min_validator_stake,
@@ -135,6 +151,7 @@ void NominatorPoolContract::start_up() {
       .nominators_count = parsed.nominators_count,
       .stake_amount_sent = parsed.stake_amount_sent,
       .validator_amount = parsed.validator_amount,
+      .validator_address = parsed.validator_address,
       .validator_reward_share = parsed.validator_reward_share,
       .max_nominators_count = parsed.max_nominators_count,
       .min_validator_stake = parsed.min_validator_stake,

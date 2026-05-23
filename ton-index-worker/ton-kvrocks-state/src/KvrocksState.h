@@ -355,6 +355,7 @@ struct PreparedNominatorPoolRow {
   std::int32_t nominators_count;
   td::RefInt256 stake_amount_sent;
   td::RefInt256 validator_amount;
+  block::StdAddress validator_address;
   std::int32_t validator_reward_share;
   std::int32_t max_nominators_count;
   td::RefInt256 min_validator_stake;
@@ -366,7 +367,7 @@ struct PreparedNominatorPoolRow {
   bool destroyed;
   std::uint32_t source_mc_seqno;
 
-  KVROCKS_PREPARED_ROW_AS_TUPLE(address, state, nominators_count, stake_amount_sent, validator_amount,
+  KVROCKS_PREPARED_ROW_AS_TUPLE(address, state, nominators_count, stake_amount_sent, validator_amount, validator_address,
                                 validator_reward_share, max_nominators_count, min_validator_stake,
                                 min_nominator_stake, active_nominators, last_transaction_lt,
                                 code_hash, data_hash, destroyed);

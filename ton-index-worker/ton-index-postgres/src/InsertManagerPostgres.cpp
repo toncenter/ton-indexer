@@ -618,6 +618,7 @@ struct PreparedNominatorPoolRow {
   int32_t nominators_count;
   td::RefInt256 stake_amount_sent;
   td::RefInt256 validator_amount;
+  block::StdAddress validator_address;
   int32_t validator_reward_share;
   int32_t max_nominators_count;
   td::RefInt256 min_validator_stake;
@@ -629,7 +630,7 @@ struct PreparedNominatorPoolRow {
   bool destroyed;
   std::uint32_t source_mc_seqno;
 
-  PREPARED_ROW_AS_TUPLE(address, state, nominators_count, stake_amount_sent, validator_amount,
+  PREPARED_ROW_AS_TUPLE(address, state, nominators_count, stake_amount_sent, validator_amount, validator_address,
                         validator_reward_share, max_nominators_count, min_validator_stake,
                         min_nominator_stake, active_nominators, last_transaction_lt,
                         code_hash, data_hash, destroyed);
@@ -1101,6 +1102,7 @@ kvrocks_state::StateBatch make_kvrocks_state_batch(const PreparedBatchPostgres& 
       .nominators_count = row.nominators_count,
       .stake_amount_sent = row.stake_amount_sent,
       .validator_amount = row.validator_amount,
+      .validator_address = row.validator_address,
       .validator_reward_share = row.validator_reward_share,
       .max_nominators_count = row.max_nominators_count,
       .min_validator_stake = row.min_validator_stake,
@@ -1177,6 +1179,13 @@ td::RefInt256 zero_refint() {
 
 td::Bits256 zero_bits256() {
   return {};
+}
+
+block::StdAddress zero_masterchain_address() {
+  block::StdAddress address;
+  address.workchain = -1;
+  address.addr.set_zero();
+  return address;
 }
 
 PreparedJettonMasterRow make_destroyed_jetton_master_row(const DestroyedAccountState& state) {
@@ -1395,6 +1404,7 @@ PreparedNominatorPoolRow make_destroyed_nominator_pool_row(const DestroyedAccoun
     .nominators_count = 0,
     .stake_amount_sent = zero_refint(),
     .validator_amount = zero_refint(),
+    .validator_address = zero_masterchain_address(),
     .validator_reward_share = 0,
     .max_nominators_count = 0,
     .min_validator_stake = zero_refint(),
@@ -2539,6 +2549,7 @@ void collect_and_prepare_batch_rows(const std::vector<InsertTaskStruct>& insert_
         .nominators_count = pool.nominators_count,
         .stake_amount_sent = pool.stake_amount_sent,
         .validator_amount = pool.validator_amount,
+        .validator_address = pool.validator_address,
         .validator_reward_share = pool.validator_reward_share,
         .max_nominators_count = pool.max_nominators_count,
         .min_validator_stake = pool.min_validator_stake,
@@ -3760,7 +3771,7 @@ std::string InsertBatchPostgres::insert_vesting(pqxx::work &txn) {
 std::string InsertBatchPostgres::insert_nominator_pools(pqxx::work &txn) {
     std::initializer_list<std::string_view> columns = {
         "address", "state", "nominators_count", "stake_amount_sent", "validator_amount",
-        "validator_reward_share", "max_nominators_count", "min_validator_stake",
+        "validator_address", "validator_reward_share", "max_nominators_count", "min_validator_stake",
         "min_nominator_stake", "active_nominators", "last_transaction_lt",
         "code_hash", "data_hash", "destroyed"
     };

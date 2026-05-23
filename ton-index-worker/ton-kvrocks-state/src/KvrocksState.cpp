@@ -759,6 +759,7 @@ std::string build_payload(const PreparedNominatorPoolRow& row) {
     json_put_i64(obj, "nominators_count", row.nominators_count);
     json_put_int256(obj, "stake_amount_sent", row.stake_amount_sent);
     json_put_int256(obj, "validator_amount", row.validator_amount);
+    json_put_address(obj, "validator_address", row.validator_address);
     json_put_i64(obj, "validator_reward_share", row.validator_reward_share);
     json_put_i64(obj, "max_nominators_count", row.max_nominators_count);
     json_put_int256(obj, "min_validator_stake", row.min_validator_stake);
@@ -1541,6 +1542,13 @@ td::Bits256 zero_bits256() {
   return {};
 }
 
+block::StdAddress zero_masterchain_address() {
+  block::StdAddress address;
+  address.workchain = -1;
+  address.addr.set_zero();
+  return address;
+}
+
 PreparedJettonMasterRow make_destroyed_jetton_master_row(const DestroyedAccountState& state) {
   return {
     .address = state.address,
@@ -1757,6 +1765,7 @@ PreparedNominatorPoolRow make_destroyed_nominator_pool_row(const DestroyedAccoun
     .nominators_count = 0,
     .stake_amount_sent = zero_refint(),
     .validator_amount = zero_refint(),
+    .validator_address = zero_masterchain_address(),
     .validator_reward_share = 0,
     .max_nominators_count = 0,
     .min_validator_stake = zero_refint(),
@@ -2553,6 +2562,7 @@ StateBatch prepare_point_state_batch(const std::vector<PointStateData>& data,
         .nominators_count = value.nominators_count,
         .stake_amount_sent = value.stake_amount_sent,
         .validator_amount = value.validator_amount,
+        .validator_address = value.validator_address,
         .validator_reward_share = value.validator_reward_share,
         .max_nominators_count = value.max_nominators_count,
         .min_validator_stake = value.min_validator_stake,
