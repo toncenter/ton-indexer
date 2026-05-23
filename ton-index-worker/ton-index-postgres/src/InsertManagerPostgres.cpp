@@ -1745,11 +1745,6 @@ void collect_and_prepare_batch_rows(const std::vector<InsertTaskStruct>& insert_
     prepared_batch.jetton_masters.reserve(ordered_jetton_masters.size());
     for (const auto& [_, jetton_master_with_source_ptr] : ordered_jetton_masters) {
       const auto& jetton_master = jetton_master_with_source_ptr->value;
-      auto destroyed_it = destroyed_accounts.find(jetton_master.address);
-      if (destroyed_it != destroyed_accounts.end() &&
-          jetton_master.last_transaction_lt < destroyed_it->second.last_transaction_lt) {
-        continue;
-      }
       std::optional<std::string> jetton_content_str = std::nullopt;
       if (jetton_master.jetton_content) {
         jetton_content_str = content_to_json_string(jetton_master.jetton_content.value());
@@ -1802,11 +1797,6 @@ void collect_and_prepare_batch_rows(const std::vector<InsertTaskStruct>& insert_
     prepared_batch.jetton_wallets.reserve(ordered_jetton_wallets.size());
     for (const auto& [_, jetton_wallet_with_source_ptr] : ordered_jetton_wallets) {
       const auto& jetton_wallet = jetton_wallet_with_source_ptr->value;
-      auto destroyed_it = destroyed_accounts.find(jetton_wallet.address);
-      if (destroyed_it != destroyed_accounts.end() &&
-          jetton_wallet.last_transaction_lt < destroyed_it->second.last_transaction_lt) {
-        continue;
-      }
       prepared_batch.jetton_wallets.push_back(PreparedJettonWalletRow{
         .balance = jetton_wallet.balance,
         .address = jetton_wallet.address,
@@ -1872,11 +1862,6 @@ void collect_and_prepare_batch_rows(const std::vector<InsertTaskStruct>& insert_
     prepared_batch.nft_collections.reserve(ordered_nft_collections.size());
     for (const auto& [_, nft_collection_with_source_ptr] : ordered_nft_collections) {
       const auto& nft_collection = nft_collection_with_source_ptr->value;
-      auto destroyed_it = destroyed_accounts.find(nft_collection.address);
-      if (destroyed_it != destroyed_accounts.end() &&
-          nft_collection.last_transaction_lt < destroyed_it->second.last_transaction_lt) {
-        continue;
-      }
       std::optional<std::string> collection_content_str = std::nullopt;
       if (nft_collection.collection_content) {
         collection_content_str = content_to_json_string(nft_collection.collection_content.value());
@@ -1990,11 +1975,6 @@ void collect_and_prepare_batch_rows(const std::vector<InsertTaskStruct>& insert_
     prepared_batch.getgems_nft_sales.reserve(ordered_nft_sales.size());
     for (const auto& [_, nft_sale_ptr] : ordered_nft_sales) {
       const auto& nft_sale = *nft_sale_ptr;
-      auto destroyed_it = destroyed_accounts.find(nft_sale.address);
-      if (destroyed_it != destroyed_accounts.end() &&
-          nft_sale.last_transaction_lt < destroyed_it->second.last_transaction_lt) {
-        continue;
-      }
       std::optional<std::string> jetton_dict_json = std::nullopt;
       if (!nft_sale.jetton_price_dict.empty()) {
         td::JsonBuilder jb;
@@ -2059,11 +2039,6 @@ void collect_and_prepare_batch_rows(const std::vector<InsertTaskStruct>& insert_
     prepared_batch.getgems_nft_auctions.reserve(ordered_nft_auctions.size());
     for (const auto& [_, nft_auction_with_source_ptr] : ordered_nft_auctions) {
       const auto& nft_auction = nft_auction_with_source_ptr->value;
-      auto destroyed_it = destroyed_accounts.find(nft_auction.address);
-      if (destroyed_it != destroyed_accounts.end() &&
-          nft_auction.last_transaction_lt < destroyed_it->second.last_transaction_lt) {
-        continue;
-      }
       std::optional<std::string> public_key;
       if (nft_auction.public_key.has_value()) {
         public_key = nft_auction.public_key.value()->to_hex_string();
@@ -2173,11 +2148,6 @@ void collect_and_prepare_batch_rows(const std::vector<InsertTaskStruct>& insert_
     std::unordered_map<block::StdAddress, std::uint64_t> dns_entry_lts;
     for (const auto& [_, nft_item_with_source_ptr] : ordered_nft_items) {
       const auto& nft_item = nft_item_with_source_ptr->value;
-      auto destroyed_it = destroyed_accounts.find(nft_item.address);
-      if (destroyed_it != destroyed_accounts.end() &&
-          nft_item.last_transaction_lt < destroyed_it->second.last_transaction_lt) {
-        continue;
-      }
       std::optional<std::string> content_str = std::nullopt;
       if (nft_item.content) {
         content_str = content_to_json_string(nft_item.content.value());
@@ -2265,11 +2235,6 @@ void collect_and_prepare_batch_rows(const std::vector<InsertTaskStruct>& insert_
     prepared_batch.multisig_contracts.reserve(ordered_multisig_contracts.size());
     for (const auto& [_, multisig_contract_with_source_ptr] : ordered_multisig_contracts) {
       const auto& multisig_contract = multisig_contract_with_source_ptr->value;
-      auto destroyed_it = destroyed_accounts.find(multisig_contract.address);
-      if (destroyed_it != destroyed_accounts.end() &&
-          multisig_contract.last_transaction_lt < destroyed_it->second.last_transaction_lt) {
-        continue;
-      }
       prepared_batch.multisig_contracts.push_back(PreparedMultisigContractRow{
         .address = multisig_contract.address,
         .next_order_seqno = multisig_contract.next_order_seqno,
@@ -2316,11 +2281,6 @@ void collect_and_prepare_batch_rows(const std::vector<InsertTaskStruct>& insert_
     prepared_batch.multisig_orders.reserve(ordered_multisig_orders.size());
     for (const auto& [_, multisig_order_with_source_ptr] : ordered_multisig_orders) {
       const auto& multisig_order = multisig_order_with_source_ptr->value;
-      auto destroyed_it = destroyed_accounts.find(multisig_order.address);
-      if (destroyed_it != destroyed_accounts.end() &&
-          multisig_order.last_transaction_lt < destroyed_it->second.last_transaction_lt) {
-        continue;
-      }
       std::optional<std::string> order_boc_str = std::nullopt;
       if (multisig_order.order.not_null()) {
         order_boc_str = serialize_cell_to_base64(multisig_order.order);
@@ -2377,11 +2337,6 @@ void collect_and_prepare_batch_rows(const std::vector<InsertTaskStruct>& insert_
     std::string dex = "dedust";
     for (const auto& [_, dedust_pool_with_source_ptr] : ordered_dedust_pools) {
       const auto& dedust_pool = dedust_pool_with_source_ptr->value;
-      auto destroyed_it = destroyed_accounts.find(dedust_pool.address);
-      if (destroyed_it != destroyed_accounts.end() &&
-          dedust_pool.last_transaction_lt < destroyed_it->second.last_transaction_lt) {
-        continue;
-      }
       std::string pool_type = dedust_pool.is_stable ? "stable" : "volatile";
       prepared_batch.dedust_pools.push_back(PreparedDedustPoolRow{
         .address = dedust_pool.address,
@@ -2432,11 +2387,6 @@ void collect_and_prepare_batch_rows(const std::vector<InsertTaskStruct>& insert_
     prepared_batch.vesting_contracts.reserve(ordered_vesting_contracts.size());
     for (const auto& [_, vesting_with_source_ptr] : ordered_vesting_contracts) {
       const auto& vesting = vesting_with_source_ptr->value;
-      auto destroyed_it = destroyed_accounts.find(vesting.address);
-      if (destroyed_it != destroyed_accounts.end() &&
-          vesting.last_transaction_lt < destroyed_it->second.last_transaction_lt) {
-        continue;
-      }
       prepared_batch.vesting_contracts.push_back(PreparedVestingContractRow{
         .address = vesting.address,
         .vesting_start_time = vesting.vesting_start_time,
@@ -2510,11 +2460,6 @@ void collect_and_prepare_batch_rows(const std::vector<InsertTaskStruct>& insert_
     prepared_batch.telemint_nft_items.reserve(ordered_telemint_nfts.size());
     for (const auto& [_, telemint_with_source_ptr] : ordered_telemint_nfts) {
       const auto& telemint = telemint_with_source_ptr->value;
-      auto destroyed_it = destroyed_accounts.find(telemint.address);
-      if (destroyed_it != destroyed_accounts.end() &&
-          telemint.last_transaction_lt < destroyed_it->second.last_transaction_lt) {
-        continue;
-      }
       auto token_name = telemint.token_name;
       token_name.erase(std::remove(token_name.begin(), token_name.end(), '\0'), token_name.end());
       prepared_batch.telemint_nft_items.push_back(PreparedTelemintRow{
@@ -3501,18 +3446,92 @@ std::string InsertBatchPostgres::insert_latest_account_states(pqxx::work &txn) {
   return stream.get_str();
 }
 
+template <typename Row>
+std::string update_existing_destroyed_rows(pqxx::work& txn,
+                                           std::string_view table_name,
+                                           std::initializer_list<std::string_view> columns,
+                                           std::string_view key_column,
+                                           std::string_view lt_column,
+                                           const std::vector<Row>& rows) {
+  bool has_destroyed = false;
+  for (const auto& row : rows) {
+    if (row.destroyed) {
+      has_destroyed = true;
+      break;
+    }
+  }
+  if (!has_destroyed) {
+    return "";
+  }
+
+  std::string temp_table_name = "tmp_destroyed_" + std::string(table_name);
+  std::ostringstream query;
+  query << "CREATE TEMP TABLE " << temp_table_name << " ON COMMIT DROP AS SELECT ";
+  bool first_select_column = true;
+  for (const auto& column : columns) {
+    if (!first_select_column) {
+      query << ", ";
+    }
+    query << column;
+    first_select_column = false;
+  }
+  query << " FROM " << table_name << " WHERE false;";
+
+  PopulateTableStream stream(txn, temp_table_name, columns, 1000, false);
+  for (const auto& row : rows) {
+    if (row.destroyed) {
+      stream.insert_row(row);
+    }
+  }
+  query << stream.get_str();
+
+  query << "UPDATE " << table_name << " AS target SET ";
+  bool first_set = true;
+  for (const auto& column : columns) {
+    if (column == key_column) {
+      continue;
+    }
+    if (!first_set) {
+      query << ", ";
+    }
+    query << column << " = source." << column;
+    first_set = false;
+  }
+
+  query << " FROM " << temp_table_name << " AS source"
+        << " WHERE target." << key_column << " = source." << key_column
+        << " AND target." << lt_column << " < source." << lt_column << ";"
+        << "DROP TABLE " << temp_table_name << ";";
+  return query.str();
+}
+
+template <typename Row>
+std::string insert_current_rows(pqxx::work& txn,
+                                std::string_view table_name,
+                                std::initializer_list<std::string_view> columns,
+                                std::string_view key_column,
+                                std::string_view lt_column,
+                                std::string_view update_condition,
+                                const std::vector<Row>& rows) {
+  PopulateTableStream stream(txn, table_name, columns, 1000, false);
+  stream.setConflictDoUpdate({key_column}, update_condition);
+  for (const auto& row : rows) {
+    if (!row.destroyed) {
+      stream.insert_row(row);
+    }
+  }
+  return stream.get_str() + update_existing_destroyed_rows(txn, table_name, columns, key_column, lt_column, rows);
+}
+
 std::string InsertBatchPostgres::insert_jetton_masters(pqxx::work &txn) {
   std::initializer_list<std::string_view> columns = {
     "address", "total_supply", "mintable", "admin_address", "jetton_content", 
     "jetton_wallet_code_hash", "last_transaction_lt", "code_hash", "data_hash", "destroyed"
   };
 
-  PopulateTableStream stream(txn, "jetton_masters", columns, 1000, false);
-  stream.setConflictDoUpdate({"address"}, "jetton_masters.last_transaction_lt < EXCLUDED.last_transaction_lt");
-  for (const auto& row : prepared_batch_->jetton_masters) {
-    stream.insert_row(row);
-  }
-  return stream.get_str();
+  return insert_current_rows(txn, "jetton_masters", columns, "address", "last_transaction_lt",
+                             "jetton_masters.last_transaction_lt < EXCLUDED.last_transaction_lt",
+                             prepared_batch_->jetton_masters);
 }
 
 std::string InsertBatchPostgres::insert_jetton_wallets(pqxx::work &txn) {
@@ -3520,13 +3539,9 @@ std::string InsertBatchPostgres::insert_jetton_wallets(pqxx::work &txn) {
     "balance", "address", "owner", "jetton", "last_transaction_lt", "code_hash", "data_hash", "mintless_is_claimed", "destroyed"
   };
 
-  PopulateTableStream stream(txn, "jetton_wallets", columns, 1000, false);
-  stream.setConflictDoUpdate({"address"}, "jetton_wallets.last_transaction_lt < EXCLUDED.last_transaction_lt");
-  for (const auto& row : prepared_batch_->jetton_wallets) {
-    stream.insert_row(row);
-  }
-  
-  std::string result = stream.get_str();
+  std::string result = insert_current_rows(txn, "jetton_wallets", columns, "address", "last_transaction_lt",
+                                           "jetton_wallets.last_transaction_lt < EXCLUDED.last_transaction_lt",
+                                           prepared_batch_->jetton_wallets);
   if (!prepared_batch_->mintless_jetton_masters.empty()) {
     PopulateTableStream mintless_stream(txn, "mintless_jetton_masters", {"address", "is_indexed"}, 1000, false);
     mintless_stream.setConflictDoNothing();
@@ -3545,12 +3560,9 @@ std::string InsertBatchPostgres::insert_nft_collections(pqxx::work &txn) {
     "address", "next_item_index", "owner_address", "collection_content", "last_transaction_lt", "code_hash", "data_hash", "destroyed"
   };
 
-  PopulateTableStream stream(txn, "nft_collections", columns, 1000, false);
-  stream.setConflictDoUpdate({"address"}, "nft_collections.last_transaction_lt < EXCLUDED.last_transaction_lt");
-  for (const auto& row : prepared_batch_->nft_collections) {
-    stream.insert_row(row);
-  }
-  return stream.get_str();
+  return insert_current_rows(txn, "nft_collections", columns, "address", "last_transaction_lt",
+                             "nft_collections.last_transaction_lt < EXCLUDED.last_transaction_lt",
+                             prepared_batch_->nft_collections);
 }
 
 std::string InsertBatchPostgres::insert_nft_items(pqxx::work &txn) {
@@ -3558,23 +3570,16 @@ std::string InsertBatchPostgres::insert_nft_items(pqxx::work &txn) {
     "address", "init", "index", "collection_address", "owner_address", "content", "last_transaction_lt", "code_hash", "data_hash", "real_owner", "destroyed"
   };
   
-  PopulateTableStream stream(txn, "nft_items", columns, 1000, false);
-  stream.setConflictDoUpdate({"address"}, "nft_items.last_transaction_lt < EXCLUDED.last_transaction_lt");
-  for (const auto& row : prepared_batch_->nft_items) {
-    stream.insert_row(row);
-  }
-  auto result = stream.get_str();
+  auto result = insert_current_rows(txn, "nft_items", columns, "address", "last_transaction_lt",
+                                    "nft_items.last_transaction_lt < EXCLUDED.last_transaction_lt",
+                                    prepared_batch_->nft_items);
 
   std::initializer_list<std::string_view> dns_columns = {
     "nft_item_address", "nft_item_owner", "domain", "dns_next_resolver", "dns_wallet", "dns_site_adnl", "dns_storage_bag_id", "last_transaction_lt", "destroyed"
   };
-  PopulateTableStream dns_stream(txn, "dns_entries", dns_columns, 1000, false);
-  dns_stream.setConflictDoUpdate({"nft_item_address"}, "dns_entries.last_transaction_lt < EXCLUDED.last_transaction_lt");
-
-  for (const auto& row : prepared_batch_->dns_entries) {
-    dns_stream.insert_row(row);
-  }
-  result += dns_stream.get_str();
+  result += insert_current_rows(txn, "dns_entries", dns_columns, "nft_item_address", "last_transaction_lt",
+                                "dns_entries.last_transaction_lt < EXCLUDED.last_transaction_lt",
+                                prepared_batch_->dns_entries);
   return result;
 }
 
@@ -3585,12 +3590,9 @@ std::string InsertBatchPostgres::insert_getgems_nft_sales(pqxx::work &txn) {
     "sold_at", "sold_query_id", "jetton_price_dict",
     "last_transaction_lt", "code_hash", "data_hash", "destroyed"
   };
-  PopulateTableStream stream(txn, "getgems_nft_sales", columns, 1000, false);
-  stream.setConflictDoUpdate({"address"}, "getgems_nft_sales.last_transaction_lt < EXCLUDED.last_transaction_lt");
-  for (const auto& row : prepared_batch_->getgems_nft_sales) {
-    stream.insert_row(row);
-  }
-  return stream.get_str();
+  return insert_current_rows(txn, "getgems_nft_sales", columns, "address", "last_transaction_lt",
+                             "getgems_nft_sales.last_transaction_lt < EXCLUDED.last_transaction_lt",
+                             prepared_batch_->getgems_nft_sales);
 }
 
 std::string InsertBatchPostgres::insert_vesting(pqxx::work &txn) {
@@ -3599,11 +3601,9 @@ std::string InsertBatchPostgres::insert_vesting(pqxx::work &txn) {
         "cliff_duration", "vesting_total_amount", "vesting_sender_address", "owner_address",
         "last_transaction_lt", "code_hash", "data_hash", "destroyed"
     };
-    PopulateTableStream vesting_stream(txn, "vesting_contracts", vesting_columns, 1000, false);
-    vesting_stream.setConflictDoUpdate({"address"}, "vesting_contracts.last_transaction_lt < EXCLUDED.last_transaction_lt");
-    for (const auto& row : prepared_batch_->vesting_contracts) {
-        vesting_stream.insert_row(row);
-    }
+    std::string result = insert_current_rows(txn, "vesting_contracts", vesting_columns, "address", "last_transaction_lt",
+                                             "vesting_contracts.last_transaction_lt < EXCLUDED.last_transaction_lt",
+                                             prepared_batch_->vesting_contracts);
 
     std::initializer_list<std::string_view> whitelist_columns = {
         "vesting_contract_address", "wallet_address"
@@ -3614,7 +3614,7 @@ std::string InsertBatchPostgres::insert_vesting(pqxx::work &txn) {
         whitelist_stream.insert_row(row);
     }
 
-    return vesting_stream.get_str() + whitelist_stream.get_str();
+    return result + whitelist_stream.get_str();
 }
 
 std::string InsertBatchPostgres::insert_telemint(pqxx::work &txn) {
@@ -3625,13 +3625,9 @@ std::string InsertBatchPostgres::insert_telemint(pqxx::work &txn) {
         "royalty_numerator", "royalty_denominator", "royalty_destination",
         "last_transaction_lt", "code_hash", "data_hash", "destroyed"
     };
-    PopulateTableStream telemint_stream(txn, "telemint_nft_items", telemint_columns, 1000, false);
-    telemint_stream.setConflictDoUpdate({"address"}, "telemint_nft_items.last_transaction_lt < EXCLUDED.last_transaction_lt");
-    for (const auto& row : prepared_batch_->telemint_nft_items) {
-        telemint_stream.insert_row(row);
-    }
-
-    return telemint_stream.get_str();
+    return insert_current_rows(txn, "telemint_nft_items", telemint_columns, "address", "last_transaction_lt",
+                               "telemint_nft_items.last_transaction_lt < EXCLUDED.last_transaction_lt",
+                               prepared_batch_->telemint_nft_items);
 }
 
 std::string InsertBatchPostgres::insert_getgems_nft_auctions(pqxx::work &txn) {
@@ -3640,12 +3636,9 @@ std::string InsertBatchPostgres::insert_getgems_nft_auctions(pqxx::work &txn) {
     "royalty_fee_base", "max_bid", "min_bid", "created_at", "last_bid_at", "is_canceled", "activated", "step_time", "last_query_id",
     "jetton_wallet", "jetton_master", "is_broken_state", "public_key", "last_transaction_lt", "code_hash", "data_hash", "destroyed"
   };
-  PopulateTableStream stream(txn, "getgems_nft_auctions", columns, 1000, false);
-  stream.setConflictDoUpdate({"address"}, "getgems_nft_auctions.last_transaction_lt < EXCLUDED.last_transaction_lt");
-  for (const auto& row : prepared_batch_->getgems_nft_auctions) {
-    stream.insert_row(row);
-  }
-  return stream.get_str();
+  return insert_current_rows(txn, "getgems_nft_auctions", columns, "address", "last_transaction_lt",
+                             "getgems_nft_auctions.last_transaction_lt < EXCLUDED.last_transaction_lt",
+                             prepared_batch_->getgems_nft_auctions);
 }
 
 std::string InsertBatchPostgres::insert_multisig_contracts(pqxx::work &txn) {
@@ -3653,12 +3646,9 @@ std::string InsertBatchPostgres::insert_multisig_contracts(pqxx::work &txn) {
     "address", "next_order_seqno", "threshold", "signers", "proposers", "last_transaction_lt", "code_hash", "data_hash", "destroyed"
   };
 
-  PopulateTableStream stream(txn, "multisig", columns, 1000, false);
-  stream.setConflictDoUpdate({"address"}, "multisig.last_transaction_lt < EXCLUDED.last_transaction_lt");
-  for (const auto& row : prepared_batch_->multisig_contracts) {
-    stream.insert_row(row);
-  }
-  return stream.get_str();
+  return insert_current_rows(txn, "multisig", columns, "address", "last_transaction_lt",
+                             "multisig.last_transaction_lt < EXCLUDED.last_transaction_lt",
+                             prepared_batch_->multisig_contracts);
 }
 
 std::string InsertBatchPostgres::insert_multisig_orders(pqxx::work &txn) {
@@ -3667,12 +3657,9 @@ std::string InsertBatchPostgres::insert_multisig_orders(pqxx::work &txn) {
     "expiration_date", "order_boc", "signers", "last_transaction_lt", "code_hash", "data_hash", "destroyed"
   };
 
-  PopulateTableStream stream(txn, "multisig_orders", columns, 1000, false);
-  stream.setConflictDoUpdate({"address"}, "multisig_orders.last_transaction_lt < EXCLUDED.last_transaction_lt");
-  for (const auto& row : prepared_batch_->multisig_orders) {
-    stream.insert_row(row);
-  }
-  return stream.get_str();
+  return insert_current_rows(txn, "multisig_orders", columns, "address", "last_transaction_lt",
+                             "multisig_orders.last_transaction_lt < EXCLUDED.last_transaction_lt",
+                             prepared_batch_->multisig_orders);
 }
 
 std::string InsertBatchPostgres::insert_dedust_pools(pqxx::work &txn) {
@@ -3680,13 +3667,9 @@ std::string InsertBatchPostgres::insert_dedust_pools(pqxx::work &txn) {
     "address", "asset_1", "asset_2", "reserve_1", "reserve_2", "pool_type", "dex", "fee", "last_transaction_lt", "code_hash", "data_hash", "destroyed"
   };
 
-  PopulateTableStream pools_stream(txn, "dex_pools", pools_column, 1000, false);
-  pools_stream.setConflictDoUpdate({"address"}, "dex_pools.last_transaction_lt < EXCLUDED.last_transaction_lt");
-  for (const auto& row : prepared_batch_->dedust_pools) {
-    pools_stream.insert_row(row);
-  }
-
-  return pools_stream.get_str();
+  return insert_current_rows(txn, "dex_pools", pools_column, "address", "last_transaction_lt",
+                             "dex_pools.last_transaction_lt < EXCLUDED.last_transaction_lt",
+                             prepared_batch_->dedust_pools);
 }
 
 void InsertBatchPostgres::insert_jetton_transfers(pqxx::work &txn, bool with_copy) {

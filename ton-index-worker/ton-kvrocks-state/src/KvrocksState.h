@@ -461,8 +461,13 @@ private:
                       const std::string& payload);
   void queue_set_current(const std::string& table, const std::string& id, std::uint32_t source_mc_seqno,
                          const std::string& payload);
+  void queue_set_current_existing(const std::string& table, const std::string& id, std::uint32_t source_mc_seqno,
+                                  const std::string& payload);
   void queue_set_indexed_current(const std::string& table, const std::string& id, std::uint32_t source_mc_seqno,
                                  const std::string& payload, const std::vector<KvrocksIndexEntry>& indexes);
+  void queue_set_indexed_current_existing(const std::string& table, const std::string& id,
+                                          std::uint32_t source_mc_seqno, const std::string& payload,
+                                          const std::vector<KvrocksIndexEntry>& indexes);
   void queue_set_indexed_once(const std::string& table, const std::string& id, std::uint32_t source_mc_seqno,
                               const std::string& payload, const std::vector<KvrocksIndexEntry>& indexes);
   void queue_set_indexed(const std::string& script_sha, const std::string& table, const std::string& id,

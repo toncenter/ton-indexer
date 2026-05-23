@@ -103,10 +103,76 @@ return 0
   return script;
 }
 
+const std::string& kvrocks_set_current_existing_script() {
+  static const std::string script = R"(
+local current = redis.call('HGET', KEYS[1], 'source_mc_seqno')
+if (not current) or tonumber(current) > tonumber(ARGV[1]) then
+  return 0
+end
+
+redis.call('HSET', KEYS[1], 'source_mc_seqno', ARGV[1])
+redis.call('SET', KEYS[2], ARGV[2])
+return 1
+)";
+  return script;
+}
+
 const std::string& kvrocks_set_indexed_current_script() {
   static const std::string script = R"(
 local current = redis.call('HGET', KEYS[1], 'source_mc_seqno')
 if current and tonumber(current) > tonumber(ARGV[1]) then
+  return 0
+end
+
+local old_count = tonumber(redis.call('HGET', KEYS[1], 'idx_count') or '0')
+for i = 1, old_count do
+  local old_key = redis.call('HGET', KEYS[1], 'idx_key_' .. i)
+  local old_member = redis.call('HGET', KEYS[1], 'idx_member_' .. i)
+  if old_key and old_member then
+    redis.call('ZREM', old_key, old_member)
+  end
+end
+
+local first_seen = redis.call('HGET', KEYS[1], 'first_seen_seqno')
+if not first_seen then
+  first_seen = ARGV[1]
+end
+
+redis.call('HSET', KEYS[1],
+  'source_mc_seqno', ARGV[1],
+  'first_seen_seqno', first_seen)
+redis.call('SET', KEYS[2], ARGV[2])
+
+local idx_count = tonumber(ARGV[3])
+redis.call('HSET', KEYS[1], 'idx_count', idx_count)
+local pos = 4
+for i = 1, idx_count do
+  local idx_key = ARGV[pos]
+  local idx_member = ARGV[pos + 1]
+  local idx_score = ARGV[pos + 2]
+  if idx_score == '__first_seen__' then
+    idx_score = first_seen
+  end
+  redis.call('ZADD', idx_key, idx_score, idx_member)
+  redis.call('HSET', KEYS[1],
+    'idx_key_' .. i, idx_key,
+    'idx_member_' .. i, idx_member)
+  pos = pos + 3
+end
+
+for i = idx_count + 1, old_count do
+  redis.call('HDEL', KEYS[1], 'idx_key_' .. i, 'idx_member_' .. i)
+end
+
+return 1
+)";
+  return script;
+}
+
+const std::string& kvrocks_set_indexed_current_existing_script() {
+  static const std::string script = R"(
+local current = redis.call('HGET', KEYS[1], 'source_mc_seqno')
+if (not current) or tonumber(current) > tonumber(ARGV[1]) then
   return 0
 end
 
@@ -205,8 +271,18 @@ const std::string& kvrocks_set_current_script_sha() {
   return sha;
 }
 
+const std::string& kvrocks_set_current_existing_script_sha() {
+  static const std::string sha = redis_script_sha1(kvrocks_set_current_existing_script());
+  return sha;
+}
+
 const std::string& kvrocks_set_indexed_current_script_sha() {
   static const std::string sha = redis_script_sha1(kvrocks_set_indexed_current_script());
+  return sha;
+}
+
+const std::string& kvrocks_set_indexed_current_existing_script_sha() {
+  static const std::string sha = redis_script_sha1(kvrocks_set_indexed_current_existing_script());
   return sha;
 }
 
@@ -1743,9 +1819,6 @@ StateBatch prepare_point_state_batch(const std::vector<PointStateData>& data,
     batch.jetton_masters.reserve(ordered.size());
     for (const auto& [_, value_with_source_ptr] : ordered) {
       const auto& value = value_with_source_ptr->value;
-      if (has_newer_destroyed_state(value.address, value.last_transaction_lt)) {
-        continue;
-      }
       std::optional<std::string> content = std::nullopt;
       if (value.jetton_content) {
         content = content_to_json_string(value.jetton_content.value());
@@ -1795,9 +1868,6 @@ StateBatch prepare_point_state_batch(const std::vector<PointStateData>& data,
     batch.jetton_wallets.reserve(ordered.size());
     for (const auto& [_, value_with_source_ptr] : ordered) {
       const auto& value = value_with_source_ptr->value;
-      if (has_newer_destroyed_state(value.address, value.last_transaction_lt)) {
-        continue;
-      }
       batch.jetton_wallets.push_back({
         .balance = value.balance,
         .address = value.address,
@@ -1860,9 +1930,6 @@ StateBatch prepare_point_state_batch(const std::vector<PointStateData>& data,
     batch.nft_collections.reserve(ordered.size());
     for (const auto& [_, value_with_source_ptr] : ordered) {
       const auto& value = value_with_source_ptr->value;
-      if (has_newer_destroyed_state(value.address, value.last_transaction_lt)) {
-        continue;
-      }
       std::optional<std::string> content = std::nullopt;
       if (value.collection_content) {
         content = content_to_json_string(value.collection_content.value());
@@ -1970,9 +2037,6 @@ StateBatch prepare_point_state_batch(const std::vector<PointStateData>& data,
     batch.getgems_nft_sales.reserve(ordered.size());
     for (const auto& [_, value_ptr] : ordered) {
       const auto& value = *value_ptr;
-      if (has_newer_destroyed_state(value.address, value.last_transaction_lt)) {
-        continue;
-      }
       std::optional<std::string> jetton_dict_json = std::nullopt;
       if (!value.jetton_price_dict.empty()) {
         td::JsonBuilder jb;
@@ -2035,9 +2099,6 @@ StateBatch prepare_point_state_batch(const std::vector<PointStateData>& data,
     batch.getgems_nft_auctions.reserve(ordered.size());
     for (const auto& [_, value_with_source_ptr] : ordered) {
       const auto& value = value_with_source_ptr->value;
-      if (has_newer_destroyed_state(value.address, value.last_transaction_lt)) {
-        continue;
-      }
       std::optional<std::string> public_key;
       if (value.public_key.has_value()) {
         public_key = value.public_key.value()->to_hex_string();
@@ -2138,9 +2199,6 @@ StateBatch prepare_point_state_batch(const std::vector<PointStateData>& data,
     std::unordered_map<block::StdAddress, std::uint64_t> dns_entry_lts;
     for (const auto& [_, value_with_source_ptr] : ordered) {
       const auto& value = value_with_source_ptr->value;
-      if (has_newer_destroyed_state(value.address, value.last_transaction_lt)) {
-        continue;
-      }
       std::optional<std::string> content = std::nullopt;
       if (value.content) {
         content = content_to_json_string(value.content.value());
@@ -2224,9 +2282,6 @@ StateBatch prepare_point_state_batch(const std::vector<PointStateData>& data,
     batch.multisig_contracts.reserve(ordered.size());
     for (const auto& [_, value_with_source_ptr] : ordered) {
       const auto& value = value_with_source_ptr->value;
-      if (has_newer_destroyed_state(value.address, value.last_transaction_lt)) {
-        continue;
-      }
       batch.multisig_contracts.push_back({
         .address = value.address,
         .next_order_seqno = value.next_order_seqno,
@@ -2270,9 +2325,6 @@ StateBatch prepare_point_state_batch(const std::vector<PointStateData>& data,
     batch.multisig_orders.reserve(ordered.size());
     for (const auto& [_, value_with_source_ptr] : ordered) {
       const auto& value = value_with_source_ptr->value;
-      if (has_newer_destroyed_state(value.address, value.last_transaction_lt)) {
-        continue;
-      }
       std::optional<std::string> order_boc = std::nullopt;
       if (value.order.not_null()) {
         order_boc = serialize_cell_to_base64(value.order);
@@ -2326,9 +2378,6 @@ StateBatch prepare_point_state_batch(const std::vector<PointStateData>& data,
     std::string dex = "dedust";
     for (const auto& [_, value_with_source_ptr] : ordered) {
       const auto& value = value_with_source_ptr->value;
-      if (has_newer_destroyed_state(value.address, value.last_transaction_lt)) {
-        continue;
-      }
       std::string pool_type = value.is_stable ? "stable" : "volatile";
       batch.dedust_pools.push_back({
         .address = value.address,
@@ -2376,9 +2425,6 @@ StateBatch prepare_point_state_batch(const std::vector<PointStateData>& data,
     batch.vesting_contracts.reserve(ordered.size());
     for (const auto& [_, value_with_source_ptr] : ordered) {
       const auto& value = value_with_source_ptr->value;
-      if (has_newer_destroyed_state(value.address, value.last_transaction_lt)) {
-        continue;
-      }
       batch.vesting_contracts.push_back({
         .address = value.address,
         .vesting_start_time = value.vesting_start_time,
@@ -2448,9 +2494,6 @@ StateBatch prepare_point_state_batch(const std::vector<PointStateData>& data,
     batch.telemint_nft_items.reserve(ordered.size());
     for (const auto& [_, value_with_source_ptr] : ordered) {
       const auto& value = value_with_source_ptr->value;
-      if (has_newer_destroyed_state(value.address, value.last_transaction_lt)) {
-        continue;
-      }
       auto token_name = value.token_name;
       token_name.erase(std::remove(token_name.begin(), token_name.end(), '\0'), token_name.end());
       batch.telemint_nft_items.push_back({
@@ -2491,10 +2534,14 @@ StateBatch prepare_point_state_batch(const std::vector<PointStateData>& data,
 void load_kvrocks_scripts(sw::redis::Redis& redis) {
   auto set_once_sha = redis.script_load(kvrocks_set_once_script());
   auto set_current_sha = redis.script_load(kvrocks_set_current_script());
+  auto set_current_existing_sha = redis.script_load(kvrocks_set_current_existing_script());
   auto set_indexed_current_sha = redis.script_load(kvrocks_set_indexed_current_script());
+  auto set_indexed_current_existing_sha = redis.script_load(kvrocks_set_indexed_current_existing_script());
   auto set_indexed_once_sha = redis.script_load(kvrocks_set_indexed_once_script());
   if (set_once_sha != kvrocks_set_once_script_sha() || set_current_sha != kvrocks_set_current_script_sha() ||
+      set_current_existing_sha != kvrocks_set_current_existing_script_sha() ||
       set_indexed_current_sha != kvrocks_set_indexed_current_script_sha() ||
+      set_indexed_current_existing_sha != kvrocks_set_indexed_current_existing_script_sha() ||
       set_indexed_once_sha != kvrocks_set_indexed_once_script_sha()) {
     throw std::runtime_error("Kvrocks returned an unexpected script SHA");
   }
@@ -2524,56 +2571,67 @@ void KvrocksBatchWriter::write() {
     queue_set_indexed_current("latest_account_states", address_key(row.account), row.source_mc_seqno, build_payload(row),
                               build_indexes(row));
   }
+
+  auto queue_interface_current = [&](const std::string& table, const std::string& id, const auto& row) {
+    auto payload = build_payload(row);
+    if (row.destroyed) {
+      queue_set_current_existing(table, id, row.source_mc_seqno, payload);
+    } else {
+      queue_set_current(table, id, row.source_mc_seqno, payload);
+    }
+  };
+  auto queue_indexed_interface_current = [&](const std::string& table, const std::string& id, const auto& row) {
+    auto payload = build_payload(row);
+    auto indexes = build_indexes(row);
+    if (row.destroyed) {
+      queue_set_indexed_current_existing(table, id, row.source_mc_seqno, payload, indexes);
+    } else {
+      queue_set_indexed_current(table, id, row.source_mc_seqno, payload, indexes);
+    }
+  };
+
   for (const auto& row : batch_.jetton_masters) {
-    queue_set_indexed_current("jetton_masters", address_key(row.address), row.source_mc_seqno, build_payload(row),
-                              build_indexes(row));
+    queue_indexed_interface_current("jetton_masters", address_key(row.address), row);
   }
   for (const auto& row : batch_.jetton_wallets) {
-    queue_set_indexed_current("jetton_wallets", address_key(row.address), row.source_mc_seqno, build_payload(row),
-                              build_indexes(row));
+    queue_indexed_interface_current("jetton_wallets", address_key(row.address), row);
   }
   for (const auto& row : batch_.mintless_jetton_masters) {
     queue_set_once("mintless_jetton_masters", address_key(row.address), row.source_mc_seqno, build_payload(row));
   }
   for (const auto& row : batch_.nft_collections) {
-    queue_set_indexed_current("nft_collections", address_key(row.address), row.source_mc_seqno, build_payload(row),
-                              build_indexes(row));
+    queue_indexed_interface_current("nft_collections", address_key(row.address), row);
   }
   for (const auto& row : batch_.nft_items) {
-    queue_set_indexed_current("nft_items", address_key(row.address), row.source_mc_seqno, build_payload(row),
-                              build_indexes(row));
+    queue_indexed_interface_current("nft_items", address_key(row.address), row);
   }
   for (const auto& row : batch_.dns_entries) {
-    queue_set_indexed_current("dns_entries", address_key(row.nft_item_address), row.source_mc_seqno, build_payload(row),
-                              build_indexes(row));
+    queue_indexed_interface_current("dns_entries", address_key(row.nft_item_address), row);
   }
   for (const auto& row : batch_.getgems_nft_sales) {
-    queue_set_current("getgems_nft_sales", address_key(row.address), row.source_mc_seqno, build_payload(row));
+    queue_interface_current("getgems_nft_sales", address_key(row.address), row);
   }
   for (const auto& row : batch_.getgems_nft_auctions) {
-    queue_set_current("getgems_nft_auctions", address_key(row.address), row.source_mc_seqno, build_payload(row));
+    queue_interface_current("getgems_nft_auctions", address_key(row.address), row);
   }
   for (const auto& row : batch_.multisig_contracts) {
-    queue_set_indexed_current("multisig", address_key(row.address), row.source_mc_seqno, build_payload(row),
-                              build_indexes(row));
+    queue_indexed_interface_current("multisig", address_key(row.address), row);
   }
   for (const auto& row : batch_.multisig_orders) {
-    queue_set_indexed_current("multisig_orders", address_key(row.address), row.source_mc_seqno, build_payload(row),
-                              build_indexes(row));
+    queue_indexed_interface_current("multisig_orders", address_key(row.address), row);
   }
   for (const auto& row : batch_.vesting_contracts) {
-    queue_set_indexed_current("vesting_contracts", address_key(row.address), row.source_mc_seqno, build_payload(row),
-                              build_indexes(row));
+    queue_indexed_interface_current("vesting_contracts", address_key(row.address), row);
   }
   for (const auto& row : batch_.vesting_whitelist) {
     queue_set_indexed_once("vesting_whitelist", address_key(row.vesting_contract_address) + ":" + address_key(row.wallet_address),
                            row.source_mc_seqno, build_payload(row), build_indexes(row));
   }
   for (const auto& row : batch_.telemint_nft_items) {
-    queue_set_current("telemint_nft_items", address_key(row.address), row.source_mc_seqno, build_payload(row));
+    queue_interface_current("telemint_nft_items", address_key(row.address), row);
   }
   for (const auto& row : batch_.dedust_pools) {
-    queue_set_current("dex_pools", address_key(row.address), row.source_mc_seqno, build_payload(row));
+    queue_interface_current("dex_pools", address_key(row.address), row);
   }
 
   flush();
@@ -2608,10 +2666,28 @@ void KvrocksBatchWriter::queue_set_current(const std::string& table, const std::
   flush_if_needed();
 }
 
+void KvrocksBatchWriter::queue_set_current_existing(const std::string& table, const std::string& id,
+                                                    std::uint32_t source_mc_seqno, const std::string& payload) {
+  const auto key = kvrocks_key(table, id);
+  const auto payload_key = kvrocks_payload_key(table, id);
+  const auto source = std::to_string(source_mc_seqno);
+  pipeline_.evalsha(kvrocks_set_current_existing_script_sha(), {key, payload_key}, {source, payload});
+  ++pending_;
+  ++queued_;
+  flush_if_needed();
+}
+
 void KvrocksBatchWriter::queue_set_indexed_current(const std::string& table, const std::string& id,
                                                    std::uint32_t source_mc_seqno, const std::string& payload,
                                                    const std::vector<KvrocksIndexEntry>& indexes) {
   queue_set_indexed(kvrocks_set_indexed_current_script_sha(), table, id, source_mc_seqno, payload, indexes);
+}
+
+void KvrocksBatchWriter::queue_set_indexed_current_existing(const std::string& table, const std::string& id,
+                                                            std::uint32_t source_mc_seqno,
+                                                            const std::string& payload,
+                                                            const std::vector<KvrocksIndexEntry>& indexes) {
+  queue_set_indexed(kvrocks_set_indexed_current_existing_script_sha(), table, id, source_mc_seqno, payload, indexes);
 }
 
 void KvrocksBatchWriter::queue_set_indexed_once(const std::string& table, const std::string& id,
