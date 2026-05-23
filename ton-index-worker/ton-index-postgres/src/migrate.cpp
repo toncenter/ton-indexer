@@ -697,20 +697,29 @@ void run_1_3_0_migrations(const std::string& connection_string, bool custom_type
     );
 
     query += (
-      "create table if not exists nominator_pool_incomes ("
+      "create table if not exists nominator_pool_events ("
       "tx_hash tonhash not null, "
       "tx_lt bigint not null, "
       "tx_now integer not null, "
       "mc_seqno integer not null, "
+      "trace_id tonhash, "
       "pool_address tonaddr not null, "
       "nominator_address tonaddr not null, "
-      "income_amount numeric not null, "
-      "nominator_balance numeric not null, "
-      "trace_id tonhash, "
-      "primary key (tx_hash, tx_lt, nominator_address, mc_seqno)) "
+      "event_index integer not null, "
+      "event_type varchar not null, "
+      "amount numeric not null, "
+      "balance_delta numeric not null, "
+      "pending_balance_delta numeric not null, "
+      "balance_before numeric not null, "
+      "balance_after numeric not null, "
+      "pending_balance_before numeric not null, "
+      "pending_balance_after numeric not null, "
+      "withdraw_request_before boolean not null, "
+      "withdraw_request_after boolean not null, "
+      "primary key (tx_hash, tx_lt, event_index, mc_seqno)) "
       "partition by range (mc_seqno);\n"
     );
-    add_default_partition("nominator_pool_incomes");
+    add_default_partition("nominator_pool_events");
 
     query += "create table if not exists blocks_classified (mc_seqno integer not null primary key);\n";
 
@@ -1054,8 +1063,8 @@ void create_indexes(std::string connection_string, bool dry_run) {
       "create index if not exists jetton_transfers_index_8 on jetton_transfers (jetton_master_address, tx_lt);\n"
       "create index if not exists jetton_transfers_index_9 on jetton_transfers (tx_now, tx_lt);\n"
       "create index if not exists jetton_transfers_index_10 on jetton_transfers (tx_lt);\n"
-      "create index if not exists idx_nominator_pool_incomes_nominator on nominator_pool_incomes(nominator_address, tx_now desc);\n"
-      "create index if not exists idx_nominator_pool_incomes_pool on nominator_pool_incomes(pool_address, tx_now desc);\n"
+      "create index if not exists nominator_pool_events_nominator_idx on nominator_pool_events(nominator_address, pool_address, tx_now desc, tx_lt desc, event_index desc);\n"
+      "create index if not exists nominator_pool_events_pool_idx on nominator_pool_events(pool_address, tx_now desc, tx_lt desc, event_index desc);\n"
       "create index if not exists nominator_pools_index_1 on nominator_pools (id);\n"
       "create index if not exists nominator_pools_active_nominators_idx on nominator_pools using gin(active_nominators);\n"
       "create index if not exists messages_index_1 on messages (msg_hash);\n"

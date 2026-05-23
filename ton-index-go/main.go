@@ -2174,20 +2174,20 @@ func GetNominatorPools(c *fiber.Ctx) error {
 	return c.Status(200).JSON(pools)
 }
 
-// GetNominatorEarnings godoc
-// @summary Get nominator earnings (incomes only)
+// GetNominatorRewards godoc
+// @summary Get nominator rewards
 // @tags staking
-// @id getNominatorEarnings
+// @id getNominatorRewards
 // @param nominator query string true "Nominator address in any form"
 // @param pool query string true "Pool address in any form"
-// @param start_utime query integer false "Query earnings with timestamp at or after given timestamp." minimum(0)
-// @param end_utime query integer false "Query earnings with timestamp at or before given timestamp." minimum(0)
+// @param start_utime query integer false "Query rewards with timestamp at or after given timestamp." minimum(0)
+// @param end_utime query integer false "Query rewards with timestamp at or before given timestamp." minimum(0)
 // @produce json
-// @success 200 {object} models.NominatorEarningsResponse
+// @success 200 {object} models.NominatorRewardsResponse
 // @failure 422 {object} models.IndexError
 // @failure 500 {object} models.IndexError
-// @router /api/v3/nominators/getNominatorEarnings [get]
-func GetNominatorEarnings(c *fiber.Ctx) error {
+// @router /api/v3/nominators/getNominatorRewards [get]
+func GetNominatorRewards(c *fiber.Ctx) error {
 	requestSettings := GetRequestSettings(c, &settings)
 	req := models.NominatorPoolNominatorRequest{}
 
@@ -2203,12 +2203,12 @@ func GetNominatorEarnings(c *fiber.Ctx) error {
 		return err
 	}
 
-	earnings, err := pool.GetNominatorEarnings(string(*req.Nominator), string(*req.Pool), utimeReq, requestSettings)
+	rewards, err := pool.GetNominatorRewards(string(*req.Nominator), string(*req.Pool), utimeReq, requestSettings)
 	if err != nil {
 		return err
 	}
 
-	return c.Status(200).JSON(earnings)
+	return c.Status(200).JSON(rewards)
 }
 
 func test() {
@@ -2402,7 +2402,7 @@ func main() {
 	app.Get("/api/v3/nominators/getNominatorStakeMovements", GetNominatorStakeMovements)
 	app.Get("/api/v3/nominators/getPoolStakeMovements", GetPoolStakeMovements)
 	app.Get("/api/v3/nominators/getNominatorPools", GetNominatorPools)
-	app.Get("/api/v3/nominators/getNominatorEarnings", GetNominatorEarnings)
+	app.Get("/api/v3/nominators/getNominatorRewards", GetNominatorRewards)
 
 	// actions
 	app.Get("/api/v3/actions", GetActions)

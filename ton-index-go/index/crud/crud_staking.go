@@ -5,34 +5,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"math/big"
-	"sort"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/toncenter/ton-indexer/ton-index-go/index/models"
 )
-
-const zeroAmount = "0"
-
-func amountOrZero(amount *string) string {
-	if amount == nil {
-		return zeroAmount
-	}
-	return *amount
-}
-
-func negateNumericString(amount string) string {
-	value, ok := new(big.Int).SetString(amount, 10)
-	if !ok {
-		if amount == zeroAmount || amount == "" {
-			return zeroAmount
-		}
-		return "-" + amount
-	}
-	if value.Sign() == 0 {
-		return zeroAmount
-	}
-	return value.Neg(value).String()
-}
 
 func addNumericString(total *big.Int, amount string) {
 	value, ok := new(big.Int).SetString(amount, 10)
@@ -40,86 +16,6 @@ func addNumericString(total *big.Int, amount string) {
 		return
 	}
 	total.Add(total, value)
-}
-
-func hashPtr(value models.HashType) *models.HashType {
-	return &value
-}
-
-func int64Ptr(value int64) *int64 {
-	return &value
-}
-
-func movementLt(txLt *int64, startLt *int64) int64 {
-	if txLt != nil {
-		return *txLt
-	}
-	if startLt != nil {
-		return *startLt
-	}
-	return 0
-}
-
-func hashValue(value *models.HashType) string {
-	if value == nil {
-		return ""
-	}
-	return string(*value)
-}
-
-type stakeMovementSortKey struct {
-	utime            int32
-	lt               int64
-	traceID          string
-	txHash           string
-	actionID         string
-	movementType     string
-	nominatorAddress string
-}
-
-func nominatorStakeMovementSortKey(movement models.NominatorStakeMovement) stakeMovementSortKey {
-	return stakeMovementSortKey{
-		utime:        movement.Utime,
-		lt:           movementLt(movement.TxLt, movement.StartLt),
-		traceID:      hashValue(movement.TraceId),
-		txHash:       hashValue(movement.TxHash),
-		actionID:     hashValue(movement.ActionId),
-		movementType: movement.Type,
-	}
-}
-
-func poolStakeMovementSortKey(movement models.PoolStakeMovement) stakeMovementSortKey {
-	return stakeMovementSortKey{
-		utime:            movement.Utime,
-		lt:               movementLt(movement.TxLt, movement.StartLt),
-		traceID:          hashValue(movement.TraceId),
-		txHash:           hashValue(movement.TxHash),
-		actionID:         hashValue(movement.ActionId),
-		movementType:     movement.Type,
-		nominatorAddress: string(movement.NominatorAddress),
-	}
-}
-
-func stakeMovementLess(left stakeMovementSortKey, right stakeMovementSortKey) bool {
-	if left.utime != right.utime {
-		return left.utime < right.utime
-	}
-	if left.lt != right.lt {
-		return left.lt < right.lt
-	}
-	if left.traceID != right.traceID {
-		return left.traceID < right.traceID
-	}
-	if left.txHash != right.txHash {
-		return left.txHash < right.txHash
-	}
-	if left.actionID != right.actionID {
-		return left.actionID < right.actionID
-	}
-	if left.movementType != right.movementType {
-		return left.movementType < right.movementType
-	}
-	return left.nominatorAddress < right.nominatorAddress
 }
 
 func appendStakingUtimeFilters(query string, args []interface{}, argIdx int, column string, utimeReq models.UtimeRequest) (string, []interface{}, int, error) {
@@ -156,125 +52,67 @@ func (db *DbClient) GetNominatorStakeMovements(
 
 	movements := []models.NominatorStakeMovement{}
 
-	incomeQuery := `
-		SELECT tx_hash, tx_lt, tx_now, income_amount::text, trace_id
-		FROM nominator_pool_incomes
+	eventQuery := `
+		SELECT tx_hash, tx_lt, tx_now, event_index, event_type, amount::text,
+		       balance_delta::text, pending_balance_delta::text, balance_before::text,
+		       balance_after::text, pending_balance_before::text, pending_balance_after::text,
+		       withdraw_request_before, withdraw_request_after, trace_id
+		FROM nominator_pool_events
 		WHERE nominator_address = $1 AND pool_address = $2
 	`
-	incomeArgs := []interface{}{nominatorAddr, poolAddr}
+	eventArgs := []interface{}{nominatorAddr, poolAddr}
 	argIdx := 3
 
-	incomeQuery, incomeArgs, _, err = appendStakingUtimeFilters(incomeQuery, incomeArgs, argIdx, "tx_now", utimeReq)
+	eventQuery, eventArgs, _, err = appendStakingUtimeFilters(eventQuery, eventArgs, argIdx, "tx_now", utimeReq)
 	if err != nil {
 		return nil, err
 	}
 
-	incomeQuery += " ORDER BY tx_now ASC, tx_lt ASC, tx_hash ASC"
+	eventQuery += " ORDER BY tx_now ASC, tx_lt ASC, event_index ASC"
 
-	incomeRows, err := conn.Query(ctx, incomeQuery, incomeArgs...)
+	eventRows, err := conn.Query(ctx, eventQuery, eventArgs...)
 	if err != nil {
 		return nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
-	for incomeRows.Next() {
-		var txHash models.HashType
-		var txLt int64
-		var utime int32
-		var amount string
-		var traceID *models.HashType
-		if err := incomeRows.Scan(&txHash, &txLt, &utime, &amount, &traceID); err != nil {
-			incomeRows.Close()
+	for eventRows.Next() {
+		var movement models.NominatorStakeMovement
+		if err := eventRows.Scan(
+			&movement.TxHash,
+			&movement.TxLt,
+			&movement.Utime,
+			&movement.EventIndex,
+			&movement.Type,
+			&movement.Amount,
+			&movement.BalanceDelta,
+			&movement.PendingBalanceDelta,
+			&movement.BalanceBefore,
+			&movement.BalanceAfter,
+			&movement.PendingBalanceBefore,
+			&movement.PendingBalanceAfter,
+			&movement.WithdrawRequestBefore,
+			&movement.WithdrawRequestAfter,
+			&movement.TraceId,
+		); err != nil {
+			eventRows.Close()
 			return nil, models.IndexError{Code: 500, Message: err.Error()}
-		}
-		movements = append(movements, models.NominatorStakeMovement{
-			Utime:        utime,
-			Type:         "nominator_income",
-			Amount:       amount,
-			BalanceDelta: amount,
-			TxHash:       hashPtr(txHash),
-			TxLt:         int64Ptr(txLt),
-			TraceId:      traceID,
-		})
-	}
-	if err := incomeRows.Err(); err != nil {
-		incomeRows.Close()
-		return nil, models.IndexError{Code: 500, Message: err.Error()}
-	}
-	incomeRows.Close()
-
-	actionQuery := `
-		SELECT start_utime, type, amount::text, trace_id, action_id, start_lt
-		FROM actions
-		WHERE (source = $1 OR destination = $1)
-		  AND (source = $2 OR destination = $2)
-		  AND type IN ('stake_deposit', 'stake_withdrawal')
-	`
-	actionArgs := []interface{}{nominatorAddr, poolAddr}
-	argIdx = 3
-
-	actionQuery, actionArgs, _, err = appendStakingUtimeFilters(actionQuery, actionArgs, argIdx, "start_utime", utimeReq)
-	if err != nil {
-		return nil, err
-	}
-
-	actionQuery += " ORDER BY start_utime ASC, start_lt ASC, action_id ASC"
-
-	actionRows, err := conn.Query(ctx, actionQuery, actionArgs...)
-	if err != nil {
-		return nil, models.IndexError{Code: 500, Message: err.Error()}
-	}
-	for actionRows.Next() {
-		var utime int32
-		var actionType string
-		var amount *string
-		var traceID *models.HashType
-		var actionID models.HashType
-		var startLt int64
-		if err := actionRows.Scan(&utime, &actionType, &amount, &traceID, &actionID, &startLt); err != nil {
-			actionRows.Close()
-			return nil, models.IndexError{Code: 500, Message: err.Error()}
-		}
-
-		movement := models.NominatorStakeMovement{
-			Utime:    utime,
-			Amount:   amountOrZero(amount),
-			TraceId:  traceID,
-			ActionId: hashPtr(actionID),
-			StartLt:  int64Ptr(startLt),
-		}
-		switch actionType {
-		case "stake_deposit":
-			movement.Type = "nominator_deposit"
-			movement.BalanceDelta = amountOrZero(amount)
-		case "stake_withdrawal":
-			movement.Type = "nominator_withdrawal"
-			movement.BalanceDelta = negateNumericString(amountOrZero(amount))
-		default:
-			continue
 		}
 		movements = append(movements, movement)
 	}
-	if err := actionRows.Err(); err != nil {
-		actionRows.Close()
+	if err := eventRows.Err(); err != nil {
+		eventRows.Close()
 		return nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
-	actionRows.Close()
-
-	sort.Slice(movements, func(i, j int) bool {
-		return stakeMovementLess(
-			nominatorStakeMovementSortKey(movements[i]),
-			nominatorStakeMovementSortKey(movements[j]),
-		)
-	})
+	eventRows.Close()
 
 	return movements, nil
 }
 
-func (db *DbClient) GetNominatorEarnings(
+func (db *DbClient) GetNominatorRewards(
 	nominatorAddr string,
 	poolAddr string,
 	utimeReq models.UtimeRequest,
 	settings models.RequestSettings,
-) (*models.NominatorEarningsResponse, error) {
+) (*models.NominatorRewardsResponse, error) {
 	ctx, cancelCtx := context.WithTimeout(context.Background(), settings.Timeout)
 	defer cancelCtx()
 
@@ -284,57 +122,53 @@ func (db *DbClient) GetNominatorEarnings(
 	}
 	defer conn.Release()
 
-	incomeQuery := `
-		SELECT tx_hash, tx_lt, tx_now, income_amount::text, nominator_balance::text, trace_id
-		FROM nominator_pool_incomes
-		WHERE nominator_address = $1 AND pool_address = $2
+	rewardQuery := `
+		SELECT tx_hash, tx_lt, tx_now, event_index, amount::text, balance_before::text, trace_id
+		FROM nominator_pool_events
+		WHERE nominator_address = $1 AND pool_address = $2 AND event_type = 'reward'
 	`
-	incomeArgs := []interface{}{nominatorAddr, poolAddr}
+	rewardArgs := []interface{}{nominatorAddr, poolAddr}
 	argIdx := 3
 
-	incomeQuery, incomeArgs, _, err = appendStakingUtimeFilters(incomeQuery, incomeArgs, argIdx, "tx_now", utimeReq)
+	rewardQuery, rewardArgs, _, err = appendStakingUtimeFilters(rewardQuery, rewardArgs, argIdx, "tx_now", utimeReq)
 	if err != nil {
 		return nil, err
 	}
 
-	incomeQuery += " ORDER BY tx_now ASC, tx_lt ASC, tx_hash ASC"
+	rewardQuery += " ORDER BY tx_now ASC, tx_lt ASC, event_index ASC"
 
-	incomeRows, err := conn.Query(ctx, incomeQuery, incomeArgs...)
+	rewardRows, err := conn.Query(ctx, rewardQuery, rewardArgs...)
 	if err != nil {
 		return nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
-	defer incomeRows.Close()
+	defer rewardRows.Close()
 
-	earnings := []models.NominatorEarning{}
+	rewards := []models.NominatorReward{}
 	totalOnPeriod := big.NewInt(0)
 
-	for incomeRows.Next() {
-		var txHash models.HashType
-		var txLt int64
-		var utime int32
-		var income string
-		var stakeBefore string
-		var traceID *models.HashType
-		if err := incomeRows.Scan(&txHash, &txLt, &utime, &income, &stakeBefore, &traceID); err != nil {
+	for rewardRows.Next() {
+		var reward models.NominatorReward
+		if err := rewardRows.Scan(
+			&reward.TxHash,
+			&reward.TxLt,
+			&reward.Utime,
+			&reward.EventIndex,
+			&reward.Reward,
+			&reward.StakeBefore,
+			&reward.TraceId,
+		); err != nil {
 			return nil, models.IndexError{Code: 500, Message: err.Error()}
 		}
-		earnings = append(earnings, models.NominatorEarning{
-			Utime:       utime,
-			Income:      income,
-			StakeBefore: stakeBefore,
-			TxHash:      txHash,
-			TxLt:        txLt,
-			TraceId:     traceID,
-		})
-		addNumericString(totalOnPeriod, income)
+		rewards = append(rewards, reward)
+		addNumericString(totalOnPeriod, reward.Reward)
 	}
-	if err := incomeRows.Err(); err != nil {
+	if err := rewardRows.Err(); err != nil {
 		return nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
 
-	return &models.NominatorEarningsResponse{
+	return &models.NominatorRewardsResponse{
 		TotalOnPeriod: totalOnPeriod.String(),
-		Earnings:      earnings,
+		Rewards:       rewards,
 	}, nil
 }
 
@@ -354,123 +188,58 @@ func (db *DbClient) GetPoolStakeMovements(
 
 	movements := []models.PoolStakeMovement{}
 
-	incomeQuery := `
-		SELECT nominator_address, tx_hash, tx_lt, tx_now, income_amount::text, trace_id
-		FROM nominator_pool_incomes
+	eventQuery := `
+		SELECT nominator_address, tx_hash, tx_lt, tx_now, event_index, event_type, amount::text,
+		       balance_delta::text, pending_balance_delta::text, balance_before::text,
+		       balance_after::text, pending_balance_before::text, pending_balance_after::text,
+		       withdraw_request_before, withdraw_request_after, trace_id
+		FROM nominator_pool_events
 		WHERE pool_address = $1
 	`
-	incomeArgs := []interface{}{poolAddr}
+	eventArgs := []interface{}{poolAddr}
 	argIdx := 2
 
-	incomeQuery, incomeArgs, _, err = appendStakingUtimeFilters(incomeQuery, incomeArgs, argIdx, "tx_now", utimeReq)
+	eventQuery, eventArgs, _, err = appendStakingUtimeFilters(eventQuery, eventArgs, argIdx, "tx_now", utimeReq)
 	if err != nil {
 		return nil, err
 	}
 
-	incomeQuery += " ORDER BY tx_now ASC, tx_lt ASC, tx_hash ASC, nominator_address ASC"
+	eventQuery += " ORDER BY tx_now ASC, tx_lt ASC, event_index ASC"
 
-	incomeRows, err := conn.Query(ctx, incomeQuery, incomeArgs...)
+	eventRows, err := conn.Query(ctx, eventQuery, eventArgs...)
 	if err != nil {
 		return nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
-	for incomeRows.Next() {
-		var nominatorAddr models.AccountAddress
-		var txHash models.HashType
-		var txLt int64
-		var utime int32
-		var amount string
-		var traceID *models.HashType
-		if err := incomeRows.Scan(&nominatorAddr, &txHash, &txLt, &utime, &amount, &traceID); err != nil {
-			incomeRows.Close()
+	for eventRows.Next() {
+		var movement models.PoolStakeMovement
+		if err := eventRows.Scan(
+			&movement.NominatorAddress,
+			&movement.TxHash,
+			&movement.TxLt,
+			&movement.Utime,
+			&movement.EventIndex,
+			&movement.Type,
+			&movement.Amount,
+			&movement.BalanceDelta,
+			&movement.PendingBalanceDelta,
+			&movement.BalanceBefore,
+			&movement.BalanceAfter,
+			&movement.PendingBalanceBefore,
+			&movement.PendingBalanceAfter,
+			&movement.WithdrawRequestBefore,
+			&movement.WithdrawRequestAfter,
+			&movement.TraceId,
+		); err != nil {
+			eventRows.Close()
 			return nil, models.IndexError{Code: 500, Message: err.Error()}
-		}
-		movements = append(movements, models.PoolStakeMovement{
-			NominatorAddress: nominatorAddr,
-			Utime:            utime,
-			Type:             "nominator_income",
-			Amount:           amount,
-			BalanceDelta:     amount,
-			TxHash:           hashPtr(txHash),
-			TxLt:             int64Ptr(txLt),
-			TraceId:          traceID,
-		})
-	}
-	if err := incomeRows.Err(); err != nil {
-		incomeRows.Close()
-		return nil, models.IndexError{Code: 500, Message: err.Error()}
-	}
-	incomeRows.Close()
-
-	actionQuery := `
-		SELECT
-			CASE
-				WHEN source = $1 THEN destination
-				ELSE source
-			END as nominator_address,
-			start_utime, type, amount::text, trace_id, action_id, start_lt
-		FROM actions
-		WHERE (source = $1 OR destination = $1)
-		  AND type IN ('stake_deposit', 'stake_withdrawal')
-	`
-	actionArgs := []interface{}{poolAddr}
-	argIdx = 2
-
-	actionQuery, actionArgs, _, err = appendStakingUtimeFilters(actionQuery, actionArgs, argIdx, "start_utime", utimeReq)
-	if err != nil {
-		return nil, err
-	}
-
-	actionQuery += " ORDER BY start_utime ASC, start_lt ASC, action_id ASC"
-
-	actionRows, err := conn.Query(ctx, actionQuery, actionArgs...)
-	if err != nil {
-		return nil, models.IndexError{Code: 500, Message: err.Error()}
-	}
-	for actionRows.Next() {
-		var nominatorAddr models.AccountAddress
-		var utime int32
-		var actionType string
-		var amount *string
-		var traceID *models.HashType
-		var actionID models.HashType
-		var startLt int64
-		if err := actionRows.Scan(&nominatorAddr, &utime, &actionType, &amount, &traceID, &actionID, &startLt); err != nil {
-			actionRows.Close()
-			return nil, models.IndexError{Code: 500, Message: err.Error()}
-		}
-
-		movement := models.PoolStakeMovement{
-			NominatorAddress: nominatorAddr,
-			Utime:            utime,
-			Amount:           amountOrZero(amount),
-			TraceId:          traceID,
-			ActionId:         hashPtr(actionID),
-			StartLt:          int64Ptr(startLt),
-		}
-		switch actionType {
-		case "stake_deposit":
-			movement.Type = "nominator_deposit"
-			movement.BalanceDelta = amountOrZero(amount)
-		case "stake_withdrawal":
-			movement.Type = "nominator_withdrawal"
-			movement.BalanceDelta = negateNumericString(amountOrZero(amount))
-		default:
-			continue
 		}
 		movements = append(movements, movement)
 	}
-	if err := actionRows.Err(); err != nil {
-		actionRows.Close()
+	if err := eventRows.Err(); err != nil {
+		eventRows.Close()
 		return nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
-	actionRows.Close()
-
-	sort.Slice(movements, func(i, j int) bool {
-		return stakeMovementLess(
-			poolStakeMovementSortKey(movements[i]),
-			poolStakeMovementSortKey(movements[j]),
-		)
-	})
+	eventRows.Close()
 
 	return movements, nil
 }

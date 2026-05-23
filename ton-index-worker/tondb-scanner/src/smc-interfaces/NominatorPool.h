@@ -35,6 +35,7 @@ struct ParsedStorage {
   td::RefInt256 min_validator_stake;
   td::RefInt256 min_nominator_stake;
   std::vector<NominatorInfo> nominators;
+  std::vector<block::StdAddress> withdraw_requests;
 };
 
 td::Result<ParsedStorage> parse_storage(td::Ref<vm::Cell> data_cell);

@@ -513,7 +513,7 @@ struct JettonBurn {
   td::Ref<vm::Cell> custom_payload;
 };
 
-struct NominatorPoolIncome {
+struct NominatorPoolEvent {
   td::Bits256 trace_id;
   td::Bits256 transaction_hash;
   uint64_t transaction_lt;
@@ -522,8 +522,17 @@ struct NominatorPoolIncome {
 
   std::string pool_address;
   std::string nominator_address;
-  td::RefInt256 income_amount;
-  td::RefInt256 nominator_balance;  // balance at income time
+  uint32_t event_index;
+  std::string event_type;
+  td::RefInt256 amount;
+  td::RefInt256 balance_delta;
+  td::RefInt256 pending_balance_delta;
+  td::RefInt256 balance_before;
+  td::RefInt256 balance_after;
+  td::RefInt256 pending_balance_before;
+  td::RefInt256 pending_balance_after;
+  bool withdraw_request_before;
+  bool withdraw_request_after;
 };
 
 struct NFTCollectionData {
@@ -737,7 +746,7 @@ struct MasterchainBlockDataState {
 using BlockchainEvent = std::variant<JettonTransfer,
                                      JettonBurn,
                                      NFTTransfer,
-                                     NominatorPoolIncome>;
+                                     NominatorPoolEvent>;
 
 using BlockchainInterface = std::variant<JettonMasterData,
                                          JettonWalletData,

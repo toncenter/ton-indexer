@@ -71,39 +71,47 @@ td::Result<ParsedStorage> parse_storage(td::Ref<vm::Cell> data_cell) {
       .min_validator_stake = min_validator_stake,
       .min_nominator_stake = min_nominator_stake,
       .nominators = {},
+      .withdraw_requests = {},
   };
 
-  if (pool_storage.nominators.is_null() || pool_storage.nominators->size() == 0) {
-    return result;
+  if (!pool_storage.nominators.is_null() && pool_storage.nominators->size() != 0) {
+    td::Ref<vm::Cell> nominators_cell;
+    auto nominators_slice = *pool_storage.nominators;
+    if (nominators_slice.fetch_maybe_ref(nominators_cell) && nominators_cell.not_null()) {
+      vm::Dictionary nominators_dict{nominators_cell, 256};
+      for (auto it = nominators_dict.begin(); !it.eof(); ++it) {
+        validators::gen::Nominator::Record nominator_data;
+        auto nominator_cs = *it.cur_value();
+        if (!validators::gen::t_Nominator.unpack(nominator_cs, nominator_data)) {
+          LOG(DEBUG) << "Failed to unpack nominator pool entry";
+          continue;
+        }
+
+        auto amount = validators::gen::t_Grams.as_integer(nominator_data.amount);
+        auto pending_deposit_amount = validators::gen::t_Grams.as_integer(nominator_data.pending_deposit_amount);
+        if (amount.is_null() || pending_deposit_amount.is_null()) {
+          LOG(DEBUG) << "Failed to parse nominator pool entry balances";
+          continue;
+        }
+
+        result.nominators.push_back({
+            .address = nominator_address_from_hash(td::BitArray<256>(it.cur_pos())),
+            .amount = amount,
+            .pending_deposit_amount = pending_deposit_amount,
+        });
+      }
+    }
   }
 
-  td::Ref<vm::Cell> nominators_cell;
-  auto nominators_slice = *pool_storage.nominators;
-  if (!nominators_slice.fetch_maybe_ref(nominators_cell) || nominators_cell.is_null()) {
-    return result;
-  }
-
-  vm::Dictionary nominators_dict{nominators_cell, 256};
-  for (auto it = nominators_dict.begin(); !it.eof(); ++it) {
-    validators::gen::Nominator::Record nominator_data;
-    auto nominator_cs = *it.cur_value();
-    if (!validators::gen::t_Nominator.unpack(nominator_cs, nominator_data)) {
-      LOG(DEBUG) << "Failed to unpack nominator pool entry";
-      continue;
+  if (!pool_storage.withdraw_requests.is_null() && pool_storage.withdraw_requests->size() != 0) {
+    td::Ref<vm::Cell> withdraw_requests_cell;
+    auto withdraw_requests_slice = *pool_storage.withdraw_requests;
+    if (withdraw_requests_slice.fetch_maybe_ref(withdraw_requests_cell) && withdraw_requests_cell.not_null()) {
+      vm::Dictionary withdraw_requests_dict{withdraw_requests_cell, 256};
+      for (auto it = withdraw_requests_dict.begin(); !it.eof(); ++it) {
+        result.withdraw_requests.push_back(nominator_address_from_hash(td::BitArray<256>(it.cur_pos())));
+      }
     }
-
-    auto amount = validators::gen::t_Grams.as_integer(nominator_data.amount);
-    auto pending_deposit_amount = validators::gen::t_Grams.as_integer(nominator_data.pending_deposit_amount);
-    if (amount.is_null() || pending_deposit_amount.is_null()) {
-      LOG(DEBUG) << "Failed to parse nominator pool entry balances";
-      continue;
-    }
-
-    result.nominators.push_back({
-        .address = nominator_address_from_hash(td::BitArray<256>(it.cur_pos())),
-        .amount = amount,
-        .pending_deposit_amount = pending_deposit_amount,
-    });
   }
 
   return result;

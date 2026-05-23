@@ -9,6 +9,7 @@
 #include "validators-tlb.h"
 
 #include <algorithm>
+#include <map>
 #include <unordered_map>
 #include <unordered_set>
 
@@ -29,12 +30,12 @@ public:
       for (const auto& transaction : block.transactions) {
         process_tx(transaction);
       }
-      auto incomes = process_nominator_pool_incomes(block);
-      if (incomes.is_error()) {
-        LOG(DEBUG) << "Failed to replay nominator pool incomes: " << incomes.move_as_error();
+      auto pool_events = process_nominator_pool_events(block);
+      if (pool_events.is_error()) {
+        LOG(DEBUG) << "Failed to replay nominator pool events: " << pool_events.move_as_error();
       } else {
-        for (auto& income : incomes.move_as_ok()) {
-          block_->events_.push_back(std::move(income));
+        for (auto& pool_event : pool_events.move_as_ok()) {
+          block_->events_.push_back(std::move(pool_event));
         }
       }
     }
@@ -317,47 +318,152 @@ public:
     return nominator_pool::parse_storage(account.data);
   }
 
-  std::vector<schema::NominatorPoolIncome> build_nominator_pool_incomes(
+  struct PoolNominatorSnapshot {
+    td::RefInt256 amount;
+    td::RefInt256 pending_deposit_amount;
+    bool withdraw_requested{false};
+  };
+
+  td::RefInt256 zero_refint() const {
+    return td::make_refint(td::BigInt256(0));
+  }
+
+  td::RefInt256 abs_refint(td::RefInt256 value) const {
+    if (td::sgn(value) >= 0) {
+      return value;
+    }
+    return zero_refint() - value;
+  }
+
+  std::map<std::string, PoolNominatorSnapshot> build_nominator_snapshots(
+      const nominator_pool::ParsedStorage& storage) const {
+    std::map<std::string, PoolNominatorSnapshot> result;
+    for (const auto& nominator : storage.nominators) {
+      result[convert::to_raw_address(nominator.address)] = PoolNominatorSnapshot{
+          .amount = nominator.amount,
+          .pending_deposit_amount = nominator.pending_deposit_amount,
+          .withdraw_requested = false,
+      };
+    }
+    for (const auto& address : storage.withdraw_requests) {
+      auto& snapshot = result[convert::to_raw_address(address)];
+      snapshot.withdraw_requested = true;
+    }
+    for (auto& [_, snapshot] : result) {
+      if (snapshot.amount.is_null()) {
+        snapshot.amount = zero_refint();
+      }
+      if (snapshot.pending_deposit_amount.is_null()) {
+        snapshot.pending_deposit_amount = zero_refint();
+      }
+    }
+    return result;
+  }
+
+  PoolNominatorSnapshot get_nominator_snapshot(
+      const std::map<std::string, PoolNominatorSnapshot>& snapshots,
+      const std::string& address) const {
+    auto it = snapshots.find(address);
+    if (it != snapshots.end()) {
+      return it->second;
+    }
+    return PoolNominatorSnapshot{
+        .amount = zero_refint(),
+        .pending_deposit_amount = zero_refint(),
+        .withdraw_requested = false,
+    };
+  }
+
+  schema::NominatorPoolEvent make_nominator_pool_event(
+      const schema::Transaction& transaction,
+      const std::string& nominator_address,
+      uint32_t event_index,
+      std::string event_type,
+      td::RefInt256 amount,
+      td::RefInt256 balance_delta,
+      td::RefInt256 pending_balance_delta,
+      const PoolNominatorSnapshot& before,
+      const PoolNominatorSnapshot& after) const {
+    schema::NominatorPoolEvent event;
+    event.trace_id = transaction.trace_id;
+    event.transaction_hash = transaction.hash;
+    event.transaction_lt = transaction.lt;
+    event.transaction_now = transaction.now;
+    event.mc_seqno = transaction.mc_seqno;
+    event.pool_address = convert::to_raw_address(transaction.account);
+    event.nominator_address = nominator_address;
+    event.event_index = event_index;
+    event.event_type = std::move(event_type);
+    event.amount = amount;
+    event.balance_delta = balance_delta;
+    event.pending_balance_delta = pending_balance_delta;
+    event.balance_before = before.amount;
+    event.balance_after = after.amount;
+    event.pending_balance_before = before.pending_deposit_amount;
+    event.pending_balance_after = after.pending_deposit_amount;
+    event.withdraw_request_before = before.withdraw_requested;
+    event.withdraw_request_after = after.withdraw_requested;
+    return event;
+  }
+
+  std::vector<schema::NominatorPoolEvent> build_nominator_pool_events(
       const schema::Transaction& transaction,
       const nominator_pool::ParsedStorage& before,
       const nominator_pool::ParsedStorage& after) {
-    std::unordered_map<std::string, td::RefInt256> after_amounts;
-    after_amounts.reserve(after.nominators.size());
-    for (const auto& nominator : after.nominators) {
-      after_amounts[convert::to_raw_address(nominator.address)] = nominator.amount;
+    auto before_snapshots = build_nominator_snapshots(before);
+    auto after_snapshots = build_nominator_snapshots(after);
+    for (const auto& [address, _] : after_snapshots) {
+      before_snapshots.try_emplace(address, get_nominator_snapshot(before_snapshots, address));
     }
 
-    std::vector<schema::NominatorPoolIncome> incomes;
-    for (const auto& nominator : before.nominators) {
-      auto address = convert::to_raw_address(nominator.address);
-      auto after_amount_it = after_amounts.find(address);
-      td::RefInt256 after_amount =
-          after_amount_it == after_amounts.end() ? td::make_refint(td::BigInt256(0)) : after_amount_it->second;
-      td::RefInt256 expected_without_income = nominator.amount + nominator.pending_deposit_amount;
-      td::RefInt256 income_amount = after_amount - expected_without_income;
-      if (td::sgn(income_amount) == 0) {
-        continue;
+    std::vector<schema::NominatorPoolEvent> events;
+    uint32_t event_index = 0;
+    bool is_reward_transaction = is_recover_stake_ok(transaction);
+    for (const auto& [address, before_snapshot] : before_snapshots) {
+      auto after_snapshot = get_nominator_snapshot(after_snapshots, address);
+      auto balance_delta = after_snapshot.amount - before_snapshot.amount;
+      auto pending_balance_delta = after_snapshot.pending_deposit_amount - before_snapshot.pending_deposit_amount;
+      auto total_delta = balance_delta + pending_balance_delta;
+
+      if (is_reward_transaction) {
+        auto reward_after_snapshot = before_snapshot;
+        if (td::sgn(total_delta) != 0) {
+          reward_after_snapshot.amount = before_snapshot.amount + total_delta;
+          events.push_back(make_nominator_pool_event(
+              transaction, address, event_index++, "reward", total_delta, total_delta, zero_refint(),
+              before_snapshot, reward_after_snapshot));
+        }
+        if (td::sgn(pending_balance_delta) < 0) {
+          auto activated_amount = abs_refint(pending_balance_delta);
+          auto activation_before_snapshot = reward_after_snapshot;
+          events.push_back(make_nominator_pool_event(
+              transaction, address, event_index++, "pending_deposit_activation", activated_amount,
+              activated_amount, pending_balance_delta, activation_before_snapshot, after_snapshot));
+        }
+      } else {
+        if (td::sgn(total_delta) > 0) {
+          events.push_back(make_nominator_pool_event(
+              transaction, address, event_index++, "deposit", total_delta, balance_delta, pending_balance_delta,
+              before_snapshot, after_snapshot));
+        } else if (td::sgn(total_delta) < 0) {
+          events.push_back(make_nominator_pool_event(
+              transaction, address, event_index++, "withdrawal", abs_refint(total_delta), balance_delta,
+              pending_balance_delta, before_snapshot, after_snapshot));
+        }
+        if (!before_snapshot.withdraw_requested && after_snapshot.withdraw_requested) {
+          events.push_back(make_nominator_pool_event(
+              transaction, address, event_index++, "withdrawal_request", zero_refint(), zero_refint(),
+              zero_refint(), before_snapshot, after_snapshot));
+        }
       }
-
-      schema::NominatorPoolIncome income;
-      income.trace_id = transaction.trace_id;
-      income.transaction_hash = transaction.hash;
-      income.transaction_lt = transaction.lt;
-      income.transaction_now = transaction.now;
-      income.mc_seqno = transaction.mc_seqno;
-      income.pool_address = convert::to_raw_address(transaction.account);
-      income.nominator_address = address;
-      income.income_amount = income_amount;
-      income.nominator_balance = nominator.amount;
-      incomes.push_back(std::move(income));
     }
-    return incomes;
+    return events;
   }
 
-  td::Result<std::vector<schema::NominatorPoolIncome>> replay_nominator_pool_account(
+  td::Result<std::vector<schema::NominatorPoolEvent>> replay_nominator_pool_account(
       const schema::Block& block,
       std::vector<const schema::Transaction*> transactions) {
-    std::vector<schema::NominatorPoolIncome> incomes;
+    std::vector<schema::NominatorPoolEvent> events;
     std::sort(transactions.begin(), transactions.end(), [](const auto* lhs, const auto* rhs) {
       return lhs->lt < rhs->lt;
     });
@@ -378,31 +484,26 @@ public:
         return td::Status::Error("Transaction raw cell is null");
       }
 
-      bool is_income_transaction = is_recover_stake_ok(*transaction);
-      std::optional<nominator_pool::ParsedStorage> before_storage;
-      if (is_income_transaction) {
-        TRY_RESULT_ASSIGN(before_storage, parse_pool_storage(account));
-      }
-
+      auto before_storage = parse_pool_storage(account);
       TRY_RESULT(emulation_result, trans_emulator.emulate_transaction(std::move(account), transaction->raw));
 
-      if (is_income_transaction) {
+      if (before_storage.is_ok()) {
         TRY_RESULT(after_storage, parse_pool_storage(emulation_result.account));
-        auto transaction_incomes = build_nominator_pool_incomes(*transaction, before_storage.value(), after_storage);
-        for (auto& income : transaction_incomes) {
-          incomes.push_back(std::move(income));
+        auto transaction_events = build_nominator_pool_events(*transaction, before_storage.move_as_ok(), after_storage);
+        for (auto& event : transaction_events) {
+          events.push_back(std::move(event));
         }
       }
       account = std::move(emulation_result.account);
     }
 
-    return incomes;
+    return events;
   }
 
-  td::Result<std::vector<schema::NominatorPoolIncome>> process_nominator_pool_incomes(const schema::Block& block) {
+  td::Result<std::vector<schema::NominatorPoolEvent>> process_nominator_pool_events(const schema::Block& block) {
     std::unordered_set<block::StdAddress> candidate_accounts;
     for (const auto& transaction : block.transactions) {
-      if (is_recover_stake_ok(transaction) && has_nominator_pool_interface(transaction.account)) {
+      if (has_nominator_pool_interface(transaction.account)) {
         candidate_accounts.insert(transaction.account);
       }
     }
@@ -414,17 +515,17 @@ public:
       }
     }
 
-    std::vector<schema::NominatorPoolIncome> incomes;
+    std::vector<schema::NominatorPoolEvent> events;
     for (auto& [_, account_transactions] : transactions_by_account) {
-      auto account_incomes = replay_nominator_pool_account(block, std::move(account_transactions));
-      if (account_incomes.is_error()) {
-        return account_incomes.move_as_error();
+      auto account_events = replay_nominator_pool_account(block, std::move(account_transactions));
+      if (account_events.is_error()) {
+        return account_events.move_as_error();
       }
-      for (auto& income : account_incomes.move_as_ok()) {
-        incomes.push_back(std::move(income));
+      for (auto& event : account_events.move_as_ok()) {
+        events.push_back(std::move(event));
       }
     }
-    return incomes;
+    return events;
   }
 };
 
