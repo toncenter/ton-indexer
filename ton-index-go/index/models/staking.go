@@ -57,3 +57,31 @@ type NominatorEarningsResponse struct {
 	TotalOnPeriod int64              `json:"total_on_period"`
 	Earnings      []NominatorEarning `json:"earnings"`
 } // @name NominatorEarningsResponse
+
+type ValidatorPoolIncome struct {
+	TxHash           HashType       `json:"tx_hash"`
+	TxLt             int64          `json:"tx_lt,string"`
+	TxNow            int32          `json:"tx_now"`
+	McSeqno          int32          `json:"mc_seqno"`
+	PoolAddress      AccountAddress `json:"pool_address"`
+	ValidatorAddress AccountAddress `json:"validator_address"`
+	IncomeAmount     string         `json:"income_amount"`
+	TraceId          *HashType      `json:"trace_id,omitempty"`
+} // @name ValidatorPoolIncome
+
+type ValidatorBooking struct {
+	Utime       int32  `json:"utime"`
+	BookingType string `json:"booking_type"` // "validator_income", "validator_deposit", "validator_withdrawal"
+	Debit       int64  `json:"debit"`
+	Credit      int64  `json:"credit"`
+} // @name ValidatorBooking
+
+type ValidatorEarning struct {
+	Utime  int32 `json:"utime"`
+	Income int64 `json:"income"`
+} // @name ValidatorEarning
+
+type ValidatorEarningsResponse struct {
+	TotalOnPeriod int64              `json:"total_on_period"`
+	Earnings      []ValidatorEarning `json:"earnings"`
+} // @name ValidatorEarningsResponse

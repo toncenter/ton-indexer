@@ -2446,6 +2446,132 @@ func GetNominatorEarnings(c *fiber.Ctx) error {
 	return c.Status(200).JSON(earnings)
 }
 
+// GetValidatorEarnings godoc
+// @summary Get validator earnings from a nominator pool (incomes only)
+// @tags staking
+// @id getValidatorEarnings
+// @param validator query string true "Validator address in any form"
+// @param pool query string true "Pool address in any form"
+// @param from_time query integer false "From timestamp"
+// @param to_time query integer false "To timestamp"
+// @param limit query integer false "Limit" default(100)
+// @produce json
+// @success 200 {object} models.ValidatorEarningsResponse
+// @failure 422 {object} models.IndexError
+// @failure 500 {object} models.IndexError
+// @router /api/v3/validators/getValidatorEarnings [get]
+func GetValidatorEarnings(c *fiber.Ctx) error {
+	validator := c.Query("validator")
+	poolAddr := c.Query("pool")
+
+	if validator == "" || poolAddr == "" {
+		return models.IndexError{Code: 422, Message: "validator and pool parameters are required"}
+	}
+
+	validatorAddrVal := models.AccountAddressConverter(validator)
+	if !validatorAddrVal.IsValid() {
+		return models.IndexError{Code: 422, Message: "invalid validator address format"}
+	}
+	normalizedValidator := validatorAddrVal.Interface().(models.AccountAddress)
+
+	poolAddrVal := models.AccountAddressConverter(poolAddr)
+	if !poolAddrVal.IsValid() {
+		return models.IndexError{Code: 422, Message: "invalid pool address format"}
+	}
+	normalizedPool := poolAddrVal.Interface().(models.AccountAddress)
+
+	var fromTime, toTime *int32
+	if fromStr := c.Query("from_time"); fromStr != "" {
+		if val, err := strconv.ParseInt(fromStr, 10, 32); err == nil {
+			tmp := int32(val)
+			fromTime = &tmp
+		}
+	}
+	if toStr := c.Query("to_time"); toStr != "" {
+		if val, err := strconv.ParseInt(toStr, 10, 32); err == nil {
+			tmp := int32(val)
+			toTime = &tmp
+		}
+	}
+
+	limit := 100
+	if limitStr := c.Query("limit"); limitStr != "" {
+		if val, err := strconv.Atoi(limitStr); err == nil {
+			limit = val
+		}
+	}
+
+	earnings, err := pool.GetValidatorEarnings(string(normalizedValidator), string(normalizedPool), fromTime, toTime, limit)
+	if err != nil {
+		return err
+	}
+
+	return c.Status(200).JSON(earnings)
+}
+
+// GetValidatorBookings godoc
+// @summary Get validator bookings (incomes + deposits/withdrawals)
+// @tags staking
+// @id getValidatorBookings
+// @param validator query string true "Validator address in any form"
+// @param pool query string true "Pool address in any form"
+// @param from_time query integer false "From timestamp"
+// @param to_time query integer false "To timestamp"
+// @param limit query integer false "Limit" default(100)
+// @produce json
+// @success 200 {array} models.ValidatorBooking
+// @failure 422 {object} models.IndexError
+// @failure 500 {object} models.IndexError
+// @router /api/v3/validators/getValidatorBookings [get]
+func GetValidatorBookings(c *fiber.Ctx) error {
+	validator := c.Query("validator")
+	poolAddr := c.Query("pool")
+
+	if validator == "" || poolAddr == "" {
+		return models.IndexError{Code: 422, Message: "validator and pool parameters are required"}
+	}
+
+	validatorAddrVal := models.AccountAddressConverter(validator)
+	if !validatorAddrVal.IsValid() {
+		return models.IndexError{Code: 422, Message: "invalid validator address format"}
+	}
+	normalizedValidator := validatorAddrVal.Interface().(models.AccountAddress)
+
+	poolAddrVal := models.AccountAddressConverter(poolAddr)
+	if !poolAddrVal.IsValid() {
+		return models.IndexError{Code: 422, Message: "invalid pool address format"}
+	}
+	normalizedPool := poolAddrVal.Interface().(models.AccountAddress)
+
+	var fromTime, toTime *int32
+	if fromStr := c.Query("from_time"); fromStr != "" {
+		if val, err := strconv.ParseInt(fromStr, 10, 32); err == nil {
+			tmp := int32(val)
+			fromTime = &tmp
+		}
+	}
+	if toStr := c.Query("to_time"); toStr != "" {
+		if val, err := strconv.ParseInt(toStr, 10, 32); err == nil {
+			tmp := int32(val)
+			toTime = &tmp
+		}
+	}
+
+	limit := 100
+	if limitStr := c.Query("limit"); limitStr != "" {
+		if val, err := strconv.Atoi(limitStr); err == nil {
+			limit = val
+		}
+	}
+
+	bookings, err := pool.GetValidatorBookings(string(normalizedValidator), string(normalizedPool), fromTime, toTime, limit)
+	if err != nil {
+		return err
+	}
+
+	return c.Status(200).JSON(bookings)
+}
+
 func test() {
 	// addr_str := "0QAvlUF6KtTT7R9/kmxOPULEMd+zbtVBZigkorOlGqWtzVky"
 	// addr, err := address.ParseAddr(addr_str)
@@ -2604,6 +2730,10 @@ func main() {
 	app.Get("/api/v3/nominators/getPoolBookings", GetPoolBookings)
 	app.Get("/api/v3/nominators/getNominator", GetNominator)
 	app.Get("/api/v3/nominators/getNominatorEarnings", GetNominatorEarnings)
+
+	// validators (staking)
+	app.Get("/api/v3/validators/getValidatorEarnings", GetValidatorEarnings)
+	app.Get("/api/v3/validators/getValidatorBookings", GetValidatorBookings)
 
 	// actions
 	app.Get("/api/v3/actions", GetActions)

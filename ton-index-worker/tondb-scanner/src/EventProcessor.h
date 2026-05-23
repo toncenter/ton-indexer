@@ -35,10 +35,14 @@ public:
       if (in_msg_body_cs->size() >= 32) {
         auto opcode = in_msg_body_cs->prefetch_ulong(32);
         if (opcode == 0xf96f7324) {  // recover_stake_ok from elector
-          auto incomes = parse_nominator_pool_incomes(transaction);
-          if (incomes.is_ok()) {
-            for (auto& income : incomes.ok()) {
+          auto res = parse_nominator_pool_recover_stake(transaction);
+          if (res.is_ok()) {
+            auto r = res.move_as_ok();
+            for (auto& income : r.nominator_incomes) {
               block_->events_.push_back(std::move(income));
+            }
+            if (r.validator_income.has_value()) {
+              block_->events_.push_back(std::move(r.validator_income.value()));
             }
           }
         }
@@ -247,8 +251,13 @@ public:
     return first_tx;
   }
 
-  td::Result<std::vector<schema::NominatorPoolIncome>> parse_nominator_pool_incomes(const schema::Transaction &transaction) {
-    std::vector<schema::NominatorPoolIncome> incomes;
+  struct NominatorPoolRecoverStakeResult {
+    std::vector<schema::NominatorPoolIncome> nominator_incomes;
+    std::optional<schema::ValidatorPoolIncome> validator_income;
+  };
+
+  td::Result<NominatorPoolRecoverStakeResult> parse_nominator_pool_recover_stake(const schema::Transaction &transaction) {
+    NominatorPoolRecoverStakeResult result;
 
     const std::string NOMINATOR_POOL_CODE_HASH =
         "9A3EC14BC098F6B44064C305222CAEA2800F17DDA85EE6A8198A7095EDE10DCF";
@@ -311,30 +320,19 @@ public:
     }
     auto validator_reward_share = pool_config.validator_reward_share;
 
-    if (pool_storage.nominators.is_null() || pool_storage.nominators->size() == 0) {
-      return incomes; // no nominators
-    }
-
-    td::Ref<vm::Cell> nominators_cell_ref;
-    vm::CellSlice temp_slice = *pool_storage.nominators;
-    if (!temp_slice.fetch_maybe_ref(nominators_cell_ref) || nominators_cell_ref.is_null()) {
-      return incomes; // no nominators
-    }
-
     if (!transaction.in_msg.has_value()) {
-      return incomes;
+      return result;
     }
-    auto tx_value = transaction.in_msg.value().value;
     auto tx_value_grams = transaction.in_msg.value().value->grams;
 
     // calculate total reward: tx_value - stake_amount_sent
     td::RefInt256 tx_value_big = tx_value_grams;
     td::RefInt256 reward_total = tx_value_big - stake_amount_sent;
 
-    // handle negative reward (penalty) - nominators don't get anything
+    // handle negative reward (penalty) - nobody gets anything
     // note: we don't handle case when validator balance is insufficient to cover penalty
     if (td::sgn(reward_total) <= 0) {
-      return incomes;  // penalty or no reward, nominators get nothing
+      return result;
     }
 
     // subtract validator's share from total reward
@@ -342,6 +340,42 @@ public:
         (reward_total * td::make_refint(validator_reward_share)) /
         td::make_refint(10000);
     td::RefInt256 nominators_reward = reward_total - validator_reward;
+
+    std::string pool_address = convert::to_raw_address(transaction.account);
+
+    // emit validator income row (validator gets paid even if pool has no nominators)
+    if (td::sgn(validator_reward) > 0) {
+      td::Bits256 validator_addr_bits;
+      if (!pool_config.validator_address.write().export_bits(
+              validator_addr_bits, false)) {
+        return td::Status::Error("Failed to export validator_address bits");
+      }
+      block::StdAddress validator_std_addr;
+      validator_std_addr.workchain = -1;  // pool and validator are in masterchain
+      validator_std_addr.addr = validator_addr_bits;
+
+      schema::ValidatorPoolIncome v_income;
+      v_income.trace_id = transaction.trace_id;
+      v_income.transaction_hash = transaction.hash;
+      v_income.transaction_lt = transaction.lt;
+      v_income.transaction_now = transaction.now;
+      v_income.mc_seqno = transaction.mc_seqno;
+      v_income.pool_address = pool_address;
+      v_income.validator_address = convert::to_raw_address(validator_std_addr);
+      v_income.income_amount = validator_reward;
+      result.validator_income = std::move(v_income);
+    }
+
+    // emit nominator incomes (proportional distribution)
+    if (pool_storage.nominators.is_null() || pool_storage.nominators->size() == 0) {
+      return result;
+    }
+
+    td::Ref<vm::Cell> nominators_cell_ref;
+    vm::CellSlice temp_slice = *pool_storage.nominators;
+    if (!temp_slice.fetch_maybe_ref(nominators_cell_ref) || nominators_cell_ref.is_null()) {
+      return result;
+    }
 
     // parse nominators dict (using vm::Dictionary for iteration, but TLB for parsing values)
     vm::Dictionary nominators_dict{nominators_cell_ref, 256};
@@ -379,12 +413,10 @@ public:
     }
 
     if (total_balance.is_null() || td::sgn(total_balance) == 0) {
-      return incomes; // no balance to distribute
+      return result;
     }
 
     // second pass: calculate income for each nominator
-    std::string pool_address = convert::to_raw_address(transaction.account);
-
     for (const auto &[addr_hash, balance] : nominators_list) {
       schema::NominatorPoolIncome income;
       income.trace_id = transaction.trace_id;
@@ -405,10 +437,10 @@ public:
       income.income_amount = income_amount;
       income.nominator_balance = balance;
 
-      incomes.push_back(std::move(income));
+      result.nominator_incomes.push_back(std::move(income));
     }
 
-    return incomes;
+    return result;
   }
 };
 

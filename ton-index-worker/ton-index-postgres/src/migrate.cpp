@@ -1208,6 +1208,30 @@ void run_1_3_0_migrations(const std::string& connection_string, bool dry_run) {
       "on nominator_pool_incomes(pool_address, tx_now desc);\n"
     );
 
+    query += (
+      "create table if not exists validator_pool_incomes ("
+      "tx_hash tonhash not null, "
+      "tx_lt bigint not null, "
+      "tx_now integer not null, "
+      "mc_seqno integer, "
+      "pool_address tonaddr not null, "
+      "validator_address tonaddr not null, "
+      "income_amount numeric not null, "
+      "trace_id tonhash, "
+      "primary key (tx_hash, tx_lt), "
+      "foreign key (tx_hash, tx_lt) references transactions);\n"
+    );
+
+    query += (
+      "create index if not exists idx_validator_pool_incomes_validator "
+      "on validator_pool_incomes(validator_address, tx_now desc);\n"
+    );
+
+    query += (
+      "create index if not exists idx_validator_pool_incomes_pool "
+      "on validator_pool_incomes(pool_address, tx_now desc);\n"
+    );
+
     query += set_version_query({1, 3, 0});
 
     if (dry_run) {

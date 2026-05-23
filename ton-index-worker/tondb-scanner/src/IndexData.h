@@ -495,11 +495,23 @@ struct NominatorPoolIncome {
   uint64_t transaction_lt;
   uint32_t transaction_now;
   uint32_t mc_seqno;
-  
+
   std::string pool_address;
   std::string nominator_address;
   td::RefInt256 income_amount;
   td::RefInt256 nominator_balance;  // balance at income time
+};
+
+struct ValidatorPoolIncome {
+  td::Bits256 trace_id;
+  td::Bits256 transaction_hash;
+  uint64_t transaction_lt;
+  uint32_t transaction_now;
+  uint32_t mc_seqno;
+
+  std::string pool_address;
+  std::string validator_address;
+  td::RefInt256 income_amount;
 };
 
 struct NFTCollectionData {
@@ -710,10 +722,11 @@ struct MasterchainBlockDataState {
   std::shared_ptr<block::ConfigInfo> config_;
 };
 
-using BlockchainEvent = std::variant<JettonTransfer, 
+using BlockchainEvent = std::variant<JettonTransfer,
                                      JettonBurn,
                                      NFTTransfer,
-                                     NominatorPoolIncome>;
+                                     NominatorPoolIncome,
+                                     ValidatorPoolIncome>;
 
 using BlockchainInterface = std::variant<JettonMasterData, 
                                          JettonWalletData, 

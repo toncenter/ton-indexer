@@ -531,3 +531,207 @@ func (db *DbClient) GetPool(poolAddr string) (*models.NominatorPoolInfo, error) 
 
 	return poolInfo, nil
 }
+
+func (db *DbClient) GetValidatorEarnings(
+	validatorAddr string,
+	poolAddr string,
+	fromTime, toTime *int32,
+	limit int,
+) (*models.ValidatorEarningsResponse, error) {
+	conn, err := db.Pool.Acquire(context.Background())
+	if err != nil {
+		return nil, models.IndexError{Code: 500, Message: err.Error()}
+	}
+	defer conn.Release()
+
+	incomeQuery := `
+		SELECT tx_now, income_amount
+		FROM validator_pool_incomes
+		WHERE validator_address = $1 AND pool_address = $2
+	`
+	var incomeArgs []interface{}
+	incomeArgs = append(incomeArgs, validatorAddr, poolAddr)
+	argIdx := 3
+
+	if fromTime != nil {
+		incomeQuery += fmt.Sprintf(" AND tx_now >= $%d", argIdx)
+		incomeArgs = append(incomeArgs, *fromTime)
+		argIdx++
+	}
+	if toTime != nil {
+		incomeQuery += fmt.Sprintf(" AND tx_now <= $%d", argIdx)
+		incomeArgs = append(incomeArgs, *toTime)
+		argIdx++
+	}
+
+	incomeQuery += " ORDER BY tx_now ASC"
+
+	if limit > 0 {
+		incomeQuery += fmt.Sprintf(" LIMIT %d", limit)
+	}
+
+	incomeRows, err := conn.Query(context.Background(), incomeQuery, incomeArgs...)
+	if err != nil {
+		return nil, models.IndexError{Code: 500, Message: err.Error()}
+	}
+	defer incomeRows.Close()
+
+	earnings := []models.ValidatorEarning{}
+	var totalOnPeriod int64 = 0
+
+	for incomeRows.Next() {
+		var utime int32
+		var income int64
+		if err := incomeRows.Scan(&utime, &income); err != nil {
+			return nil, models.IndexError{Code: 500, Message: err.Error()}
+		}
+		earnings = append(earnings, models.ValidatorEarning{
+			Utime:  utime,
+			Income: income,
+		})
+		totalOnPeriod += income
+	}
+
+	return &models.ValidatorEarningsResponse{
+		TotalOnPeriod: totalOnPeriod,
+		Earnings:      earnings,
+	}, nil
+}
+
+func (db *DbClient) GetValidatorBookings(
+	validatorAddr string,
+	poolAddr string,
+	fromTime, toTime *int32,
+	limit int,
+) ([]models.ValidatorBooking, error) {
+	conn, err := db.Pool.Acquire(context.Background())
+	if err != nil {
+		return nil, models.IndexError{Code: 500, Message: err.Error()}
+	}
+	defer conn.Release()
+
+	var bookings []models.ValidatorBooking
+
+	incomeQuery := `
+		SELECT tx_now, income_amount
+		FROM validator_pool_incomes
+		WHERE validator_address = $1 AND pool_address = $2
+	`
+	var incomeArgs []interface{}
+	incomeArgs = append(incomeArgs, validatorAddr, poolAddr)
+	argIdx := 3
+
+	if fromTime != nil {
+		incomeQuery += fmt.Sprintf(" AND tx_now >= $%d", argIdx)
+		incomeArgs = append(incomeArgs, *fromTime)
+		argIdx++
+	}
+	if toTime != nil {
+		incomeQuery += fmt.Sprintf(" AND tx_now <= $%d", argIdx)
+		incomeArgs = append(incomeArgs, *toTime)
+		argIdx++
+	}
+
+	incomeQuery += " ORDER BY tx_now ASC"
+
+	if limit > 0 {
+		incomeQuery += fmt.Sprintf(" LIMIT %d", limit)
+	}
+
+	incomeRows, err := conn.Query(context.Background(), incomeQuery, incomeArgs...)
+	if err != nil {
+		return nil, models.IndexError{Code: 500, Message: err.Error()}
+	}
+	defer incomeRows.Close()
+
+	for incomeRows.Next() {
+		var utime int32
+		var amount int64
+		if err := incomeRows.Scan(&utime, &amount); err != nil {
+			return nil, models.IndexError{Code: 500, Message: err.Error()}
+		}
+		bookings = append(bookings, models.ValidatorBooking{
+			Utime:       utime,
+			BookingType: "validator_income",
+			Debit:       0,
+			Credit:      amount,
+		})
+	}
+
+	// validator deposit/withdraw actions (op==4/op==5) don't exist as
+	// classifier action types yet; once added, the names below will start
+	// populating bookings automatically.
+	actionQuery := `
+		SELECT start_utime, type, amount
+		FROM actions
+		WHERE (source = $1 OR destination = $1)
+		  AND (source = $2 OR destination = $2)
+		  AND type IN ('nominator_pool_validator_deposit', 'nominator_pool_validator_withdraw')
+	`
+	var actionArgs []interface{}
+	actionArgs = append(actionArgs, validatorAddr, poolAddr)
+	argIdx = 3
+
+	if fromTime != nil {
+		actionQuery += fmt.Sprintf(" AND start_utime >= $%d", argIdx)
+		actionArgs = append(actionArgs, *fromTime)
+		argIdx++
+	}
+	if toTime != nil {
+		actionQuery += fmt.Sprintf(" AND start_utime <= $%d", argIdx)
+		actionArgs = append(actionArgs, *toTime)
+		argIdx++
+	}
+
+	actionQuery += " ORDER BY start_utime ASC"
+
+	if limit > 0 {
+		actionQuery += fmt.Sprintf(" LIMIT %d", limit)
+	}
+
+	actionRows, err := conn.Query(context.Background(), actionQuery, actionArgs...)
+	if err != nil {
+		return nil, models.IndexError{Code: 500, Message: err.Error()}
+	}
+	defer actionRows.Close()
+
+	for actionRows.Next() {
+		var utime int32
+		var actionType string
+		var amount *int64
+		if err := actionRows.Scan(&utime, &actionType, &amount); err != nil {
+			return nil, models.IndexError{Code: 500, Message: err.Error()}
+		}
+
+		var debit, credit int64
+		var bookingType string
+		if actionType == "nominator_pool_validator_deposit" {
+			bookingType = "validator_deposit"
+			if amount != nil {
+				credit = *amount - 1000000000
+			}
+		} else {
+			bookingType = "validator_withdrawal"
+			if amount != nil {
+				debit = *amount
+			}
+		}
+
+		bookings = append(bookings, models.ValidatorBooking{
+			Utime:       utime,
+			BookingType: bookingType,
+			Debit:       debit,
+			Credit:      credit,
+		})
+	}
+
+	sort.Slice(bookings, func(i, j int) bool {
+		return bookings[i].Utime < bookings[j].Utime
+	})
+
+	if limit > 0 && len(bookings) > limit {
+		bookings = bookings[:limit]
+	}
+
+	return bookings, nil
+}
