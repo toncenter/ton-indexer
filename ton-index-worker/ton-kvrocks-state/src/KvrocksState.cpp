@@ -2553,9 +2553,6 @@ StateBatch prepare_point_state_batch(const std::vector<PointStateData>& data,
     batch.nominator_pools.reserve(ordered.size());
     for (const auto& [_, value_with_source_ptr] : ordered) {
       const auto& value = value_with_source_ptr->value;
-      if (has_newer_destroyed_state(value.address, value.last_transaction_lt)) {
-        continue;
-      }
       batch.nominator_pools.push_back({
         .address = value.address,
         .state = value.state,
@@ -2752,8 +2749,7 @@ void KvrocksBatchWriter::write() {
                            row.source_mc_seqno, build_payload(row), build_indexes(row));
   }
   for (const auto& row : batch_.nominator_pools) {
-    queue_set_indexed_current("nominator_pools", address_key(row.address), row.source_mc_seqno, build_payload(row),
-                              build_indexes(row));
+    queue_indexed_interface_current("nominator_pools", address_key(row.address), row);
   }
   for (const auto& row : batch_.telemint_nft_items) {
     queue_interface_current("telemint_nft_items", address_key(row.address), row);

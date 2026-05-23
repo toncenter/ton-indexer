@@ -2538,11 +2538,6 @@ void collect_and_prepare_batch_rows(const std::vector<InsertTaskStruct>& insert_
     prepared_batch.nominator_pools.reserve(ordered_nominator_pools.size());
     for (const auto& [_, pool_with_source_ptr] : ordered_nominator_pools) {
       const auto& pool = pool_with_source_ptr->value;
-      auto destroyed_it = destroyed_accounts.find(pool.address);
-      if (destroyed_it != destroyed_accounts.end() &&
-          pool.last_transaction_lt < destroyed_it->second.last_transaction_lt) {
-        continue;
-      }
       prepared_batch.nominator_pools.push_back(PreparedNominatorPoolRow{
         .address = pool.address,
         .state = pool.state,
@@ -3775,13 +3770,9 @@ std::string InsertBatchPostgres::insert_nominator_pools(pqxx::work &txn) {
         "min_nominator_stake", "active_nominators", "last_transaction_lt",
         "code_hash", "data_hash", "destroyed"
     };
-    PopulateTableStream stream(txn, "nominator_pools", columns, 1000, false);
-    stream.setConflictDoUpdate({"address"}, "nominator_pools.last_transaction_lt < EXCLUDED.last_transaction_lt");
-    for (const auto& row : prepared_batch_->nominator_pools) {
-        stream.insert_row(row);
-    }
-
-    return stream.get_str();
+    return insert_current_rows(txn, "nominator_pools", columns, "address", "last_transaction_lt",
+                               "nominator_pools.last_transaction_lt < EXCLUDED.last_transaction_lt",
+                               prepared_batch_->nominator_pools);
 }
 
 std::string InsertBatchPostgres::insert_telemint(pqxx::work &txn) {
