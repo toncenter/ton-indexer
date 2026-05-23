@@ -27,7 +27,7 @@ func getSortOrder(order models.SortType) (string, error) {
 }
 
 // query builders
-func limitValue(lim models.LimitRequest, settings models.RequestSettings) (int, error) {
+func limitValue(lim models.LimitParams, settings models.RequestSettings) (int, error) {
 	if lim.Limit == nil {
 		return settings.DefaultLimit, nil
 	}
@@ -38,7 +38,7 @@ func limitValue(lim models.LimitRequest, settings models.RequestSettings) (int, 
 	return limit, nil
 }
 
-func limitQuery(lim models.LimitRequest, settings models.RequestSettings) (string, error) {
+func limitQuery(lim models.LimitParams, settings models.RequestSettings) (string, error) {
 	limit, err := limitValue(lim, settings)
 	if err != nil {
 		return "", err

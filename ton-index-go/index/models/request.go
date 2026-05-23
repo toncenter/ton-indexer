@@ -304,12 +304,6 @@ const (
 	ASC  SortType = "asc"
 )
 
-type LimitRequest struct {
-	Limit  *int32    `query:"limit"`
-	Offset *int32    `query:"offset"`
-	Sort   *SortType `query:"sort"`
-}
-
 type TestRequest struct {
 	Hash  []HashType       `query:"my_hash"`
 	Addr  []AccountAddress `query:"my_addr"`

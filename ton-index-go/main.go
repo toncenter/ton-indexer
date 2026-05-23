@@ -2034,8 +2034,8 @@ func prepareHashes(hashes []models.HashType) []string {
 	return uniqueKeys
 }
 
-func parseStakingUtimeFilter(c *fiber.Ctx) (models.UtimeRequest, error) {
-	utimeReq := models.UtimeRequest{}
+func parseStakingUtimeFilter(c *fiber.Ctx) (models.UtimeParams, error) {
+	utimeReq := models.UtimeParams{}
 
 	if err := c.QueryParser(&utimeReq); err != nil {
 		return utimeReq, models.IndexError{Code: 422, Message: err.Error()}

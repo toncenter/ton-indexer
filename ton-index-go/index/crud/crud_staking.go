@@ -18,7 +18,7 @@ func addNumericString(total *big.Int, amount string) {
 	total.Add(total, value)
 }
 
-func appendStakingUtimeFilters(query string, args []interface{}, argIdx int, column string, utimeReq models.UtimeRequest) (string, []interface{}, int, error) {
+func appendStakingUtimeFilters(query string, args []interface{}, argIdx int, column string, utimeReq models.UtimeParams) (string, []interface{}, int, error) {
 	if utimeReq.StartUtime != nil && utimeReq.EndUtime != nil && *utimeReq.StartUtime > *utimeReq.EndUtime {
 		return query, args, argIdx, models.IndexError{Code: 422, Message: "start_utime must be less than or equal to end_utime"}
 	}
@@ -38,7 +38,7 @@ func appendStakingUtimeFilters(query string, args []interface{}, argIdx int, col
 func (db *DbClient) GetNominatorStakeMovements(
 	nominatorAddr string,
 	poolAddr string,
-	utimeReq models.UtimeRequest,
+	utimeReq models.UtimeParams,
 	settings models.RequestSettings,
 ) ([]models.NominatorStakeMovement, error) {
 	ctx, cancelCtx := context.WithTimeout(context.Background(), settings.Timeout)
@@ -110,7 +110,7 @@ func (db *DbClient) GetNominatorStakeMovements(
 func (db *DbClient) GetNominatorRewards(
 	nominatorAddr string,
 	poolAddr string,
-	utimeReq models.UtimeRequest,
+	utimeReq models.UtimeParams,
 	settings models.RequestSettings,
 ) (*models.NominatorRewardsResponse, error) {
 	ctx, cancelCtx := context.WithTimeout(context.Background(), settings.Timeout)
@@ -174,7 +174,7 @@ func (db *DbClient) GetNominatorRewards(
 
 func (db *DbClient) GetPoolStakeMovements(
 	poolAddr string,
-	utimeReq models.UtimeRequest,
+	utimeReq models.UtimeParams,
 	settings models.RequestSettings,
 ) ([]models.PoolStakeMovement, error) {
 	ctx, cancelCtx := context.WithTimeout(context.Background(), settings.Timeout)
