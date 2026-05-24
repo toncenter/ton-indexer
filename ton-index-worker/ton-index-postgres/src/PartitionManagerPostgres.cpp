@@ -46,8 +46,8 @@ constexpr std::array<TableSpec, 10> create_order{{
     {"jetton_burns", "mc_seqno"},
     {"nft_transfers", "mc_seqno"},
     {"traces", "mc_seqno_end"},
-    {"actions", "trace_mc_seqno_end"},
-    {"action_accounts", "trace_mc_seqno_end"},
+    // {"actions", "trace_mc_seqno_end"},
+    // {"action_accounts", "trace_mc_seqno_end"},
 }};
 
 constexpr std::array<TableSpec, 10> drop_order{{
@@ -59,8 +59,8 @@ constexpr std::array<TableSpec, 10> drop_order{{
     {"jetton_burns", "mc_seqno"},
     {"nft_transfers", "mc_seqno"},
     {"traces", "mc_seqno_end"},
-    {"actions", "trace_mc_seqno_end"},
-    {"action_accounts", "trace_mc_seqno_end"},
+    // {"actions", "trace_mc_seqno_end"},
+    // {"action_accounts", "trace_mc_seqno_end"},
 }};
 
 std::string qualified_name(std::string_view name) {

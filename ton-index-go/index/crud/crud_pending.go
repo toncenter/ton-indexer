@@ -195,7 +195,7 @@ func queryCompletedEmulatedTraces(emulatedContext *EmulatedTracesContext,
 		defer cancel_ctx()
 		query := "select DISTINCT M.msg_hash from messages M join traces T on T.trace_id = M.trace_id"
 		if classified_only {
-			query += " join blocks_classified BC on BC.mc_seqno = T.mc_seqno_end"
+			query += " join _blocks_classified BC on BC.mc_seqno = T.mc_seqno_end"
 		}
 		query += fmt.Sprintf(" where M.msg_hash in (%s) and T.state='complete'",
 			strings.Join(trace_external_hashes, ","))
