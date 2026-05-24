@@ -49,7 +49,7 @@ td::Status ParseQuery::parse_impl() {
       td::Timer config_timer;
       TRY_RESULT_ASSIGN(mc_block_.config_, block::ConfigInfo::extract_config(block_ds.block_state, 
                                                         block_ds.block_data->block_id(), 
-                                                        block::ConfigInfo::needCapabilities | block::ConfigInfo::needLibraries));
+                                                        block::ConfigInfo::needCapabilities | block::ConfigInfo::needLibraries | block::ConfigInfo::needPrevBlocks));
       g_statistics.record_time(PARSE_CONFIG, config_timer.elapsed() * 1e6);
     }
 

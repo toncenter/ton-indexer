@@ -460,11 +460,11 @@ std::string nominators_json(const std::vector<schema::NominatorPoolNominator>& n
   td::JsonBuilder jb;
   auto arr = jb.enter_array();
   for (const auto& nominator : nominators) {
-    auto obj = arr.enter_value().enter_object();
+    auto value = arr.enter_value();
+    auto obj = value.enter_object();
     json_put_address(obj, "address", nominator.address);
     json_put_int256(obj, "balance", nominator.balance);
     json_put_int256(obj, "pending_balance", nominator.pending_balance);
-    obj.leave();
   }
   arr.leave();
   return jb.string_builder().as_cslice().str();

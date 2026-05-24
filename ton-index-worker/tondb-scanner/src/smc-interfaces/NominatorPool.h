@@ -10,7 +10,7 @@
 #include <td/actor/actor.h>
 #include <td/utils/Status.h>
 
-#include "validators-tlb.h"
+#include "tokens-tlb.h"
 
 namespace nominator_pool {
 

@@ -1,9 +1,13 @@
+unit$_ = Unit;
+bool_false$0 = Bool;
+bool_true$1 = Bool;
 nothing$0 {X:Type} = Maybe X;
 just$1 {X:Type} value:X = Maybe X;
 left$0 {X:Type} {Y:Type} value:X = Either X Y;
 right$1 {X:Type} {Y:Type} value:Y = Either X Y;
 var_uint$_ {n:#} len:(#< n) value:(uint (len * 8))
          = VarUInteger n;
+nanograms$_ amount:(VarUInteger 16) = Grams;
 
 addr_none$00 = MsgAddressExt;
 addr_extern$01 len:(## 9) external_address:(bits len)
@@ -99,3 +103,33 @@ dns_adnl_address#ad01 adnl_addr:bits256 flags:(## 8) { flags <= 1 }
 dns_storage_address#7473 bag_id:bits256 = DNSRecord;
 
 _ (HashmapE 256 ^DNSRecord) = DNS_RecordSet;
+
+nominator_pool_storage#_
+  state:uint8
+  nominators_count:uint16
+  stake_amount_sent:Grams
+  validator_amount:Grams
+  config:^NominatorPoolConfig
+  nominators:(HashmapE 256 Nominator)
+  withdraw_requests:(HashmapE 256 Unit)
+  stake_at:uint32
+  saved_validator_set_hash:uint256
+  validator_set_changes_count:uint8
+  validator_set_change_time:uint32
+  stake_held_for:uint32
+  config_proposal_votings:(HashmapE 256 NominatorPoolProposalVotes)
+= NominatorPoolStorage;
+
+
+vote#_ support:Bool time:uint32 = NominatorPoolVote;
+proposal_votes#_ votes:(HashmapE 256 NominatorPoolVote) create_time:uint32 = NominatorPoolProposalVotes;
+
+config#_
+  validator_address:uint256
+  validator_reward_share:uint16
+  max_nominators_count:uint16
+  min_validator_stake:Grams
+  min_nominator_stake:Grams
+= NominatorPoolConfig;
+
+nominator#_ amount:Grams pending_deposit_amount:Grams = Nominator;

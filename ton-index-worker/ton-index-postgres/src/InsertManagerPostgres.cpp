@@ -211,11 +211,11 @@ std::string nominators_to_json_string(const std::vector<schema::NominatorPoolNom
   td::JsonBuilder nominators_json;
   auto arr = nominators_json.enter_array();
   for (const auto& nominator : nominators) {
-    auto obj = arr.enter_value().enter_object();
+    auto value = arr.enter_value();
+    auto obj = value.enter_object();
     obj("address", convert::to_raw_address(nominator.address));
     obj("balance", nominator.balance->to_dec_string());
     obj("pending_balance", nominator.pending_balance->to_dec_string());
-    obj.leave();
   }
   arr.leave();
 

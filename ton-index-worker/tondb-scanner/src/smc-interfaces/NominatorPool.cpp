@@ -7,7 +7,7 @@
 namespace {
 
 td::Result<td::RefInt256> parse_grams(td::Ref<vm::CellSlice> value, td::Slice field_name) {
-  auto amount = validators::gen::t_Grams.as_integer(value);
+  auto amount = block::tlb::t_Grams.as_integer(value);
   if (amount.is_null()) {
     return td::Status::Error(PSLICE() << "Failed to parse " << field_name);
   }
@@ -44,16 +44,18 @@ td::Result<ParsedStorage> parse_storage(td::Ref<vm::Cell> data_cell) {
     return td::Status::Error("Pool state data is null");
   }
 
-  validators::gen::NominatorPoolStorage::Record pool_storage;
-  if (!validators::gen::t_NominatorPoolStorage.cell_unpack(data_cell, pool_storage)) {
+  tokens::gen::NominatorPoolStorage::Record pool_storage;
+  if (!tokens::gen::t_NominatorPoolStorage.cell_unpack(data_cell, pool_storage)) {
+    LOG(WARNING) << "Nominator pool debug: failed to unpack NominatorPoolStorage";
     return td::Status::Error("Failed to unpack NominatorPoolStorage");
   }
 
   TRY_RESULT(stake_amount_sent, parse_grams(pool_storage.stake_amount_sent, "stake_amount_sent"));
   TRY_RESULT(validator_amount, parse_grams(pool_storage.validator_amount, "validator_amount"));
 
-  validators::gen::NominatorPoolConfig::Record pool_config;
-  if (!validators::gen::t_NominatorPoolConfig.cell_unpack(pool_storage.config, pool_config)) {
+  tokens::gen::NominatorPoolConfig::Record pool_config;
+  if (!tokens::gen::t_NominatorPoolConfig.cell_unpack(pool_storage.config, pool_config)) {
+    LOG(WARNING) << "Nominator pool debug: failed to unpack NominatorPoolConfig";
     return td::Status::Error("Failed to unpack NominatorPoolConfig");
   }
   TRY_RESULT(min_validator_stake, parse_grams(pool_config.min_validator_stake, "min_validator_stake"));
@@ -80,15 +82,15 @@ td::Result<ParsedStorage> parse_storage(td::Ref<vm::Cell> data_cell) {
     if (nominators_slice.fetch_maybe_ref(nominators_cell) && nominators_cell.not_null()) {
       vm::Dictionary nominators_dict{nominators_cell, 256};
       for (auto it = nominators_dict.begin(); !it.eof(); ++it) {
-        validators::gen::Nominator::Record nominator_data;
+        tokens::gen::Nominator::Record nominator_data;
         auto nominator_cs = *it.cur_value();
-        if (!validators::gen::t_Nominator.unpack(nominator_cs, nominator_data)) {
-          LOG(DEBUG) << "Failed to unpack nominator pool entry";
+        if (!tokens::gen::t_Nominator.unpack(nominator_cs, nominator_data)) {
+          LOG(WARNING) << "Nominator pool debug: failed to unpack nominator pool entry";
           continue;
         }
 
-        auto amount = validators::gen::t_Grams.as_integer(nominator_data.amount);
-        auto pending_deposit_amount = validators::gen::t_Grams.as_integer(nominator_data.pending_deposit_amount);
+        auto amount = block::tlb::t_Grams.as_integer(nominator_data.amount);
+        auto pending_deposit_amount = block::tlb::t_Grams.as_integer(nominator_data.pending_deposit_amount);
         if (amount.is_null() || pending_deposit_amount.is_null()) {
           LOG(DEBUG) << "Failed to parse nominator pool entry balances";
           continue;
