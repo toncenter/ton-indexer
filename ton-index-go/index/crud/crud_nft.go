@@ -94,7 +94,7 @@ func buildNFTItemsQuery(req models.NFTItemRequest, settings models.RequestSettin
 	}
 	if v := req.CollectionAddress; v != nil {
 		if len(req.CollectionAddress) == 1 {
-			filter_list = append(filter_list, fmt.Sprintf("N.collection_address = '%s'", v[0].FilterString()))
+			filter_list = append(filter_list, filterByItem("N.collection_address", v[0]))
 			orderby_query = ` order by N.collection_address, N.index`
 		} else if len(req.CollectionAddress) > 1 {
 			filter_str := filterByArray("N.collection_address", v)
@@ -176,7 +176,7 @@ func buildNFTTransfersQuery(req models.NFTTransferRequest, settings models.Reque
 		}
 	}
 	if v := req.CollectionAddress; v != nil {
-		filter_list = append(filter_list, fmt.Sprintf("T.nft_collection_address = '%s'", v.FilterString()))
+		filter_list = append(filter_list, filterByItem("T.nft_collection_address", v))
 	}
 
 	order_col := "T.tx_lt"

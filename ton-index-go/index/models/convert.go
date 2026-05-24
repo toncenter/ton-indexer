@@ -2,6 +2,7 @@ package models
 
 import (
 	"encoding/base64"
+	"encoding/binary"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -153,14 +154,22 @@ func (h HashType) FilterString() string {
 	if len(h) == 0 {
 		return "NULL"
 	}
-	return h.String()
+	val, err := h.BytesValue()
+	if err != nil {
+		return "NULL"
+	}
+	return fmt.Sprintf(`'\x%X'`, val)
 }
 
 func (a AccountAddress) FilterString() string {
 	if len(a) == 0 {
 		return "NULL"
 	}
-	return a.String()
+	val, err := a.BytesValue()
+	if err != nil {
+		return "NULL"
+	}
+	return fmt.Sprintf(`'\x%X'`, val)
 }
 
 // marshal
@@ -262,6 +271,84 @@ func (a *OpcodeType) UnmarshalText(text []byte) error {
 		return nil
 	}
 	return fmt.Errorf("invalid opcode type: %s", value)
+}
+
+// scan bytes
+func (h *HashType) ScanBytes(v []byte) error {
+	if v == nil {
+		*h = ""
+		return nil
+	}
+	if len(v) != 32 {
+		return fmt.Errorf("invalid hash type 32 bytes expected, got %d", len(v))
+	}
+	*h = HashType(base64.StdEncoding.EncodeToString(v))
+	return nil
+
+}
+
+func (x BytesType) BytesValue() ([]byte, error) {
+	return base64.StdEncoding.DecodeString(x.String())
+}
+
+func (x *BytesType) ScanBytes(v []byte) error {
+	if v == nil {
+		*x = ""
+		return nil
+	}
+	*x = BytesType(base64.StdEncoding.EncodeToString(v))
+	return nil
+
+}
+
+func (h HashType) BytesValue() ([]byte, error) {
+	return base64.StdEncoding.DecodeString(h.String())
+}
+
+func (a *AccountAddress) ScanBytes(v []byte) error {
+	if v == nil {
+		return fmt.Errorf("AccountAddress: NULL is not allowed")
+	}
+	if len(v) != 36 {
+		return fmt.Errorf("AccountAddress: expected 36 bytes, got %d", len(v))
+	}
+	workchain := int32(binary.BigEndian.Uint32(v[:4]))
+	addrHex := strings.ToUpper(hex.EncodeToString(v[4:36]))
+	*a = AccountAddress(fmt.Sprintf("%d:%s", workchain, addrHex))
+	return nil
+}
+
+func (a AccountAddress) BytesValue() ([]byte, error) {
+
+	s := string(a)
+	if s == "" {
+		return nil, fmt.Errorf("AccountAddress: empty string")
+	}
+	workchainStr, addrHex, ok := strings.Cut(s, ":")
+	if !ok {
+		return nil, fmt.Errorf("AccountAddress: expected format {workchain}:{addr_hex}, got %q", s)
+	}
+	workchain64, err := strconv.ParseInt(workchainStr, 10, 32)
+	if err != nil {
+		return nil, fmt.Errorf("AccountAddress: invalid workchain %q: %w", workchainStr, err)
+	}
+	workchain := int32(workchain64)
+	addrHex = strings.TrimSpace(addrHex)
+	if len(addrHex) != 64 {
+		return nil, fmt.Errorf("AccountAddress: expected 64 hex chars, got %d", len(addrHex))
+	}
+	addrBytes, err := hex.DecodeString(addrHex)
+	if err != nil {
+		return nil, fmt.Errorf("AccountAddress: invalid hex address: %w", err)
+	}
+	if len(addrBytes) != 32 {
+		return nil, fmt.Errorf("AccountAddress: expected 32 decoded bytes, got %d", len(addrBytes))
+	}
+	out := make([]byte, 36)
+	binary.BigEndian.PutUint32(out[:4], uint32(workchain))
+	copy(out[4:], addrBytes)
+	return out, nil
+
 }
 
 // converters

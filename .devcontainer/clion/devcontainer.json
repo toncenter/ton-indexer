@@ -1,11 +1,24 @@
 {
-  "name": "ton-indexer-dev-clion",
-  "dockerComposeFile": "../docker-compose.yaml",
-  "service": "clion-dev",
+  "name": "ton-indexer-clion",
+
+  "build": {
+    "dockerfile": "../Dockerfile",
+    "context": "..",
+    "options": [
+      "--tag",
+      "ton-indexer-dev:clion"
+    ]
+  },
+
   "workspaceFolder": "/workspaces/ton-indexer",
   "remoteUser": "dev",
 
-  "shutdownAction": "none",
+  "runArgs": [
+    "--name=ton-indexer-clion-dev",
+    "--network=docker_global",
+    "--cap-add=SYS_PTRACE",
+    "--security-opt=seccomp=unconfined"
+  ],
 
   "customizations": {
     "jetbrains": {

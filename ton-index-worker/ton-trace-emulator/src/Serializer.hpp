@@ -1,9 +1,9 @@
 #pragma once
+#include "TraceEmulator.h"
+#include "convert-utils.h"
 #include "crypto/block/block-auto.h"
 #include "crypto/block/block-parse.h"
 #include "msgpack-utils.h"
-#include "TraceEmulator.h"
-
 
 enum AccountStatus {
   uninit = block::gen::AccountStatus::acc_state_uninit,
@@ -252,7 +252,7 @@ td::Result<Message> parse_message(td::Ref<vm::Cell> msg_cell) {
   }
   msg.body = vm::CellBuilder().append_cellslice(*body).finalize();
 
-  TRY_RESULT(body_boc, convert::to_bytes(msg.body));
+  TRY_RESULT(body_boc, convert::to_bytes_str(msg.body));
   if (!body_boc) {
     return td::Status::Error("Failed to convert message body to bytes");
   }
@@ -270,7 +270,7 @@ td::Result<Message> parse_message(td::Ref<vm::Cell> msg_cell) {
     } else {
       msg.init_state = init_state_cs.fetch_ref();
     }
-    TRY_RESULT(init_state_boc, convert::to_bytes(msg.init_state));
+    TRY_RESULT(init_state_boc, convert::to_bytes_str(msg.init_state));
     if (!init_state_boc) {
       return td::Status::Error("Failed to convert message init state to bytes");
     }

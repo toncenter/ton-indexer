@@ -86,6 +86,13 @@ td::Result<block::StdAddress> convert::to_std_address(td::Ref<vm::CellSlice> cs)
       return td::Status::Error("Failed to unpack MsgAddress");
   }
 }
+td::Result<std::optional<std::string>> convert::to_bytes_str(td::Ref<vm::Cell> cell) {
+  if (cell.is_null()) {
+    return std::nullopt;
+  }
+  TRY_RESULT(boc, vm::std_boc_serialize(cell, vm::BagOfCells::Mode::WithCRC32C));
+  return boc.as_slice().str();
+}
 
 std::string convert::to_raw_address(block::StdAddress address) {
   return std::to_string(address.workchain) + ":" + address.addr.to_hex();

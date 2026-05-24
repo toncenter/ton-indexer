@@ -12,6 +12,8 @@ namespace convert {
 
   td::Result<block::StdAddress> to_std_address(td::Ref<vm::CellSlice> cs);
 
+  td::Result<std::optional<std::string>> to_bytes_str(td::Ref<vm::Cell> cell);
+
   td::Result<std::optional<std::vector<std::byte>>> to_bytes(td::Ref<vm::Cell> cell);
   td::Result<std::optional<std::string>> to_base64_string(td::Ref<vm::Cell> cell);
 }

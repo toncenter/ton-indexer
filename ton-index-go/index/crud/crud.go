@@ -48,6 +48,10 @@ func limitQuery(lim models.LimitParams, settings models.RequestSettings) (string
 	return query, nil
 }
 
+func filterByItem[T any](clmn string, value T) string {
+	return filterByArray(clmn, []T{value})
+}
+
 func filterByArray[T any](clmn string, values []T) string {
 	filter_list := []string{}
 	filterStringIfaceType := reflect.TypeOf((*models.FilterStringInterface)(nil)).Elem()
@@ -57,7 +61,7 @@ func filterByArray[T any](clmn string, values []T) string {
 		switch {
 		case t.Implements(filterStringIfaceType):
 			xx := v.Interface().(models.FilterStringInterface)
-			filter_list = append(filter_list, fmt.Sprintf(`'%s'`, xx.FilterString()))
+			filter_list = append(filter_list, xx.FilterString())
 		case t.Kind() == reflect.String:
 			if len(t.String()) > 0 {
 				filter_list = append(filter_list, fmt.Sprintf("'%s'", t.String()))
@@ -239,7 +243,7 @@ func QueryAddressBookImpl(addr_list []models.AccountAddress, conn *pgxpool.Conn,
 	book := models.AddressBook{}
 	quote_addr_list := []string{}
 	for _, item := range addr_list {
-		quote_addr_list = append(quote_addr_list, fmt.Sprintf("'%s'", item.FilterString()))
+		quote_addr_list = append(quote_addr_list, item.FilterString())
 	}
 
 	// read address book first

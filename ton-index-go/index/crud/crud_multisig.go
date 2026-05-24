@@ -23,7 +23,7 @@ func buildMultisigQuery(multisig_req models.MultisigRequest, settings models.Req
 	if len(multisig_req.WalletAddress) > 0 {
 		var walletAddresses []string
 		for _, addr := range multisig_req.WalletAddress {
-			walletAddresses = append(walletAddresses, fmt.Sprintf("'%s'", addr.FilterString()))
+			walletAddresses = append(walletAddresses, addr.FilterString())
 		}
 
 		walletAddressesStr := strings.Join(walletAddresses, ",")
@@ -73,7 +73,7 @@ func buildMultisigOrderQuery(order_req models.MultisigOrderRequest, settings mod
 	if len(order_req.MultisigAddress) > 0 {
 		var multisigAddresses []string
 		for _, addr := range order_req.MultisigAddress {
-			multisigAddresses = append(multisigAddresses, fmt.Sprintf("'%s'", addr.FilterString()))
+			multisigAddresses = append(multisigAddresses, addr.FilterString())
 		}
 
 		conditions = append(conditions, fmt.Sprintf("multisig_address IN (%s)",

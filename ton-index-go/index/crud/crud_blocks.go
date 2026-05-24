@@ -39,10 +39,10 @@ func buildBlocksQuery(
 		filter_list = append(filter_list, fmt.Sprintf("seqno = %d", *v))
 	}
 	if v := req.RootHash; v != nil {
-		filter_list = append(filter_list, fmt.Sprintf("root_hash = '%s'", v.FilterString()))
+		filter_list = append(filter_list, filterByItem("root_hash", v))
 	}
 	if v := req.FileHash; v != nil {
-		filter_list = append(filter_list, fmt.Sprintf("file_hash = '%s'", v.FilterString()))
+		filter_list = append(filter_list, filterByItem("file_hash", v))
 	}
 	if v := req.McSeqno; v != nil {
 		filter_list = append(filter_list, fmt.Sprintf("mc_block_seqno = %d", *v))

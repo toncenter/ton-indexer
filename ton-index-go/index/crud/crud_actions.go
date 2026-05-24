@@ -124,7 +124,7 @@ func buildActionsQuery(req models.ActionRequest, settings models.RequestSettings
 		filter_list = append(filter_list, fmt.Sprintf("%s <= %d", field, *v))
 	}
 	if v := req.AccountAddress; v != nil {
-		filter_str := fmt.Sprintf("AA.account = '%s'::tonaddr", v.FilterString())
+		filter_str := filterByItem("AA.account", v)
 		filter_list = append(filter_list, filter_str)
 
 		from_query = `action_accounts as AA join actions as A on A.trace_id = AA.trace_id and A.action_id = AA.action_id`

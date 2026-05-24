@@ -82,7 +82,7 @@ public:
                 auto account_state = account_parsed_r.move_as_ok();
                 account_states[account_state.hash] = account_state;
                 if (account_state.code_hash && code_cells.find(account_state.code_hash.value()) == code_cells.end()) {
-                    auto code_boc = convert::to_bytes(account_state.code_cell);
+                    auto code_boc = convert::to_bytes_str(account_state.code_cell);
                     if (code_boc.is_ok() && code_boc.ok().has_value()) {
                         code_cells[account_state.code_hash.value()] = code_boc.ok().value();
                     } else {
@@ -90,7 +90,7 @@ public:
                     }
                 }
                 if (account_state.data_hash && data_cells.find(account_state.data_hash.value()) == data_cells.end()) {
-                    auto data_boc = convert::to_bytes(account_state.data_cell);
+                    auto data_boc = convert::to_bytes_str(account_state.data_cell);
                     if (data_boc.is_ok() && data_boc.ok().has_value()) {
                         data_cells[account_state.data_hash.value()] = data_boc.ok().value();
                     } else {

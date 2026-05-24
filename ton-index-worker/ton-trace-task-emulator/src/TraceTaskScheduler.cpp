@@ -2,6 +2,7 @@
 #include "TaskResultInserter.h"
 #include "td/utils/filesystem.h"
 #include "common/delay.h"
+#include "Statistics.h"
 
 
 void TraceTaskScheduler::start_up() {

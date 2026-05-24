@@ -13,6 +13,9 @@
 #include <errno.h>
 #include <chrono>
 
+#include "Statistics.h"
+
+
 namespace {
 constexpr const char* kHealthKey = "health:ton-trace-emulator";
 constexpr auto kHealthTtl = std::chrono::seconds(20);

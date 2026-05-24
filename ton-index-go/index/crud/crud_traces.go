@@ -69,7 +69,7 @@ func buildTracesQuery(req models.TracesRequest, settings models.RequestSettings)
 				SELECT 1
 				FROM transactions AS T
 				WHERE T.trace_id = E.trace_id
-				  AND T.account = '%s'
+				  AND T.account = %s
 			)`, v.FilterString()))
 	}
 

@@ -89,7 +89,7 @@ func buildTransactionsQuery(
 
 	if v := req.Account; len(v) > 0 {
 		if len(v) == 1 {
-			filter_list = append(filter_list, fmt.Sprintf("T.account = '%s'", v[0].FilterString()))
+			filter_list = append(filter_list, filterByItem("T.account", v[0]))
 			if order_by_now {
 				orderby_query = fmt.Sprintf(" order by account asc, T.now %s, T.lt %s", sort_order, sort_order)
 			} else {
@@ -127,15 +127,15 @@ func buildTransactionsQuery(
 	}
 	if v := req.Source; v != nil {
 		by_msg = true
-		filter_list = append(filter_list, fmt.Sprintf("M.source = '%s'", v.FilterString()))
+		filter_list = append(filter_list, filterByItem("M.source", v))
 	}
 	if v := req.Destination; v != nil {
 		by_msg = true
-		filter_list = append(filter_list, fmt.Sprintf("M.destination = '%s'", v.FilterString()))
+		filter_list = append(filter_list, filterByItem("M.destination", v))
 	}
 	if v := req.BodyHash; v != nil {
 		by_msg = true
-		filter_list = append(filter_list, fmt.Sprintf("M.body_hash = '%s'", v.FilterString()))
+		filter_list = append(filter_list, filterByItem("M.body_hash", v))
 	}
 	if v := req.Opcode; v != nil {
 		by_msg = true
@@ -191,9 +191,9 @@ func queryTransactionsImpl(query string, conn *pgxpool.Conn, settings models.Req
 	acst_list := []string{}
 	hash_list := []string{}
 	for _, t := range txs {
-		hash_list = append(hash_list, fmt.Sprintf("'%s'", t.Hash.FilterString()))
-		acst_list = append(acst_list, fmt.Sprintf("'%s'", t.AccountStateHashBefore.FilterString()))
-		acst_list = append(acst_list, fmt.Sprintf("'%s'", t.AccountStateHashAfter.FilterString()))
+		hash_list = append(hash_list, t.Hash.FilterString())
+		acst_list = append(acst_list, t.AccountStateHashBefore.FilterString())
+		acst_list = append(acst_list, t.AccountStateHashAfter.FilterString())
 	}
 	// account states
 	if len(txs) == 0 {
@@ -434,7 +434,7 @@ func (db *DbClient) QueryAdjacentTransactions(
 
 	tx_hash_str_list := []string{}
 	for idx := range tx_hash_list {
-		tx_hash_str_list = append(tx_hash_str_list, fmt.Sprintf("'%s'", tx_hash_list[idx].FilterString()))
+		tx_hash_str_list = append(tx_hash_str_list, tx_hash_list[idx].FilterString())
 	}
 	tx_hash_str := strings.Join(tx_hash_str_list, ",")
 	query := fmt.Sprintf(`select T.account, T.hash, T.lt, T.block_workchain, T.block_shard, T.block_seqno, T.mc_block_seqno, T.trace_id, 

@@ -94,7 +94,7 @@ func buildJettonWalletsQuery(req models.JettonWalletRequest, settings models.Req
 	}
 	if v := req.JettonAddress; v != nil {
 		if len(req.JettonAddress) == 1 {
-			filter_list = append(filter_list, fmt.Sprintf("J.jetton = '%s'", v[0].FilterString()))
+			filter_list = append(filter_list, filterByItem("J.jetton", v[0]))
 			orderby_query = fmt.Sprintf(` order by J.jetton, %s %s`, sort_column, sort_order)
 		} else if len(req.JettonAddress) > 1 {
 			filter_str := filterByArray("J.jetton", v)

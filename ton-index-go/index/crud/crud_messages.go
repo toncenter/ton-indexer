@@ -46,14 +46,14 @@ func buildMessagesQuery(
 		if v.IsAddressNone() {
 			filter_list = append(filter_list, "M.source is NULL")
 		} else {
-			filter_list = append(filter_list, fmt.Sprintf("M.source = '%s'", v.FilterString()))
+			filter_list = append(filter_list, filterByItem("M.source", v))
 		}
 	}
 	if v := req.Destination; v != nil {
 		if v.IsAddressNone() {
 			filter_list = append(filter_list, "M.destination is NULL")
 		} else {
-			filter_list = append(filter_list, fmt.Sprintf("M.destination = '%s'", v.FilterString()))
+			filter_list = append(filter_list, filterByItem("M.destination", v))
 		}
 	}
 	if v := req.Opcode; v != nil {
@@ -64,7 +64,7 @@ func buildMessagesQuery(
 		filter_list = append(filter_list, filter_str)
 	}
 	if v := req.BodyHash; v != nil {
-		filter_list = append(filter_list, fmt.Sprintf("M.body_hash = '%s'", v.FilterString()))
+		filter_list = append(filter_list, filterByItem("M.body_hash", v))
 	}
 
 	order_col := "M.created_lt"

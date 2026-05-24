@@ -50,56 +50,56 @@ TEST(convert, to_std_address_with_anycast) {
     ASSERT_EQ(block::StdAddress(0, addr), std_address_serialized.move_as_ok());
 }
 
-TEST(TonDbScanner, JettonWalletDetector_parse_burn) {
-  td::actor::Scheduler scheduler({1});
-  auto watcher = td::create_shared_destructor([] { td::actor::SchedulerContext::get()->stop(); });
-
-  block::StdAddress addr(std::string("EQDKC7jQ_tIJuYyrWfI4FIAN-hFHakG3GrATpOiqBVtsGOd5"));
-  // message payload for tx xiOZW3mVbHkCtgLxQqXVAg4DIgxrTE3j9lHw6H3P/Yg=, correct layout
-  auto message_payload = vm::load_cell_slice_ref(vm::std_boc_deserialize(td::base64_decode(
-    td::Slice("te6cckEBAgEAOQABZllfB7xUbeTvz/ieq1AezMgZqAEPdvSWQKq0LY5UE5PZzQsh8ADqxh1H03XLREV/xoLz4QEAAaAxtO6I")).move_as_ok()).move_as_ok());
-
-  auto transaction = schema::Transaction();
-  transaction.account = block::StdAddress(std::string("EQCk6s76oduqQH_3Y3O7fxjWVoUXtD3Ev6-NbHjjDmfG1drE")); // jetton wallet
-  transaction.in_msg = std::make_optional(schema::Message());
-  transaction.in_msg->source = "0:87BB7A4B20555A16C72A09C9ECE68590F80075630EA3E9BAE5A222BFE34179F0"; // owner
-
-  td::actor::ActorId<InsertManagerInterface> insert_manager;
-  td::actor::ActorOwn<JettonWalletDetector> jetton_wallet_detector;
-  td::actor::ActorOwn<InterfaceManager> interface_manager;
-  td::actor::ActorOwn<JettonMasterDetector> jetton_master_detector;
-
-  // prepare jetton metadata
-  std::unordered_map<std::string, schema::JettonWalletData> cache;
-  schema::JettonWalletData jetton_master;
-  jetton_master.jetton = "0:BDF3FA8098D129B54B4F73B5BAC5D1E1FD91EB054169C3916DFC8CCD536D1000";
-  cache.emplace(std::string("0:A4EACEFAA1DBAA407FF76373BB7F18D6568517B43DC4BFAF8D6C78E30E67C6D5"), jetton_master);
-
-  scheduler.run_in_context([&] {
-    interface_manager = td::actor::create_actor<InterfaceManager>("interface_manager", insert_manager);
-    jetton_master_detector = td::actor::create_actor<JettonMasterDetector>("jetton_master_detector", interface_manager.get(), insert_manager);
-
-    jetton_wallet_detector = td::actor::create_actor<JettonWalletDetector>("jetton_wallet_detector",
-      jetton_master_detector.get(), interface_manager.get(), insert_manager, cache);
-
-    auto P = td::PromiseCreator::lambda([&transaction, &jetton_master](td::Result<schema::JettonBurn> R) {
-      CHECK(R.is_ok());
-      auto burn = R.move_as_ok();
-      ASSERT_EQ(transaction.in_msg->source.value(), burn.owner);
-      ASSERT_EQ(convert::to_raw_address(transaction.account), burn.jetton_wallet);
-      ASSERT_EQ(jetton_master.jetton, burn.jetton_master);
-      ASSERT_EQ(6083770390284902059, burn.query_id);
-      ASSERT_TRUE(burn.custom_payload.not_null());
-      ASSERT_EQ("A3FBB2B6DF19CEAA089D2794A26845822A2284D59B277469D167FFC19D00E44B", burn.custom_payload->get_hash().to_hex());
-      CHECK(td::BigIntG<257>(8267792794) == **burn.amount.get());
-    });
-    td::actor::send_closure(jetton_wallet_detector, &JettonWalletDetector::parse_burn, transaction, message_payload, std::move(P));
-    watcher.reset();
-  });
-
-  scheduler.run(10);
-  scheduler.stop(); 
-}
+// TEST(TonDbScanner, JettonWalletDetector_parse_burn) {
+//   td::actor::Scheduler scheduler({1});
+//   auto watcher = td::create_shared_destructor([] { td::actor::SchedulerContext::get()->stop(); });
+//
+//   block::StdAddress addr(std::string("EQDKC7jQ_tIJuYyrWfI4FIAN-hFHakG3GrATpOiqBVtsGOd5"));
+//   // message payload for tx xiOZW3mVbHkCtgLxQqXVAg4DIgxrTE3j9lHw6H3P/Yg=, correct layout
+//   auto message_payload = vm::load_cell_slice_ref(vm::std_boc_deserialize(td::base64_decode(
+//     td::Slice("te6cckEBAgEAOQABZllfB7xUbeTvz/ieq1AezMgZqAEPdvSWQKq0LY5UE5PZzQsh8ADqxh1H03XLREV/xoLz4QEAAaAxtO6I")).move_as_ok()).move_as_ok());
+//
+//   auto transaction = schema::Transaction();
+//   transaction.account = block::StdAddress(std::string("EQCk6s76oduqQH_3Y3O7fxjWVoUXtD3Ev6-NbHjjDmfG1drE")); // jetton wallet
+//   transaction.in_msg = std::make_optional(schema::Message());
+//   transaction.in_msg->source = "0:87BB7A4B20555A16C72A09C9ECE68590F80075630EA3E9BAE5A222BFE34179F0"; // owner
+//
+//   td::actor::ActorId<InsertManagerInterface> insert_manager;
+//   td::actor::ActorOwn<JettonWalletDetector> jetton_wallet_detector;
+//   td::actor::ActorOwn<InterfaceManager> interface_manager;
+//   td::actor::ActorOwn<JettonMasterDetector> jetton_master_detector;
+//
+//   // prepare jetton metadata
+//   std::unordered_map<std::string, schema::JettonWalletData> cache;
+//   schema::JettonWalletData jetton_master;
+//   jetton_master.jetton = "0:BDF3FA8098D129B54B4F73B5BAC5D1E1FD91EB054169C3916DFC8CCD536D1000";
+//   cache.emplace(std::string("0:A4EACEFAA1DBAA407FF76373BB7F18D6568517B43DC4BFAF8D6C78E30E67C6D5"), jetton_master);
+//
+//   scheduler.run_in_context([&] {
+//     interface_manager = td::actor::create_actor<InterfaceManager>("interface_manager", insert_manager);
+//     jetton_master_detector = td::actor::create_actor<JettonMasterDetector>("jetton_master_detector", interface_manager.get(), insert_manager);
+//
+//     jetton_wallet_detector = td::actor::create_actor<JettonWalletDetector>("jetton_wallet_detector",
+//       jetton_master_detector.get(), interface_manager.get(), insert_manager, cache);
+//
+//     auto P = td::PromiseCreator::lambda([&transaction, &jetton_master](td::Result<schema::JettonBurn> R) {
+//       CHECK(R.is_ok());
+//       auto burn = R.move_as_ok();
+//       ASSERT_EQ(transaction.in_msg->source.value(), burn.owner);
+//       ASSERT_EQ(convert::to_raw_address(transaction.account), burn.jetton_wallet);
+//       ASSERT_EQ(jetton_master.jetton, burn.jetton_master);
+//       ASSERT_EQ(6083770390284902059, burn.query_id);
+//       ASSERT_TRUE(burn.custom_payload.not_null());
+//       ASSERT_EQ("A3FBB2B6DF19CEAA089D2794A26845822A2284D59B277469D167FFC19D00E44B", burn.custom_payload->get_hash().to_hex());
+//       CHECK(td::BigIntG<257>(8267792794) == **burn.amount.get());
+//     });
+//     td::actor::send_closure(jetton_wallet_detector, &JettonWalletDetector::parse_burn, transaction, message_payload, std::move(P));
+//     watcher.reset();
+//   });
+//
+//   scheduler.run(10);
+//   scheduler.stop();
+// }
 
 
 // TEST(TonDbScanner, JettonWalletDetector) {

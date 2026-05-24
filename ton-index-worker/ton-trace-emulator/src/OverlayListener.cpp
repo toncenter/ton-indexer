@@ -2,6 +2,7 @@
 #include "OverlayListener.h"
 #include <tdutils/td/utils/filesystem.h>
 #include "TraceInterfaceDetector.h"
+#include "Statistics.h"
 
 
 void OverlayListener::start_up() {
