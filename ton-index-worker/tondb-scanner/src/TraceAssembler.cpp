@@ -302,7 +302,7 @@ void TraceAssembler::process_transaction(ton::BlockSeqno seqno, schema::Transact
                     edge.type = TraceEdgeImpl::Type::ext;
                     edge.incomplete = false;
                     edge.broken = false;
-                } else if (msg.source.value() == "-1:0000000000000000000000000000000000000000000000000000000000000000") {
+                } else if (msg.source.value().workchain == -1 && msg.source.value().addr == td::Bits256::zero()) {
                     // system
                     edge.trace_id = tx.hash;
                     edge.msg_hash = msg.hash;

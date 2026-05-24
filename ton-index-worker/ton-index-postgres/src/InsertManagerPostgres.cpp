@@ -313,7 +313,7 @@ void ensure_still_leader(pqxx::work& txn, const std::string& worker_id) {
 
 struct PreparedMessageContentRow {
   td::Bits256 hash;
-  std::string body;
+  schema::Bytes body;
   std::uint32_t source_mc_seqno;
 
   PREPARED_ROW_AS_TUPLE(hash, body);
@@ -321,7 +321,7 @@ struct PreparedMessageContentRow {
 
 struct PreparedAccountStateRow {
   td::Bits256 hash;
-  block::StdAddress account;
+  schema::StdAddress account;
   td::RefInt256 balance;
   std::string balance_extra_currencies;
   std::string account_status;
@@ -332,7 +332,7 @@ struct PreparedAccountStateRow {
 };
 
 struct PreparedLatestAccountStateRow {
-  block::StdAddress account;
+  schema::StdAddress account;
   td::Bits256 hash;
   td::RefInt256 balance;
   std::string balance_extra_currencies;
@@ -343,8 +343,8 @@ struct PreparedLatestAccountStateRow {
   std::optional<td::Bits256> frozen_hash;
   std::optional<td::Bits256> data_hash;
   std::optional<td::Bits256> code_hash;
-  std::optional<std::string> data_boc;
-  std::optional<std::string> code_boc;
+  std::optional<schema::Bytes> data_boc;
+  std::optional<schema::Bytes> code_boc;
   std::uint32_t source_mc_seqno;
 
   PREPARED_ROW_AS_TUPLE(account, hash, balance, balance_extra_currencies, account_status,
@@ -353,10 +353,10 @@ struct PreparedLatestAccountStateRow {
 };
 
 struct PreparedJettonMasterRow {
-  block::StdAddress address;
+  schema::StdAddress address;
   td::RefInt256 total_supply;
   bool mintable;
-  std::optional<block::StdAddress> admin_address;
+  std::optional<schema::StdAddress> admin_address;
   std::optional<std::string> jetton_content;
   td::Bits256 jetton_wallet_code_hash;
   uint64_t last_transaction_lt;
@@ -371,9 +371,9 @@ struct PreparedJettonMasterRow {
 
 struct PreparedJettonWalletRow {
   td::RefInt256 balance;
-  block::StdAddress address;
-  block::StdAddress owner;
-  block::StdAddress jetton;
+  schema::StdAddress address;
+  schema::StdAddress owner;
+  schema::StdAddress jetton;
   uint64_t last_transaction_lt;
   td::Bits256 code_hash;
   td::Bits256 data_hash;
@@ -386,7 +386,7 @@ struct PreparedJettonWalletRow {
 };
 
 struct PreparedMintlessMasterRow {
-  block::StdAddress address;
+  schema::StdAddress address;
   bool is_indexed;
   std::uint32_t source_mc_seqno;
 
@@ -394,9 +394,9 @@ struct PreparedMintlessMasterRow {
 };
 
 struct PreparedNftCollectionRow {
-  block::StdAddress address;
+  schema::StdAddress address;
   td::RefInt256 next_item_index;
-  std::optional<block::StdAddress> owner_address;
+  std::optional<schema::StdAddress> owner_address;
   std::optional<std::string> collection_content;
   uint64_t last_transaction_lt;
   td::Bits256 code_hash;
@@ -409,16 +409,16 @@ struct PreparedNftCollectionRow {
 };
 
 struct PreparedNftItemRow {
-  block::StdAddress address;
+  schema::StdAddress address;
   bool init;
   td::RefInt256 index;
-  std::optional<block::StdAddress> collection_address;
-  std::optional<block::StdAddress> owner_address;
+  std::optional<schema::StdAddress> collection_address;
+  std::optional<schema::StdAddress> owner_address;
   std::optional<std::string> content;
   uint64_t last_transaction_lt;
   td::Bits256 code_hash;
   td::Bits256 data_hash;
-  std::optional<block::StdAddress> real_owner;
+  std::optional<schema::StdAddress> real_owner;
   bool destroyed;
   std::uint32_t source_mc_seqno;
 
@@ -427,11 +427,11 @@ struct PreparedNftItemRow {
 };
 
 struct PreparedDnsEntryRow {
-  block::StdAddress nft_item_address;
-  std::optional<block::StdAddress> nft_item_owner;
+  schema::StdAddress nft_item_address;
+  std::optional<schema::StdAddress> nft_item_owner;
   std::string domain;
-  std::optional<block::StdAddress> dns_next_resolver;
-  std::optional<block::StdAddress> dns_wallet;
+  std::optional<schema::StdAddress> dns_next_resolver;
+  std::optional<schema::StdAddress> dns_wallet;
   std::optional<td::Bits256> dns_site_adnl;
   std::optional<td::Bits256> dns_storage_bag_id;
   uint64_t last_transaction_lt;
@@ -443,16 +443,16 @@ struct PreparedDnsEntryRow {
 };
 
 struct PreparedGetgemsSaleRow {
-  block::StdAddress address;
+  schema::StdAddress address;
   bool is_complete;
   uint32_t created_at;
-  block::StdAddress marketplace_address;
-  block::StdAddress nft_address;
-  std::optional<block::StdAddress> nft_owner_address;
+  schema::StdAddress marketplace_address;
+  schema::StdAddress nft_address;
+  std::optional<schema::StdAddress> nft_owner_address;
   td::RefInt256 full_price;
-  block::StdAddress marketplace_fee_address;
+  schema::StdAddress marketplace_fee_address;
   td::RefInt256 marketplace_fee;
-  block::StdAddress royalty_address;
+  schema::StdAddress royalty_address;
   td::RefInt256 royalty_amount;
   std::optional<uint32_t> sold_at;
   std::optional<uint64_t> sold_query_id;
@@ -470,19 +470,19 @@ struct PreparedGetgemsSaleRow {
 };
 
 struct PreparedGetgemsAuctionRow {
-  block::StdAddress address;
+  schema::StdAddress address;
   bool end_flag;
   uint32_t end_time;
-  block::StdAddress mp_addr;
-  block::StdAddress nft_addr;
-  std::optional<block::StdAddress> nft_owner;
+  schema::StdAddress mp_addr;
+  schema::StdAddress nft_addr;
+  std::optional<schema::StdAddress> nft_owner;
   td::RefInt256 last_bid;
-  std::optional<block::StdAddress> last_member;
+  std::optional<schema::StdAddress> last_member;
   uint32_t min_step;
-  block::StdAddress mp_fee_addr;
+  schema::StdAddress mp_fee_addr;
   uint32_t mp_fee_factor;
   uint32_t mp_fee_base;
-  block::StdAddress royalty_fee_addr;
+  schema::StdAddress royalty_fee_addr;
   uint32_t royalty_fee_factor;
   uint32_t royalty_fee_base;
   td::RefInt256 max_bid;
@@ -493,8 +493,8 @@ struct PreparedGetgemsAuctionRow {
   std::optional<bool> activated;
   std::optional<uint32_t> step_time;
   std::optional<uint64_t> last_query_id;
-  std::optional<block::StdAddress> jetton_wallet;
-  std::optional<block::StdAddress> jetton_master;
+  std::optional<schema::StdAddress> jetton_wallet;
+  std::optional<schema::StdAddress> jetton_master;
   std::optional<bool> is_broken_state;
   std::optional<std::string> public_key;
   uint64_t last_transaction_lt;
@@ -511,11 +511,11 @@ struct PreparedGetgemsAuctionRow {
 };
 
 struct PreparedMultisigContractRow {
-  block::StdAddress address;
+  schema::StdAddress address;
   td::RefInt256 next_order_seqno;
   uint32_t threshold;
-  std::vector<block::StdAddress> signers;
-  std::vector<block::StdAddress> proposers;
+  std::vector<schema::StdAddress> signers;
+  std::vector<schema::StdAddress> proposers;
   uint64_t last_transaction_lt;
   td::Bits256 code_hash;
   td::Bits256 data_hash;
@@ -527,16 +527,16 @@ struct PreparedMultisigContractRow {
 };
 
 struct PreparedMultisigOrderRow {
-  block::StdAddress address;
-  block::StdAddress multisig_address;
+  schema::StdAddress address;
+  schema::StdAddress multisig_address;
   td::RefInt256 order_seqno;
   uint32_t threshold;
   bool sent_for_execution;
   td::RefInt256 approvals_mask;
   uint32_t approvals_num;
   td::RefInt256 expiration_date;
-  std::optional<std::string> order_boc;
-  std::vector<block::StdAddress> signers;
+  std::optional<schema::Bytes> order_boc;
+  std::vector<schema::StdAddress> signers;
   uint64_t last_transaction_lt;
   td::Bits256 code_hash;
   td::Bits256 data_hash;
@@ -549,9 +549,9 @@ struct PreparedMultisigOrderRow {
 };
 
 struct PreparedDedustPoolRow {
-  block::StdAddress address;
-  std::optional<block::StdAddress> asset_1;
-  std::optional<block::StdAddress> asset_2;
+  schema::StdAddress address;
+  std::optional<schema::StdAddress> asset_1;
+  std::optional<schema::StdAddress> asset_2;
   td::RefInt256 reserve_1;
   td::RefInt256 reserve_2;
   std::string pool_type;
@@ -568,14 +568,14 @@ struct PreparedDedustPoolRow {
 };
 
 struct PreparedVestingContractRow {
-  block::StdAddress address;
+  schema::StdAddress address;
   uint32_t vesting_start_time;
   uint32_t vesting_total_duration;
   uint32_t unlock_period;
   uint32_t cliff_duration;
   td::RefInt256 vesting_total_amount;
-  block::StdAddress vesting_sender_address;
-  block::StdAddress owner_address;
+  schema::StdAddress vesting_sender_address;
+  schema::StdAddress owner_address;
   uint64_t last_transaction_lt;
   td::Bits256 code_hash;
   td::Bits256 data_hash;
@@ -588,22 +588,22 @@ struct PreparedVestingContractRow {
 };
 
 struct PreparedVestingWhitelistRow {
-  block::StdAddress vesting_contract_address;
-  block::StdAddress wallet_address;
+  schema::StdAddress vesting_contract_address;
+  schema::StdAddress wallet_address;
   std::uint32_t source_mc_seqno;
 
   PREPARED_ROW_AS_TUPLE(vesting_contract_address, wallet_address);
 };
 
 struct PreparedTelemintRow {
-  block::StdAddress address;
+  schema::StdAddress address;
   std::string token_name;
-  std::optional<block::StdAddress> bidder_address;
+  std::optional<schema::StdAddress> bidder_address;
   td::RefInt256 bid;
   uint32_t bid_ts;
   td::RefInt256 min_bid;
   uint32_t end_time;
-  std::optional<block::StdAddress> beneficiary_address;
+  std::optional<schema::StdAddress> beneficiary_address;
   td::RefInt256 initial_min_bid;
   td::RefInt256 max_bid;
   td::RefInt256 min_bid_step;
@@ -611,7 +611,7 @@ struct PreparedTelemintRow {
   uint32_t duration;
   int royalty_numerator;
   int royalty_denominator;
-  block::StdAddress royalty_destination;
+  schema::StdAddress royalty_destination;
   uint64_t last_transaction_lt;
   td::Bits256 code_hash;
   td::Bits256 data_hash;
@@ -632,14 +632,14 @@ struct PreparedJettonTransferRow {
   uint32_t mc_seqno;
   uint64_t query_id;
   td::RefInt256 amount;
-  std::string source;
-  std::string destination;
-  std::string jetton_wallet_address;
-  std::string jetton_master_address;
-  std::string response_destination;
-  std::optional<std::string> custom_payload;
+  schema::StdAddress source;
+  schema::StdAddress destination;
+  schema::StdAddress jetton_wallet_address;
+  schema::StdAddress jetton_master_address;
+  std::optional<schema::StdAddress> response_destination;
+  std::optional<schema::Bytes> custom_payload;
   td::RefInt256 forward_ton_amount;
-  std::optional<std::string> forward_payload;
+  std::optional<schema::Bytes> forward_payload;
   td::Bits256 trace_id;
 
   PREPARED_ROW_AS_TUPLE(tx_hash, tx_lt, tx_now, tx_aborted, mc_seqno, query_id, amount, source, destination,
@@ -654,12 +654,12 @@ struct PreparedJettonBurnRow {
   bool tx_aborted;
   uint32_t mc_seqno;
   uint64_t query_id;
-  std::string owner;
-  std::string jetton_wallet_address;
-  std::string jetton_master_address;
+  schema::StdAddress owner;
+  schema::StdAddress jetton_wallet_address;
+  schema::StdAddress jetton_master_address;
   td::RefInt256 amount;
-  std::string response_destination;
-  std::optional<std::string> custom_payload;
+  std::optional<schema::StdAddress> response_destination;
+  std::optional<schema::Bytes> custom_payload;
   td::Bits256 trace_id;
 
   PREPARED_ROW_AS_TUPLE(tx_hash, tx_lt, tx_now, tx_aborted, mc_seqno, query_id, owner, jetton_wallet_address,
@@ -673,15 +673,15 @@ struct PreparedNftTransferRow {
   bool tx_aborted;
   uint32_t mc_seqno;
   uint64_t query_id;
-  block::StdAddress nft_item_address;
+  schema::StdAddress nft_item_address;
   td::RefInt256 nft_item_index;
-  std::string nft_collection_address;
-  std::string old_owner;
-  std::string new_owner;
-  std::string response_destination;
-  std::optional<std::string> custom_payload;
+  std::optional<schema::StdAddress> nft_collection_address;
+  std::optional<schema::StdAddress> old_owner;
+  std::optional<schema::StdAddress> new_owner;
+  std::optional<schema::StdAddress> response_destination;
+  std::optional<schema::Bytes> custom_payload;
   td::RefInt256 forward_amount;
-  std::optional<std::string> forward_payload;
+  std::optional<schema::Bytes> forward_payload;
   td::Bits256 trace_id;
 
   PREPARED_ROW_AS_TUPLE(tx_hash, tx_lt, tx_now, tx_aborted, mc_seqno, query_id, nft_item_address,
@@ -1104,7 +1104,7 @@ std::optional<std::string> serialize_cell_to_base64(td::Ref<vm::Cell> cell) {
 }
 
 struct DestroyedAccountState {
-  block::StdAddress address;
+  schema::StdAddress address;
   std::uint64_t last_transaction_lt;
   std::uint32_t source_mc_seqno;
 };
@@ -1354,19 +1354,26 @@ PreparedTelemintRow make_destroyed_telemint_row(const DestroyedAccountState& sta
 
 PreparedLatestAccountStateRow prepare_latest_account_state_row(const LatestAccountStateSourceRow& source, std::int32_t max_data_depth) {
   const auto& account_state = source.account_state;
-  std::optional<std::string> code_str = std::nullopt;
-  std::optional<std::string> data_str = std::nullopt;
+  std::optional<schema::Bytes> code = std::nullopt;
+  std::optional<schema::Bytes> data = std::nullopt;
 
-  if (max_data_depth >= 0 && account_state.data.not_null() && (max_data_depth == 0 || account_state.data->get_depth() <= max_data_depth)) {
-    data_str = serialize_cell_to_base64(account_state.data);
-  } else if (account_state.data.not_null()) {
-    LOG(DEBUG) << "Large account data: " << account_state.account
-               << " Depth: " << account_state.data->get_depth();
-  }
+  if (max_data_depth >= 0 && account_state.data.not_null() &&
+      (max_data_depth == 0 || account_state.data->get_depth() <= max_data_depth)) {
+    auto r_data = convert::to_bytes(account_state.data);
+    if (r_data.is_ok()) {
+      data = r_data.move_as_ok();
+    }
+      } else if (account_state.data.not_null()) {
+        LOG(DEBUG) << "Large account data: " << account_state.account
+                   << " Depth: " << account_state.data->get_depth();
+      }
 
-  code_str = serialize_cell_to_base64(account_state.code);
-  if (code_str && code_str->length() > 128000) {
-    LOG(WARNING) << "Large account code: " << account_state.account;
+  auto r_code = convert::to_bytes(account_state.code);
+  if (r_code.is_ok()) {
+    code = r_code.move_as_ok();
+    if (code.has_value() && code.value().size() > 128000) {
+      LOG(WARNING) << "Large account code: " << account_state.account;
+    }
   }
 
   return PreparedLatestAccountStateRow{
@@ -1381,8 +1388,8 @@ PreparedLatestAccountStateRow prepare_latest_account_state_row(const LatestAccou
     .frozen_hash = account_state.frozen_hash,
     .data_hash = account_state.data_hash,
     .code_hash = account_state.code_hash,
-    .data_boc = std::move(data_str),
-    .code_boc = std::move(code_str),
+    .data_boc = std::move(data),
+    .code_boc = std::move(code),
     .source_mc_seqno = source.source_mc_seqno,
   };
 }
@@ -1416,7 +1423,7 @@ class PrepareLatestAccountStatesChunkActor final : public td::actor::Actor {
 
 void collect_and_prepare_batch_rows(const std::vector<InsertTaskStruct>& insert_tasks, PreparedBatchPostgres& prepared_batch,
                                     std::vector<LatestAccountStateSourceRow>& latest_account_state_sources) {
-  std::unordered_map<block::StdAddress, DestroyedAccountState> destroyed_accounts;
+  std::unordered_map<schema::StdAddress, DestroyedAccountState> destroyed_accounts;
   for (const auto& task : insert_tasks) {
     for (const auto& account_state : task.parsed_block_->account_states_) {
       if (account_state.account_status != "nonexist") {
@@ -1438,7 +1445,7 @@ void collect_and_prepare_batch_rows(const std::vector<InsertTaskStruct>& insert_
 
   {
     struct MessageContentValue {
-      std::string body;
+      schema::Bytes body;
       std::uint32_t source_mc_seqno;
     };
     std::unordered_map<td::Bits256, MessageContentValue> unique_message_contents;
@@ -1726,7 +1733,7 @@ void collect_and_prepare_batch_rows(const std::vector<InsertTaskStruct>& insert_
       schema::JettonMasterDataV2 value;
       std::uint32_t source_mc_seqno;
     };
-    std::unordered_map<block::StdAddress, JettonMasterWithSource> jetton_masters;
+    std::unordered_map<schema::StdAddress, JettonMasterWithSource> jetton_masters;
     for (auto i = insert_tasks.rbegin(); i != insert_tasks.rend(); ++i) {
       const auto& task = *i;
       for (const auto& jetton_master : task.parsed_block_->get_accounts_v2<schema::JettonMasterDataV2>()) {
@@ -1777,8 +1784,8 @@ void collect_and_prepare_batch_rows(const std::vector<InsertTaskStruct>& insert_
       schema::JettonWalletDataV2 value;
       std::uint32_t source_mc_seqno;
     };
-    std::unordered_map<block::StdAddress, JettonWalletWithSource> jetton_wallets;
-    std::unordered_map<block::StdAddress, std::uint32_t> known_mintless_masters;
+    std::unordered_map<schema::StdAddress, JettonWalletWithSource> jetton_wallets;
+    std::unordered_map<schema::StdAddress, std::uint32_t> known_mintless_masters;
     for (auto i = insert_tasks.rbegin(); i != insert_tasks.rend(); ++i) {
       const auto& task = *i;
       for (const auto& jetton_wallet : task.parsed_block_->get_accounts_v2<schema::JettonWalletDataV2>()) {
@@ -1813,7 +1820,7 @@ void collect_and_prepare_batch_rows(const std::vector<InsertTaskStruct>& insert_
         known_mintless_masters.emplace(jetton_wallet.jetton, jetton_wallet_with_source_ptr->source_mc_seqno);
       }
     }
-    std::vector<std::pair<std::string, const std::pair<const block::StdAddress, std::uint32_t>*>> ordered_mintless_masters;
+    std::vector<std::pair<std::string, const std::pair<const schema::StdAddress, std::uint32_t>*>> ordered_mintless_masters;
     ordered_mintless_masters.reserve(known_mintless_masters.size());
     for (const auto& entry : known_mintless_masters) {
       ordered_mintless_masters.emplace_back(convert::to_raw_address(entry.first), &entry);
@@ -1843,7 +1850,7 @@ void collect_and_prepare_batch_rows(const std::vector<InsertTaskStruct>& insert_
       schema::NFTCollectionDataV2 value;
       std::uint32_t source_mc_seqno;
     };
-    std::unordered_map<block::StdAddress, NftCollectionWithSource> nft_collections;
+    std::unordered_map<schema::StdAddress, NftCollectionWithSource> nft_collections;
     for (auto i = insert_tasks.rbegin(); i != insert_tasks.rend(); ++i) {
       const auto& task = *i;
       for (const auto& nft_collection : task.parsed_block_->get_accounts_v2<schema::NFTCollectionDataV2>()) {
@@ -1889,16 +1896,16 @@ void collect_and_prepare_batch_rows(const std::vector<InsertTaskStruct>& insert_
 
   {
     struct UnifiedSaleData {
-      block::StdAddress address;
+      schema::StdAddress address;
       bool is_complete;
       uint32_t created_at;
-      block::StdAddress marketplace_address;
-      block::StdAddress nft_address;
-      std::optional<block::StdAddress> nft_owner_address;
+      schema::StdAddress marketplace_address;
+      schema::StdAddress nft_address;
+      std::optional<schema::StdAddress> nft_owner_address;
       td::RefInt256 full_price;
-      block::StdAddress marketplace_fee_address;
+      schema::StdAddress marketplace_fee_address;
       td::RefInt256 marketplace_fee;
-      block::StdAddress royalty_address;
+      schema::StdAddress royalty_address;
       td::RefInt256 royalty_amount;
       std::optional<uint32_t> sold_at;
       std::optional<uint64_t> sold_query_id;
@@ -1909,7 +1916,7 @@ void collect_and_prepare_batch_rows(const std::vector<InsertTaskStruct>& insert_
       std::uint32_t source_mc_seqno;
     };
 
-    std::unordered_map<block::StdAddress, UnifiedSaleData> nft_sales;
+    std::unordered_map<schema::StdAddress, UnifiedSaleData> nft_sales;
 
     for (auto i = insert_tasks.rbegin(); i != insert_tasks.rend(); ++i) {
       const auto& task = *i;
@@ -2020,7 +2027,7 @@ void collect_and_prepare_batch_rows(const std::vector<InsertTaskStruct>& insert_
       schema::GetGemsNftAuctionData value;
       std::uint32_t source_mc_seqno;
     };
-    std::unordered_map<block::StdAddress, NftAuctionWithSource> nft_auctions;
+    std::unordered_map<schema::StdAddress, NftAuctionWithSource> nft_auctions;
     for (auto i = insert_tasks.rbegin(); i != insert_tasks.rend(); ++i) {
       const auto& task = *i;
       for (const auto& nft_auction : task.parsed_block_->get_accounts_v2<schema::GetGemsNftAuctionData>()) {
@@ -2088,9 +2095,9 @@ void collect_and_prepare_batch_rows(const std::vector<InsertTaskStruct>& insert_
   }
 
   {
-    std::map<std::pair<ton::StdSmcAddress, ton::StdSmcAddress>, block::StdAddress> sale_real_owners;
-    std::map<std::pair<ton::StdSmcAddress, ton::StdSmcAddress>, block::StdAddress> auction_real_owners;
-    auto has_newer_destroyed_state = [&](const block::StdAddress& address, std::uint64_t last_transaction_lt) {
+    std::map<std::pair<ton::StdSmcAddress, ton::StdSmcAddress>, schema::StdAddress> sale_real_owners;
+    std::map<std::pair<ton::StdSmcAddress, ton::StdSmcAddress>, schema::StdAddress> auction_real_owners;
+    auto has_newer_destroyed_state = [&](const schema::StdAddress& address, std::uint64_t last_transaction_lt) {
       auto destroyed_it = destroyed_accounts.find(address);
       return destroyed_it != destroyed_accounts.end() &&
              last_transaction_lt < destroyed_it->second.last_transaction_lt;
@@ -2127,7 +2134,7 @@ void collect_and_prepare_batch_rows(const std::vector<InsertTaskStruct>& insert_
       schema::NFTItemDataV2 value;
       std::uint32_t source_mc_seqno;
     };
-    std::unordered_map<block::StdAddress, NftItemWithSource> nft_items;
+    std::unordered_map<schema::StdAddress, NftItemWithSource> nft_items;
     for (auto i = insert_tasks.rbegin(); i != insert_tasks.rend(); ++i) {
       const auto& task = *i;
       for (const auto& nft_item : task.parsed_block_->get_accounts_v2<schema::NFTItemDataV2>()) {
@@ -2145,7 +2152,7 @@ void collect_and_prepare_batch_rows(const std::vector<InsertTaskStruct>& insert_
       return convert::to_raw_address(key);
     });
     prepared_batch.nft_items.reserve(ordered_nft_items.size());
-    std::unordered_map<block::StdAddress, std::uint64_t> dns_entry_lts;
+    std::unordered_map<schema::StdAddress, std::uint64_t> dns_entry_lts;
     for (const auto& [_, nft_item_with_source_ptr] : ordered_nft_items) {
       const auto& nft_item = nft_item_with_source_ptr->value;
       std::optional<std::string> content_str = std::nullopt;
@@ -2153,7 +2160,7 @@ void collect_and_prepare_batch_rows(const std::vector<InsertTaskStruct>& insert_
         content_str = content_to_json_string(nft_item.content.value());
       }
 
-      std::optional<block::StdAddress> real_owner = nft_item.owner_address;
+      std::optional<schema::StdAddress> real_owner = nft_item.owner_address;
       if (nft_item.owner_address) {
         auto sale_key = std::make_pair(nft_item.owner_address.value().addr, nft_item.address.addr);
         auto sale_it = sale_real_owners.find(sale_key);
@@ -2216,7 +2223,7 @@ void collect_and_prepare_batch_rows(const std::vector<InsertTaskStruct>& insert_
       schema::MultisigContractData value;
       std::uint32_t source_mc_seqno;
     };
-    std::unordered_map<block::StdAddress, MultisigContractWithSource> multisig_contracts;
+    std::unordered_map<schema::StdAddress, MultisigContractWithSource> multisig_contracts;
     for (auto i = insert_tasks.rbegin(); i != insert_tasks.rend(); ++i) {
       const auto& task = *i;
       for (const auto& multisig_contract : task.parsed_block_->get_accounts_v2<schema::MultisigContractData>()) {
@@ -2262,7 +2269,7 @@ void collect_and_prepare_batch_rows(const std::vector<InsertTaskStruct>& insert_
       schema::MultisigOrderData value;
       std::uint32_t source_mc_seqno;
     };
-    std::unordered_map<block::StdAddress, MultisigOrderWithSource> multisig_orders;
+    std::unordered_map<schema::StdAddress, MultisigOrderWithSource> multisig_orders;
     for (auto i = insert_tasks.rbegin(); i != insert_tasks.rend(); ++i) {
       const auto& task = *i;
       for (const auto& multisig_order : task.parsed_block_->get_accounts_v2<schema::MultisigOrderData>()) {
@@ -2281,9 +2288,12 @@ void collect_and_prepare_batch_rows(const std::vector<InsertTaskStruct>& insert_
     prepared_batch.multisig_orders.reserve(ordered_multisig_orders.size());
     for (const auto& [_, multisig_order_with_source_ptr] : ordered_multisig_orders) {
       const auto& multisig_order = multisig_order_with_source_ptr->value;
-      std::optional<std::string> order_boc_str = std::nullopt;
+      std::optional<schema::Bytes> order_boc = std::nullopt;
       if (multisig_order.order.not_null()) {
-        order_boc_str = serialize_cell_to_base64(multisig_order.order);
+        auto r_order_boc = convert::to_bytes(multisig_order.order);
+        if (r_order_boc.is_ok()) {
+          order_boc = r_order_boc.move_as_ok();
+        }
       }
       prepared_batch.multisig_orders.push_back(PreparedMultisigOrderRow{
         .address = multisig_order.address,
@@ -2294,7 +2304,7 @@ void collect_and_prepare_batch_rows(const std::vector<InsertTaskStruct>& insert_
         .approvals_mask = multisig_order.approvals_mask,
         .approvals_num = multisig_order.approvals_num,
         .expiration_date = multisig_order.expiration_date,
-        .order_boc = std::move(order_boc_str),
+        .order_boc = std::move(order_boc),
         .signers = multisig_order.signers,
         .last_transaction_lt = multisig_order.last_transaction_lt,
         .code_hash = multisig_order.code_hash,
@@ -2317,7 +2327,7 @@ void collect_and_prepare_batch_rows(const std::vector<InsertTaskStruct>& insert_
       schema::DedustPoolData value;
       std::uint32_t source_mc_seqno;
     };
-    std::unordered_map<block::StdAddress, DedustPoolWithSource> dedust_pools;
+    std::unordered_map<schema::StdAddress, DedustPoolWithSource> dedust_pools;
     for (auto i = insert_tasks.rbegin(); i != insert_tasks.rend(); ++i) {
       const auto& task = *i;
       for (const auto& dedust_pool : task.parsed_block_->get_accounts_v2<schema::DedustPoolData>()) {
@@ -2368,7 +2378,7 @@ void collect_and_prepare_batch_rows(const std::vector<InsertTaskStruct>& insert_
       schema::VestingData value;
       std::uint32_t source_mc_seqno;
     };
-    std::unordered_map<block::StdAddress, VestingWithSource> vesting_contracts;
+    std::unordered_map<schema::StdAddress, VestingWithSource> vesting_contracts;
     for (auto i = insert_tasks.rbegin(); i != insert_tasks.rend(); ++i) {
       const auto& task = *i;
       for (const auto& vesting : task.parsed_block_->get_accounts_v2<schema::VestingData>()) {
@@ -2427,8 +2437,8 @@ void collect_and_prepare_batch_rows(const std::vector<InsertTaskStruct>& insert_
       schema::TelemintData value;
       std::uint32_t source_mc_seqno;
     };
-    std::unordered_map<block::StdAddress, TelemintWithSource> telemint_nfts;
-    std::unordered_map<block::StdAddress, schema::NFTItemDataV2> nft_items;
+    std::unordered_map<schema::StdAddress, TelemintWithSource> telemint_nfts;
+    std::unordered_map<schema::StdAddress, schema::NFTItemDataV2> nft_items;
     for (auto i = insert_tasks.rbegin(); i != insert_tasks.rend(); ++i) {
       const auto& task = *i;
       for (const auto& nft_item : task.parsed_block_->get_accounts_v2<schema::NFTItemDataV2>()) {

@@ -91,8 +91,8 @@ schema::Block ParseQuery::parse_block(const td::Ref<vm::Cell>& root_cell, const 
   block.workchain = blk_id.id.workchain;
   block.shard = static_cast<int64_t>(blk_id.id.shard);
   block.seqno = blk_id.id.seqno;
-  block.root_hash = td::base64_encode(blk_id.root_hash.as_slice());
-  block.file_hash = td::base64_encode(blk_id.file_hash.as_slice());
+  block.root_hash = blk_id.root_hash;
+  block.file_hash = blk_id.file_hash;
   if (mc_block) {
       block.mc_block_workchain = mc_block.value().workchain;
       block.mc_block_shard = mc_block.value().shard;
@@ -126,8 +126,8 @@ schema::Block ParseQuery::parse_block(const td::Ref<vm::Cell>& root_cell, const 
   if (!info.not_master || tlb::unpack_cell(info.master_ref, mcref)) {
       block.master_ref_seqno = mcref.seq_no;
   }
-  block.rand_seed = td::base64_encode(extra.rand_seed.as_slice());
-  block.created_by = td::base64_encode(extra.created_by.as_slice());
+  block.rand_seed = extra.rand_seed;
+  block.created_by = extra.created_by;
 
   // prev blocks
   std::vector<ton::BlockIdExt> prev;
@@ -255,8 +255,8 @@ td::Result<schema::Message> ParseQuery::parse_message(td::Ref<vm::Cell> msg_cell
       }
 
       TRY_RESULT_ASSIGN(msg.value, parse_currency_collection(msg_info.value));
-      TRY_RESULT_ASSIGN(msg.source, convert::to_raw_address(msg_info.src));
-      TRY_RESULT_ASSIGN(msg.destination, convert::to_raw_address(msg_info.dest));
+      TRY_RESULT_ASSIGN(msg.source, convert::to_std_address(msg_info.src));
+      TRY_RESULT_ASSIGN(msg.destination, convert::to_std_address(msg_info.dest));
       msg.fwd_fee = block::tlb::t_Grams.as_integer_skip(msg_info.fwd_fee.write());
       if (mc_block_.config_->get_global_version() >= 12) {
         msg.ihr_fee = td::RefInt256{true, 0};
@@ -280,7 +280,7 @@ td::Result<schema::Message> ParseQuery::parse_message(td::Ref<vm::Cell> msg_cell
       }
       
       // msg.source = null, because it is external
-      TRY_RESULT_ASSIGN(msg.destination, convert::to_raw_address(msg_info.dest))
+      TRY_RESULT_ASSIGN(msg.destination, convert::to_std_address(msg_info.dest))
       msg.import_fee = block::tlb::t_Grams.as_integer_skip(msg_info.import_fee.write());
       TRY_RESULT_ASSIGN(msg.hash_norm, ext_in_msg_get_normalized_hash(msg_cell));
       return msg;
@@ -290,7 +290,7 @@ td::Result<schema::Message> ParseQuery::parse_message(td::Ref<vm::Cell> msg_cell
       if (!tlb::csr_unpack(message.info, msg_info)) {
         return td::Status::Error("Failed to unpack CommonMsgInfo::ext_out_msg_info");
       }
-      TRY_RESULT_ASSIGN(msg.source, convert::to_raw_address(msg_info.src));
+      TRY_RESULT_ASSIGN(msg.source, convert::to_std_address(msg_info.src));
       // msg.destination = null, because it is external
       msg.created_lt = static_cast<uint64_t>(msg_info.created_lt);
       msg.created_at = static_cast<uint32_t>(msg_info.created_at);

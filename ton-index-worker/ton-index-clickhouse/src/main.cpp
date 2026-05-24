@@ -6,12 +6,11 @@
 
 #include "crypto/vm/cp0.h"
 
-#include "InsertManagerClickhouse.h"
+#include "ActionDetector.h"
 #include "DataParser.h"
 #include "DbScanner.h"
-#include "EventProcessor.h"
 #include "IndexScheduler.h"
-
+#include "InsertManagerClickhouse.h"
 
 int main(int argc, char *argv[]) {
   SET_VERBOSITY_LEVEL(verbosity_INFO);

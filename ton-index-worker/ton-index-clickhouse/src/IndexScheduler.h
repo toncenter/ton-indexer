@@ -2,12 +2,11 @@
 #include <queue>
 #include "td/actor/actor.h"
 
-#include "IndexData.h"
-#include "DbScanner.h"
-#include "EventProcessor.h"
-#include "InsertManager.h"
+#include "ActionDetector.h"
 #include "DataParser.h"
-
+#include "DbScanner.h"
+#include "IndexData.h"
+#include "InsertManager.h"
 
 class IndexScheduler: public td::actor::Actor {
 private:

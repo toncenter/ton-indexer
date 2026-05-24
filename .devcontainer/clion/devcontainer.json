@@ -1,0 +1,17 @@
+{
+  "name": "ton-indexer-dev-clion",
+  "dockerComposeFile": "../docker-compose.yaml",
+  "service": "clion-dev",
+  "workspaceFolder": "/workspaces/ton-indexer",
+  "remoteUser": "dev",
+
+  "shutdownAction": "none",
+
+  "customizations": {
+    "jetbrains": {
+      "backend": "CLion"
+    }
+  },
+
+  "postCreateCommand": "git --version && cmake --version && ninja --version && clang++-20 --version"
+}

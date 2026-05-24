@@ -5,14 +5,14 @@
 #include <unordered_set>
 #include "td/actor/actor.h"
 
-#include "IndexData.h"
-#include "DbScanner.h"
-#include "EventProcessor.h"
-#include "TraceAssembler.h"
-#include "InsertManager.h"
+#include "ActionDetector.h"
 #include "DataParser.h"
-#include "smc-interfaces/InterfacesDetector.h"
+#include "DbScanner.h"
+#include "IndexData.h"
+#include "InsertManager.h"
 #include "Otel.h"
+#include "TraceAssembler.h"
+#include "smc-interfaces/InterfacesDetector.h"
 
 using Detector = InterfacesDetector<JettonWalletDetectorR, JettonMasterDetectorR,
                                       NftItemDetectorR, NftCollectionDetectorR,

@@ -4,9 +4,9 @@
 #include "validator/manager-disk.h"
 #include "validator/db/rootdb.hpp"
 
-#include "IndexData.h"
+#include "ActionDetector.h"
 #include "DataParser.h"
-#include "EventProcessor.h"
+#include "IndexData.h"
 
 enum ScannerMode { dbs_readonly, dbs_secondary };
 

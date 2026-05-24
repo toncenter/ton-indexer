@@ -67,7 +67,7 @@ private:
 
 struct PreparedMessageContentRow {
   td::Bits256 hash;
-  std::string body;
+  schema::Bytes body;
   std::uint32_t source_mc_seqno;
 
   KVROCKS_PREPARED_ROW_AS_TUPLE(hash, body);
@@ -75,7 +75,7 @@ struct PreparedMessageContentRow {
 
 struct PreparedAccountStateRow {
   td::Bits256 hash;
-  block::StdAddress account;
+  schema::StdAddress account;
   td::RefInt256 balance;
   std::string balance_extra_currencies;
   std::string account_status;
@@ -86,7 +86,7 @@ struct PreparedAccountStateRow {
 };
 
 struct PreparedLatestAccountStateRow {
-  block::StdAddress account;
+  schema::StdAddress account;
   td::Bits256 hash;
   td::RefInt256 balance;
   std::string balance_extra_currencies;
@@ -97,8 +97,8 @@ struct PreparedLatestAccountStateRow {
   std::optional<td::Bits256> frozen_hash;
   std::optional<td::Bits256> data_hash;
   std::optional<td::Bits256> code_hash;
-  std::optional<std::string> data_boc;
-  std::optional<std::string> code_boc;
+  std::optional<schema::Bytes> data_boc;
+  std::optional<schema::Bytes> code_boc;
   std::uint32_t source_mc_seqno;
 
   KVROCKS_PREPARED_ROW_AS_TUPLE(account, hash, balance, balance_extra_currencies, account_status,
@@ -107,10 +107,10 @@ struct PreparedLatestAccountStateRow {
 };
 
 struct PreparedJettonMasterRow {
-  block::StdAddress address;
+  schema::StdAddress address;
   td::RefInt256 total_supply;
   bool mintable;
-  std::optional<block::StdAddress> admin_address;
+  std::optional<schema::StdAddress> admin_address;
   std::optional<std::string> jetton_content;
   td::Bits256 jetton_wallet_code_hash;
   std::uint64_t last_transaction_lt;
@@ -125,9 +125,9 @@ struct PreparedJettonMasterRow {
 
 struct PreparedJettonWalletRow {
   td::RefInt256 balance;
-  block::StdAddress address;
-  block::StdAddress owner;
-  block::StdAddress jetton;
+  schema::StdAddress address;
+  schema::StdAddress owner;
+  schema::StdAddress jetton;
   std::uint64_t last_transaction_lt;
   td::Bits256 code_hash;
   td::Bits256 data_hash;
@@ -140,7 +140,7 @@ struct PreparedJettonWalletRow {
 };
 
 struct PreparedMintlessMasterRow {
-  block::StdAddress address;
+  schema::StdAddress address;
   bool is_indexed;
   std::uint32_t source_mc_seqno;
 
@@ -148,9 +148,9 @@ struct PreparedMintlessMasterRow {
 };
 
 struct PreparedNftCollectionRow {
-  block::StdAddress address;
+  schema::StdAddress address;
   td::RefInt256 next_item_index;
-  std::optional<block::StdAddress> owner_address;
+  std::optional<schema::StdAddress> owner_address;
   std::optional<std::string> collection_content;
   std::uint64_t last_transaction_lt;
   td::Bits256 code_hash;
@@ -163,16 +163,16 @@ struct PreparedNftCollectionRow {
 };
 
 struct PreparedNftItemRow {
-  block::StdAddress address;
+  schema::StdAddress address;
   bool init;
   td::RefInt256 index;
-  std::optional<block::StdAddress> collection_address;
-  std::optional<block::StdAddress> owner_address;
+  std::optional<schema::StdAddress> collection_address;
+  std::optional<schema::StdAddress> owner_address;
   std::optional<std::string> content;
   std::uint64_t last_transaction_lt;
   td::Bits256 code_hash;
   td::Bits256 data_hash;
-  std::optional<block::StdAddress> real_owner;
+  std::optional<schema::StdAddress> real_owner;
   bool destroyed;
   std::uint32_t source_mc_seqno;
 
@@ -181,11 +181,11 @@ struct PreparedNftItemRow {
 };
 
 struct PreparedDnsEntryRow {
-  block::StdAddress nft_item_address;
-  std::optional<block::StdAddress> nft_item_owner;
+  schema::StdAddress nft_item_address;
+  std::optional<schema::StdAddress> nft_item_owner;
   std::string domain;
-  std::optional<block::StdAddress> dns_next_resolver;
-  std::optional<block::StdAddress> dns_wallet;
+  std::optional<schema::StdAddress> dns_next_resolver;
+  std::optional<schema::StdAddress> dns_wallet;
   std::optional<td::Bits256> dns_site_adnl;
   std::optional<td::Bits256> dns_storage_bag_id;
   std::uint64_t last_transaction_lt;
@@ -197,16 +197,16 @@ struct PreparedDnsEntryRow {
 };
 
 struct PreparedGetgemsSaleRow {
-  block::StdAddress address;
+  schema::StdAddress address;
   bool is_complete;
   std::uint32_t created_at;
-  block::StdAddress marketplace_address;
-  block::StdAddress nft_address;
-  std::optional<block::StdAddress> nft_owner_address;
+  schema::StdAddress marketplace_address;
+  schema::StdAddress nft_address;
+  std::optional<schema::StdAddress> nft_owner_address;
   td::RefInt256 full_price;
-  block::StdAddress marketplace_fee_address;
+  schema::StdAddress marketplace_fee_address;
   td::RefInt256 marketplace_fee;
-  block::StdAddress royalty_address;
+  schema::StdAddress royalty_address;
   td::RefInt256 royalty_amount;
   std::optional<std::uint32_t> sold_at;
   std::optional<std::uint64_t> sold_query_id;
@@ -224,19 +224,19 @@ struct PreparedGetgemsSaleRow {
 };
 
 struct PreparedGetgemsAuctionRow {
-  block::StdAddress address;
+  schema::StdAddress address;
   bool end_flag;
   std::uint32_t end_time;
-  block::StdAddress mp_addr;
-  block::StdAddress nft_addr;
-  std::optional<block::StdAddress> nft_owner;
+  schema::StdAddress mp_addr;
+  schema::StdAddress nft_addr;
+  std::optional<schema::StdAddress> nft_owner;
   td::RefInt256 last_bid;
-  std::optional<block::StdAddress> last_member;
+  std::optional<schema::StdAddress> last_member;
   std::uint32_t min_step;
-  block::StdAddress mp_fee_addr;
+  schema::StdAddress mp_fee_addr;
   std::uint32_t mp_fee_factor;
   std::uint32_t mp_fee_base;
-  block::StdAddress royalty_fee_addr;
+  schema::StdAddress royalty_fee_addr;
   std::uint32_t royalty_fee_factor;
   std::uint32_t royalty_fee_base;
   td::RefInt256 max_bid;
@@ -247,8 +247,8 @@ struct PreparedGetgemsAuctionRow {
   std::optional<bool> activated;
   std::optional<std::uint32_t> step_time;
   std::optional<std::uint64_t> last_query_id;
-  std::optional<block::StdAddress> jetton_wallet;
-  std::optional<block::StdAddress> jetton_master;
+  std::optional<schema::StdAddress> jetton_wallet;
+  std::optional<schema::StdAddress> jetton_master;
   std::optional<bool> is_broken_state;
   std::optional<std::string> public_key;
   std::uint64_t last_transaction_lt;
@@ -265,11 +265,11 @@ struct PreparedGetgemsAuctionRow {
 };
 
 struct PreparedMultisigContractRow {
-  block::StdAddress address;
+  schema::StdAddress address;
   td::RefInt256 next_order_seqno;
   std::uint32_t threshold;
-  std::vector<block::StdAddress> signers;
-  std::vector<block::StdAddress> proposers;
+  std::vector<schema::StdAddress> signers;
+  std::vector<schema::StdAddress> proposers;
   std::uint64_t last_transaction_lt;
   td::Bits256 code_hash;
   td::Bits256 data_hash;
@@ -281,16 +281,16 @@ struct PreparedMultisigContractRow {
 };
 
 struct PreparedMultisigOrderRow {
-  block::StdAddress address;
-  block::StdAddress multisig_address;
+  schema::StdAddress address;
+  schema::StdAddress multisig_address;
   td::RefInt256 order_seqno;
   std::uint32_t threshold;
   bool sent_for_execution;
   td::RefInt256 approvals_mask;
   std::uint32_t approvals_num;
   td::RefInt256 expiration_date;
-  std::optional<std::string> order_boc;
-  std::vector<block::StdAddress> signers;
+  std::optional<schema::Bytes> order_boc;
+  std::vector<schema::StdAddress> signers;
   std::uint64_t last_transaction_lt;
   td::Bits256 code_hash;
   td::Bits256 data_hash;
@@ -303,9 +303,9 @@ struct PreparedMultisigOrderRow {
 };
 
 struct PreparedDedustPoolRow {
-  block::StdAddress address;
-  std::optional<block::StdAddress> asset_1;
-  std::optional<block::StdAddress> asset_2;
+  schema::StdAddress address;
+  std::optional<schema::StdAddress> asset_1;
+  std::optional<schema::StdAddress> asset_2;
   td::RefInt256 reserve_1;
   td::RefInt256 reserve_2;
   std::string pool_type;
@@ -322,14 +322,14 @@ struct PreparedDedustPoolRow {
 };
 
 struct PreparedVestingContractRow {
-  block::StdAddress address;
+  schema::StdAddress address;
   std::uint32_t vesting_start_time;
   std::uint32_t vesting_total_duration;
   std::uint32_t unlock_period;
   std::uint32_t cliff_duration;
   td::RefInt256 vesting_total_amount;
-  block::StdAddress vesting_sender_address;
-  block::StdAddress owner_address;
+  schema::StdAddress vesting_sender_address;
+  schema::StdAddress owner_address;
   std::uint64_t last_transaction_lt;
   td::Bits256 code_hash;
   td::Bits256 data_hash;
@@ -342,22 +342,22 @@ struct PreparedVestingContractRow {
 };
 
 struct PreparedVestingWhitelistRow {
-  block::StdAddress vesting_contract_address;
-  block::StdAddress wallet_address;
+  schema::StdAddress vesting_contract_address;
+  schema::StdAddress wallet_address;
   std::uint32_t source_mc_seqno;
 
   KVROCKS_PREPARED_ROW_AS_TUPLE(vesting_contract_address, wallet_address);
 };
 
 struct PreparedTelemintRow {
-  block::StdAddress address;
+  schema::StdAddress address;
   std::string token_name;
-  std::optional<block::StdAddress> bidder_address;
+  std::optional<schema::StdAddress> bidder_address;
   td::RefInt256 bid;
   std::uint32_t bid_ts;
   td::RefInt256 min_bid;
   std::uint32_t end_time;
-  std::optional<block::StdAddress> beneficiary_address;
+  std::optional<schema::StdAddress> beneficiary_address;
   td::RefInt256 initial_min_bid;
   td::RefInt256 max_bid;
   td::RefInt256 min_bid_step;
@@ -365,7 +365,7 @@ struct PreparedTelemintRow {
   std::uint32_t duration;
   int royalty_numerator;
   int royalty_denominator;
-  block::StdAddress royalty_destination;
+  schema::StdAddress royalty_destination;
   std::uint64_t last_transaction_lt;
   td::Bits256 code_hash;
   td::Bits256 data_hash;
@@ -436,7 +436,7 @@ struct LatestAccountStateSourceRow {
   std::uint32_t source_mc_seqno;
 };
 
-std::string content_to_json_string(const std::map<std::string, std::string>& content);
+std::string content_to_json_string(const schema::TokenContent& content);
 std::string extra_currencies_to_json_string(const std::map<std::uint32_t, td::RefInt256>& extra_currencies);
 std::optional<std::string> serialize_cell_to_base64(td::Ref<vm::Cell> cell);
 PreparedLatestAccountStateRow prepare_latest_account_state_row(const LatestAccountStateSourceRow& source,

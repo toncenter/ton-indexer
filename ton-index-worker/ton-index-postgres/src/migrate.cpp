@@ -66,9 +66,9 @@ void run_1_3_0_migrations(const std::string& connection_string, bool custom_type
     if (custom_types) {
       exec_query("create extension if not exists pgton;");
     } else {
-      exec_query("create domain tonhash as char(44);");
-      exec_query("create domain tonaddr as varchar;");
-      exec_query("create domain tonbytes as text;");
+      exec_query("create domain tonhash as bytea;");
+      exec_query("create domain tonaddr as bytea;");
+      exec_query("create domain tonbytes as bytea;");
     }
 
     exec_query("create type account_status_type as enum ('uninit', 'frozen', 'active', 'nonexist');");

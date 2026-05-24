@@ -591,7 +591,7 @@ func createTables(ctx context.Context, pool *pgxpool.Pool, createAddressMetadata
 	`)
 
 	if err != nil {
-		return fmt.Errorf("failed to create background_tasks table: %v", err)
+		return fmt.Errorf("failed to create _background_tasks table: %v", err)
 	}
 
 	if !createAddressMetadata {
@@ -649,7 +649,7 @@ func updateStalledTasks(ctx context.Context, pool *pgxpool.Pool) {
 		}
 
 		_, err = conn.Exec(ctx, `
-            UPDATE background_tasks
+            UPDATE _background_tasks
             SET status = 'ready',
                 retry_at =  EXTRACT(EPOCH FROM NOW())::bigint + LEAST(
                     $1 * POWER($2, retries - 1),
@@ -817,7 +817,7 @@ func main() {
 				log.Printf("failed to acquire worker: %s\n", err.Error())
 				continue
 			}
-			_, err := pool.Exec(ctx, `UPDATE background_tasks
+			_, err := pool.Exec(ctx, `UPDATE _background_tasks
 					SET status = 'in_progress',
 						started_at = EXTRACT(EPOCH FROM NOW())::bigint
 					WHERE id = $1`,

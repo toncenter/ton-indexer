@@ -7,11 +7,10 @@
 #include "crypto/vm/cp0.h"
 
 // #include "InsertManagerPostgres.h"
+#include "ActionDetector.h"
 #include "DataParser.h"
 #include "DbScanner.h"
-#include "EventProcessor.h"
 #include "IntegrityChecker.h"
-
 
 int main(int argc, char *argv[]) {
   SET_VERBOSITY_LEVEL(verbosity_INFO);

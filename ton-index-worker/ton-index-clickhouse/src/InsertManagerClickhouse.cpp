@@ -1516,10 +1516,10 @@ void InsertBatchClickhouse::insert_nfts(clickhouse::Client &client) {
 
         for (const auto& task : insert_tasks_) {
             for (const auto& transfer : task.parsed_block_->get_events<schema::NFTTransfer>()) {
-                auto custom_payload_boc_r = convert::to_bytes(transfer.custom_payload);
+                auto custom_payload_boc_r = convert::to_base64_string(transfer.custom_payload);
                 auto custom_payload_boc = custom_payload_boc_r.is_ok() ? custom_payload_boc_r.move_as_ok() : std::nullopt;
 
-                auto forward_payload_boc_r = convert::to_bytes(transfer.forward_payload);
+                auto forward_payload_boc_r = convert::to_base64_string(transfer.forward_payload);
                 auto forward_payload_boc = forward_payload_boc_r.is_ok() ? forward_payload_boc_r.move_as_ok() : std::nullopt;
 
                 auto nft_item_address = convert::to_raw_address(transfer.nft_item);
@@ -1716,10 +1716,10 @@ void InsertBatchClickhouse::insert_jettons(clickhouse::Client &client) {
 
         for (const auto& task : insert_tasks_) {
             for (const auto& transfer : task.parsed_block_->get_events<schema::JettonTransfer>()) {
-                auto custom_payload_boc_r = convert::to_bytes(transfer.custom_payload);
+                auto custom_payload_boc_r = convert::to_base64_string(transfer.custom_payload);
                 auto custom_payload_boc = custom_payload_boc_r.is_ok() ? custom_payload_boc_r.move_as_ok() : std::nullopt;
 
-                auto forward_payload_boc_r = convert::to_bytes(transfer.forward_payload);
+                auto forward_payload_boc_r = convert::to_base64_string(transfer.forward_payload);
                 auto forward_payload_boc = forward_payload_boc_r.is_ok() ? forward_payload_boc_r.move_as_ok() : std::nullopt;
 
                 std::string jetton_master_address;
@@ -1787,7 +1787,7 @@ void InsertBatchClickhouse::insert_jettons(clickhouse::Client &client) {
         
         for (const auto& task : insert_tasks_) {
             for (const auto& burn : task.parsed_block_->get_events<schema::JettonBurn>()) {
-                auto custom_payload_boc_r = convert::to_bytes(burn.custom_payload);
+                auto custom_payload_boc_r = convert::to_base64_string(burn.custom_payload);
                 auto custom_payload_boc = custom_payload_boc_r.is_ok() ? custom_payload_boc_r.move_as_ok() : std::nullopt;
 
                 std::string jetton_master_address;

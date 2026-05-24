@@ -75,17 +75,20 @@ template<> struct string_traits<block::StdAddress>
     return zview{begin, static_cast<std::size_t>(into_buf(begin, end, value) - begin - 1)};
   }
 
+  static pqxx::bytes to_bytes(const block::StdAddress& value) {
+    pqxx::bytes data(36, std::byte{0});
+    std::memcpy(data.data(), &value.workchain, sizeof(value.workchain));
+    std::memcpy(data.data() + 4, value.addr.data(), 32);
+    return data;
+  }
+
   static char *into_buf(char *begin, char *end, block::StdAddress const &value) {
-    std::ostringstream stream;
-    stream << value.workchain << ":" << value.addr;
-    auto text = stream.str();
-    if (pqxx::internal::cmp_greater_equal(std::size(text), end - begin))
-      throw conversion_overrun{"Not enough buffer for block::StdAddress."};
-    std::memcpy(begin, text.c_str(), std::size(text) + 1);
-    return begin + std::size(text) + 1;
+    auto data = to_bytes(value);
+    return string_traits<pqxx::bytes>::into_buf(begin, end, data);
   }
   static std::size_t size_buffer(block::StdAddress const &value) noexcept {
-    return 80;
+    auto data = to_bytes(value);
+    return string_traits<pqxx::bytes>::size_buffer(data);
   }
 };
 
@@ -100,15 +103,19 @@ template<> struct string_traits<td::Bits256>
     return zview{begin, static_cast<std::size_t>(into_buf(begin, end, value) - begin - 1)};
   }
 
+  static pqxx::bytes to_bytes(const td::Bits256& value) {
+    pqxx::bytes data(32, std::byte{0});
+    std::memcpy(data.data(), value.data(), 32);
+    return data;
+  }
+
   static char *into_buf(char *begin, char *end, td::Bits256 const &value) {
-    auto text = td::base64_encode(value.as_slice());
-    if (pqxx::internal::cmp_greater_equal(std::size(text), end - begin))
-      throw conversion_overrun{"Not enough buffer for td::Bits256."};
-    std::memcpy(begin, text.c_str(), std::size(text) + 1);
-    return begin + std::size(text) + 1;
+    auto data = to_bytes(value);
+    return string_traits<pqxx::bytes>::into_buf(begin, end, data);
   }
   static std::size_t size_buffer(td::Bits256 const &value) noexcept {
-    return 64;
+    auto data = to_bytes(value);
+    return string_traits<pqxx::bytes>::size_buffer(data);
   }
 };
 
@@ -123,15 +130,45 @@ template<> struct string_traits<vm::CellHash>
     return zview{begin, static_cast<std::size_t>(into_buf(begin, end, value) - begin - 1)};
   }
 
+  static pqxx::bytes to_bytes(const vm::CellHash& value) {
+    pqxx::bytes data(32, std::byte{0});
+    std::memcpy(data.data(), value.as_slice().data(), 32);
+    return data;
+  }
+
   static char *into_buf(char *begin, char *end, vm::CellHash const &value) {
-    auto text = td::base64_encode(value.as_slice());
-    if (pqxx::internal::cmp_greater_equal(std::size(text), end - begin))
-      throw conversion_overrun{"Not enough buffer for vm::CellHash."};
-    std::memcpy(begin, text.c_str(), std::size(text) + 1);
-    return begin + std::size(text) + 1;
+    auto data = to_bytes(value);
+    return string_traits<pqxx::bytes>::into_buf(begin, end, data);
   }
   static std::size_t size_buffer(vm::CellHash const &value) noexcept {
-    return 64;
+    auto data = to_bytes(value);
+    return string_traits<pqxx::bytes>::size_buffer(data);
+  }
+};
+
+template<> struct nullness<std::vector<std::byte>> : pqxx::no_null<std::vector<std::byte>> {};
+
+template<> struct string_traits<std::vector<std::byte>>
+{
+  static constexpr bool converts_to_string{true};
+  static constexpr bool converts_from_string{false};
+
+  static zview to_buf(char *begin, char *end, std::vector<std::byte> const &value) {
+    return zview{begin, static_cast<std::size_t>(into_buf(begin, end, value) - begin - 1)};
+  }
+
+  static pqxx::bytes to_bytes(const std::vector<std::byte>& value) {
+    pqxx::bytes data{value.begin(), value.end()};
+    return data;
+  }
+
+  static char *into_buf(char *begin, char *end, std::vector<std::byte> const &value) {
+    auto data = to_bytes(value);
+    return string_traits<pqxx::bytes>::into_buf(begin, end, data);
+  }
+  static std::size_t size_buffer(std::vector<std::byte> const &value) noexcept {
+    auto data = to_bytes(value);
+    return string_traits<pqxx::bytes>::size_buffer(data);
   }
 };
 }

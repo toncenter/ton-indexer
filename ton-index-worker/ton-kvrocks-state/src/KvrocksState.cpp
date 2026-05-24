@@ -372,6 +372,14 @@ void json_put_string(td::JsonObjectScope& obj, td::Slice field, const std::strin
   obj(field, value);
 }
 
+
+void json_put_bytes(td::JsonObjectScope& obj, td::Slice field, const schema::Bytes& value) {
+  const auto begin = reinterpret_cast<const char*>(value.data());
+  const auto end = begin + value.size();
+  obj(field, std::string(begin, end));
+}
+
+
 void json_put_raw_json(td::JsonObjectScope& obj, td::Slice field, const std::string& value) {
   obj(field, td::JsonRaw(value));
 }
@@ -408,6 +416,14 @@ void json_put_optional_address(td::JsonObjectScope& obj, td::Slice field,
 void json_put_optional_string(td::JsonObjectScope& obj, td::Slice field, const std::optional<std::string>& value) {
   if (value) {
     json_put_string(obj, field, *value);
+  } else {
+    json_put_null(obj, field);
+  }
+}
+
+void json_put_optional_bytes(td::JsonObjectScope& obj, td::Slice field, const std::optional<schema::Bytes>& value) {
+  if (value) {
+    json_put_bytes(obj, field, *value);
   } else {
     json_put_null(obj, field);
   }
@@ -474,7 +490,7 @@ std::string build_payload(const PreparedMessageContentRow& row) {
   return build_json_payload([&](td::JsonObjectScope& obj) {
     json_put_common(obj, row.source_mc_seqno);
     json_put_hash(obj, "hash", row.hash);
-    json_put_string(obj, "body", row.body);
+    json_put_bytes(obj, "body", row.body);
   });
 }
 
@@ -506,8 +522,8 @@ std::string build_payload(const PreparedLatestAccountStateRow& row) {
     json_put_optional_hash(obj, "frozen_hash", row.frozen_hash);
     json_put_optional_hash(obj, "data_hash", row.data_hash);
     json_put_optional_hash(obj, "code_hash", row.code_hash);
-    json_put_optional_string(obj, "data_boc", row.data_boc);
-    json_put_optional_string(obj, "code_boc", row.code_boc);
+    json_put_optional_bytes(obj, "data_boc", row.data_boc);
+    json_put_optional_bytes(obj, "code_boc", row.code_boc);
   });
 }
 
@@ -684,7 +700,7 @@ std::string build_payload(const PreparedMultisigOrderRow& row) {
     json_put_int256(obj, "approvals_mask", row.approvals_mask);
     json_put_i64(obj, "approvals_num", row.approvals_num);
     json_put_int256(obj, "expiration_date", row.expiration_date);
-    json_put_optional_string(obj, "order_boc", row.order_boc);
+    json_put_optional_bytes(obj, "order_boc", row.order_boc);
     json_put_raw_json(obj, "signers", address_array_json(row.signers));
     json_put_u64_string(obj, "last_transaction_lt", row.last_transaction_lt);
     json_put_hash(obj, "code_hash", row.code_hash);
@@ -1450,20 +1466,26 @@ std::optional<std::string> serialize_cell_to_base64(td::Ref<vm::Cell> cell) {
 PreparedLatestAccountStateRow prepare_latest_account_state_row(const LatestAccountStateSourceRow& source,
                                                                std::int32_t max_data_depth) {
   const auto& account_state = source.account_state;
-  std::optional<std::string> code_str = std::nullopt;
-  std::optional<std::string> data_str = std::nullopt;
+  std::optional<schema::Bytes> code = std::nullopt;
+  std::optional<schema::Bytes> data = std::nullopt;
 
   if (max_data_depth >= 0 && account_state.data.not_null() &&
       (max_data_depth == 0 || account_state.data->get_depth() <= max_data_depth)) {
-    data_str = serialize_cell_to_base64(account_state.data);
+    auto r_data = convert::to_bytes(account_state.data);
+    if (r_data.is_ok()) {
+      data = r_data.move_as_ok();
+    }
   } else if (account_state.data.not_null()) {
     LOG(DEBUG) << "Large account data: " << account_state.account
                << " Depth: " << account_state.data->get_depth();
   }
 
-  code_str = serialize_cell_to_base64(account_state.code);
-  if (code_str && code_str->length() > 128000) {
-    LOG(WARNING) << "Large account code: " << account_state.account;
+  auto r_code = convert::to_bytes(account_state.code);
+  if (r_code.is_ok()) {
+    code = r_code.move_as_ok();
+    if (code.has_value() && code.value().size() > 128000) {
+      LOG(WARNING) << "Large account code: " << account_state.account;
+    }
   }
 
   return PreparedLatestAccountStateRow{
@@ -1478,8 +1500,8 @@ PreparedLatestAccountStateRow prepare_latest_account_state_row(const LatestAccou
     .frozen_hash = account_state.frozen_hash,
     .data_hash = account_state.data_hash,
     .code_hash = account_state.code_hash,
-    .data_boc = std::move(data_str),
-    .code_boc = std::move(code_str),
+    .data_boc = std::move(data),
+    .code_boc = std::move(code),
     .source_mc_seqno = source.source_mc_seqno,
   };
 }
@@ -2325,9 +2347,12 @@ StateBatch prepare_point_state_batch(const std::vector<PointStateData>& data,
     batch.multisig_orders.reserve(ordered.size());
     for (const auto& [_, value_with_source_ptr] : ordered) {
       const auto& value = value_with_source_ptr->value;
-      std::optional<std::string> order_boc = std::nullopt;
+      std::optional<schema::Bytes> order_boc = std::nullopt;
       if (value.order.not_null()) {
-        order_boc = serialize_cell_to_base64(value.order);
+        auto r_order_boc = convert::to_bytes(value.order);
+        if (r_order_boc.is_ok()) {
+          order_boc = r_order_boc.move_as_ok();
+        }
       }
       batch.multisig_orders.push_back({
         .address = value.address,
@@ -2338,7 +2363,7 @@ StateBatch prepare_point_state_batch(const std::vector<PointStateData>& data,
         .approvals_mask = value.approvals_mask,
         .approvals_num = value.approvals_num,
         .expiration_date = value.expiration_date,
-        .order_boc = std::move(order_boc),
+        .order_boc = order_boc,
         .signers = value.signers,
         .last_transaction_lt = value.last_transaction_lt,
         .code_hash = value.code_hash,

@@ -91,7 +91,19 @@ std::string convert::to_raw_address(block::StdAddress address) {
   return std::to_string(address.workchain) + ":" + address.addr.to_hex();
 }
 
-td::Result<std::optional<std::string>> convert::to_bytes(td::Ref<vm::Cell> cell) {
+td::Result<std::optional<std::vector<std::byte>>> convert::to_bytes(td::Ref<vm::Cell> cell) {
+  if (cell.is_null()) {
+    return std::nullopt;
+  }
+  TRY_RESULT(boc, vm::std_boc_serialize(cell, vm::BagOfCells::Mode::WithCRC32C));
+  auto boc_slice = boc.as_slice();
+
+  const auto* begin = reinterpret_cast<const std::byte*>(boc_slice.data());
+  const auto* end = begin + boc_slice.size();
+  return std::vector<std::byte>{begin, end};
+}
+
+td::Result<std::optional<std::string>> convert::to_base64_string(td::Ref<vm::Cell> cell) {
   if (cell.is_null()) {
     return std::nullopt;
   }
