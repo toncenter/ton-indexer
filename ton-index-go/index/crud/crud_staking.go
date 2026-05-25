@@ -176,10 +176,17 @@ func (db *DbClient) GetNominatorRewards(
 		return nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
 
-	return &models.NominatorRewardsResponse{
+	response := &models.NominatorRewardsResponse{
 		TotalOnPeriod: totalOnPeriod.String(),
 		Rewards:       rewards,
-	}, nil
+	}
+	if utimeReq.StartUtime != nil {
+		response.StartUtime = *utimeReq.StartUtime
+	}
+	if utimeReq.EndUtime != nil {
+		response.EndUtime = *utimeReq.EndUtime
+	}
+	return response, nil
 }
 
 func (db *DbClient) GetNominatorPools(nominatorAddr string, settings models.RequestSettings) ([]models.NominatorPoolPosition, error) {

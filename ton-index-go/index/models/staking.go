@@ -21,6 +21,12 @@ type NominatorPoolEvent struct {
 	WithdrawRequestAfter  bool           `json:"withdraw_request_after"`
 } // @name NominatorPoolEvent
 
+type NominatorPoolEventsResponse struct {
+	StartUtime UtimeType            `json:"start_utime"`
+	EndUtime   UtimeType            `json:"end_utime"`
+	Events     []NominatorPoolEvent `json:"events"`
+} // @name NominatorPoolEventsResponse
+
 type NominatorPoolInfo struct {
 	StakeAmountSent      string                `json:"stake_amount_sent"`
 	ValidatorAmount      string                `json:"validator_amount"`
@@ -46,6 +52,10 @@ type NominatorPoolPosition struct {
 	PendingBalance string         `json:"pending_balance"`
 } // @name NominatorPoolPosition
 
+type NominatorPoolsResponse struct {
+	NominatorPools []NominatorPoolPosition `json:"nominator_pools"`
+} // @name NominatorPoolsResponse
+
 type NominatorReward struct {
 	Utime       int32     `json:"utime"`
 	Reward      string    `json:"reward"`
@@ -57,6 +67,8 @@ type NominatorReward struct {
 } // @name NominatorReward
 
 type NominatorRewardsResponse struct {
+	StartUtime    UtimeType         `json:"start_utime"`
+	EndUtime      UtimeType         `json:"end_utime"`
 	TotalOnPeriod string            `json:"total_on_period"`
 	Rewards       []NominatorReward `json:"rewards"`
 } // @name NominatorRewardsResponse

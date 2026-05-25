@@ -2120,7 +2120,7 @@ func GetPool(c *fiber.Ctx) error {
 // @param start_utime query integer false "Query events with timestamp at or after given timestamp. Defaults to 31 days before end_utime or now. Time range must not exceed 31 days." minimum(0)
 // @param end_utime query integer false "Query events with timestamp at or before given timestamp. Defaults to now. Time range must not exceed 31 days." minimum(0)
 // @produce json
-// @success 200 {array} models.NominatorPoolEvent
+// @success 200 {object} models.NominatorPoolEventsResponse
 // @failure 422 {object} models.IndexError
 // @failure 500 {object} models.IndexError
 // @router /api/v3/nominators/events [get]
@@ -2151,7 +2151,11 @@ func GetNominatorPoolEvents(c *fiber.Ctx) error {
 		return err
 	}
 
-	return c.Status(200).JSON(events)
+	return c.Status(200).JSON(models.NominatorPoolEventsResponse{
+		StartUtime: *utimeReq.StartUtime,
+		EndUtime:   *utimeReq.EndUtime,
+		Events:     events,
+	})
 }
 
 // GetNominatorPools godoc
@@ -2160,7 +2164,7 @@ func GetNominatorPoolEvents(c *fiber.Ctx) error {
 // @id getNominatorPools
 // @param nominator query string true "Nominator address in any form"
 // @produce json
-// @success 200 {array} models.NominatorPoolPosition
+// @success 200 {object} models.NominatorPoolsResponse
 // @failure 422 {object} models.IndexError
 // @failure 500 {object} models.IndexError
 // @router /api/v3/nominators/nominatorPools [get]
@@ -2179,7 +2183,9 @@ func GetNominatorPools(c *fiber.Ctx) error {
 		return err
 	}
 
-	return c.Status(200).JSON(pools)
+	return c.Status(200).JSON(models.NominatorPoolsResponse{
+		NominatorPools: pools,
+	})
 }
 
 // GetNominatorRewards godoc
