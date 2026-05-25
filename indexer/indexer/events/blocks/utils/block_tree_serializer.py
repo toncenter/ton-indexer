@@ -82,8 +82,6 @@ from indexer.events.blocks.tgbtc import TgBTCDkgLogBlock, TgBTCMintBlock, TgBTCB
 
 logger = logging.getLogger(__name__)
 
-NOMINATOR_POOL_DEPOSIT_PROCESSING_FEE = 1_000_000_000
-
 def _addr(addr: AccountId | Asset | None) -> str | None:
     if addr is None:
         return None
@@ -656,7 +654,7 @@ def _fill_nominator_pool_deposit_action(block: NominatorPoolDepositBlock, action
     action.type = 'stake_deposit'
     action.source = block.data.source.as_str()
     action.destination = block.data.pool.as_str()
-    action.amount = max(block.data.value.value - NOMINATOR_POOL_DEPOSIT_PROCESSING_FEE, 0)
+    action.amount = block.data.value.value
     action.staking_data = {
         'provider': 'nominator'
     }
