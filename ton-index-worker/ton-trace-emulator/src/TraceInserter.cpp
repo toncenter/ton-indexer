@@ -7,6 +7,9 @@
 
 namespace {
 
+constexpr bool kPipelineTransactionCommands = false;
+constexpr bool kCreateDedicatedTransactionConnection = false;
+
 std::string finality_name(FinalityState finality) {
     switch (finality) {
         case FinalityState::Emulated:
@@ -319,5 +322,10 @@ public:
 };
 
 void RedisInsertManager::insert(Trace trace, td::Promise<td::Unit> promise, MeasurementPtr measurement) {
-    td::actor::create_actor<TraceInserter>("TraceInserter", redis_.transaction(), std::move(trace), std::move(promise), measurement).release();
+    td::actor::create_actor<TraceInserter>(
+        "TraceInserter",
+        redis_.transaction(kPipelineTransactionCommands, kCreateDedicatedTransactionConnection),
+        std::move(trace),
+        std::move(promise),
+        measurement).release();
 }
