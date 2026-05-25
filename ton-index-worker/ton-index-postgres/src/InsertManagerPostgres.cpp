@@ -108,6 +108,7 @@ private:
   std::int32_t latest_states_prepare_chunk_size_;
   bool with_copy_{true};
   bool is_leader_{false};
+  bool state_upserts_committed_{false};
   std::optional<LeaderHeartbeatGuard> leader_heartbeat_guard_;
   std::shared_ptr<PreparedBatchPostgres> prepared_batch_;
   std::shared_ptr<InsertBatchPostgresPrepareState> prepare_state_;
@@ -145,6 +146,8 @@ private:
   bool try_acquire_leader_lock(pqxx::connection& c, const std::string& worker_id);
   InsertManagerInterface::InsertResult get_insert_result() const;
   void do_insert();
+  std::string build_state_upsert_query(pqxx::work &txn);
+  void insert_state_upserts(pqxx::work &txn);
   void begin_prepare();
   void spawn_next_latest_account_state_chunks();
   void on_latest_account_state_chunk_prepared(std::uint64_t generation, std::size_t chunk_index,
@@ -1868,6 +1871,30 @@ void InsertBatchPostgres::maybe_commit_prepared_batch() {
   }
 }
 
+std::string InsertBatchPostgres::build_state_upsert_query(pqxx::work &txn) {
+  std::string upsert_query;
+  upsert_query += insert_jetton_masters(txn);
+  upsert_query += insert_jetton_wallets(txn);
+  upsert_query += insert_nft_collections(txn);
+  upsert_query += insert_getgems_nft_auctions(txn);
+  upsert_query += insert_getgems_nft_sales(txn);
+  upsert_query += insert_nft_items(txn);
+  upsert_query += insert_multisig_contracts(txn);
+  upsert_query += insert_multisig_orders(txn);
+  upsert_query += insert_dedust_pools(txn);
+  upsert_query += insert_latest_account_states(txn);
+  upsert_query += insert_vesting(txn);
+  upsert_query += insert_telemint(txn);
+  return upsert_query;
+}
+
+void InsertBatchPostgres::insert_state_upserts(pqxx::work &txn) {
+  auto upsert_query = build_state_upsert_query(txn);
+  if (!upsert_query.empty()) {
+    txn.exec0(upsert_query);
+  }
+}
+
 void InsertBatchPostgres::commit_prepared_batch() {
   SCOPE_EXIT {
     release_leader_heartbeat();
@@ -1876,6 +1903,21 @@ void InsertBatchPostgres::commit_prepared_batch() {
   td::Timer connect_timer;
   pqxx::connection c(connection_string_);
   connect_timer.pause();
+
+  td::Timer states_timer{true};
+  td::Timer commit_timer{true};
+  if (!state_upserts_committed_) {
+    pqxx::work state_txn(c);
+    states_timer.resume();
+    insert_state_upserts(state_txn);
+    states_timer.pause();
+
+    commit_timer.resume();
+    ensure_still_leader(state_txn, worker_id_);
+    state_txn.commit();
+    commit_timer.pause();
+    state_upserts_committed_ = true;
+  }
 
   td::Timer data_timer;
   pqxx::work txn(c);
@@ -1893,26 +1935,6 @@ void InsertBatchPostgres::commit_prepared_batch() {
   insert_contract_methods(txn);
   data_timer.pause();
 
-  td::Timer states_timer;
-  std::string upsert_query;
-  upsert_query += insert_jetton_masters(txn);
-  upsert_query += insert_jetton_wallets(txn);
-  upsert_query += insert_nft_collections(txn);
-  upsert_query += insert_getgems_nft_auctions(txn);
-  upsert_query += insert_getgems_nft_sales(txn);
-  upsert_query += insert_nft_items(txn);
-  upsert_query += insert_multisig_contracts(txn);
-  upsert_query += insert_multisig_orders(txn);
-  upsert_query += insert_dedust_pools(txn);
-  upsert_query += insert_latest_account_states(txn);
-  upsert_query += insert_vesting(txn);
-  upsert_query += insert_telemint(txn);
-
-  td::Timer commit_timer{true};
-  if (!upsert_query.empty()) {
-    txn.exec0(upsert_query);
-  }
-  states_timer.pause();
   commit_timer.resume();
   ensure_still_leader(txn, worker_id_);
   txn.commit();
@@ -1935,6 +1957,7 @@ void InsertBatchPostgres::reset_prepare_state(bool keep_prepared_batch) {
   prepare_state_.reset();
   if (!keep_prepared_batch) {
     prepared_batch_.reset();
+    state_upserts_committed_ = false;
   }
 }
 
