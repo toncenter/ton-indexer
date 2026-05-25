@@ -109,6 +109,7 @@ private:
   bool with_copy_{true};
   bool is_leader_{false};
   bool state_upserts_committed_{false};
+  bool message_contents_committed_{false};
   std::optional<LeaderHeartbeatGuard> leader_heartbeat_guard_;
   std::shared_ptr<PreparedBatchPostgres> prepared_batch_;
   std::shared_ptr<InsertBatchPostgresPrepareState> prepare_state_;
@@ -1906,6 +1907,7 @@ void InsertBatchPostgres::commit_prepared_batch() {
 
   td::Timer states_timer{true};
   td::Timer commit_timer{true};
+  td::Timer data_timer{true};
   if (!state_upserts_committed_) {
     pqxx::work state_txn(c);
     states_timer.resume();
@@ -1919,7 +1921,20 @@ void InsertBatchPostgres::commit_prepared_batch() {
     state_upserts_committed_ = true;
   }
 
-  td::Timer data_timer;
+  if (!message_contents_committed_) {
+    pqxx::work message_contents_txn(c);
+    data_timer.resume();
+    insert_message_contents(message_contents_txn);
+    data_timer.pause();
+
+    commit_timer.resume();
+    ensure_still_leader(message_contents_txn, worker_id_);
+    message_contents_txn.commit();
+    commit_timer.pause();
+    message_contents_committed_ = true;
+  }
+
+  data_timer.resume();
   pqxx::work txn(c);
 
   insert_blocks(txn, with_copy_);
@@ -1927,7 +1942,6 @@ void InsertBatchPostgres::commit_prepared_batch() {
   insert_transactions(txn, with_copy_);
   insert_messages(txn, with_copy_);
   insert_account_states(txn, with_copy_);
-  insert_message_contents(txn);
   insert_jetton_transfers(txn, with_copy_);
   insert_jetton_burns(txn, with_copy_);
   insert_nft_transfers(txn, with_copy_);
@@ -1958,6 +1972,7 @@ void InsertBatchPostgres::reset_prepare_state(bool keep_prepared_batch) {
   if (!keep_prepared_batch) {
     prepared_batch_.reset();
     state_upserts_committed_ = false;
+    message_contents_committed_ = false;
   }
 }
 
