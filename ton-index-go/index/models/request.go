@@ -64,6 +64,12 @@ type TopAccountsByBalanceRequest struct {
 }
 
 // requests
+type SortType string
+
+const (
+	DESC SortType = "desc"
+	ASC  SortType = "asc"
+)
 
 type BlocksRequest struct {
 	Workchain *int32    `query:"workchain"`
@@ -301,13 +307,6 @@ type NominatorPoolEventsRequest struct {
 	Pool      *AccountAddress `query:"pool"`
 	Nominator *AccountAddress `query:"nominator"`
 }
-
-type SortType string
-
-const (
-	DESC SortType = "desc"
-	ASC  SortType = "asc"
-)
 
 type TestRequest struct {
 	Hash  []HashType       `query:"my_hash"`
