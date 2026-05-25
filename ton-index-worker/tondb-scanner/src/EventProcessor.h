@@ -6,7 +6,6 @@
 #include "emulator/transaction-emulator.h"
 #include "smc-interfaces/NominatorPool.h"
 #include "td/utils/base64.h"
-#include "validators-tlb.h"
 
 #include <algorithm>
 #include <map>
@@ -277,38 +276,52 @@ public:
   }
 
   td::Result<td::Ref<vm::Cell>> make_shard_account(td::Ref<vm::Cell> account_cell,
-                                                   const schema::Transaction& first_transaction) {
+                                                   const td::Bits256& last_trans_hash,
+                                                   uint64_t last_trans_lt) {
     vm::CellBuilder cb;
     if (!cb.store_ref_bool(std::move(account_cell)) ||
-        !cb.store_bits_bool(first_transaction.prev_trans_hash) ||
-        !cb.store_long_bool(first_transaction.prev_trans_lt, 64)) {
+        !cb.store_bits_bool(last_trans_hash) ||
+        !cb.store_long_bool(last_trans_lt, 64)) {
       return td::Status::Error("Failed to build ShardAccount");
     }
     return cb.finalize();
+  }
+
+  td::Result<block::Account> load_account_from_celldb(const block::StdAddress& address,
+                                                      const td::Bits256& account_state_hash,
+                                                      const td::Bits256& last_trans_hash,
+                                                      uint64_t last_trans_lt,
+                                                      uint32_t now) {
+    if (!block_->cell_db_reader_) {
+      return td::Status::Error("cell_db_reader not available");
+    }
+
+    auto account_cell_r = block_->cell_db_reader_->load_cell(account_state_hash.as_slice());
+    if (account_cell_r.is_error()) {
+      return account_cell_r.move_as_error_prefix("Failed to load account state: ");
+    }
+    TRY_RESULT(shard_account_cell, make_shard_account(account_cell_r.move_as_ok(), last_trans_hash, last_trans_lt));
+
+    bool is_special = address.workchain == ton::masterchainId &&
+                      block_->mc_block_.config_->is_special_smartcontract(address.addr);
+    block::Account account(address.workchain, address.addr.bits());
+    if (!account.unpack(vm::load_cell_slice_ref(shard_account_cell), now, is_special)) {
+      return td::Status::Error("Failed to unpack ShardAccount");
+    }
+    return account;
   }
 
   td::Result<block::Account> make_initial_account(const std::vector<const schema::Transaction*>& transactions) {
     if (transactions.empty()) {
       return td::Status::Error("No transactions for pool replay");
     }
-    if (!block_->cell_db_reader_) {
-      return td::Status::Error("cell_db_reader not available");
-    }
 
     const auto& first_transaction = *transactions.front();
-    auto account_cell_r = block_->cell_db_reader_->load_cell(first_transaction.account_state_hash_before.as_slice());
-    if (account_cell_r.is_error()) {
-      return account_cell_r.move_as_error_prefix("Failed to load initial account state: ");
-    }
-    TRY_RESULT(shard_account_cell, make_shard_account(account_cell_r.move_as_ok(), first_transaction));
-
-    bool is_special = first_transaction.account.workchain == ton::masterchainId &&
-                      block_->mc_block_.config_->is_special_smartcontract(first_transaction.account.addr);
-    block::Account account(first_transaction.account.workchain, first_transaction.account.addr.bits());
-    if (!account.unpack(vm::load_cell_slice_ref(shard_account_cell), first_transaction.now, is_special)) {
-      return td::Status::Error("Failed to unpack initial ShardAccount");
-    }
-    return account;
+    return load_account_from_celldb(first_transaction.account,
+                                    first_transaction.account_state_hash_before,
+                                    first_transaction.prev_trans_hash,
+                                    first_transaction.prev_trans_lt,
+                                    first_transaction.now);
   }
 
   td::Result<nominator_pool::ParsedStorage> parse_pool_storage(const block::Account& account) {
@@ -316,6 +329,15 @@ public:
       return td::Status::Error("Not a nominator pool account");
     }
     return nominator_pool::parse_storage(account.data);
+  }
+
+  td::Result<nominator_pool::ParsedStorage> parse_transaction_after_storage(const schema::Transaction& transaction) {
+    TRY_RESULT(account, load_account_from_celldb(transaction.account,
+                                                transaction.account_state_hash_after,
+                                                transaction.hash,
+                                                transaction.lt,
+                                                transaction.now));
+    return parse_pool_storage(account);
   }
 
   struct PoolNominatorSnapshot {
@@ -485,7 +507,26 @@ public:
       }
 
       auto before_storage = parse_pool_storage(account);
-      TRY_RESULT(emulation_result, trans_emulator.emulate_transaction(std::move(account), transaction->raw));
+      auto emulation_result_r = trans_emulator.emulate_transaction(std::move(account), transaction->raw);
+      // Workaround for old blocks that may not be compatible with the current emulator:
+      // if the pool had only one transaction in the block, use the canonical after-state
+      // from celldb instead of dropping the reward event.
+      if (emulation_result_r.is_error()) {
+        auto emulation_error = emulation_result_r.move_as_error();
+        if (transactions.size() == 1 && before_storage.is_ok()) {
+          auto after_storage_r = parse_transaction_after_storage(*transaction);
+          if (after_storage_r.is_ok()) {
+            auto transaction_events = build_nominator_pool_events(
+                *transaction, before_storage.move_as_ok(), after_storage_r.move_as_ok());
+            for (auto& event : transaction_events) {
+              events.push_back(std::move(event));
+            }
+            return events;
+          }
+        }
+        return std::move(emulation_error);
+      }
+      auto emulation_result = emulation_result_r.move_as_ok();
 
       if (before_storage.is_ok()) {
         TRY_RESULT(after_storage, parse_pool_storage(emulation_result.account));

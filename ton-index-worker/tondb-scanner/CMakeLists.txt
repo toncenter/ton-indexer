@@ -12,7 +12,6 @@ add_library(tondb-scanner STATIC
     src/parse_contract_methods.cpp
     src/convert-utils.cpp
     src/tokens-tlb.cpp
-    src/validators-tlb.cpp
     src/Statistics.cpp
     src/smc-interfaces/Tokens.cpp
     src/smc-interfaces/NftSale.cpp

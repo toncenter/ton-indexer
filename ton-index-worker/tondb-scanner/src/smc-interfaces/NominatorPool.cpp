@@ -1,6 +1,7 @@
 #include "NominatorPool.h"
 
 #include "crypto/block/block-auto.h"
+#include "crypto/block/block-parse.h"
 #include "td/utils/logging.h"
 #include "vm/dict.h"
 
