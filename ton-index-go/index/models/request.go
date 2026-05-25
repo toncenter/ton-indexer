@@ -297,6 +297,11 @@ type NominatorPoolNominatorRequest struct {
 	Nominator *AccountAddress `query:"nominator"`
 }
 
+type NominatorPoolEventsRequest struct {
+	Pool      *AccountAddress `query:"pool"`
+	Nominator *AccountAddress `query:"nominator"`
+}
+
 type SortType string
 
 const (

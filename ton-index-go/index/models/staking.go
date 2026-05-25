@@ -3,13 +3,13 @@ package models
 type NominatorPoolEvent struct {
 	TxHash                HashType       `json:"tx_hash"`
 	TxLt                  int64          `json:"tx_lt,string"`
-	TxNow                 int32          `json:"tx_now"`
+	Utime                 int32          `json:"utime"`
 	McSeqno               int32          `json:"mc_seqno"`
 	TraceId               *HashType      `json:"trace_id,omitempty"`
 	PoolAddress           AccountAddress `json:"pool_address"`
 	NominatorAddress      AccountAddress `json:"nominator_address"`
 	EventIndex            int32          `json:"event_index"`
-	Type                  string         `json:"type"`
+	Type                  string         `json:"type" enums:"reward,deposit,withdrawal,pending_deposit_activation,withdrawal_request"` // "reward", "deposit", "withdrawal", "pending_deposit_activation", "withdrawal_request"
 	Amount                string         `json:"amount"`
 	BalanceDelta          string         `json:"balance_delta"`
 	PendingBalanceDelta   string         `json:"pending_balance_delta"`
@@ -20,43 +20,6 @@ type NominatorPoolEvent struct {
 	WithdrawRequestBefore bool           `json:"withdraw_request_before"`
 	WithdrawRequestAfter  bool           `json:"withdraw_request_after"`
 } // @name NominatorPoolEvent
-
-type NominatorStakeMovement struct {
-	Utime                 int32     `json:"utime"`
-	Type                  string    `json:"type"` // "reward", "deposit", "withdrawal", "pending_deposit_activation", "withdrawal_request"
-	Amount                string    `json:"amount"`
-	BalanceDelta          string    `json:"balance_delta"`
-	PendingBalanceDelta   string    `json:"pending_balance_delta"`
-	BalanceBefore         string    `json:"balance_before"`
-	BalanceAfter          string    `json:"balance_after"`
-	PendingBalanceBefore  string    `json:"pending_balance_before"`
-	PendingBalanceAfter   string    `json:"pending_balance_after"`
-	WithdrawRequestBefore bool      `json:"withdraw_request_before"`
-	WithdrawRequestAfter  bool      `json:"withdraw_request_after"`
-	TxHash                HashType  `json:"tx_hash"`
-	TxLt                  int64     `json:"tx_lt,string"`
-	TraceId               *HashType `json:"trace_id,omitempty"`
-	EventIndex            int32     `json:"event_index"`
-} // @name NominatorStakeMovement
-
-type PoolStakeMovement struct {
-	NominatorAddress      AccountAddress `json:"nominator_address"`
-	Utime                 int32          `json:"utime"`
-	Type                  string         `json:"type"`
-	Amount                string         `json:"amount"`
-	BalanceDelta          string         `json:"balance_delta"`
-	PendingBalanceDelta   string         `json:"pending_balance_delta"`
-	BalanceBefore         string         `json:"balance_before"`
-	BalanceAfter          string         `json:"balance_after"`
-	PendingBalanceBefore  string         `json:"pending_balance_before"`
-	PendingBalanceAfter   string         `json:"pending_balance_after"`
-	WithdrawRequestBefore bool           `json:"withdraw_request_before"`
-	WithdrawRequestAfter  bool           `json:"withdraw_request_after"`
-	TxHash                HashType       `json:"tx_hash"`
-	TxLt                  int64          `json:"tx_lt,string"`
-	TraceId               *HashType      `json:"trace_id,omitempty"`
-	EventIndex            int32          `json:"event_index"`
-} // @name PoolStakeMovement
 
 type NominatorPoolInfo struct {
 	StakeAmountSent      string                `json:"stake_amount_sent"`

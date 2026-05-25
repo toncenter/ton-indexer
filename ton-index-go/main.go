@@ -2034,11 +2034,49 @@ func prepareHashes(hashes []models.HashType) []string {
 	return uniqueKeys
 }
 
+const stakingDefaultWindowSeconds models.UtimeType = 31 * 24 * 60 * 60
+const stakingMaxWindowSeconds models.UtimeType = 31 * 24 * 60 * 60
+
+func subtractUtime(value models.UtimeType, delta models.UtimeType) models.UtimeType {
+	if value < delta {
+		return 0
+	}
+	return value - delta
+}
+
+func normalizeStakingUtimeFilter(utimeReq *models.UtimeParams) error {
+	now := models.UtimeType(time.Now().Unix())
+
+	if utimeReq.StartUtime == nil && utimeReq.EndUtime == nil {
+		startUtime := subtractUtime(now, stakingDefaultWindowSeconds)
+		endUtime := now
+		utimeReq.StartUtime = &startUtime
+		utimeReq.EndUtime = &endUtime
+	} else if utimeReq.StartUtime == nil {
+		startUtime := subtractUtime(*utimeReq.EndUtime, stakingDefaultWindowSeconds)
+		utimeReq.StartUtime = &startUtime
+	} else if utimeReq.EndUtime == nil {
+		endUtime := now
+		utimeReq.EndUtime = &endUtime
+	}
+
+	if *utimeReq.StartUtime > *utimeReq.EndUtime {
+		return models.IndexError{Code: 422, Message: "start_utime must be less than or equal to end_utime"}
+	}
+	if *utimeReq.EndUtime-*utimeReq.StartUtime > stakingMaxWindowSeconds {
+		return models.IndexError{Code: 422, Message: "staking query time range must not exceed 31 days"}
+	}
+	return nil
+}
+
 func parseStakingUtimeFilter(c *fiber.Ctx) (models.UtimeParams, error) {
 	utimeReq := models.UtimeParams{}
 
 	if err := c.QueryParser(&utimeReq); err != nil {
 		return utimeReq, models.IndexError{Code: 422, Message: err.Error()}
+	}
+	if err := normalizeStakingUtimeFilter(&utimeReq); err != nil {
+		return utimeReq, err
 	}
 	return utimeReq, nil
 }
@@ -2054,7 +2092,7 @@ func parseStakingUtimeFilter(c *fiber.Ctx) (models.UtimeParams, error) {
 // @failure 404 {object} models.IndexError
 // @failure 422 {object} models.IndexError
 // @failure 500 {object} models.IndexError
-// @router /api/v3/nominators/getPool [get]
+// @router /api/v3/nominators/pool [get]
 func GetPool(c *fiber.Ctx) error {
 	requestSettings := GetRequestSettings(c, &settings)
 	req := models.NominatorPoolRequest{}
@@ -2073,58 +2111,22 @@ func GetPool(c *fiber.Ctx) error {
 	return c.Status(200).JSON(poolInfo)
 }
 
-// GetNominatorStakeMovements godoc
-// @summary Get nominator stake movements
+// GetNominatorPoolEvents godoc
+// @summary Get nominator pool events
 // @tags staking
-// @id getNominatorStakeMovements
-// @param nominator query string true "Nominator address in any form"
+// @id getNominatorPoolEvents
 // @param pool query string true "Pool address in any form"
-// @param start_utime query integer false "Query stake movements with timestamp at or after given timestamp." minimum(0)
-// @param end_utime query integer false "Query stake movements with timestamp at or before given timestamp." minimum(0)
+// @param nominator query string false "Nominator address in any form"
+// @param start_utime query integer false "Query events with timestamp at or after given timestamp. Defaults to 31 days before end_utime or now. Time range must not exceed 31 days." minimum(0)
+// @param end_utime query integer false "Query events with timestamp at or before given timestamp. Defaults to now. Time range must not exceed 31 days." minimum(0)
 // @produce json
-// @success 200 {array} models.NominatorStakeMovement
+// @success 200 {array} models.NominatorPoolEvent
 // @failure 422 {object} models.IndexError
 // @failure 500 {object} models.IndexError
-// @router /api/v3/nominators/getNominatorStakeMovements [get]
-func GetNominatorStakeMovements(c *fiber.Ctx) error {
+// @router /api/v3/nominators/events [get]
+func GetNominatorPoolEvents(c *fiber.Ctx) error {
 	requestSettings := GetRequestSettings(c, &settings)
-	req := models.NominatorPoolNominatorRequest{}
-
-	if err := c.QueryParser(&req); err != nil {
-		return models.IndexError{Code: 422, Message: err.Error()}
-	}
-	if req.Nominator == nil || req.Pool == nil {
-		return models.IndexError{Code: 422, Message: "nominator and pool parameters are required"}
-	}
-
-	utimeReq, err := parseStakingUtimeFilter(c)
-	if err != nil {
-		return err
-	}
-
-	movements, err := pool.GetNominatorStakeMovements(string(*req.Nominator), string(*req.Pool), utimeReq, requestSettings)
-	if err != nil {
-		return err
-	}
-
-	return c.Status(200).JSON(movements)
-}
-
-// GetPoolStakeMovements godoc
-// @summary Get pool stake movements
-// @tags staking
-// @id getPoolStakeMovements
-// @param pool query string true "Pool address in any form"
-// @param start_utime query integer false "Query stake movements with timestamp at or after given timestamp." minimum(0)
-// @param end_utime query integer false "Query stake movements with timestamp at or before given timestamp." minimum(0)
-// @produce json
-// @success 200 {array} models.PoolStakeMovement
-// @failure 422 {object} models.IndexError
-// @failure 500 {object} models.IndexError
-// @router /api/v3/nominators/getPoolStakeMovements [get]
-func GetPoolStakeMovements(c *fiber.Ctx) error {
-	requestSettings := GetRequestSettings(c, &settings)
-	req := models.NominatorPoolRequest{}
+	req := models.NominatorPoolEventsRequest{}
 
 	if err := c.QueryParser(&req); err != nil {
 		return models.IndexError{Code: 422, Message: err.Error()}
@@ -2138,12 +2140,18 @@ func GetPoolStakeMovements(c *fiber.Ctx) error {
 		return err
 	}
 
-	movements, err := pool.GetPoolStakeMovements(string(*req.Pool), utimeReq, requestSettings)
+	var nominatorAddr *string
+	if req.Nominator != nil {
+		value := string(*req.Nominator)
+		nominatorAddr = &value
+	}
+
+	events, err := pool.GetNominatorPoolEvents(string(*req.Pool), nominatorAddr, utimeReq, requestSettings)
 	if err != nil {
 		return err
 	}
 
-	return c.Status(200).JSON(movements)
+	return c.Status(200).JSON(events)
 }
 
 // GetNominatorPools godoc
@@ -2155,7 +2163,7 @@ func GetPoolStakeMovements(c *fiber.Ctx) error {
 // @success 200 {array} models.NominatorPoolPosition
 // @failure 422 {object} models.IndexError
 // @failure 500 {object} models.IndexError
-// @router /api/v3/nominators/getNominatorPools [get]
+// @router /api/v3/nominators/nominatorPools [get]
 func GetNominatorPools(c *fiber.Ctx) error {
 	requestSettings := GetRequestSettings(c, &settings)
 	req := models.NominatorRequest{}
@@ -2180,13 +2188,13 @@ func GetNominatorPools(c *fiber.Ctx) error {
 // @id getNominatorRewards
 // @param nominator query string true "Nominator address in any form"
 // @param pool query string true "Pool address in any form"
-// @param start_utime query integer false "Query rewards with timestamp at or after given timestamp." minimum(0)
-// @param end_utime query integer false "Query rewards with timestamp at or before given timestamp." minimum(0)
+// @param start_utime query integer false "Query rewards with timestamp at or after given timestamp. Defaults to 31 days before end_utime or now. Time range must not exceed 31 days." minimum(0)
+// @param end_utime query integer false "Query rewards with timestamp at or before given timestamp. Defaults to now. Time range must not exceed 31 days." minimum(0)
 // @produce json
 // @success 200 {object} models.NominatorRewardsResponse
 // @failure 422 {object} models.IndexError
 // @failure 500 {object} models.IndexError
-// @router /api/v3/nominators/getNominatorRewards [get]
+// @router /api/v3/nominators/rewards [get]
 func GetNominatorRewards(c *fiber.Ctx) error {
 	requestSettings := GetRequestSettings(c, &settings)
 	req := models.NominatorPoolNominatorRequest{}
@@ -2398,11 +2406,10 @@ func main() {
 	app.Get("/api/v3/multisig/orders", GetMultisigOrders)
 
 	// nominators (staking)
-	app.Get("/api/v3/nominators/getPool", GetPool)
-	app.Get("/api/v3/nominators/getNominatorStakeMovements", GetNominatorStakeMovements)
-	app.Get("/api/v3/nominators/getPoolStakeMovements", GetPoolStakeMovements)
-	app.Get("/api/v3/nominators/getNominatorPools", GetNominatorPools)
-	app.Get("/api/v3/nominators/getNominatorRewards", GetNominatorRewards)
+	app.Get("/api/v3/nominators/pool", GetPool)
+	app.Get("/api/v3/nominators/events", GetNominatorPoolEvents)
+	app.Get("/api/v3/nominators/nominatorPools", GetNominatorPools)
+	app.Get("/api/v3/nominators/rewards", GetNominatorRewards)
 
 	// actions
 	app.Get("/api/v3/actions", GetActions)

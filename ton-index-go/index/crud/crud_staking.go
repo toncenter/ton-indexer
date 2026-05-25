@@ -35,12 +35,12 @@ func appendStakingUtimeFilters(query string, args []interface{}, argIdx int, col
 	return query, args, argIdx, nil
 }
 
-func (db *DbClient) GetNominatorStakeMovements(
-	nominatorAddr string,
+func (db *DbClient) GetNominatorPoolEvents(
 	poolAddr string,
+	nominatorAddr *string,
 	utimeReq models.UtimeParams,
 	settings models.RequestSettings,
-) ([]models.NominatorStakeMovement, error) {
+) ([]models.NominatorPoolEvent, error) {
 	ctx, cancelCtx := context.WithTimeout(context.Background(), settings.Timeout)
 	defer cancelCtx()
 
@@ -50,18 +50,25 @@ func (db *DbClient) GetNominatorStakeMovements(
 	}
 	defer conn.Release()
 
-	movements := []models.NominatorStakeMovement{}
+	events := []models.NominatorPoolEvent{}
 
 	eventQuery := `
-		SELECT tx_hash, tx_lt, tx_now, event_index, event_type, amount::text,
+		SELECT tx_hash, tx_lt, tx_now, mc_seqno, trace_id, pool_address, nominator_address,
+		       event_index, event_type, amount::text,
 		       balance_delta::text, pending_balance_delta::text, balance_before::text,
 		       balance_after::text, pending_balance_before::text, pending_balance_after::text,
-		       withdraw_request_before, withdraw_request_after, trace_id
+		       withdraw_request_before, withdraw_request_after
 		FROM nominator_pool_events
-		WHERE nominator_address = $1 AND pool_address = $2
+		WHERE pool_address = $1
 	`
-	eventArgs := []interface{}{nominatorAddr, poolAddr}
-	argIdx := 3
+	eventArgs := []interface{}{poolAddr}
+	argIdx := 2
+
+	if nominatorAddr != nil {
+		eventQuery += fmt.Sprintf(" AND nominator_address = $%d", argIdx)
+		eventArgs = append(eventArgs, *nominatorAddr)
+		argIdx++
+	}
 
 	eventQuery, eventArgs, _, err = appendStakingUtimeFilters(eventQuery, eventArgs, argIdx, "tx_now", utimeReq)
 	if err != nil {
@@ -75,28 +82,31 @@ func (db *DbClient) GetNominatorStakeMovements(
 		return nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
 	for eventRows.Next() {
-		var movement models.NominatorStakeMovement
+		var event models.NominatorPoolEvent
 		if err := eventRows.Scan(
-			&movement.TxHash,
-			&movement.TxLt,
-			&movement.Utime,
-			&movement.EventIndex,
-			&movement.Type,
-			&movement.Amount,
-			&movement.BalanceDelta,
-			&movement.PendingBalanceDelta,
-			&movement.BalanceBefore,
-			&movement.BalanceAfter,
-			&movement.PendingBalanceBefore,
-			&movement.PendingBalanceAfter,
-			&movement.WithdrawRequestBefore,
-			&movement.WithdrawRequestAfter,
-			&movement.TraceId,
+			&event.TxHash,
+			&event.TxLt,
+			&event.Utime,
+			&event.McSeqno,
+			&event.TraceId,
+			&event.PoolAddress,
+			&event.NominatorAddress,
+			&event.EventIndex,
+			&event.Type,
+			&event.Amount,
+			&event.BalanceDelta,
+			&event.PendingBalanceDelta,
+			&event.BalanceBefore,
+			&event.BalanceAfter,
+			&event.PendingBalanceBefore,
+			&event.PendingBalanceAfter,
+			&event.WithdrawRequestBefore,
+			&event.WithdrawRequestAfter,
 		); err != nil {
 			eventRows.Close()
 			return nil, models.IndexError{Code: 500, Message: err.Error()}
 		}
-		movements = append(movements, movement)
+		events = append(events, event)
 	}
 	if err := eventRows.Err(); err != nil {
 		eventRows.Close()
@@ -104,7 +114,7 @@ func (db *DbClient) GetNominatorStakeMovements(
 	}
 	eventRows.Close()
 
-	return movements, nil
+	return events, nil
 }
 
 func (db *DbClient) GetNominatorRewards(
@@ -170,78 +180,6 @@ func (db *DbClient) GetNominatorRewards(
 		TotalOnPeriod: totalOnPeriod.String(),
 		Rewards:       rewards,
 	}, nil
-}
-
-func (db *DbClient) GetPoolStakeMovements(
-	poolAddr string,
-	utimeReq models.UtimeParams,
-	settings models.RequestSettings,
-) ([]models.PoolStakeMovement, error) {
-	ctx, cancelCtx := context.WithTimeout(context.Background(), settings.Timeout)
-	defer cancelCtx()
-
-	conn, err := db.Pool.Acquire(ctx)
-	if err != nil {
-		return nil, models.IndexError{Code: 500, Message: err.Error()}
-	}
-	defer conn.Release()
-
-	movements := []models.PoolStakeMovement{}
-
-	eventQuery := `
-		SELECT nominator_address, tx_hash, tx_lt, tx_now, event_index, event_type, amount::text,
-		       balance_delta::text, pending_balance_delta::text, balance_before::text,
-		       balance_after::text, pending_balance_before::text, pending_balance_after::text,
-		       withdraw_request_before, withdraw_request_after, trace_id
-		FROM nominator_pool_events
-		WHERE pool_address = $1
-	`
-	eventArgs := []interface{}{poolAddr}
-	argIdx := 2
-
-	eventQuery, eventArgs, _, err = appendStakingUtimeFilters(eventQuery, eventArgs, argIdx, "tx_now", utimeReq)
-	if err != nil {
-		return nil, err
-	}
-
-	eventQuery += " ORDER BY tx_now ASC, tx_lt ASC, event_index ASC"
-
-	eventRows, err := conn.Query(ctx, eventQuery, eventArgs...)
-	if err != nil {
-		return nil, models.IndexError{Code: 500, Message: err.Error()}
-	}
-	for eventRows.Next() {
-		var movement models.PoolStakeMovement
-		if err := eventRows.Scan(
-			&movement.NominatorAddress,
-			&movement.TxHash,
-			&movement.TxLt,
-			&movement.Utime,
-			&movement.EventIndex,
-			&movement.Type,
-			&movement.Amount,
-			&movement.BalanceDelta,
-			&movement.PendingBalanceDelta,
-			&movement.BalanceBefore,
-			&movement.BalanceAfter,
-			&movement.PendingBalanceBefore,
-			&movement.PendingBalanceAfter,
-			&movement.WithdrawRequestBefore,
-			&movement.WithdrawRequestAfter,
-			&movement.TraceId,
-		); err != nil {
-			eventRows.Close()
-			return nil, models.IndexError{Code: 500, Message: err.Error()}
-		}
-		movements = append(movements, movement)
-	}
-	if err := eventRows.Err(); err != nil {
-		eventRows.Close()
-		return nil, models.IndexError{Code: 500, Message: err.Error()}
-	}
-	eventRows.Close()
-
-	return movements, nil
 }
 
 func (db *DbClient) GetNominatorPools(nominatorAddr string, settings models.RequestSettings) ([]models.NominatorPoolPosition, error) {
