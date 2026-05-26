@@ -658,7 +658,9 @@ func ProcessNewClassifiedTrace(ctx context.Context, rdb *redis.Client, traceExte
 	}
 }
 
-// SubscribeToTraces subscribes to blockchain events from Redis
+// SubscribeToTraces subscribes to trace updates from Redis.
+// The producer publishes every trace insertion/update to this channel, so this
+// path must extract only pending transactions before broadcasting.
 func SubscribeToTraces(ctx context.Context, rdb *redis.Client, manager *ClientManager, channel string) {
 	pubsub := rdb.Subscribe(ctx, channel)
 	defer pubsub.Close()
@@ -814,9 +816,15 @@ func ProcessNewTrace(ctx context.Context, rdb *redis.Client, traceExternalHashNo
 	{
 		emulatedTxs := emulatedContext.GetTransactions()
 		for _, tx := range emulatedTxs {
+			if tx.Finality != indexModels.FinalityStatePending {
+				continue
+			}
 			txs = append(txs, *tx)
 			txs_map[tx.Hash] = len(txs) - 1
 		}
+	}
+	if len(txs) == 0 {
+		return
 	}
 
 	allAddresses := []string{}

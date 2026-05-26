@@ -835,19 +835,21 @@ func (n *JettonsNotification) AdjustForClient(client *Client) any {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// Redis subscription: traces (pending)
+// Redis subscription: trace updates.
+// The producer publishes every trace insertion/update to this channel, so this
+// path must extract only pending transactions before broadcasting.
 ////////////////////////////////////////////////////////////////////////////////
 
 func SubscribeToTraces(ctx context.Context, rdb *redis.Client, manager *ClientManager, channel string) {
 	pubsub := rdb.Subscribe(ctx, channel)
 	defer pubsub.Close()
 
-	log.Printf("[v2] Subscribed to Redis channel (pending traces): %s", channel)
+	log.Printf("[v2] Subscribed to Redis channel (trace updates): %s", channel)
 
 	for {
 		msg, err := pubsub.ReceiveMessage(ctx)
 		if err != nil {
-			log.Printf("[v2] Error receiving pending trace message: %v", err)
+			log.Printf("[v2] Error receiving trace update message: %v", err)
 			continue
 		}
 		traceExternalHashNorm := msg.Payload
@@ -855,7 +857,7 @@ func SubscribeToTraces(ctx context.Context, rdb *redis.Client, manager *ClientMa
 	}
 }
 
-// pending (emulated) trace
+// ProcessNewTrace broadcasts pending transactions from a generic trace update.
 func ProcessNewTrace(ctx context.Context, rdb *redis.Client, traceExternalHashNorm string, manager *ClientManager, channel string) {
 	startTimeUnix := observability.NowUnixNano()
 	repository := &emulated.EmulatedTracesRepository{Rdb: rdb}
@@ -892,15 +894,29 @@ func ProcessNewTrace(ctx context.Context, rdb *redis.Client, traceExternalHashNo
 
 	var txs []indexModels.Transaction
 	txsMap := map[indexModels.HashType]int{}
+	totalTxs := 0
 	{
 		emulatedTxs := emulatedContext.GetTransactions()
 		for _, tx := range emulatedTxs {
+			totalTxs++
+			if tx.Finality != indexModels.FinalityStatePending {
+				continue
+			}
 			txs = append(txs, *tx)
 			txsMap[tx.Hash] = len(txs) - 1
 			if stage.RootTxHash == "-" && tx.TraceId != nil {
 				stage.SetRootTxHash(*tx.TraceId)
 			}
 		}
+	}
+	if len(txs) == 0 {
+		stage.Span.AddAttr("ton.trace.finality", indexModels.FinalityStatePending.String())
+		stage.Span.AddAttr("ton.transactions.count", 0)
+		stage.Span.AddAttr("ton.transactions.total_count", totalTxs)
+		stage.Span.AddAttr("ton.streaming.skipped", true)
+		stage.Span.AddAttr("ton.streaming.skip_reason", "no_pending_transactions")
+		stage.Emit()
+		return
 	}
 
 	allAddresses := []string{}
@@ -970,6 +986,7 @@ func ProcessNewTrace(ctx context.Context, rdb *redis.Client, traceExternalHashNo
 	})
 	stage.Span.AddAttr("ton.trace.finality", indexModels.FinalityStatePending.String())
 	stage.Span.AddAttr("ton.transactions.count", len(txs))
+	stage.Span.AddAttr("ton.transactions.total_count", totalTxs)
 
 	manager.broadcast <- &TransactionsNotification{
 		Type:                  EventTransactions,
