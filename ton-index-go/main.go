@@ -2034,6 +2034,197 @@ func prepareHashes(hashes []models.HashType) []string {
 	return uniqueKeys
 }
 
+const stakingDefaultWindowSeconds models.UtimeType = 31 * 24 * 60 * 60
+const stakingMaxWindowSeconds models.UtimeType = 31 * 24 * 60 * 60
+
+func subtractUtime(value models.UtimeType, delta models.UtimeType) models.UtimeType {
+	if value < delta {
+		return 0
+	}
+	return value - delta
+}
+
+func normalizeStakingUtimeFilter(utimeReq *models.UtimeParams) error {
+	now := models.UtimeType(time.Now().Unix())
+
+	if utimeReq.StartUtime == nil && utimeReq.EndUtime == nil {
+		startUtime := subtractUtime(now, stakingDefaultWindowSeconds)
+		endUtime := now
+		utimeReq.StartUtime = &startUtime
+		utimeReq.EndUtime = &endUtime
+	} else if utimeReq.StartUtime == nil {
+		startUtime := subtractUtime(*utimeReq.EndUtime, stakingDefaultWindowSeconds)
+		utimeReq.StartUtime = &startUtime
+	} else if utimeReq.EndUtime == nil {
+		endUtime := now
+		utimeReq.EndUtime = &endUtime
+	}
+
+	if *utimeReq.StartUtime > *utimeReq.EndUtime {
+		return models.IndexError{Code: 422, Message: "start_utime must be less than or equal to end_utime"}
+	}
+	if *utimeReq.EndUtime-*utimeReq.StartUtime > stakingMaxWindowSeconds {
+		return models.IndexError{Code: 422, Message: "staking query time range must not exceed 31 days"}
+	}
+	return nil
+}
+
+func parseStakingUtimeFilter(c *fiber.Ctx) (models.UtimeParams, error) {
+	utimeReq := models.UtimeParams{}
+
+	if err := c.QueryParser(&utimeReq); err != nil {
+		return utimeReq, models.IndexError{Code: 422, Message: err.Error()}
+	}
+	if err := normalizeStakingUtimeFilter(&utimeReq); err != nil {
+		return utimeReq, err
+	}
+	return utimeReq, nil
+}
+
+// GetPool godoc
+// @summary Get pool information
+// @tags staking
+// @id getPool
+// @param pool query string true "Pool address in any form"
+// @produce json
+// @success 200 {object} models.NominatorPoolInfo
+// @failure 400 {object} models.IndexError
+// @failure 404 {object} models.IndexError
+// @failure 422 {object} models.IndexError
+// @failure 500 {object} models.IndexError
+// @router /api/v3/nominators/pool [get]
+func GetPool(c *fiber.Ctx) error {
+	requestSettings := GetRequestSettings(c, &settings)
+	req := models.NominatorPoolRequest{}
+
+	if err := c.QueryParser(&req); err != nil {
+		return models.IndexError{Code: 422, Message: err.Error()}
+	}
+	if req.Pool == nil {
+		return models.IndexError{Code: 422, Message: "pool parameter is required"}
+	}
+	poolInfo, err := pool.GetPool(string(*req.Pool), requestSettings)
+	if err != nil {
+		return err
+	}
+
+	return c.Status(200).JSON(poolInfo)
+}
+
+// GetNominatorPoolEvents godoc
+// @summary Get nominator pool events
+// @tags staking
+// @id getNominatorPoolEvents
+// @param pool query string true "Pool address in any form"
+// @param nominator query string false "Nominator address in any form"
+// @param start_utime query integer false "Query events with timestamp at or after given timestamp. Defaults to 31 days before end_utime or now. Time range must not exceed 31 days." minimum(0)
+// @param end_utime query integer false "Query events with timestamp at or before given timestamp. Defaults to now. Time range must not exceed 31 days." minimum(0)
+// @produce json
+// @success 200 {object} models.NominatorPoolEventsResponse
+// @failure 422 {object} models.IndexError
+// @failure 500 {object} models.IndexError
+// @router /api/v3/nominators/events [get]
+func GetNominatorPoolEvents(c *fiber.Ctx) error {
+	requestSettings := GetRequestSettings(c, &settings)
+	req := models.NominatorPoolEventsRequest{}
+
+	if err := c.QueryParser(&req); err != nil {
+		return models.IndexError{Code: 422, Message: err.Error()}
+	}
+	if req.Pool == nil {
+		return models.IndexError{Code: 422, Message: "pool parameter is required"}
+	}
+
+	utimeReq, err := parseStakingUtimeFilter(c)
+	if err != nil {
+		return err
+	}
+
+	var nominatorAddr *string
+	if req.Nominator != nil {
+		value := string(*req.Nominator)
+		nominatorAddr = &value
+	}
+
+	events, err := pool.GetNominatorPoolEvents(string(*req.Pool), nominatorAddr, utimeReq, requestSettings)
+	if err != nil {
+		return err
+	}
+
+	return c.Status(200).JSON(models.NominatorPoolEventsResponse{
+		StartUtime: *utimeReq.StartUtime,
+		EndUtime:   *utimeReq.EndUtime,
+		Events:     events,
+	})
+}
+
+// GetNominatorPools godoc
+// @summary Get all pools where nominator has balance
+// @tags staking
+// @id getNominatorPools
+// @param nominator query string true "Nominator address in any form"
+// @produce json
+// @success 200 {object} models.NominatorPoolsResponse
+// @failure 422 {object} models.IndexError
+// @failure 500 {object} models.IndexError
+// @router /api/v3/nominators/nominatorPools [get]
+func GetNominatorPools(c *fiber.Ctx) error {
+	requestSettings := GetRequestSettings(c, &settings)
+	req := models.NominatorRequest{}
+
+	if err := c.QueryParser(&req); err != nil {
+		return models.IndexError{Code: 422, Message: err.Error()}
+	}
+	if req.Nominator == nil {
+		return models.IndexError{Code: 422, Message: "nominator parameter is required"}
+	}
+	pools, err := pool.GetNominatorPools(string(*req.Nominator), requestSettings)
+	if err != nil {
+		return err
+	}
+
+	return c.Status(200).JSON(models.NominatorPoolsResponse{
+		NominatorPools: pools,
+	})
+}
+
+// GetNominatorRewards godoc
+// @summary Get nominator rewards
+// @tags staking
+// @id getNominatorRewards
+// @param nominator query string true "Nominator address in any form"
+// @param pool query string true "Pool address in any form"
+// @param start_utime query integer false "Query rewards with timestamp at or after given timestamp. Defaults to 31 days before end_utime or now. Time range must not exceed 31 days." minimum(0)
+// @param end_utime query integer false "Query rewards with timestamp at or before given timestamp. Defaults to now. Time range must not exceed 31 days." minimum(0)
+// @produce json
+// @success 200 {object} models.NominatorRewardsResponse
+// @failure 422 {object} models.IndexError
+// @failure 500 {object} models.IndexError
+// @router /api/v3/nominators/rewards [get]
+func GetNominatorRewards(c *fiber.Ctx) error {
+	requestSettings := GetRequestSettings(c, &settings)
+	req := models.NominatorPoolNominatorRequest{}
+
+	if err := c.QueryParser(&req); err != nil {
+		return models.IndexError{Code: 422, Message: err.Error()}
+	}
+	if req.Nominator == nil || req.Pool == nil {
+		return models.IndexError{Code: 422, Message: "nominator and pool parameters are required"}
+	}
+
+	utimeReq, err := parseStakingUtimeFilter(c)
+	if err != nil {
+		return err
+	}
+
+	rewards, err := pool.GetNominatorRewards(string(*req.Nominator), string(*req.Pool), utimeReq, requestSettings)
+	if err != nil {
+		return err
+	}
+
+	return c.Status(200).JSON(rewards)
+}
+
 func test() {
 	// addr_str := "0QAvlUF6KtTT7R9/kmxOPULEMd+zbtVBZigkorOlGqWtzVky"
 	// addr, err := address.ParseAddr(addr_str)
@@ -2219,6 +2410,12 @@ func main() {
 	// multisig
 	app.Get("/api/v3/multisig/wallets", GetMultisigs)
 	app.Get("/api/v3/multisig/orders", GetMultisigOrders)
+
+	// nominators (staking)
+	app.Get("/api/v3/nominators/pool", GetPool)
+	app.Get("/api/v3/nominators/events", GetNominatorPoolEvents)
+	app.Get("/api/v3/nominators/nominatorPools", GetNominatorPools)
+	app.Get("/api/v3/nominators/rewards", GetNominatorRewards)
 
 	// actions
 	app.Get("/api/v3/actions", GetActions)

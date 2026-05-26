@@ -8,6 +8,7 @@
 #include "NftSaleV4.h"
 #include "Multisig.h"
 #include "Vesting.h"
+#include "NominatorPool.h"
 #include "Telemint.h"
 
 template<typename... Detectors>
@@ -81,4 +82,3 @@ private:
     stop();
   }
 };
-

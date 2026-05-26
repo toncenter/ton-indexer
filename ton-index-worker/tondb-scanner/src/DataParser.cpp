@@ -49,7 +49,7 @@ td::Status ParseQuery::parse_impl() {
       td::Timer config_timer;
       TRY_RESULT_ASSIGN(mc_block_.config_, block::ConfigInfo::extract_config(block_ds.block_state, 
                                                         block_ds.block_data->block_id(), 
-                                                        block::ConfigInfo::needCapabilities | block::ConfigInfo::needLibraries));
+                                                        block::ConfigInfo::needCapabilities | block::ConfigInfo::needLibraries | block::ConfigInfo::needPrevBlocks | block::ConfigInfo::needSpecialSmc));
       g_statistics.record_time(PARSE_CONFIG, config_timer.elapsed() * 1e6);
     }
 
@@ -78,6 +78,7 @@ td::Status ParseQuery::parse_impl() {
   }
 
   result->mc_block_ = mc_block_;
+  result->cell_db_reader_ = cell_db_reader_;
   return td::Status::OK();
 }
 
@@ -640,6 +641,7 @@ td::Result<std::vector<schema::Transaction>> ParseQuery::parse_transactions(cons
 
         schema::Transaction schema_tx;
 
+        schema_tx.raw = tvalue;
         schema_tx.account = block::StdAddress(blk_id.id.workchain, cur_addr);
         schema_tx.hash = tvalue->get_hash().bits();
         schema_tx.lt = trans.lt;

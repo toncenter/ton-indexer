@@ -456,6 +456,20 @@ std::string address_array_json(const std::vector<block::StdAddress>& addresses) 
   return jb.string_builder().as_cslice().str();
 }
 
+std::string nominators_json(const std::vector<schema::NominatorPoolNominator>& nominators) {
+  td::JsonBuilder jb;
+  auto arr = jb.enter_array();
+  for (const auto& nominator : nominators) {
+    auto value = arr.enter_value();
+    auto obj = value.enter_object();
+    json_put_address(obj, "address", nominator.address);
+    json_put_int256(obj, "balance", nominator.balance);
+    json_put_int256(obj, "pending_balance", nominator.pending_balance);
+  }
+  arr.leave();
+  return jb.string_builder().as_cslice().str();
+}
+
 void json_put_common(td::JsonObjectScope& obj, std::uint32_t source_mc_seqno) {
   json_put_i64(obj, "schema_version", 1);
   json_put_i64(obj, "source_mc_seqno", source_mc_seqno);
@@ -737,6 +751,27 @@ std::string build_payload(const PreparedVestingWhitelistRow& row) {
   });
 }
 
+std::string build_payload(const PreparedNominatorPoolRow& row) {
+  return build_json_payload([&](td::JsonObjectScope& obj) {
+    json_put_common(obj, row.source_mc_seqno);
+    json_put_address(obj, "address", row.address);
+    json_put_i64(obj, "state", row.state);
+    json_put_i64(obj, "nominators_count", row.nominators_count);
+    json_put_int256(obj, "stake_amount_sent", row.stake_amount_sent);
+    json_put_int256(obj, "validator_amount", row.validator_amount);
+    json_put_address(obj, "validator_address", row.validator_address);
+    json_put_i64(obj, "validator_reward_share", row.validator_reward_share);
+    json_put_i64(obj, "max_nominators_count", row.max_nominators_count);
+    json_put_int256(obj, "min_validator_stake", row.min_validator_stake);
+    json_put_int256(obj, "min_nominator_stake", row.min_nominator_stake);
+    json_put_raw_json(obj, "active_nominators", row.active_nominators);
+    json_put_u64_string(obj, "last_transaction_lt", row.last_transaction_lt);
+    json_put_hash(obj, "code_hash", row.code_hash);
+    json_put_hash(obj, "data_hash", row.data_hash);
+    json_put_bool(obj, "destroyed", row.destroyed);
+  });
+}
+
 std::string build_payload(const PreparedTelemintRow& row) {
   return build_json_payload([&](td::JsonObjectScope& obj) {
     json_put_common(obj, row.source_mc_seqno);
@@ -945,6 +980,15 @@ std::vector<KvrocksIndexEntry> build_indexes(const PreparedVestingWhitelistRow& 
   const auto wallet = address_key(row.wallet_address);
   add_lex_index(indexes, "vesting_whitelist", "contract:" + contract + ":by_wallet", wallet);
   add_by_id_index(indexes, "vesting_contracts", "wallet_whitelist:" + wallet + ":by_id", contract);
+  return indexes;
+}
+
+std::vector<KvrocksIndexEntry> build_indexes(const PreparedNominatorPoolRow& row) {
+  std::vector<KvrocksIndexEntry> indexes;
+  if (row.destroyed) {
+    return indexes;
+  }
+  add_by_id_index(indexes, "nominator_pools", "all:by_id", address_key(row.address));
   return indexes;
 }
 
@@ -1498,6 +1542,13 @@ td::Bits256 zero_bits256() {
   return {};
 }
 
+block::StdAddress zero_masterchain_address() {
+  block::StdAddress address;
+  address.workchain = -1;
+  address.addr.set_zero();
+  return address;
+}
+
 PreparedJettonMasterRow make_destroyed_jetton_master_row(const DestroyedAccountState& state) {
   return {
     .address = state.address,
@@ -1699,6 +1750,27 @@ PreparedVestingContractRow make_destroyed_vesting_contract_row(const DestroyedAc
     .vesting_total_amount = zero_refint(),
     .vesting_sender_address = state.address,
     .owner_address = state.address,
+    .last_transaction_lt = state.last_transaction_lt,
+    .code_hash = zero_bits256(),
+    .data_hash = zero_bits256(),
+    .destroyed = true,
+    .source_mc_seqno = state.source_mc_seqno,
+  };
+}
+
+PreparedNominatorPoolRow make_destroyed_nominator_pool_row(const DestroyedAccountState& state) {
+  return {
+    .address = state.address,
+    .state = 0,
+    .nominators_count = 0,
+    .stake_amount_sent = zero_refint(),
+    .validator_amount = zero_refint(),
+    .validator_address = zero_masterchain_address(),
+    .validator_reward_share = 0,
+    .max_nominators_count = 0,
+    .min_validator_stake = zero_refint(),
+    .min_nominator_stake = zero_refint(),
+    .active_nominators = "[]",
     .last_transaction_lt = state.last_transaction_lt,
     .code_hash = zero_bits256(),
     .data_hash = zero_bits256(),
@@ -2460,6 +2532,55 @@ StateBatch prepare_point_state_batch(const std::vector<PointStateData>& data,
   }
 
   {
+    struct NominatorPoolWithSource {
+      schema::NominatorPoolData value;
+      std::uint32_t source_mc_seqno;
+    };
+    std::unordered_map<block::StdAddress, NominatorPoolWithSource> values;
+    for (const auto& item : data) {
+      if (!std::holds_alternative<schema::NominatorPoolData>(item)) {
+        continue;
+      }
+      const auto& value = std::get<schema::NominatorPoolData>(item);
+      auto it = values.find(value.address);
+      if (it == values.end() || it->second.value.last_transaction_lt < value.last_transaction_lt) {
+        values[value.address] = {value, source_mc_seqno};
+      }
+    }
+    auto ordered = get_ordered_map_values(values, [](const auto& key, const auto&) {
+      return convert::to_raw_address(key);
+    });
+    batch.nominator_pools.reserve(ordered.size());
+    for (const auto& [_, value_with_source_ptr] : ordered) {
+      const auto& value = value_with_source_ptr->value;
+      batch.nominator_pools.push_back({
+        .address = value.address,
+        .state = value.state,
+        .nominators_count = value.nominators_count,
+        .stake_amount_sent = value.stake_amount_sent,
+        .validator_amount = value.validator_amount,
+        .validator_address = value.validator_address,
+        .validator_reward_share = value.validator_reward_share,
+        .max_nominators_count = value.max_nominators_count,
+        .min_validator_stake = value.min_validator_stake,
+        .min_nominator_stake = value.min_nominator_stake,
+        .active_nominators = nominators_json(value.nominators),
+        .last_transaction_lt = value.last_transaction_lt,
+        .code_hash = value.code_hash,
+        .data_hash = value.data_hash,
+        .destroyed = false,
+        .source_mc_seqno = value_with_source_ptr->source_mc_seqno,
+      });
+    }
+    for (const auto& [_, destroyed_ptr] : ordered_destroyed_accounts) {
+      auto it = values.find(destroyed_ptr->address);
+      if (it == values.end() || it->second.value.last_transaction_lt < destroyed_ptr->last_transaction_lt) {
+        batch.nominator_pools.push_back(make_destroyed_nominator_pool_row(*destroyed_ptr));
+      }
+    }
+  }
+
+  {
     struct TelemintWithSource {
       schema::TelemintData value;
       std::uint32_t source_mc_seqno;
@@ -2626,6 +2747,9 @@ void KvrocksBatchWriter::write() {
   for (const auto& row : batch_.vesting_whitelist) {
     queue_set_indexed_once("vesting_whitelist", address_key(row.vesting_contract_address) + ":" + address_key(row.wallet_address),
                            row.source_mc_seqno, build_payload(row), build_indexes(row));
+  }
+  for (const auto& row : batch_.nominator_pools) {
+    queue_indexed_interface_current("nominator_pools", address_key(row.address), row);
   }
   for (const auto& row : batch_.telemint_nft_items) {
     queue_interface_current("telemint_nft_items", address_key(row.address), row);

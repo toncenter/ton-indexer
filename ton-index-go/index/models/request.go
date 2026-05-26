@@ -290,6 +290,24 @@ type VestingContractsRequest struct {
 	LimitParams
 }
 
+type NominatorPoolRequest struct {
+	Pool *AccountAddress `query:"pool"`
+}
+
+type NominatorRequest struct {
+	Nominator *AccountAddress `query:"nominator"`
+}
+
+type NominatorPoolNominatorRequest struct {
+	Pool      *AccountAddress `query:"pool"`
+	Nominator *AccountAddress `query:"nominator"`
+}
+
+type NominatorPoolEventsRequest struct {
+	Pool      *AccountAddress `query:"pool"`
+	Nominator *AccountAddress `query:"nominator"`
+}
+
 type TestRequest struct {
 	Hash  []HashType       `query:"my_hash"`
 	Addr  []AccountAddress `query:"my_addr"`

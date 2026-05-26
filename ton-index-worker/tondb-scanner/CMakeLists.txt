@@ -22,6 +22,7 @@ add_library(tondb-scanner STATIC
     src/smc-interfaces/FetchAccountFromShard.cpp
     src/smc-interfaces/FetchAccountFromShard.h
     src/smc-interfaces/Vesting.cpp
+    src/smc-interfaces/NominatorPool.cpp
     src/smc-interfaces/Telemint.cpp
 )
 
@@ -30,7 +31,7 @@ target_include_directories(tondb-scanner
 )
 
 target_compile_features(tondb-scanner PRIVATE cxx_std_20)
-target_link_libraries(tondb-scanner PUBLIC validator-db validator-disk ton_validator tddb smc-envelope msgpack-cxx)
+target_link_libraries(tondb-scanner PUBLIC validator-db validator-disk ton_validator tddb smc-envelope msgpack-cxx emulator_static)
 
 set(TLB_TOKENS
   ${CMAKE_CURRENT_SOURCE_DIR}/src/tokens-tlb.cpp
@@ -47,6 +48,7 @@ add_custom_command(
 
 add_custom_target(tlb_generate_tokens DEPENDS ${TLB_TOKENS})
 add_dependencies(tondb-scanner tlb_generate_tokens)
+
 
 set(TONDB_SCANNER_TEST_SOURCE
   ${CMAKE_CURRENT_SOURCE_DIR}/test/tests.cpp

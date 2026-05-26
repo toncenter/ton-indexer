@@ -676,6 +676,51 @@ void run_1_3_0_migrations(const std::string& connection_string, bool custom_type
       "primary key (vesting_contract_address, wallet_address));\n"
     );
 
+    query += (
+      "create table if not exists nominator_pools ("
+      "id bigserial not null, "
+      "address tonaddr not null primary key, "
+      "state integer, "
+      "nominators_count integer, "
+      "stake_amount_sent numeric, "
+      "validator_amount numeric, "
+      "validator_address tonaddr, "
+      "validator_reward_share integer, "
+      "max_nominators_count integer, "
+      "min_validator_stake numeric, "
+      "min_nominator_stake numeric, "
+      "active_nominators jsonb not null default '[]'::jsonb, "
+      "last_transaction_lt bigint, "
+      "code_hash tonhash, "
+      "data_hash tonhash, "
+      "destroyed boolean not null default false) with (fillfactor = 70);\n"
+    );
+
+    query += (
+      "create table if not exists nominator_pool_events ("
+      "tx_hash tonhash not null, "
+      "tx_lt bigint not null, "
+      "tx_now integer not null, "
+      "mc_seqno integer not null, "
+      "trace_id tonhash, "
+      "pool_address tonaddr not null, "
+      "nominator_address tonaddr not null, "
+      "event_index integer not null, "
+      "event_type varchar not null, "
+      "amount numeric not null, "
+      "balance_delta numeric not null, "
+      "pending_balance_delta numeric not null, "
+      "balance_before numeric not null, "
+      "balance_after numeric not null, "
+      "pending_balance_before numeric not null, "
+      "pending_balance_after numeric not null, "
+      "withdraw_request_before boolean not null, "
+      "withdraw_request_after boolean not null, "
+      "primary key (tx_hash, tx_lt, event_index, mc_seqno)) "
+      "partition by range (mc_seqno);\n"
+    );
+    add_default_partition("nominator_pool_events");
+
     query += "create table if not exists blocks_classified (mc_seqno integer not null primary key);\n";
 
     query += (
@@ -1018,6 +1063,10 @@ void create_indexes(std::string connection_string, bool dry_run) {
       "create index if not exists jetton_transfers_index_8 on jetton_transfers (jetton_master_address, tx_lt);\n"
       "create index if not exists jetton_transfers_index_9 on jetton_transfers (tx_now, tx_lt);\n"
       "create index if not exists jetton_transfers_index_10 on jetton_transfers (tx_lt);\n"
+      "create index if not exists nominator_pool_events_nominator_idx on nominator_pool_events(nominator_address, pool_address, tx_now desc, tx_lt desc, event_index desc);\n"
+      "create index if not exists nominator_pool_events_pool_idx on nominator_pool_events(pool_address, tx_now desc, tx_lt desc, event_index desc);\n"
+      "create index if not exists nominator_pools_index_1 on nominator_pools (id);\n"
+      "create index if not exists nominator_pools_active_nominators_idx on nominator_pools using gin(active_nominators);\n"
       "create index if not exists messages_index_1 on messages (msg_hash);\n"
       "create index if not exists messages_index_5 on messages (trace_id, tx_lt);\n"
       "create index if not exists messages_index_2 on messages (source, created_lt);\n"
@@ -1154,7 +1203,6 @@ int main(int argc, char *argv[]) {
       run_1_3_0_migrations(pg_connection_string, custom_types, dry_run);
       current_version = Version{1, 3, 0};
     }
-
 
     // In future, more migrations will be added here
     // not every version must have migrations

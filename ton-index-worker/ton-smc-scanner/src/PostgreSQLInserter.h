@@ -39,6 +39,7 @@ private:
     void insert_multisig_contracts(pqxx::work &transaction, const kvrocks_state::StateBatch& batch);
     void insert_multisig_orders(pqxx::work &transaction, const kvrocks_state::StateBatch& batch);
     void insert_vesting_contracts(pqxx::work &transaction, const kvrocks_state::StateBatch& batch);
+    void insert_nominator_pools(pqxx::work &transaction, const kvrocks_state::StateBatch& batch);
     void insert_telemint_contracts(pqxx::work &transaction, const kvrocks_state::StateBatch& batch);
     void insert_dedust_pools(pqxx::work &transaction, const kvrocks_state::StateBatch& batch);
     void lock_nft_real_owner_reconciliation(pqxx::work &transaction, const kvrocks_state::StateBatch& batch);
