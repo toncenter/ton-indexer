@@ -205,11 +205,26 @@
         line: "maxclients 100000"
       register: redis_maxclients_config
 
-    - name: Restart Redis after maxclients change
+    - name: Comment Redis RDB save rules
+      ansible.builtin.replace:
+        path: /etc/redis/redis.conf
+        regexp: '^(?!\s*#)(\s*save\s+(?!""\s*(?:#.*)?$).*)$'
+        replace: '# \1'
+      register: redis_save_rules_commented
+
+    - name: Disable Redis RDB snapshots
+      ansible.builtin.lineinfile:
+        path: /etc/redis/redis.conf
+        regexp: '^\s*#?\s*save\s+""\s*(?:#.*)?$'
+        line: 'save ""'
+        insertafter: '^#?\s*save\s+'
+      register: redis_save_disabled
+
+    - name: Restart Redis after config change
       ansible.builtin.systemd:
         name: redis-server
         state: restarted
-      when: redis_maxclients_config.changed
+      when: redis_maxclients_config.changed or redis_save_rules_commented.changed or redis_save_disabled.changed
 
     - name: Stop pendings services before Redis flush
       ansible.builtin.systemd:
