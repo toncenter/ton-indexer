@@ -51,10 +51,7 @@ void BlockInterfaceProcessor::start_up() {
     if (account_state.code.is_null()) {
       continue;
     }
-    td::actor::create_actor<FullDetector>(
-        "InterfacesDetector", account_state.account, account_state.code,
-        account_state.data, shard_states, block_->mc_block_.config_,
-            td::actor::create_actor<FullDetector>("InterfacesDetector", account_state.account, account_state.code, account_state.data, shard_states, block_->mc_block_.config_, 
+    td::actor::create_actor<FullDetector>("InterfacesDetector", account_state.account, account_state.code, account_state.data, shard_states, block_->mc_block_.config_, 
                 td::PromiseCreator::lambda([SelfId = actor_id(this), account_state, promise = ig.get_promise()](td::Result<std::vector<typename FullDetector::DetectedInterface>> interfaces) mutable {
                     if (interfaces.is_error()) {
                         promise.set_error(interfaces.move_as_error());
