@@ -1080,7 +1080,6 @@ create table if not exists validator_events
     tx_now                   integer not null,
     mc_seqno                 integer not null,
     trace_id                 tonhash,
-    event_index              integer not null,
     event_type               varchar not null,
     stake_holder_address     tonaddr not null,
     validator_pubkey         varchar,
@@ -1089,8 +1088,7 @@ create table if not exists validator_events
     query_id                 numeric,
     amount                   numeric not null,
     reason                   integer,
-    metadata                 jsonb   not null default '{}'::jsonb,
-    primary key (tx_hash, tx_lt, event_index, mc_seqno)
+    primary key (tx_hash, tx_lt, mc_seqno)
 )
     partition by range (mc_seqno);
 create table if not exists validator_events_default partition of validator_events default;
@@ -1512,9 +1510,9 @@ create index if not exists nominator_pool_events_nominator_idx on nominator_pool
 create index if not exists nominator_pool_events_pool_idx on nominator_pool_events(pool_address, tx_now desc, tx_lt desc, event_index desc);
 create index if not exists nominator_pools_index_1 on nominator_pools (id);
 create index if not exists nominator_pools_active_nominators_idx on nominator_pools using gin(active_nominators);
-create index if not exists validator_events_stake_holder_idx on validator_events(stake_holder_address, tx_now desc, tx_lt desc, event_index desc);
-create index if not exists validator_events_pubkey_idx on validator_events(validator_pubkey, tx_now desc, tx_lt desc, event_index desc);
-create index if not exists validator_events_election_idx on validator_events(election_id, tx_now desc, tx_lt desc, event_index desc);
+create index if not exists validator_events_stake_holder_idx on validator_events(stake_holder_address, tx_now desc, tx_lt desc);
+create index if not exists validator_events_pubkey_idx on validator_events(validator_pubkey, tx_now desc, tx_lt desc);
+create index if not exists validator_events_election_idx on validator_events(election_id, tx_now desc, tx_lt desc);
 create index if not exists validator_election_participants_stake_holder_idx on validator_election_participants(stake_holder_address);
 create index if not exists validator_election_participants_pubkey_idx on validator_election_participants(validator_pubkey);
 create index if not exists validator_cycles_election_idx on validator_cycles(election_id);

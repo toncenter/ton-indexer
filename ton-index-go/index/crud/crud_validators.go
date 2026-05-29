@@ -25,9 +25,9 @@ func (db *DbClient) QueryValidatorEvents(
 	defer conn.Release()
 
 	query := `
-		SELECT tx_hash, tx_lt, tx_now, mc_seqno, trace_id, event_index, event_type,
+		SELECT tx_hash, tx_lt, tx_now, mc_seqno, trace_id, event_type,
 		       stake_holder_address, validator_pubkey, adnl_addr, election_id, query_id::text,
-		       amount::text, reason, metadata
+		       amount::text, reason
 		FROM validator_events
 		WHERE true
 	`
@@ -54,7 +54,7 @@ func (db *DbClient) QueryValidatorEvents(
 	if err != nil {
 		return nil, err
 	}
-	query += " ORDER BY tx_now DESC, tx_lt DESC, event_index DESC"
+	query += " ORDER BY tx_now DESC, tx_lt DESC"
 	limit, err := limitQuery(req.LimitParams, settings)
 	if err != nil {
 		return nil, err
@@ -70,14 +70,12 @@ func (db *DbClient) QueryValidatorEvents(
 	events := []models.ValidatorEvent{}
 	for rows.Next() {
 		var event models.ValidatorEvent
-		var metadataRaw []byte
 		if err := rows.Scan(
 			&event.TxHash,
 			&event.TxLt,
 			&event.Utime,
 			&event.McSeqno,
 			&event.TraceId,
-			&event.EventIndex,
 			&event.Type,
 			&event.StakeHolderAddress,
 			&event.ValidatorPubkey,
@@ -86,14 +84,9 @@ func (db *DbClient) QueryValidatorEvents(
 			&event.QueryId,
 			&event.Amount,
 			&event.Reason,
-			&metadataRaw,
 		); err != nil {
 			return nil, models.IndexError{Code: 500, Message: err.Error()}
 		}
-		if len(metadataRaw) == 0 {
-			metadataRaw = []byte("{}")
-		}
-		event.Metadata = json.RawMessage(metadataRaw)
 		events = append(events, event)
 	}
 	if err := rows.Err(); err != nil {

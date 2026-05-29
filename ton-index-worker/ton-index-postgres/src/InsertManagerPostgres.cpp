@@ -3892,9 +3892,9 @@ void InsertBatchPostgres::insert_nominator_pool_events(pqxx::work &txn, bool wit
 
 void InsertBatchPostgres::insert_validator_events(pqxx::work &txn, bool with_copy) {
   std::initializer_list<std::string_view> columns = {
-    "tx_hash", "tx_lt", "tx_now", "mc_seqno", "trace_id", "event_index", "event_type",
+    "tx_hash", "tx_lt", "tx_now", "mc_seqno", "trace_id", "event_type",
     "stake_holder_address", "validator_pubkey",
-    "adnl_addr", "election_id", "query_id", "amount", "reason", "metadata"
+    "adnl_addr", "election_id", "query_id", "amount", "reason"
   };
   PopulateTableStream stream(txn, "validator_events", columns, 1000, with_copy);
   if (!with_copy) {
@@ -3909,7 +3909,6 @@ void InsertBatchPostgres::insert_validator_events(pqxx::work &txn, bool with_cop
         event.transaction_now,
         event.mc_seqno,
         event.trace_id,
-        event.event_index,
         event.event_type,
         event.stake_holder_address,
         event.validator_pubkey,
@@ -3917,8 +3916,7 @@ void InsertBatchPostgres::insert_validator_events(pqxx::work &txn, bool with_cop
         event.election_id,
         event.query_id,
         event.amount,
-        event.reason,
-        event.metadata
+        event.reason
       );
       stream.insert_row(std::move(tuple));
     }

@@ -1,7 +1,5 @@
 package models
 
-import "encoding/json"
-
 type NominatorPoolEvent struct {
 	TxHash                HashType       `json:"tx_hash"`
 	TxLt                  int64          `json:"tx_lt,string"`
@@ -76,21 +74,19 @@ type NominatorRewardsResponse struct {
 } // @name NominatorRewardsResponse
 
 type ValidatorEvent struct {
-	TxHash             HashType        `json:"tx_hash"`
-	TxLt               int64           `json:"tx_lt,string"`
-	Utime              int32           `json:"utime"`
-	McSeqno            int32           `json:"mc_seqno"`
-	TraceId            *HashType       `json:"trace_id,omitempty"`
-	EventIndex         int32           `json:"event_index"`
-	Type               string          `json:"type"`
-	StakeHolderAddress AccountAddress  `json:"stake_holder_address"`
-	ValidatorPubkey    *string         `json:"validator_pubkey,omitempty"`
-	AdnlAddr           *string         `json:"adnl_addr,omitempty"`
-	ElectionId         *int32          `json:"election_id,omitempty"`
-	QueryId            *string         `json:"query_id,omitempty"`
-	Amount             string          `json:"amount"`
-	Reason             *int32          `json:"reason,omitempty"`
-	Metadata           json.RawMessage `json:"metadata"`
+	TxHash             HashType       `json:"tx_hash"`
+	TxLt               int64          `json:"tx_lt,string"`
+	Utime              int32          `json:"utime"`
+	McSeqno            int32          `json:"mc_seqno"`
+	TraceId            *HashType      `json:"trace_id,omitempty"`
+	Type               string         `json:"type"`
+	StakeHolderAddress AccountAddress `json:"stake_holder_address"`
+	ValidatorPubkey    *string        `json:"validator_pubkey,omitempty"`
+	AdnlAddr           *string        `json:"adnl_addr,omitempty"`
+	ElectionId         *int32         `json:"election_id,omitempty"`
+	QueryId            *string        `json:"query_id,omitempty"`
+	Amount             string         `json:"amount"`
+	Reason             *int32         `json:"reason,omitempty"`
 } // @name ValidatorEvent
 
 type ValidatorEventsResponse struct {

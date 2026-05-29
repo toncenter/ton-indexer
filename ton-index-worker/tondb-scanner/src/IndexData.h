@@ -542,7 +542,6 @@ struct ValidatorEvent {
   uint32_t transaction_now;
   uint32_t mc_seqno;
 
-  uint32_t event_index;
   std::string event_type;
   std::string stake_holder_address;
   std::optional<std::string> validator_pubkey;
@@ -551,7 +550,6 @@ struct ValidatorEvent {
   std::optional<uint64_t> query_id;
   td::RefInt256 amount;
   std::optional<int32_t> reason;
-  std::string metadata;
 };
 
 struct ValidatorElectionParticipant {

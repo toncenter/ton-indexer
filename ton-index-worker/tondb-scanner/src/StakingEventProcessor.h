@@ -38,12 +38,13 @@ public:
       return;
     }
 
-    auto validator_events = parse_validator_events(transaction);
-    if (validator_events.is_error()) {
-      LOG(DEBUG) << "Failed to parse validator event: " << validator_events.move_as_error();
+    auto validator_event = parse_validator_event(transaction);
+    if (validator_event.is_error()) {
+      LOG(DEBUG) << "Failed to parse validator event: " << validator_event.move_as_error();
     } else {
-      for (auto& event : validator_events.move_as_ok()) {
-        block_->events_.push_back(std::move(event));
+      auto event = validator_event.move_as_ok();
+      if (event.has_value()) {
+        block_->events_.push_back(std::move(event.value()));
       }
     }
   }
@@ -74,6 +75,7 @@ private:
   static constexpr std::uint32_t ELECTOR_CONFIG_SET_ERROR = 0xee764f6f;
   static constexpr std::uint32_t ELECTOR_NEW_COMPLAINT = 0x52674370;
   static constexpr std::uint32_t ELECTOR_VOTE_COMPLAINT = 0x56744370;
+  static constexpr std::int64_t ELECTOR_STAKE_FEE = 1000000000;
 
   td::RefInt256 zero_refint() const {
     return td::make_refint(td::BigInt256(0));
@@ -124,20 +126,8 @@ private:
     return transaction.in_msg->value->grams;
   }
 
-  std::string validator_event_metadata(td::RefInt256 raw_message_value, std::optional<std::uint32_t> original_op = std::nullopt) const {
-    td::JsonBuilder json;
-    auto obj = json.enter_object();
-    obj("message_value", raw_message_value->to_dec_string());
-    if (original_op.has_value()) {
-      obj("original_op", static_cast<int64_t>(original_op.value()));
-    }
-    obj.leave();
-    return json.string_builder().as_cslice().str();
-  }
-
   schema::ValidatorEvent make_validator_event(
       const schema::Transaction& transaction,
-      uint32_t event_index,
       std::string event_type,
       std::string stake_holder_address,
       std::optional<std::string> validator_pubkey,
@@ -145,15 +135,13 @@ private:
       std::optional<uint32_t> election_id,
       std::optional<uint64_t> query_id,
       td::RefInt256 amount,
-      std::optional<int32_t> reason,
-      std::string metadata) const {
+      std::optional<int32_t> reason) const {
     schema::ValidatorEvent event;
     event.trace_id = transaction.trace_id;
     event.transaction_hash = transaction.hash;
     event.transaction_lt = transaction.lt;
     event.transaction_now = transaction.now;
     event.mc_seqno = transaction.mc_seqno;
-    event.event_index = event_index;
     event.event_type = std::move(event_type);
     event.stake_holder_address = std::move(stake_holder_address);
     event.validator_pubkey = std::move(validator_pubkey);
@@ -162,32 +150,31 @@ private:
     event.query_id = query_id;
     event.amount = amount;
     event.reason = reason;
-    event.metadata = std::move(metadata);
     return event;
   }
 
-  td::Result<std::vector<schema::ValidatorEvent>> parse_validator_events(const schema::Transaction& transaction) const {
+  td::Result<std::optional<schema::ValidatorEvent>> parse_validator_event(const schema::Transaction& transaction) const {
     if (!transaction.in_msg || transaction.in_msg->body.is_null()) {
-      return std::vector<schema::ValidatorEvent>{};
+      return std::optional<schema::ValidatorEvent>{};
     }
     TRY_RESULT(elector_address, get_elector_address());
     const auto account_address = convert::to_raw_address(transaction.account);
     const auto source_address = transaction.in_msg->source;
     if (!source_address.has_value()) {
-      return std::vector<schema::ValidatorEvent>{};
+      return std::optional<schema::ValidatorEvent>{};
     }
 
     auto body_ref = vm::load_cell_slice_ref(transaction.in_msg->body);
     auto& body = body_ref.write();
     if (body.size() < 96) {
-      return std::vector<schema::ValidatorEvent>{};
+      return std::optional<schema::ValidatorEvent>{};
     }
     auto opcode = static_cast<std::uint32_t>(body.fetch_ulong(32));
     auto query_id = static_cast<std::uint64_t>(body.fetch_ulong(64));
     auto raw_value = message_value(transaction);
 
     if (!transaction_compute_success(transaction)) {
-      return std::vector<schema::ValidatorEvent>{};
+      return std::optional<schema::ValidatorEvent>{};
     }
 
     if (account_address == elector_address && opcode == ELECTOR_NEW_STAKE) {
@@ -204,15 +191,10 @@ private:
       if (!body.fetch_bits_to(adnl_addr)) {
         return td::Status::Error("Failed to parse validator adnl address");
       }
-      auto stake_amount = raw_value - td::make_refint(td::BigInt256(1000000000));
+      auto stake_amount = raw_value - td::make_refint(td::BigInt256(ELECTOR_STAKE_FEE));
       if (td::sgn(stake_amount) < 0) {
         stake_amount = zero_refint();
       }
-      std::vector<schema::ValidatorEvent> events;
-      events.push_back(make_validator_event(
-          transaction, 0, "stake_sent", source_address.value(), validator_pubkey.to_hex(), adnl_addr.to_hex(),
-          stake_at, query_id, stake_amount, std::nullopt,
-          validator_event_metadata(raw_value)));
 
       for (const auto& out_msg : transaction.out_msgs) {
         if (out_msg.body.is_null()) {
@@ -237,42 +219,44 @@ private:
           reason = static_cast<int32_t>(out_body.fetch_long(32));
         }
         auto out_value = out_msg.value.has_value() ? out_msg.value->grams : zero_refint();
-        events.push_back(make_validator_event(
-            transaction, static_cast<uint32_t>(events.size()),
-            out_opcode == ELECTOR_NEW_STAKE_OK ? "stake_accepted" : "stake_rejected",
+        const bool accepted = out_opcode == ELECTOR_NEW_STAKE_OK;
+        return make_validator_event(
+            transaction, accepted ? "stake_accepted" : "stake_rejected",
             source_address.value(), validator_pubkey.to_hex(), adnl_addr.to_hex(), stake_at, out_query_id,
-            out_value, reason, validator_event_metadata(out_value)));
+            accepted ? stake_amount : out_value, reason);
       }
-      return events;
+
+      if (query_id == 0) {
+        return make_validator_event(
+            transaction, "stake_accepted", source_address.value(), validator_pubkey.to_hex(), adnl_addr.to_hex(),
+            stake_at, query_id, stake_amount, std::nullopt);
+      }
+      return std::optional<schema::ValidatorEvent>{};
     }
 
     if (account_address == elector_address && opcode == ELECTOR_RECOVER_STAKE) {
-      return std::vector<schema::ValidatorEvent>{make_validator_event(
-          transaction, 0, "recover_requested", source_address.value(), std::nullopt, std::nullopt,
-          std::nullopt, query_id, raw_value, std::nullopt, validator_event_metadata(raw_value))};
+      return make_validator_event(
+          transaction, "recover_requested", source_address.value(), std::nullopt, std::nullopt,
+          std::nullopt, query_id, raw_value, std::nullopt);
     }
 
     if (source_address.value() != elector_address) {
-      return std::vector<schema::ValidatorEvent>{};
+      return std::optional<schema::ValidatorEvent>{};
     }
 
     if (opcode == ELECTOR_RECOVER_STAKE_OK) {
-      return std::vector<schema::ValidatorEvent>{make_validator_event(
-          transaction, 0, "stake_recovered", account_address, std::nullopt, std::nullopt,
-          std::nullopt, query_id, raw_value, std::nullopt, validator_event_metadata(raw_value))};
+      return make_validator_event(
+          transaction, "stake_recovered", account_address, std::nullopt, std::nullopt,
+          std::nullopt, query_id, raw_value, std::nullopt);
     }
 
     if (opcode == ELECTOR_RECOVER_STAKE_ERROR) {
-      std::optional<std::uint32_t> original_op;
-      if (body.size() >= 32) {
-        original_op = static_cast<std::uint32_t>(body.fetch_ulong(32));
-      }
-      return std::vector<schema::ValidatorEvent>{make_validator_event(
-          transaction, 0, "recover_failed", account_address, std::nullopt, std::nullopt,
-          std::nullopt, query_id, raw_value, std::nullopt, validator_event_metadata(raw_value, original_op))};
+      return make_validator_event(
+          transaction, "recover_failed", account_address, std::nullopt, std::nullopt,
+          std::nullopt, query_id, raw_value, std::nullopt);
     }
 
-    return std::vector<schema::ValidatorEvent>{};
+    return std::optional<schema::ValidatorEvent>{};
   }
 
   uint32_t current_mc_seqno() const {
@@ -479,14 +463,6 @@ private:
       return td::Status::Error(PSLICE() << "Integer stack entry out of uint32 range for " << field_name);
     }
     return static_cast<uint32_t>(value);
-  }
-
-  td::Result<uint64_t> stack_int_to_u64(const vm::StackEntry& entry, td::Slice field_name) const {
-    TRY_RESULT(value, stack_int_to_i64(entry, field_name));
-    if (value < 0) {
-      return td::Status::Error(PSLICE() << "Integer stack entry out of uint64 range for " << field_name);
-    }
-    return static_cast<uint64_t>(value);
   }
 
   td::Result<bool> stack_int_to_bool(const vm::StackEntry& entry, td::Slice field_name) const {
