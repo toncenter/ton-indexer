@@ -26,7 +26,7 @@ func (db *DbClient) QueryValidatorEvents(
 
 	query := `
 		SELECT tx_hash, tx_lt, tx_now, mc_seqno, trace_id, event_index, event_type,
-		       stake_holder_address, validator_pubkey, adnl_addr, query_id::text,
+		       stake_holder_address, validator_pubkey, adnl_addr, election_id, query_id::text,
 		       amount::text, reason, metadata
 		FROM validator_events
 		WHERE true
@@ -82,6 +82,7 @@ func (db *DbClient) QueryValidatorEvents(
 			&event.StakeHolderAddress,
 			&event.ValidatorPubkey,
 			&event.AdnlAddr,
+			&event.ElectionId,
 			&event.QueryId,
 			&event.Amount,
 			&event.Reason,

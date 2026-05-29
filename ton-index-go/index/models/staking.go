@@ -86,6 +86,7 @@ type ValidatorEvent struct {
 	StakeHolderAddress AccountAddress  `json:"stake_holder_address"`
 	ValidatorPubkey    *string         `json:"validator_pubkey,omitempty"`
 	AdnlAddr           *string         `json:"adnl_addr,omitempty"`
+	ElectionId         *int32          `json:"election_id,omitempty"`
 	QueryId            *string         `json:"query_id,omitempty"`
 	Amount             string          `json:"amount"`
 	Reason             *int32          `json:"reason,omitempty"`
