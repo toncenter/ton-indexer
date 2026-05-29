@@ -38,13 +38,12 @@ public:
       return;
     }
 
-    auto validator_event = parse_validator_event(transaction);
-    if (validator_event.is_error()) {
-      LOG(DEBUG) << "Failed to parse validator event: " << validator_event.move_as_error();
+    auto validator_events = parse_validator_events(transaction);
+    if (validator_events.is_error()) {
+      LOG(DEBUG) << "Failed to parse validator event: " << validator_events.move_as_error();
     } else {
-      auto event = validator_event.move_as_ok();
-      if (event.has_value()) {
-        block_->events_.push_back(std::move(event.value()));
+      for (auto& event : validator_events.move_as_ok()) {
+        block_->events_.push_back(std::move(event));
       }
     }
   }
@@ -167,28 +166,28 @@ private:
     return event;
   }
 
-  td::Result<std::optional<schema::ValidatorEvent>> parse_validator_event(const schema::Transaction& transaction) const {
+  td::Result<std::vector<schema::ValidatorEvent>> parse_validator_events(const schema::Transaction& transaction) const {
     if (!transaction.in_msg || transaction.in_msg->body.is_null()) {
-      return std::optional<schema::ValidatorEvent>{};
+      return std::vector<schema::ValidatorEvent>{};
     }
     TRY_RESULT(elector_address, get_elector_address());
     const auto account_address = convert::to_raw_address(transaction.account);
     const auto source_address = transaction.in_msg->source;
     if (!source_address.has_value()) {
-      return std::optional<schema::ValidatorEvent>{};
+      return std::vector<schema::ValidatorEvent>{};
     }
 
     auto body_ref = vm::load_cell_slice_ref(transaction.in_msg->body);
     auto& body = body_ref.write();
     if (body.size() < 96) {
-      return std::optional<schema::ValidatorEvent>{};
+      return std::vector<schema::ValidatorEvent>{};
     }
     auto opcode = static_cast<std::uint32_t>(body.fetch_ulong(32));
     auto query_id = static_cast<std::uint64_t>(body.fetch_ulong(64));
     auto raw_value = message_value(transaction);
 
     if (!transaction_compute_success(transaction)) {
-      return std::optional<schema::ValidatorEvent>{};
+      return std::vector<schema::ValidatorEvent>{};
     }
 
     if (account_address == elector_address && opcode == ELECTOR_NEW_STAKE) {
@@ -209,40 +208,56 @@ private:
       if (td::sgn(stake_amount) < 0) {
         stake_amount = zero_refint();
       }
-      return std::optional<schema::ValidatorEvent>{make_validator_event(
+      std::vector<schema::ValidatorEvent> events;
+      events.push_back(make_validator_event(
           transaction, 0, "stake_sent", source_address.value(), validator_pubkey.to_hex(), adnl_addr.to_hex(),
           stake_at, query_id, stake_amount, std::nullopt,
-          validator_event_metadata(raw_value))};
+          validator_event_metadata(raw_value)));
+
+      for (const auto& out_msg : transaction.out_msgs) {
+        if (out_msg.body.is_null()) {
+          continue;
+        }
+        auto out_body_ref = vm::load_cell_slice_ref(out_msg.body);
+        auto& out_body = out_body_ref.write();
+        if (out_body.size() < 96) {
+          continue;
+        }
+        auto out_opcode = static_cast<std::uint32_t>(out_body.fetch_ulong(32));
+        if (out_opcode != ELECTOR_NEW_STAKE_OK && out_opcode != ELECTOR_NEW_STAKE_ERROR) {
+          continue;
+        }
+        auto out_query_id = static_cast<std::uint64_t>(out_body.fetch_ulong(64));
+        if (out_query_id != query_id) {
+          continue;
+        }
+
+        std::optional<int32_t> reason;
+        if (out_opcode == ELECTOR_NEW_STAKE_ERROR && out_body.size() >= 32) {
+          reason = static_cast<int32_t>(out_body.fetch_long(32));
+        }
+        auto out_value = out_msg.value.has_value() ? out_msg.value->grams : zero_refint();
+        events.push_back(make_validator_event(
+            transaction, static_cast<uint32_t>(events.size()),
+            out_opcode == ELECTOR_NEW_STAKE_OK ? "stake_accepted" : "stake_rejected",
+            source_address.value(), validator_pubkey.to_hex(), adnl_addr.to_hex(), stake_at, out_query_id,
+            out_value, reason, validator_event_metadata(out_value)));
+      }
+      return events;
     }
 
     if (account_address == elector_address && opcode == ELECTOR_RECOVER_STAKE) {
-      return std::optional<schema::ValidatorEvent>{make_validator_event(
+      return std::vector<schema::ValidatorEvent>{make_validator_event(
           transaction, 0, "recover_requested", source_address.value(), std::nullopt, std::nullopt,
           std::nullopt, query_id, raw_value, std::nullopt, validator_event_metadata(raw_value))};
     }
 
     if (source_address.value() != elector_address) {
-      return std::optional<schema::ValidatorEvent>{};
-    }
-
-    if (opcode == ELECTOR_NEW_STAKE_OK) {
-      return std::optional<schema::ValidatorEvent>{make_validator_event(
-          transaction, 0, "stake_accepted", account_address, std::nullopt, std::nullopt,
-          std::nullopt, query_id, raw_value, std::nullopt, validator_event_metadata(raw_value))};
-    }
-
-    if (opcode == ELECTOR_NEW_STAKE_ERROR) {
-      std::optional<int32_t> reason;
-      if (body.size() >= 32) {
-        reason = static_cast<int32_t>(body.fetch_long(32));
-      }
-      return std::optional<schema::ValidatorEvent>{make_validator_event(
-          transaction, 0, "stake_rejected", account_address, std::nullopt, std::nullopt,
-          std::nullopt, query_id, raw_value, reason, validator_event_metadata(raw_value))};
+      return std::vector<schema::ValidatorEvent>{};
     }
 
     if (opcode == ELECTOR_RECOVER_STAKE_OK) {
-      return std::optional<schema::ValidatorEvent>{make_validator_event(
+      return std::vector<schema::ValidatorEvent>{make_validator_event(
           transaction, 0, "stake_recovered", account_address, std::nullopt, std::nullopt,
           std::nullopt, query_id, raw_value, std::nullopt, validator_event_metadata(raw_value))};
     }
@@ -252,12 +267,12 @@ private:
       if (body.size() >= 32) {
         original_op = static_cast<std::uint32_t>(body.fetch_ulong(32));
       }
-      return std::optional<schema::ValidatorEvent>{make_validator_event(
+      return std::vector<schema::ValidatorEvent>{make_validator_event(
           transaction, 0, "recover_failed", account_address, std::nullopt, std::nullopt,
           std::nullopt, query_id, raw_value, std::nullopt, validator_event_metadata(raw_value, original_op))};
     }
 
-    return std::optional<schema::ValidatorEvent>{};
+    return std::vector<schema::ValidatorEvent>{};
   }
 
   uint32_t current_mc_seqno() const {
