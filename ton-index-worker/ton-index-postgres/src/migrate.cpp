@@ -1073,6 +1073,108 @@ create table if not exists nominator_pool_events
     partition by range (mc_seqno);
 create table if not exists nominator_pool_events_default partition of nominator_pool_events default;
 
+create table if not exists validator_events
+(
+    tx_hash                  tonhash not null,
+    tx_lt                    bigint  not null,
+    tx_now                   integer not null,
+    mc_seqno                 integer not null,
+    trace_id                 tonhash,
+    event_index              integer not null,
+    event_type               varchar not null,
+    stake_holder_address     tonaddr not null,
+    validator_pubkey         varchar,
+    adnl_addr                varchar,
+    election_id              integer,
+    query_id                 numeric,
+    amount                   numeric not null,
+    reason                   integer,
+    metadata                 jsonb   not null default '{}'::jsonb,
+    primary key (tx_hash, tx_lt, event_index, mc_seqno)
+)
+    partition by range (mc_seqno);
+create table if not exists validator_events_default partition of validator_events default;
+
+create table if not exists validator_elections
+(
+    election_id     integer not null primary key,
+    elect_close     integer not null,
+    min_stake       numeric not null,
+    total_stake     numeric not null,
+    failed          boolean not null,
+    finished        boolean not null,
+    source_mc_seqno integer not null
+);
+
+create table if not exists validator_election_participants
+(
+    election_id          integer not null,
+    validator_pubkey     varchar not null,
+    stake                numeric not null,
+    max_factor           integer not null,
+    stake_holder_address tonaddr not null,
+    adnl_addr            varchar not null,
+    source_mc_seqno      integer not null,
+    primary key (election_id, validator_pubkey, stake_holder_address)
+);
+
+create table if not exists validator_cycles
+(
+    election_id             integer,
+    utime_since             integer not null,
+    utime_until             integer not null,
+    total                   integer not null,
+    main                    integer not null,
+    total_weight            numeric not null,
+    total_stake             numeric,
+    source_mc_seqno         integer not null,
+    validators_elected_for  integer not null,
+    elections_start_before  integer not null,
+    elections_end_before    integer not null,
+    stake_held_for          integer not null,
+    max_validators          integer not null,
+    max_main_validators     integer not null,
+    min_validators          integer not null,
+    min_stake               numeric not null,
+    max_stake               numeric not null,
+    min_total_stake         numeric not null,
+    max_stake_factor        integer not null,
+    primary key (utime_since)
+);
+
+create table if not exists validator_cycle_members
+(
+    utime_since         integer not null,
+    validator_index     integer not null,
+    validator_pubkey    varchar not null,
+    adnl_addr           varchar not null,
+    weight              numeric not null,
+    source_mc_seqno     integer not null,
+    primary key (utime_since, validator_index)
+);
+
+create table if not exists validator_complaints
+(
+    election_id          integer not null,
+    complaint_hash       varchar not null,
+    validator_pubkey     varchar not null,
+    adnl_addr            varchar,
+    description_boc      text not null,
+    created_at           integer not null,
+    severity             integer not null,
+    reward_address       tonaddr not null,
+    paid                 numeric not null,
+    suggested_fine       numeric not null,
+    suggested_fine_part  integer not null,
+    voted_validators     jsonb not null default '[]'::jsonb,
+    vset_id              varchar not null,
+    weight_remaining     bigint not null,
+    approved_percent     double precision not null,
+    is_passed            boolean not null,
+    source_mc_seqno      integer not null,
+    primary key (election_id, complaint_hash)
+);
+
 create table if not exists contract_methods
 (
     code_hash tonhash not null primary key,
@@ -1410,6 +1512,15 @@ create index if not exists nominator_pool_events_nominator_idx on nominator_pool
 create index if not exists nominator_pool_events_pool_idx on nominator_pool_events(pool_address, tx_now desc, tx_lt desc, event_index desc);
 create index if not exists nominator_pools_index_1 on nominator_pools (id);
 create index if not exists nominator_pools_active_nominators_idx on nominator_pools using gin(active_nominators);
+create index if not exists validator_events_stake_holder_idx on validator_events(stake_holder_address, tx_now desc, tx_lt desc, event_index desc);
+create index if not exists validator_events_pubkey_idx on validator_events(validator_pubkey, tx_now desc, tx_lt desc, event_index desc);
+create index if not exists validator_events_election_idx on validator_events(election_id, tx_now desc, tx_lt desc, event_index desc);
+create index if not exists validator_election_participants_stake_holder_idx on validator_election_participants(stake_holder_address);
+create index if not exists validator_election_participants_pubkey_idx on validator_election_participants(validator_pubkey);
+create index if not exists validator_cycles_election_idx on validator_cycles(election_id);
+create index if not exists validator_cycle_members_pubkey_idx on validator_cycle_members(validator_pubkey);
+create index if not exists validator_cycle_members_adnl_idx on validator_cycle_members(adnl_addr);
+create index if not exists validator_complaints_pubkey_idx on validator_complaints(validator_pubkey);
 )SQL";
     if (dry_run) {
       std::cout << query << std::endl;

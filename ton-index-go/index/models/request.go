@@ -308,6 +308,41 @@ type NominatorPoolEventsRequest struct {
 	Nominator *AccountAddress `query:"nominator"`
 }
 
+type ValidatorEventsRequest struct {
+	StakeHolderAddress *AccountAddress `query:"stake_holder_address"`
+	ValidatorPubkey    *string         `query:"validator_pubkey"`
+	EventType          *string         `query:"type"`
+	LimitParams
+}
+
+type ValidatorElectionsRequest struct {
+	ElectionId         *int32          `query:"election_id"`
+	StakeHolderAddress *AccountAddress `query:"stake_holder_address"`
+	AdnlAddress        *string         `query:"adnl_address"`
+	ValidatorPubkey    *string         `query:"validator_pubkey"`
+	ReturnParticipants *bool           `query:"return_participants"`
+	Finished           *bool           `query:"finished"`
+	LimitParams
+}
+
+type ValidatorCyclesRequest struct {
+	CycleStart         *int32          `query:"cycle_start"`
+	ElectionId         *int32          `query:"election_id"`
+	StakeHolderAddress *AccountAddress `query:"stake_holder_address"`
+	AdnlAddress        *string         `query:"adnl_address"`
+	ValidatorPubkey    *string         `query:"validator_pubkey"`
+	ReturnValidators   *bool           `query:"return_validators"`
+	LimitParams
+}
+
+type ValidatorComplaintsRequest struct {
+	CycleStart         *int32          `query:"cycle_start"`
+	StakeHolderAddress *AccountAddress `query:"stake_holder_address"`
+	AdnlAddress        *string         `query:"adnl_address"`
+	ValidatorPubkey    *string         `query:"validator_pubkey"`
+	LimitParams
+}
+
 type TestRequest struct {
 	Hash  []HashType       `query:"my_hash"`
 	Addr  []AccountAddress `query:"my_addr"`

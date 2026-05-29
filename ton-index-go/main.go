@@ -2225,6 +2225,152 @@ func GetNominatorRewards(c *fiber.Ctx) error {
 	return c.Status(200).JSON(rewards)
 }
 
+func validateValidatorAddressFilters(stakeHolderAddress *models.AccountAddress, adnlAddress *string) error {
+	if stakeHolderAddress != nil && adnlAddress != nil {
+		return models.IndexError{Code: 422, Message: "provide either stake_holder_address or adnl_address, not both"}
+	}
+	return nil
+}
+
+// GetValidatorEvents godoc
+// @summary Get validator stake/recover events
+// @tags staking
+// @id getValidatorEvents
+// @param stake_holder_address query string false "Stake holder address in any form"
+// @param validator_pubkey query string false "Validator public key hex"
+// @param type query string false "Event type"
+// @param start_utime query integer false "Query events with timestamp at or after given timestamp. Defaults to 31 days before end_utime or now. Time range must not exceed 31 days." minimum(0)
+// @param end_utime query integer false "Query events with timestamp at or before given timestamp. Defaults to now. Time range must not exceed 31 days." minimum(0)
+// @param limit query int32 false "Limit number of queried rows. Use with *offset* to batch read." minimum(1) maximum(1000) default(10)
+// @param offset query int32 false "Offset."
+// @produce json
+// @success 200 {object} models.ValidatorEventsResponse
+// @failure 422 {object} models.IndexError
+// @failure 500 {object} models.IndexError
+// @router /api/v3/validators/events [get]
+func GetValidatorEvents(c *fiber.Ctx) error {
+	requestSettings := GetRequestSettings(c, &settings)
+	req := models.ValidatorEventsRequest{}
+	if err := c.QueryParser(&req); err != nil {
+		return models.IndexError{Code: 422, Message: err.Error()}
+	}
+
+	utimeReq, err := parseStakingUtimeFilter(c)
+	if err != nil {
+		return err
+	}
+
+	events, err := pool.QueryValidatorEvents(req, utimeReq, requestSettings)
+	if err != nil {
+		return err
+	}
+	return c.Status(200).JSON(models.ValidatorEventsResponse{
+		StartUtime: *utimeReq.StartUtime,
+		EndUtime:   *utimeReq.EndUtime,
+		Events:     events,
+	})
+}
+
+// GetValidatorElections godoc
+// @summary Get validator elections
+// @tags staking
+// @id getValidatorElections
+// @param election_id query integer false "Election id"
+// @param stake_holder_address query string false "Stake holder address in any form"
+// @param adnl_address query string false "ADNL address hex"
+// @param validator_pubkey query string false "Validator public key hex"
+// @param return_participants query boolean false "Return election participants" default(false)
+// @param finished query boolean false "Filter by finished flag"
+// @param limit query int32 false "Limit number of queried rows. Use with *offset* to batch read." minimum(1) maximum(1000) default(10)
+// @param offset query int32 false "Offset."
+// @produce json
+// @success 200 {object} models.ValidatorElectionsResponse
+// @failure 422 {object} models.IndexError
+// @failure 500 {object} models.IndexError
+// @router /api/v3/validators/elections [get]
+func GetValidatorElections(c *fiber.Ctx) error {
+	requestSettings := GetRequestSettings(c, &settings)
+	req := models.ValidatorElectionsRequest{}
+	if err := c.QueryParser(&req); err != nil {
+		return models.IndexError{Code: 422, Message: err.Error()}
+	}
+	if err := validateValidatorAddressFilters(req.StakeHolderAddress, req.AdnlAddress); err != nil {
+		return err
+	}
+
+	elections, err := pool.QueryValidatorElections(req, requestSettings)
+	if err != nil {
+		return err
+	}
+	return c.Status(200).JSON(models.ValidatorElectionsResponse{Elections: elections})
+}
+
+// GetValidatorCycles godoc
+// @summary Get validator cycles
+// @tags staking
+// @id getValidatorCycles
+// @param cycle_start query integer false "Validator cycle start time"
+// @param election_id query integer false "Elector election id that produced the cycle"
+// @param stake_holder_address query string false "Stake holder address in any form"
+// @param adnl_address query string false "ADNL address hex"
+// @param validator_pubkey query string false "Validator public key hex"
+// @param return_validators query boolean false "Return validators in the set" default(false)
+// @param limit query int32 false "Limit number of queried rows. Use with *offset* to batch read." minimum(1) maximum(1000) default(10)
+// @param offset query int32 false "Offset."
+// @produce json
+// @success 200 {object} models.ValidatorCyclesResponse
+// @failure 422 {object} models.IndexError
+// @failure 500 {object} models.IndexError
+// @router /api/v3/validators/cycles [get]
+func GetValidatorCycles(c *fiber.Ctx) error {
+	requestSettings := GetRequestSettings(c, &settings)
+	req := models.ValidatorCyclesRequest{}
+	if err := c.QueryParser(&req); err != nil {
+		return models.IndexError{Code: 422, Message: err.Error()}
+	}
+	if err := validateValidatorAddressFilters(req.StakeHolderAddress, req.AdnlAddress); err != nil {
+		return err
+	}
+
+	cycles, err := pool.QueryValidatorCycles(req, requestSettings)
+	if err != nil {
+		return err
+	}
+	return c.Status(200).JSON(models.ValidatorCyclesResponse{Cycles: cycles})
+}
+
+// GetValidatorComplaints godoc
+// @summary Get validator complaints
+// @tags staking
+// @id getValidatorComplaints
+// @param cycle_start query integer false "Validator cycle start time"
+// @param stake_holder_address query string false "Stake holder address in any form"
+// @param adnl_address query string false "ADNL address hex"
+// @param validator_pubkey query string false "Validator public key hex"
+// @param limit query int32 false "Limit number of queried rows. Use with *offset* to batch read." minimum(1) maximum(1000) default(10)
+// @param offset query int32 false "Offset."
+// @produce json
+// @success 200 {object} models.ValidatorComplaintsResponse
+// @failure 422 {object} models.IndexError
+// @failure 500 {object} models.IndexError
+// @router /api/v3/validators/complaints [get]
+func GetValidatorComplaints(c *fiber.Ctx) error {
+	requestSettings := GetRequestSettings(c, &settings)
+	req := models.ValidatorComplaintsRequest{}
+	if err := c.QueryParser(&req); err != nil {
+		return models.IndexError{Code: 422, Message: err.Error()}
+	}
+	if err := validateValidatorAddressFilters(req.StakeHolderAddress, req.AdnlAddress); err != nil {
+		return err
+	}
+
+	complaints, err := pool.QueryValidatorComplaints(req, requestSettings)
+	if err != nil {
+		return err
+	}
+	return c.Status(200).JSON(models.ValidatorComplaintsResponse{Complaints: complaints})
+}
+
 func test() {
 	// addr_str := "0QAvlUF6KtTT7R9/kmxOPULEMd+zbtVBZigkorOlGqWtzVky"
 	// addr, err := address.ParseAddr(addr_str)
@@ -2416,6 +2562,10 @@ func main() {
 	app.Get("/api/v3/nominators/events", GetNominatorPoolEvents)
 	app.Get("/api/v3/nominators/nominatorPools", GetNominatorPools)
 	app.Get("/api/v3/nominators/rewards", GetNominatorRewards)
+	app.Get("/api/v3/validators/events", GetValidatorEvents)
+	app.Get("/api/v3/validators/elections", GetValidatorElections)
+	app.Get("/api/v3/validators/cycles", GetValidatorCycles)
+	app.Get("/api/v3/validators/complaints", GetValidatorComplaints)
 
 	// actions
 	app.Get("/api/v3/actions", GetActions)
