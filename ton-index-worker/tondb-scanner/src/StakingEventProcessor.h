@@ -13,7 +13,6 @@
 #include "vm/boc.h"
 
 #include <algorithm>
-#include <cctype>
 #include <cmath>
 #include <cstdint>
 #include <limits>
@@ -79,33 +78,6 @@ private:
 
   td::RefInt256 zero_refint() const {
     return td::make_refint(td::BigInt256(0));
-  }
-
-  td::RefInt256 one_ton() const {
-    return td::make_refint(td::BigInt256(1000000000));
-  }
-
-  td::RefInt256 non_negative(td::RefInt256 value) const {
-    return td::sgn(value) < 0 ? zero_refint() : value;
-  }
-
-  std::string uint256_to_hex(td::RefInt256 value) const {
-    return normalize_hex(td::hex_string(value, false, 64));
-  }
-
-  std::string normalize_hex(std::string value) const {
-    std::transform(value.begin(), value.end(), value.begin(), [](unsigned char c) {
-      return static_cast<char>(std::tolower(c));
-    });
-    return value;
-  }
-
-  std::string raw_masterchain_address_from_int(td::RefInt256 value) const {
-    return normalize_hex("-1:" + uint256_to_hex(value));
-  }
-
-  std::string raw_masterchain_address(const td::Bits256& address) const {
-    return normalize_hex("-1:" + address.to_hex());
   }
 
   td::Result<block::StdAddress> get_elector_std_address() const {
@@ -184,13 +156,7 @@ private:
     event.mc_seqno = transaction.mc_seqno;
     event.event_index = event_index;
     event.event_type = std::move(event_type);
-    event.stake_holder_address = normalize_hex(std::move(stake_holder_address));
-    if (validator_pubkey.has_value()) {
-      validator_pubkey = normalize_hex(std::move(validator_pubkey.value()));
-    }
-    if (adnl_addr.has_value()) {
-      adnl_addr = normalize_hex(std::move(adnl_addr.value()));
-    }
+    event.stake_holder_address = std::move(stake_holder_address);
     event.validator_pubkey = std::move(validator_pubkey);
     event.adnl_addr = std::move(adnl_addr);
     event.election_id = election_id;
@@ -239,9 +205,13 @@ private:
       if (!body.fetch_bits_to(adnl_addr)) {
         return td::Status::Error("Failed to parse validator adnl address");
       }
+      auto stake_amount = raw_value - td::make_refint(td::BigInt256(1000000000));
+      if (td::sgn(stake_amount) < 0) {
+        stake_amount = zero_refint();
+      }
       return std::optional<schema::ValidatorEvent>{make_validator_event(
           transaction, 0, "stake_sent", source_address.value(), validator_pubkey.to_hex(), adnl_addr.to_hex(),
-          stake_at, query_id, non_negative(raw_value - one_ton()), std::nullopt,
+          stake_at, query_id, stake_amount, std::nullopt,
           validator_event_metadata(raw_value))};
     }
 
@@ -324,10 +294,6 @@ private:
       }
     }
     return false;
-  }
-
-  bool is_tick_tock_transaction(const schema::Transaction& transaction) const {
-    return std::holds_alternative<schema::TransactionDescr_tick_tock>(transaction.description);
   }
 
   std::optional<std::uint32_t> inbound_opcode(const schema::Transaction& transaction) const {
@@ -449,7 +415,7 @@ private:
           continue;
         }
 
-        if (is_tick_tock_transaction(transaction)) {
+        if (std::holds_alternative<schema::TransactionDescr_tick_tock>(transaction.description)) {
           triggers.active_election_dirty = true;
           continue;
         }
@@ -515,7 +481,7 @@ private:
 
   td::Result<std::string> stack_int_to_hex(const vm::StackEntry& entry, td::Slice field_name) const {
     TRY_RESULT(value, stack_int(entry, field_name));
-    return uint256_to_hex(value);
+    return td::hex_string(value, true, 64);
   }
 
   td::Result<std::vector<vm::StackEntry>> stack_list_to_vector(vm::StackEntry entry, td::Slice field_name) const {
@@ -576,10 +542,6 @@ private:
       return td::Status::Error("Complaint required weight is out of int64 range");
     }
     return static_cast<int64_t>(required_weight);
-  }
-
-  bool is_zero_hash(const std::string& value) const {
-    return std::all_of(value.begin(), value.end(), [](char c) { return c == '0'; });
   }
 
   td::Result<std::string> stack_cell_to_boc(const vm::StackEntry& entry, td::Slice field_name) const {
@@ -744,7 +706,7 @@ private:
         }
       }
       if (vset_hash.is_ok() && total_stake.is_ok()) {
-        auto normalized_hash = normalize_hex(vset_hash.move_as_ok());
+        auto normalized_hash = vset_hash.move_as_ok();
         result[normalized_hash] = PastElectionInfo{
             .election_id = election_id_value,
             .total_stake = total_stake.move_as_ok(),
@@ -766,7 +728,7 @@ private:
       return std::optional<ParsedValidatorCycle>{};
     }
     TRY_RESULT(vset, block::Config::unpack_validator_set(validators_cell));
-    auto vset_hash = normalize_hex(validators_cell->get_hash().to_hex());
+    auto vset_hash = validators_cell->get_hash().to_hex();
 
     schema::ValidatorCycle cycle;
     cycle.utime_since = vset->utime_since;
@@ -787,8 +749,8 @@ private:
       cycle.members.push_back(schema::ValidatorCycleMember{
           .utime_since = cycle.utime_since,
           .validator_index = index++,
-          .validator_pubkey = normalize_hex(validator.pubkey.as_bits256().to_hex()),
-          .adnl_addr = normalize_hex(validator.adnl_addr.to_hex()),
+          .validator_pubkey = validator.pubkey.as_bits256().to_hex(),
+          .adnl_addr = validator.adnl_addr.to_hex(),
           .weight = validator.weight,
           .source_mc_seqno = mc_seqno,
       });
@@ -838,7 +800,7 @@ private:
       TRY_RESULT_ASSIGN(participant.stake, stack_int(participant_data->at(0), "participant_stake"));
       TRY_RESULT_ASSIGN(participant.max_factor, stack_int_to_u32(participant_data->at(1), "participant_max_factor"));
       TRY_RESULT(addr, stack_int(participant_data->at(2), "participant_stake_holder"));
-      participant.stake_holder_address = raw_masterchain_address_from_int(addr);
+      participant.stake_holder_address = "-1:" + td::hex_string(addr, true, 64);
       TRY_RESULT_ASSIGN(participant.adnl_addr, stack_int_to_hex(participant_data->at(3), "participant_adnl"));
       participant.source_mc_seqno = mc_seqno;
       election.participants.push_back(std::move(participant));
@@ -901,7 +863,7 @@ private:
       TRY_RESULT_ASSIGN(complaint.created_at, stack_int_to_u32(complaint_data->at(2), "complaint_created_at"));
       TRY_RESULT_ASSIGN(complaint.severity, stack_int_to_u32(complaint_data->at(3), "complaint_severity"));
       TRY_RESULT(reward_addr, stack_int(complaint_data->at(4), "complaint_reward_addr"));
-      complaint.reward_address = raw_masterchain_address_from_int(reward_addr);
+      complaint.reward_address = "-1:" + td::hex_string(reward_addr, true, 64);
       TRY_RESULT_ASSIGN(complaint.paid, stack_int(complaint_data->at(5), "complaint_paid"));
       TRY_RESULT_ASSIGN(complaint.suggested_fine, stack_int(complaint_data->at(6), "complaint_suggested_fine"));
       TRY_RESULT_ASSIGN(complaint.suggested_fine_part, stack_int_to_u32(complaint_data->at(7), "complaint_suggested_fine_part"));
@@ -910,7 +872,7 @@ private:
       TRY_RESULT(raw_weight_remaining, stack_int_to_i64(subdata->at(3), "complaint_weight_remaining"));
 
       const schema::ValidatorCycle* voting_cycle = nullptr;
-      if (!is_zero_hash(complaint.vset_id)) {
+      if (!std::all_of(complaint.vset_id.begin(), complaint.vset_id.end(), [](char c) { return c == '0'; })) {
         auto voting_cycle_it = cycles_by_vset_hash.find(complaint.vset_id);
         if (voting_cycle_it != cycles_by_vset_hash.end()) {
           voting_cycle = voting_cycle_it->second;

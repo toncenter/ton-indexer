@@ -41,7 +41,7 @@ func (db *DbClient) QueryValidatorEvents(
 	}
 	if req.ValidatorPubkey != nil {
 		query += fmt.Sprintf(" AND validator_pubkey = $%d", argIdx)
-		args = append(args, strings.ToLower(*req.ValidatorPubkey))
+		args = append(args, strings.ToUpper(*req.ValidatorPubkey))
 		argIdx++
 	}
 	if req.EventType != nil {
@@ -140,12 +140,12 @@ func (db *DbClient) QueryValidatorElections(
 	}
 	if req.AdnlAddress != nil {
 		participantFilters = append(participantFilters, fmt.Sprintf(" AND p.adnl_addr = $%d", argIdx))
-		args = append(args, strings.ToLower(*req.AdnlAddress))
+		args = append(args, strings.ToUpper(*req.AdnlAddress))
 		argIdx++
 	}
 	if req.ValidatorPubkey != nil {
 		participantFilters = append(participantFilters, fmt.Sprintf(" AND p.validator_pubkey = $%d", argIdx))
-		args = append(args, strings.ToLower(*req.ValidatorPubkey))
+		args = append(args, strings.ToUpper(*req.ValidatorPubkey))
 		argIdx++
 	}
 	if len(participantFilters) > 0 {
@@ -293,7 +293,7 @@ func (db *DbClient) QueryValidatorCycles(
 			WHERE m.utime_since = validator_cycles.utime_since
 			  AND m.adnl_addr = $%d
 		)`, argIdx)
-		args = append(args, strings.ToLower(*req.AdnlAddress))
+		args = append(args, strings.ToUpper(*req.AdnlAddress))
 		argIdx++
 	}
 	if req.ValidatorPubkey != nil {
@@ -302,7 +302,7 @@ func (db *DbClient) QueryValidatorCycles(
 			WHERE m.utime_since = validator_cycles.utime_since
 			  AND m.validator_pubkey = $%d
 		)`, argIdx)
-		args = append(args, strings.ToLower(*req.ValidatorPubkey))
+		args = append(args, strings.ToUpper(*req.ValidatorPubkey))
 		argIdx++
 	}
 	query += " ORDER BY utime_since DESC"
@@ -434,7 +434,7 @@ func (db *DbClient) QueryValidatorComplaints(
 	}
 	if req.ValidatorPubkey != nil {
 		query += fmt.Sprintf(" AND c.validator_pubkey = $%d", argIdx)
-		args = append(args, strings.ToLower(*req.ValidatorPubkey))
+		args = append(args, strings.ToUpper(*req.ValidatorPubkey))
 		argIdx++
 	}
 	if req.StakeHolderAddress != nil {
@@ -449,7 +449,7 @@ func (db *DbClient) QueryValidatorComplaints(
 	}
 	if req.AdnlAddress != nil {
 		query += fmt.Sprintf(" AND c.adnl_addr = $%d", argIdx)
-		args = append(args, strings.ToLower(*req.AdnlAddress))
+		args = append(args, strings.ToUpper(*req.AdnlAddress))
 		argIdx++
 	}
 	query += " ORDER BY vc.utime_since DESC, c.created_at DESC, c.complaint_hash"
