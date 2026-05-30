@@ -93,7 +93,7 @@ type NominatorPoolValidatorEventsResponse struct {
 	Events     []NominatorPoolValidatorEvent `json:"events"`
 } // @name NominatorPoolValidatorEventsResponse
 
-type ValidatorPoolReward struct {
+type NominatorPoolValidatorReward struct {
 	Utime         int32    `json:"utime"`
 	Reward        string   `json:"reward"`
 	BalanceBefore string   `json:"balance_before"`
@@ -101,14 +101,14 @@ type ValidatorPoolReward struct {
 	TxLt          int64    `json:"tx_lt,string"`
 	CycleStart    *int32   `json:"cycle_start,omitempty"`
 	QueryId       *string  `json:"query_id,omitempty"`
-} // @name ValidatorPoolReward
+} // @name NominatorPoolValidatorReward
 
-type ValidatorPoolRewardsResponse struct {
-	StartUtime    *UtimeType            `json:"start_utime,omitempty"`
-	EndUtime      *UtimeType            `json:"end_utime,omitempty"`
-	TotalOnPeriod string                `json:"total_on_period"`
-	Rewards       []ValidatorPoolReward `json:"rewards"`
-} // @name ValidatorPoolRewardsResponse
+type NominatorPoolValidatorRewardsResponse struct {
+	StartUtime    *UtimeType                     `json:"start_utime,omitempty"`
+	EndUtime      *UtimeType                     `json:"end_utime,omitempty"`
+	TotalOnPeriod string                         `json:"total_on_period"`
+	Rewards       []NominatorPoolValidatorReward `json:"rewards"`
+} // @name NominatorPoolValidatorRewardsResponse
 
 type ValidatorEvent struct {
 	TxHash             HashType       `json:"tx_hash"`

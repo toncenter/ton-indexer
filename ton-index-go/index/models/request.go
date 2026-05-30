@@ -310,14 +310,14 @@ type NominatorPoolEventsRequest struct {
 	Limit     *int32          `query:"limit"`
 }
 
-type ValidatorPoolEventsRequest struct {
+type NominatorPoolValidatorEventsRequest struct {
 	Validator *AccountAddress `query:"validator"`
 	Pool      *AccountAddress `query:"pool"`
 	EventType *string         `query:"type"`
 	Limit     *int32          `query:"limit"`
 }
 
-type ValidatorPoolRewardsRequest struct {
+type NominatorPoolValidatorRewardsRequest struct {
 	Validator *AccountAddress `query:"validator"`
 	Pool      *AccountAddress `query:"pool"`
 	Limit     *int32          `query:"limit"`

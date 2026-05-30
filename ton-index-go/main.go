@@ -2045,10 +2045,10 @@ func parseStakingUtimeFilter(c *fiber.Ctx) (models.UtimeParams, error) {
 	return utimeReq, nil
 }
 
-// GetPool godoc
-// @summary Get pool information
+// GetNominatorPool godoc
+// @summary Get nominator pool
 // @tags staking
-// @id getPool
+// @id getNominatorPool
 // @param pool query string true "Pool address in any form"
 // @produce json
 // @success 200 {object} models.NominatorPoolInfo
@@ -2056,8 +2056,8 @@ func parseStakingUtimeFilter(c *fiber.Ctx) (models.UtimeParams, error) {
 // @failure 404 {object} models.IndexError
 // @failure 422 {object} models.IndexError
 // @failure 500 {object} models.IndexError
-// @router /api/v3/nominators/pool [get]
-func GetPool(c *fiber.Ctx) error {
+// @router /api/v3/staking/nominatorPools/pool [get]
+func GetNominatorPool(c *fiber.Ctx) error {
 	requestSettings := GetRequestSettings(c, &settings)
 	req := models.NominatorPoolRequest{}
 
@@ -2075,10 +2075,10 @@ func GetPool(c *fiber.Ctx) error {
 	return c.Status(200).JSON(poolInfo)
 }
 
-// GetNominatorPoolEvents godoc
-// @summary Get nominator pool events
+// GetNominatorPoolNominatorEvents godoc
+// @summary Get nominator events from nominator pools
 // @tags staking
-// @id getNominatorPoolEvents
+// @id getNominatorPoolNominatorEvents
 // @param pool query string true "Pool address in any form"
 // @param nominator query string false "Nominator address in any form"
 // @param start_utime query integer false "Query events with timestamp at or after given timestamp." minimum(0)
@@ -2088,8 +2088,8 @@ func GetPool(c *fiber.Ctx) error {
 // @success 200 {object} models.NominatorPoolEventsResponse
 // @failure 422 {object} models.IndexError
 // @failure 500 {object} models.IndexError
-// @router /api/v3/nominators/events [get]
-func GetNominatorPoolEvents(c *fiber.Ctx) error {
+// @router /api/v3/staking/nominatorPools/nominatorEvents [get]
+func GetNominatorPoolNominatorEvents(c *fiber.Ctx) error {
 	requestSettings := GetRequestSettings(c, &settings)
 	req := models.NominatorPoolEventsRequest{}
 
@@ -2123,17 +2123,17 @@ func GetNominatorPoolEvents(c *fiber.Ctx) error {
 	})
 }
 
-// GetNominatorPools godoc
-// @summary Get all pools where nominator has balance
+// GetNominatorPoolNominator godoc
+// @summary Get nominator positions in nominator pools
 // @tags staking
-// @id getNominatorPools
+// @id getNominatorPoolNominator
 // @param nominator query string true "Nominator address in any form"
 // @produce json
 // @success 200 {object} models.NominatorPoolsResponse
 // @failure 422 {object} models.IndexError
 // @failure 500 {object} models.IndexError
-// @router /api/v3/nominators/nominatorPools [get]
-func GetNominatorPools(c *fiber.Ctx) error {
+// @router /api/v3/staking/nominatorPools/nominator [get]
+func GetNominatorPoolNominator(c *fiber.Ctx) error {
 	requestSettings := GetRequestSettings(c, &settings)
 	req := models.NominatorRequest{}
 
@@ -2153,10 +2153,10 @@ func GetNominatorPools(c *fiber.Ctx) error {
 	})
 }
 
-// GetNominatorRewards godoc
-// @summary Get nominator rewards
+// GetNominatorPoolNominatorRewards godoc
+// @summary Get nominator rewards from a nominator pool
 // @tags staking
-// @id getNominatorRewards
+// @id getNominatorPoolNominatorRewards
 // @param nominator query string true "Nominator address in any form"
 // @param pool query string true "Pool address in any form"
 // @param start_utime query integer false "Query rewards with timestamp at or after given timestamp." minimum(0)
@@ -2166,8 +2166,8 @@ func GetNominatorPools(c *fiber.Ctx) error {
 // @success 200 {object} models.NominatorRewardsResponse
 // @failure 422 {object} models.IndexError
 // @failure 500 {object} models.IndexError
-// @router /api/v3/nominators/rewards [get]
-func GetNominatorRewards(c *fiber.Ctx) error {
+// @router /api/v3/staking/nominatorPools/nominatorRewards [get]
+func GetNominatorPoolNominatorRewards(c *fiber.Ctx) error {
 	requestSettings := GetRequestSettings(c, &settings)
 	req := models.NominatorPoolNominatorRequest{}
 
@@ -2191,10 +2191,10 @@ func GetNominatorRewards(c *fiber.Ctx) error {
 	return c.Status(200).JSON(rewards)
 }
 
-// GetValidatorPoolEvents godoc
+// GetNominatorPoolValidatorEvents godoc
 // @summary Get validator accounting events from nominator pools
 // @tags staking
-// @id getValidatorPoolEvents
+// @id getNominatorPoolValidatorEvents
 // @param validator query string false "Validator address in any form"
 // @param pool query string false "Pool address in any form"
 // @param type query string false "Event type"
@@ -2205,10 +2205,10 @@ func GetNominatorRewards(c *fiber.Ctx) error {
 // @success 200 {object} models.NominatorPoolValidatorEventsResponse
 // @failure 422 {object} models.IndexError
 // @failure 500 {object} models.IndexError
-// @router /api/v3/validators/pool/events [get]
-func GetValidatorPoolEvents(c *fiber.Ctx) error {
+// @router /api/v3/staking/nominatorPools/validatorEvents [get]
+func GetNominatorPoolValidatorEvents(c *fiber.Ctx) error {
 	requestSettings := GetRequestSettings(c, &settings)
-	req := models.ValidatorPoolEventsRequest{}
+	req := models.NominatorPoolValidatorEventsRequest{}
 
 	if err := c.QueryParser(&req); err != nil {
 		return models.IndexError{Code: 422, Message: err.Error()}
@@ -2245,23 +2245,23 @@ func GetValidatorPoolEvents(c *fiber.Ctx) error {
 	})
 }
 
-// GetValidatorPoolRewards godoc
+// GetNominatorPoolValidatorRewards godoc
 // @summary Get validator rewards from a nominator pool
 // @tags staking
-// @id getValidatorPoolRewards
+// @id getNominatorPoolValidatorRewards
 // @param validator query string true "Validator address in any form"
 // @param pool query string true "Pool address in any form"
 // @param start_utime query integer false "Query rewards with timestamp at or after given timestamp." minimum(0)
 // @param end_utime query integer false "Query rewards with timestamp at or before given timestamp." minimum(0)
 // @param limit query int32 false "Limit number of queried rows." minimum(1) maximum(1000) default(100)
 // @produce json
-// @success 200 {object} models.ValidatorPoolRewardsResponse
+// @success 200 {object} models.NominatorPoolValidatorRewardsResponse
 // @failure 422 {object} models.IndexError
 // @failure 500 {object} models.IndexError
-// @router /api/v3/validators/pool/rewards [get]
-func GetValidatorPoolRewards(c *fiber.Ctx) error {
+// @router /api/v3/staking/nominatorPools/validatorRewards [get]
+func GetNominatorPoolValidatorRewards(c *fiber.Ctx) error {
 	requestSettings := GetRequestSettings(c, &settings)
-	req := models.ValidatorPoolRewardsRequest{}
+	req := models.NominatorPoolValidatorRewardsRequest{}
 
 	if err := c.QueryParser(&req); err != nil {
 		return models.IndexError{Code: 422, Message: err.Error()}
@@ -2275,7 +2275,7 @@ func GetValidatorPoolRewards(c *fiber.Ctx) error {
 		return err
 	}
 
-	rewards, err := pool.GetValidatorPoolRewards(string(*req.Validator), string(*req.Pool), utimeReq, req.Limit, requestSettings)
+	rewards, err := pool.GetNominatorPoolValidatorRewards(string(*req.Validator), string(*req.Pool), utimeReq, req.Limit, requestSettings)
 	if err != nil {
 		return err
 	}
@@ -2304,7 +2304,7 @@ func validateValidatorAddressFilters(stakeHolderAddress *models.AccountAddress, 
 // @success 200 {object} models.ValidatorEventsResponse
 // @failure 422 {object} models.IndexError
 // @failure 500 {object} models.IndexError
-// @router /api/v3/validators/events [get]
+// @router /api/v3/staking/validators/events [get]
 func GetValidatorEvents(c *fiber.Ctx) error {
 	requestSettings := GetRequestSettings(c, &settings)
 	req := models.ValidatorEventsRequest{}
@@ -2344,7 +2344,7 @@ func GetValidatorEvents(c *fiber.Ctx) error {
 // @success 200 {object} models.ValidatorElectionsResponse
 // @failure 422 {object} models.IndexError
 // @failure 500 {object} models.IndexError
-// @router /api/v3/validators/elections [get]
+// @router /api/v3/staking/validators/elections [get]
 func GetValidatorElections(c *fiber.Ctx) error {
 	requestSettings := GetRequestSettings(c, &settings)
 	req := models.ValidatorElectionsRequest{}
@@ -2378,7 +2378,7 @@ func GetValidatorElections(c *fiber.Ctx) error {
 // @success 200 {object} models.ValidatorCyclesResponse
 // @failure 422 {object} models.IndexError
 // @failure 500 {object} models.IndexError
-// @router /api/v3/validators/cycles [get]
+// @router /api/v3/staking/validators/cycles [get]
 func GetValidatorCycles(c *fiber.Ctx) error {
 	requestSettings := GetRequestSettings(c, &settings)
 	req := models.ValidatorCyclesRequest{}
@@ -2410,7 +2410,7 @@ func GetValidatorCycles(c *fiber.Ctx) error {
 // @success 200 {object} models.ValidatorComplaintsResponse
 // @failure 422 {object} models.IndexError
 // @failure 500 {object} models.IndexError
-// @router /api/v3/validators/complaints [get]
+// @router /api/v3/staking/validators/complaints [get]
 func GetValidatorComplaints(c *fiber.Ctx) error {
 	requestSettings := GetRequestSettings(c, &settings)
 	req := models.ValidatorComplaintsRequest{}
@@ -2614,17 +2614,17 @@ func main() {
 	app.Get("/api/v3/multisig/wallets", GetMultisigs)
 	app.Get("/api/v3/multisig/orders", GetMultisigOrders)
 
-	// nominators (staking)
-	app.Get("/api/v3/nominators/pool", GetPool)
-	app.Get("/api/v3/nominators/events", GetNominatorPoolEvents)
-	app.Get("/api/v3/nominators/nominatorPools", GetNominatorPools)
-	app.Get("/api/v3/nominators/rewards", GetNominatorRewards)
-	app.Get("/api/v3/validators/events", GetValidatorEvents)
-	app.Get("/api/v3/validators/pool/events", GetValidatorPoolEvents)
-	app.Get("/api/v3/validators/pool/rewards", GetValidatorPoolRewards)
-	app.Get("/api/v3/validators/elections", GetValidatorElections)
-	app.Get("/api/v3/validators/cycles", GetValidatorCycles)
-	app.Get("/api/v3/validators/complaints", GetValidatorComplaints)
+	// staking
+	app.Get("/api/v3/staking/nominatorPools/pool", GetNominatorPool)
+	app.Get("/api/v3/staking/nominatorPools/nominator", GetNominatorPoolNominator)
+	app.Get("/api/v3/staking/nominatorPools/nominatorEvents", GetNominatorPoolNominatorEvents)
+	app.Get("/api/v3/staking/nominatorPools/nominatorRewards", GetNominatorPoolNominatorRewards)
+	app.Get("/api/v3/staking/nominatorPools/validatorEvents", GetNominatorPoolValidatorEvents)
+	app.Get("/api/v3/staking/nominatorPools/validatorRewards", GetNominatorPoolValidatorRewards)
+	app.Get("/api/v3/staking/validators/events", GetValidatorEvents)
+	app.Get("/api/v3/staking/validators/elections", GetValidatorElections)
+	app.Get("/api/v3/staking/validators/cycles", GetValidatorCycles)
+	app.Get("/api/v3/staking/validators/complaints", GetValidatorComplaints)
 
 	// actions
 	app.Get("/api/v3/actions", GetActions)

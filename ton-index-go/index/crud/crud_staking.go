@@ -283,13 +283,13 @@ func (db *DbClient) GetNominatorPoolValidatorEvents(
 	return events, nil
 }
 
-func (db *DbClient) GetValidatorPoolRewards(
+func (db *DbClient) GetNominatorPoolValidatorRewards(
 	validatorAddr string,
 	poolAddr string,
 	utimeReq models.UtimeParams,
 	limit *int32,
 	settings models.RequestSettings,
-) (*models.ValidatorPoolRewardsResponse, error) {
+) (*models.NominatorPoolValidatorRewardsResponse, error) {
 	ctx, cancelCtx := context.WithTimeout(context.Background(), settings.Timeout)
 	defer cancelCtx()
 
@@ -325,10 +325,10 @@ func (db *DbClient) GetValidatorPoolRewards(
 	}
 	defer rows.Close()
 
-	rewards := []models.ValidatorPoolReward{}
+	rewards := []models.NominatorPoolValidatorReward{}
 	totalOnPeriod := big.NewInt(0)
 	for rows.Next() {
-		var reward models.ValidatorPoolReward
+		var reward models.NominatorPoolValidatorReward
 		if err := rows.Scan(
 			&reward.TxHash,
 			&reward.TxLt,
@@ -347,7 +347,7 @@ func (db *DbClient) GetValidatorPoolRewards(
 		return nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
 
-	return &models.ValidatorPoolRewardsResponse{
+	return &models.NominatorPoolValidatorRewardsResponse{
 		StartUtime:    utimeReq.StartUtime,
 		EndUtime:      utimeReq.EndUtime,
 		TotalOnPeriod: totalOnPeriod.String(),
