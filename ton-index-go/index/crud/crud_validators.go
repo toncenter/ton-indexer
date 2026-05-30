@@ -25,7 +25,7 @@ func (db *DbClient) QueryValidatorEvents(
 	defer conn.Release()
 
 	query := `
-		SELECT tx_hash, tx_lt, tx_now, mc_seqno, trace_id, event_type,
+		SELECT tx_hash, tx_lt, tx_now, event_type,
 		       stake_holder_address, validator_pubkey, adnl_addr, election_id, query_id::text,
 		       amount::text, reason
 		FROM validator_events
@@ -55,7 +55,7 @@ func (db *DbClient) QueryValidatorEvents(
 		return nil, err
 	}
 	query += " ORDER BY tx_now DESC, tx_lt DESC"
-	limit, err := limitQuery(req.LimitParams, settings)
+	limit, err := limitOnlyQuery(req.Limit, settings)
 	if err != nil {
 		return nil, err
 	}
@@ -74,8 +74,6 @@ func (db *DbClient) QueryValidatorEvents(
 			&event.TxHash,
 			&event.TxLt,
 			&event.Utime,
-			&event.McSeqno,
-			&event.TraceId,
 			&event.Type,
 			&event.StakeHolderAddress,
 			&event.ValidatorPubkey,
@@ -110,7 +108,7 @@ func (db *DbClient) QueryValidatorElections(
 
 	query := `
 		SELECT election_id, elect_close, min_stake::text, total_stake::text,
-		       failed, finished, source_mc_seqno
+		       failed, finished
 		FROM validator_elections
 		WHERE true
 	`
@@ -170,7 +168,6 @@ func (db *DbClient) QueryValidatorElections(
 			&election.TotalStake,
 			&election.Failed,
 			&election.Finished,
-			&election.SourceMcSeqno,
 		); err != nil {
 			rows.Close()
 			return nil, models.IndexError{Code: 500, Message: err.Error()}
@@ -203,7 +200,7 @@ func (db *DbClient) queryValidatorElectionParticipants(
 ) ([]models.ValidatorElectionParticipant, error) {
 	rows, err := conn.Query(ctx, `
 		SELECT election_id, validator_pubkey, stake::text, max_factor,
-		       stake_holder_address, adnl_addr, source_mc_seqno
+		       stake_holder_address, adnl_addr
 		FROM validator_election_participants
 		WHERE election_id = $1
 		ORDER BY stake DESC, validator_pubkey
@@ -223,7 +220,6 @@ func (db *DbClient) queryValidatorElectionParticipants(
 			&participant.MaxFactor,
 			&participant.StakeHolderAddress,
 			&participant.AdnlAddr,
-			&participant.SourceMcSeqno,
 		); err != nil {
 			return nil, models.IndexError{Code: 500, Message: err.Error()}
 		}
@@ -250,7 +246,7 @@ func (db *DbClient) QueryValidatorCycles(
 
 	query := `
 		SELECT election_id, utime_since, utime_until, total, main,
-		       total_weight::text, total_stake::text, source_mc_seqno,
+		       total_weight::text, total_stake::text,
 		       validators_elected_for, elections_start_before, elections_end_before,
 		       stake_held_for, max_validators, max_main_validators, min_validators,
 		       min_stake::text, max_stake::text, min_total_stake::text, max_stake_factor
@@ -322,7 +318,6 @@ func (db *DbClient) QueryValidatorCycles(
 			&cycle.Main,
 			&cycle.TotalWeight,
 			&cycle.TotalStake,
-			&cycle.SourceMcSeqno,
 			&cycle.ValidatorsElectedFor,
 			&cycle.ElectionsStartBefore,
 			&cycle.ElectionsEndBefore,
@@ -366,7 +361,7 @@ func (db *DbClient) queryValidatorCycleValidators(
 ) ([]models.ValidatorCycleValidator, error) {
 	rows, err := conn.Query(ctx, `
 		SELECT utime_since, validator_index, validator_pubkey,
-		       adnl_addr, weight::text, source_mc_seqno
+		       adnl_addr, weight::text
 		FROM validator_cycle_members
 		WHERE utime_since = $1
 		ORDER BY validator_index
@@ -385,7 +380,6 @@ func (db *DbClient) queryValidatorCycleValidators(
 			&validator.ValidatorPubkey,
 			&validator.AdnlAddr,
 			&validator.Weight,
-			&validator.SourceMcSeqno,
 		); err != nil {
 			return nil, models.IndexError{Code: 500, Message: err.Error()}
 		}
@@ -414,7 +408,7 @@ func (db *DbClient) QueryValidatorComplaints(
 		SELECT vc.utime_since, c.complaint_hash, c.validator_pubkey, c.adnl_addr, c.description_boc,
 		       c.created_at, c.severity, c.reward_address, c.paid::text, c.suggested_fine::text,
 		       c.suggested_fine_part, c.voted_validators, c.vset_id, c.weight_remaining,
-		       c.approved_percent, c.is_passed, c.source_mc_seqno
+		       c.approved_percent, c.is_passed
 		FROM validator_complaints c
 		JOIN validator_cycles vc ON vc.election_id = c.election_id
 		WHERE true
@@ -481,7 +475,6 @@ func (db *DbClient) QueryValidatorComplaints(
 			&complaint.WeightRemaining,
 			&complaint.ApprovedPercent,
 			&complaint.IsPassed,
-			&complaint.SourceMcSeqno,
 		); err != nil {
 			return nil, models.IndexError{Code: 500, Message: err.Error()}
 		}

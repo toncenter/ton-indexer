@@ -137,7 +137,6 @@ private:
       td::RefInt256 amount,
       std::optional<int32_t> reason) const {
     schema::ValidatorEvent event;
-    event.trace_id = transaction.trace_id;
     event.transaction_hash = transaction.hash;
     event.transaction_lt = transaction.lt;
     event.transaction_now = transaction.now;

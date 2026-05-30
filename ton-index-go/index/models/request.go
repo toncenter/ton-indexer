@@ -301,18 +301,20 @@ type NominatorRequest struct {
 type NominatorPoolNominatorRequest struct {
 	Pool      *AccountAddress `query:"pool"`
 	Nominator *AccountAddress `query:"nominator"`
+	Limit     *int32          `query:"limit"`
 }
 
 type NominatorPoolEventsRequest struct {
 	Pool      *AccountAddress `query:"pool"`
 	Nominator *AccountAddress `query:"nominator"`
+	Limit     *int32          `query:"limit"`
 }
 
 type ValidatorEventsRequest struct {
 	StakeHolderAddress *AccountAddress `query:"stake_holder_address"`
 	ValidatorPubkey    *string         `query:"validator_pubkey"`
 	EventType          *string         `query:"type"`
-	LimitParams
+	Limit              *int32          `query:"limit"`
 }
 
 type ValidatorElectionsRequest struct {

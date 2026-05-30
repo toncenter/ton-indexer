@@ -48,6 +48,10 @@ func limitQuery(lim models.LimitParams, settings models.RequestSettings) (string
 	return query, nil
 }
 
+func limitOnlyQuery(limit *int32, settings models.RequestSettings) (string, error) {
+	return limitQuery(models.LimitParams{Limit: limit}, settings)
+}
+
 func filterByArray[T any](clmn string, values []T) string {
 	filter_list := []string{}
 	filterStringIfaceType := reflect.TypeOf((*models.FilterStringInterface)(nil)).Elem()

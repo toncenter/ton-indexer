@@ -536,7 +536,6 @@ struct NominatorPoolEvent {
 };
 
 struct ValidatorEvent {
-  td::Bits256 trace_id;
   td::Bits256 transaction_hash;
   uint64_t transaction_lt;
   uint32_t transaction_now;

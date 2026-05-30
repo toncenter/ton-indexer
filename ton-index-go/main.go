@@ -2034,49 +2034,13 @@ func prepareHashes(hashes []models.HashType) []string {
 	return uniqueKeys
 }
 
-const stakingDefaultWindowSeconds models.UtimeType = 31 * 24 * 60 * 60
-const stakingMaxWindowSeconds models.UtimeType = 31 * 24 * 60 * 60
-
-func subtractUtime(value models.UtimeType, delta models.UtimeType) models.UtimeType {
-	if value < delta {
-		return 0
-	}
-	return value - delta
-}
-
-func normalizeStakingUtimeFilter(utimeReq *models.UtimeParams) error {
-	now := models.UtimeType(time.Now().Unix())
-
-	if utimeReq.StartUtime == nil && utimeReq.EndUtime == nil {
-		startUtime := subtractUtime(now, stakingDefaultWindowSeconds)
-		endUtime := now
-		utimeReq.StartUtime = &startUtime
-		utimeReq.EndUtime = &endUtime
-	} else if utimeReq.StartUtime == nil {
-		startUtime := subtractUtime(*utimeReq.EndUtime, stakingDefaultWindowSeconds)
-		utimeReq.StartUtime = &startUtime
-	} else if utimeReq.EndUtime == nil {
-		endUtime := now
-		utimeReq.EndUtime = &endUtime
-	}
-
-	if *utimeReq.StartUtime > *utimeReq.EndUtime {
-		return models.IndexError{Code: 422, Message: "start_utime must be less than or equal to end_utime"}
-	}
-	if *utimeReq.EndUtime-*utimeReq.StartUtime > stakingMaxWindowSeconds {
-		return models.IndexError{Code: 422, Message: "staking query time range must not exceed 31 days"}
-	}
-	return nil
-}
-
 func parseStakingUtimeFilter(c *fiber.Ctx) (models.UtimeParams, error) {
 	utimeReq := models.UtimeParams{}
-
 	if err := c.QueryParser(&utimeReq); err != nil {
 		return utimeReq, models.IndexError{Code: 422, Message: err.Error()}
 	}
-	if err := normalizeStakingUtimeFilter(&utimeReq); err != nil {
-		return utimeReq, err
+	if utimeReq.StartUtime != nil && utimeReq.EndUtime != nil && *utimeReq.StartUtime > *utimeReq.EndUtime {
+		return utimeReq, models.IndexError{Code: 422, Message: "start_utime must be less than or equal to end_utime"}
 	}
 	return utimeReq, nil
 }
@@ -2117,8 +2081,9 @@ func GetPool(c *fiber.Ctx) error {
 // @id getNominatorPoolEvents
 // @param pool query string true "Pool address in any form"
 // @param nominator query string false "Nominator address in any form"
-// @param start_utime query integer false "Query events with timestamp at or after given timestamp. Defaults to 31 days before end_utime or now. Time range must not exceed 31 days." minimum(0)
-// @param end_utime query integer false "Query events with timestamp at or before given timestamp. Defaults to now. Time range must not exceed 31 days." minimum(0)
+// @param start_utime query integer false "Query events with timestamp at or after given timestamp." minimum(0)
+// @param end_utime query integer false "Query events with timestamp at or before given timestamp." minimum(0)
+// @param limit query int32 false "Limit number of queried rows." minimum(1) maximum(1000) default(10)
 // @produce json
 // @success 200 {object} models.NominatorPoolEventsResponse
 // @failure 422 {object} models.IndexError
@@ -2146,14 +2111,14 @@ func GetNominatorPoolEvents(c *fiber.Ctx) error {
 		nominatorAddr = &value
 	}
 
-	events, err := pool.GetNominatorPoolEvents(string(*req.Pool), nominatorAddr, utimeReq, requestSettings)
+	events, err := pool.GetNominatorPoolEvents(string(*req.Pool), nominatorAddr, utimeReq, req.Limit, requestSettings)
 	if err != nil {
 		return err
 	}
 
 	return c.Status(200).JSON(models.NominatorPoolEventsResponse{
-		StartUtime: *utimeReq.StartUtime,
-		EndUtime:   *utimeReq.EndUtime,
+		StartUtime: utimeReq.StartUtime,
+		EndUtime:   utimeReq.EndUtime,
 		Events:     events,
 	})
 }
@@ -2194,8 +2159,9 @@ func GetNominatorPools(c *fiber.Ctx) error {
 // @id getNominatorRewards
 // @param nominator query string true "Nominator address in any form"
 // @param pool query string true "Pool address in any form"
-// @param start_utime query integer false "Query rewards with timestamp at or after given timestamp. Defaults to 31 days before end_utime or now. Time range must not exceed 31 days." minimum(0)
-// @param end_utime query integer false "Query rewards with timestamp at or before given timestamp. Defaults to now. Time range must not exceed 31 days." minimum(0)
+// @param start_utime query integer false "Query rewards with timestamp at or after given timestamp." minimum(0)
+// @param end_utime query integer false "Query rewards with timestamp at or before given timestamp." minimum(0)
+// @param limit query int32 false "Limit number of queried rows." minimum(1) maximum(1000) default(10)
 // @produce json
 // @success 200 {object} models.NominatorRewardsResponse
 // @failure 422 {object} models.IndexError
@@ -2217,7 +2183,7 @@ func GetNominatorRewards(c *fiber.Ctx) error {
 		return err
 	}
 
-	rewards, err := pool.GetNominatorRewards(string(*req.Nominator), string(*req.Pool), utimeReq, requestSettings)
+	rewards, err := pool.GetNominatorRewards(string(*req.Nominator), string(*req.Pool), utimeReq, req.Limit, requestSettings)
 	if err != nil {
 		return err
 	}
@@ -2239,10 +2205,9 @@ func validateValidatorAddressFilters(stakeHolderAddress *models.AccountAddress, 
 // @param stake_holder_address query string false "Stake holder address in any form"
 // @param validator_pubkey query string false "Validator public key hex"
 // @param type query string false "Event type"
-// @param start_utime query integer false "Query events with timestamp at or after given timestamp. Defaults to 31 days before end_utime or now. Time range must not exceed 31 days." minimum(0)
-// @param end_utime query integer false "Query events with timestamp at or before given timestamp. Defaults to now. Time range must not exceed 31 days." minimum(0)
-// @param limit query int32 false "Limit number of queried rows. Use with *offset* to batch read." minimum(1) maximum(1000) default(10)
-// @param offset query int32 false "Offset."
+// @param start_utime query integer false "Query events with timestamp at or after given timestamp." minimum(0)
+// @param end_utime query integer false "Query events with timestamp at or before given timestamp." minimum(0)
+// @param limit query int32 false "Limit number of queried rows." minimum(1) maximum(1000) default(10)
 // @produce json
 // @success 200 {object} models.ValidatorEventsResponse
 // @failure 422 {object} models.IndexError
@@ -2265,8 +2230,8 @@ func GetValidatorEvents(c *fiber.Ctx) error {
 		return err
 	}
 	return c.Status(200).JSON(models.ValidatorEventsResponse{
-		StartUtime: *utimeReq.StartUtime,
-		EndUtime:   *utimeReq.EndUtime,
+		StartUtime: utimeReq.StartUtime,
+		EndUtime:   utimeReq.EndUtime,
 		Events:     events,
 	})
 }

@@ -1079,7 +1079,6 @@ create table if not exists validator_events
     tx_lt                    bigint  not null,
     tx_now                   integer not null,
     mc_seqno                 integer not null,
-    trace_id                 tonhash,
     event_type               varchar not null,
     stake_holder_address     tonaddr not null,
     validator_pubkey         varchar,

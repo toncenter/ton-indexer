@@ -39,6 +39,7 @@ func (db *DbClient) GetNominatorPoolEvents(
 	poolAddr string,
 	nominatorAddr *string,
 	utimeReq models.UtimeParams,
+	limit *int32,
 	settings models.RequestSettings,
 ) ([]models.NominatorPoolEvent, error) {
 	ctx, cancelCtx := context.WithTimeout(context.Background(), settings.Timeout)
@@ -54,8 +55,7 @@ func (db *DbClient) GetNominatorPoolEvents(
 
 	eventQuery := `
 		SELECT tx_hash, tx_lt, tx_now, mc_seqno, trace_id, pool_address, nominator_address,
-		       event_index, event_type, amount::text,
-		       balance_delta::text, pending_balance_delta::text, balance_before::text,
+		       event_type, amount::text, balance_delta::text, pending_balance_delta::text, balance_before::text,
 		       balance_after::text, pending_balance_before::text, pending_balance_after::text,
 		       withdraw_request_before, withdraw_request_after
 		FROM nominator_pool_events
@@ -75,7 +75,12 @@ func (db *DbClient) GetNominatorPoolEvents(
 		return nil, err
 	}
 
-	eventQuery += " ORDER BY tx_now ASC, tx_lt ASC, event_index ASC"
+	eventQuery += " ORDER BY tx_now DESC, tx_lt DESC, event_index DESC"
+	limitQuery, err := limitOnlyQuery(limit, settings)
+	if err != nil {
+		return nil, err
+	}
+	eventQuery += limitQuery
 
 	eventRows, err := conn.Query(ctx, eventQuery, eventArgs...)
 	if err != nil {
@@ -91,7 +96,6 @@ func (db *DbClient) GetNominatorPoolEvents(
 			&event.TraceId,
 			&event.PoolAddress,
 			&event.NominatorAddress,
-			&event.EventIndex,
 			&event.Type,
 			&event.Amount,
 			&event.BalanceDelta,
@@ -121,6 +125,7 @@ func (db *DbClient) GetNominatorRewards(
 	nominatorAddr string,
 	poolAddr string,
 	utimeReq models.UtimeParams,
+	limit *int32,
 	settings models.RequestSettings,
 ) (*models.NominatorRewardsResponse, error) {
 	ctx, cancelCtx := context.WithTimeout(context.Background(), settings.Timeout)
@@ -133,7 +138,7 @@ func (db *DbClient) GetNominatorRewards(
 	defer conn.Release()
 
 	rewardQuery := `
-		SELECT tx_hash, tx_lt, tx_now, event_index, amount::text, balance_before::text, trace_id
+		SELECT tx_hash, tx_lt, tx_now, amount::text, balance_before::text, trace_id
 		FROM nominator_pool_events
 		WHERE nominator_address = $1 AND pool_address = $2 AND event_type = 'reward'
 	`
@@ -145,7 +150,12 @@ func (db *DbClient) GetNominatorRewards(
 		return nil, err
 	}
 
-	rewardQuery += " ORDER BY tx_now ASC, tx_lt ASC, event_index ASC"
+	rewardQuery += " ORDER BY tx_now DESC, tx_lt DESC, event_index DESC"
+	limitQuery, err := limitOnlyQuery(limit, settings)
+	if err != nil {
+		return nil, err
+	}
+	rewardQuery += limitQuery
 
 	rewardRows, err := conn.Query(ctx, rewardQuery, rewardArgs...)
 	if err != nil {
@@ -162,7 +172,6 @@ func (db *DbClient) GetNominatorRewards(
 			&reward.TxHash,
 			&reward.TxLt,
 			&reward.Utime,
-			&reward.EventIndex,
 			&reward.Reward,
 			&reward.StakeBefore,
 			&reward.TraceId,
@@ -179,12 +188,8 @@ func (db *DbClient) GetNominatorRewards(
 	response := &models.NominatorRewardsResponse{
 		TotalOnPeriod: totalOnPeriod.String(),
 		Rewards:       rewards,
-	}
-	if utimeReq.StartUtime != nil {
-		response.StartUtime = *utimeReq.StartUtime
-	}
-	if utimeReq.EndUtime != nil {
-		response.EndUtime = *utimeReq.EndUtime
+		StartUtime:    utimeReq.StartUtime,
+		EndUtime:      utimeReq.EndUtime,
 	}
 	return response, nil
 }

@@ -8,7 +8,6 @@ type NominatorPoolEvent struct {
 	TraceId               *HashType      `json:"trace_id,omitempty"`
 	PoolAddress           AccountAddress `json:"pool_address"`
 	NominatorAddress      AccountAddress `json:"nominator_address"`
-	EventIndex            int32          `json:"event_index"`
 	Type                  string         `json:"type" enums:"reward,deposit,withdrawal,pending_deposit_activation,withdrawal_request"` // "reward", "deposit", "withdrawal", "pending_deposit_activation", "withdrawal_request"
 	Amount                string         `json:"amount"`
 	BalanceDelta          string         `json:"balance_delta"`
@@ -22,8 +21,8 @@ type NominatorPoolEvent struct {
 } // @name NominatorPoolEvent
 
 type NominatorPoolEventsResponse struct {
-	StartUtime UtimeType            `json:"start_utime"`
-	EndUtime   UtimeType            `json:"end_utime"`
+	StartUtime *UtimeType           `json:"start_utime,omitempty"`
+	EndUtime   *UtimeType           `json:"end_utime,omitempty"`
 	Events     []NominatorPoolEvent `json:"events"`
 } // @name NominatorPoolEventsResponse
 
@@ -63,12 +62,11 @@ type NominatorReward struct {
 	TxHash      HashType  `json:"tx_hash"`
 	TxLt        int64     `json:"tx_lt,string"`
 	TraceId     *HashType `json:"trace_id,omitempty"`
-	EventIndex  int32     `json:"event_index"`
 } // @name NominatorReward
 
 type NominatorRewardsResponse struct {
-	StartUtime    UtimeType         `json:"start_utime"`
-	EndUtime      UtimeType         `json:"end_utime"`
+	StartUtime    *UtimeType        `json:"start_utime,omitempty"`
+	EndUtime      *UtimeType        `json:"end_utime,omitempty"`
 	TotalOnPeriod string            `json:"total_on_period"`
 	Rewards       []NominatorReward `json:"rewards"`
 } // @name NominatorRewardsResponse
@@ -77,8 +75,6 @@ type ValidatorEvent struct {
 	TxHash             HashType       `json:"tx_hash"`
 	TxLt               int64          `json:"tx_lt,string"`
 	Utime              int32          `json:"utime"`
-	McSeqno            int32          `json:"mc_seqno"`
-	TraceId            *HashType      `json:"trace_id,omitempty"`
 	Type               string         `json:"type"`
 	StakeHolderAddress AccountAddress `json:"stake_holder_address"`
 	ValidatorPubkey    *string        `json:"validator_pubkey,omitempty"`
@@ -90,8 +86,8 @@ type ValidatorEvent struct {
 } // @name ValidatorEvent
 
 type ValidatorEventsResponse struct {
-	StartUtime UtimeType        `json:"start_utime"`
-	EndUtime   UtimeType        `json:"end_utime"`
+	StartUtime *UtimeType       `json:"start_utime,omitempty"`
+	EndUtime   *UtimeType       `json:"end_utime,omitempty"`
 	Events     []ValidatorEvent `json:"events"`
 } // @name ValidatorEventsResponse
 
@@ -102,18 +98,16 @@ type ValidatorElectionParticipant struct {
 	MaxFactor          int32          `json:"max_factor"`
 	StakeHolderAddress AccountAddress `json:"stake_holder_address"`
 	AdnlAddr           string         `json:"adnl_addr"`
-	SourceMcSeqno      int32          `json:"source_mc_seqno"`
 } // @name ValidatorElectionParticipant
 
 type ValidatorElection struct {
-	ElectionId    int32                          `json:"election_id"`
-	ElectClose    int32                          `json:"elect_close"`
-	MinStake      string                         `json:"min_stake"`
-	TotalStake    string                         `json:"total_stake"`
-	Failed        bool                           `json:"failed"`
-	Finished      bool                           `json:"finished"`
-	SourceMcSeqno int32                          `json:"source_mc_seqno"`
-	Participants  []ValidatorElectionParticipant `json:"participants,omitempty"`
+	ElectionId   int32                          `json:"election_id"`
+	ElectClose   int32                          `json:"elect_close"`
+	MinStake     string                         `json:"min_stake"`
+	TotalStake   string                         `json:"total_stake"`
+	Failed       bool                           `json:"failed"`
+	Finished     bool                           `json:"finished"`
+	Participants []ValidatorElectionParticipant `json:"participants,omitempty"`
 } // @name ValidatorElection
 
 type ValidatorElectionsResponse struct {
@@ -126,7 +120,6 @@ type ValidatorCycleValidator struct {
 	ValidatorPubkey string `json:"validator_pubkey"`
 	AdnlAddr        string `json:"adnl_addr"`
 	Weight          string `json:"weight"`
-	SourceMcSeqno   int32  `json:"source_mc_seqno"`
 } // @name ValidatorCycleValidator
 
 type ValidatorCycle struct {
@@ -137,7 +130,6 @@ type ValidatorCycle struct {
 	Main                 int32                     `json:"main"`
 	TotalWeight          string                    `json:"total_weight"`
 	TotalStake           *string                   `json:"total_stake,omitempty"`
-	SourceMcSeqno        int32                     `json:"source_mc_seqno"`
 	ValidatorsElectedFor int32                     `json:"validators_elected_for"`
 	ElectionsStartBefore int32                     `json:"elections_start_before"`
 	ElectionsEndBefore   int32                     `json:"elections_end_before"`
@@ -180,7 +172,6 @@ type ValidatorComplaint struct {
 	WeightRemaining   int64                    `json:"weight_remaining"`
 	ApprovedPercent   float64                  `json:"approved_percent"`
 	IsPassed          bool                     `json:"is_passed"`
-	SourceMcSeqno     int32                    `json:"source_mc_seqno"`
 } // @name ValidatorComplaint
 
 type ValidatorComplaintsResponse struct {
