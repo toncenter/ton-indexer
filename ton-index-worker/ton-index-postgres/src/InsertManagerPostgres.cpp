@@ -148,6 +148,7 @@ private:
   void insert_jetton_burns(pqxx::work &txn, bool with_copy);
   void insert_nft_transfers(pqxx::work &txn, bool with_copy);
   void insert_nominator_pool_events(pqxx::work &txn, bool with_copy);
+  void insert_nominator_pool_validator_events(pqxx::work &txn, bool with_copy);
   void insert_validator_events(pqxx::work &txn, bool with_copy);
   void insert_validator_snapshots(pqxx::work &txn);
   std::string insert_jetton_masters(pqxx::work &txn);
@@ -3002,6 +3003,7 @@ void InsertBatchPostgres::commit_prepared_batch() {
   insert_jetton_burns(txn, with_copy_);
   insert_nft_transfers(txn, with_copy_);
   insert_nominator_pool_events(txn, with_copy_);
+  insert_nominator_pool_validator_events(txn, with_copy_);
   insert_validator_events(txn, with_copy_);
   insert_traces(txn, with_copy_);
   if (!kvrocks_state_only) {
@@ -3883,6 +3885,41 @@ void InsertBatchPostgres::insert_nominator_pool_events(pqxx::work &txn, bool wit
         event.pending_balance_after,
         event.withdraw_request_before,
         event.withdraw_request_after
+      );
+      stream.insert_row(std::move(tuple));
+    }
+  }
+  stream.finish();
+}
+
+void InsertBatchPostgres::insert_nominator_pool_validator_events(pqxx::work &txn, bool with_copy) {
+  std::initializer_list<std::string_view> columns = {
+    "tx_hash", "tx_lt", "tx_now", "mc_seqno", "pool_address", "validator_address",
+    "event_type", "amount", "balance_delta", "balance_before", "balance_after",
+    "query_id", "cycle_start", "validator_reward_share"
+  };
+  PopulateTableStream stream(txn, "nominator_pool_validator_events", columns, 1000, with_copy);
+  if (!with_copy) {
+    stream.setConflictDoNothing();
+  }
+
+  for (const auto& task : insert_tasks_) {
+    for (const auto& event : task.parsed_block_->get_events<schema::NominatorPoolValidatorEvent>()) {
+      auto tuple = std::make_tuple(
+        event.transaction_hash,
+        event.transaction_lt,
+        event.transaction_now,
+        event.mc_seqno,
+        event.pool_address,
+        event.validator_address,
+        event.event_type,
+        event.amount,
+        event.balance_delta,
+        event.balance_before,
+        event.balance_after,
+        event.query_id,
+        event.cycle_start,
+        event.validator_reward_share
       );
       stream.insert_row(std::move(tuple));
     }

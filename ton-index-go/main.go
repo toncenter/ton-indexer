@@ -2083,7 +2083,7 @@ func GetPool(c *fiber.Ctx) error {
 // @param nominator query string false "Nominator address in any form"
 // @param start_utime query integer false "Query events with timestamp at or after given timestamp." minimum(0)
 // @param end_utime query integer false "Query events with timestamp at or before given timestamp." minimum(0)
-// @param limit query int32 false "Limit number of queried rows." minimum(1) maximum(1000) default(10)
+// @param limit query int32 false "Limit number of queried rows." minimum(1) maximum(1000) default(100)
 // @produce json
 // @success 200 {object} models.NominatorPoolEventsResponse
 // @failure 422 {object} models.IndexError
@@ -2161,7 +2161,7 @@ func GetNominatorPools(c *fiber.Ctx) error {
 // @param pool query string true "Pool address in any form"
 // @param start_utime query integer false "Query rewards with timestamp at or after given timestamp." minimum(0)
 // @param end_utime query integer false "Query rewards with timestamp at or before given timestamp." minimum(0)
-// @param limit query int32 false "Limit number of queried rows." minimum(1) maximum(1000) default(10)
+// @param limit query int32 false "Limit number of queried rows." minimum(1) maximum(1000) default(100)
 // @produce json
 // @success 200 {object} models.NominatorRewardsResponse
 // @failure 422 {object} models.IndexError
@@ -2191,6 +2191,98 @@ func GetNominatorRewards(c *fiber.Ctx) error {
 	return c.Status(200).JSON(rewards)
 }
 
+// GetValidatorPoolEvents godoc
+// @summary Get validator accounting events from nominator pools
+// @tags staking
+// @id getValidatorPoolEvents
+// @param validator query string false "Validator address in any form"
+// @param pool query string false "Pool address in any form"
+// @param type query string false "Event type"
+// @param start_utime query integer false "Query events with timestamp at or after given timestamp." minimum(0)
+// @param end_utime query integer false "Query events with timestamp at or before given timestamp." minimum(0)
+// @param limit query int32 false "Limit number of queried rows." minimum(1) maximum(1000) default(100)
+// @produce json
+// @success 200 {object} models.NominatorPoolValidatorEventsResponse
+// @failure 422 {object} models.IndexError
+// @failure 500 {object} models.IndexError
+// @router /api/v3/validators/pool/events [get]
+func GetValidatorPoolEvents(c *fiber.Ctx) error {
+	requestSettings := GetRequestSettings(c, &settings)
+	req := models.ValidatorPoolEventsRequest{}
+
+	if err := c.QueryParser(&req); err != nil {
+		return models.IndexError{Code: 422, Message: err.Error()}
+	}
+	if req.Validator == nil && req.Pool == nil {
+		return models.IndexError{Code: 422, Message: "validator or pool parameter is required"}
+	}
+
+	utimeReq, err := parseStakingUtimeFilter(c)
+	if err != nil {
+		return err
+	}
+
+	var validatorAddr *string
+	if req.Validator != nil {
+		value := string(*req.Validator)
+		validatorAddr = &value
+	}
+	var poolAddr *string
+	if req.Pool != nil {
+		value := string(*req.Pool)
+		poolAddr = &value
+	}
+
+	events, err := pool.GetNominatorPoolValidatorEvents(validatorAddr, poolAddr, req.EventType, utimeReq, req.Limit, requestSettings)
+	if err != nil {
+		return err
+	}
+
+	return c.Status(200).JSON(models.NominatorPoolValidatorEventsResponse{
+		StartUtime: utimeReq.StartUtime,
+		EndUtime:   utimeReq.EndUtime,
+		Events:     events,
+	})
+}
+
+// GetValidatorPoolRewards godoc
+// @summary Get validator rewards from a nominator pool
+// @tags staking
+// @id getValidatorPoolRewards
+// @param validator query string true "Validator address in any form"
+// @param pool query string true "Pool address in any form"
+// @param start_utime query integer false "Query rewards with timestamp at or after given timestamp." minimum(0)
+// @param end_utime query integer false "Query rewards with timestamp at or before given timestamp." minimum(0)
+// @param limit query int32 false "Limit number of queried rows." minimum(1) maximum(1000) default(100)
+// @produce json
+// @success 200 {object} models.ValidatorPoolRewardsResponse
+// @failure 422 {object} models.IndexError
+// @failure 500 {object} models.IndexError
+// @router /api/v3/validators/pool/rewards [get]
+func GetValidatorPoolRewards(c *fiber.Ctx) error {
+	requestSettings := GetRequestSettings(c, &settings)
+	req := models.ValidatorPoolRewardsRequest{}
+
+	if err := c.QueryParser(&req); err != nil {
+		return models.IndexError{Code: 422, Message: err.Error()}
+	}
+	if req.Validator == nil || req.Pool == nil {
+		return models.IndexError{Code: 422, Message: "validator and pool parameters are required"}
+	}
+
+	utimeReq, err := parseStakingUtimeFilter(c)
+	if err != nil {
+		return err
+	}
+
+	rewards, err := pool.GetValidatorPoolRewards(string(*req.Validator), string(*req.Pool), utimeReq, req.Limit, requestSettings)
+	if err != nil {
+		return err
+	}
+
+	return c.Status(200).JSON(rewards)
+}
+
 func validateValidatorAddressFilters(stakeHolderAddress *models.AccountAddress, adnlAddress *string) error {
 	if stakeHolderAddress != nil && adnlAddress != nil {
 		return models.IndexError{Code: 422, Message: "provide either stake_holder_address or adnl_address, not both"}
@@ -2207,7 +2299,7 @@ func validateValidatorAddressFilters(stakeHolderAddress *models.AccountAddress, 
 // @param type query string false "Event type"
 // @param start_utime query integer false "Query events with timestamp at or after given timestamp." minimum(0)
 // @param end_utime query integer false "Query events with timestamp at or before given timestamp." minimum(0)
-// @param limit query int32 false "Limit number of queried rows." minimum(1) maximum(1000) default(10)
+// @param limit query int32 false "Limit number of queried rows." minimum(1) maximum(1000) default(100)
 // @produce json
 // @success 200 {object} models.ValidatorEventsResponse
 // @failure 422 {object} models.IndexError
@@ -2528,6 +2620,8 @@ func main() {
 	app.Get("/api/v3/nominators/nominatorPools", GetNominatorPools)
 	app.Get("/api/v3/nominators/rewards", GetNominatorRewards)
 	app.Get("/api/v3/validators/events", GetValidatorEvents)
+	app.Get("/api/v3/validators/pool/events", GetValidatorPoolEvents)
+	app.Get("/api/v3/validators/pool/rewards", GetValidatorPoolRewards)
 	app.Get("/api/v3/validators/elections", GetValidatorElections)
 	app.Get("/api/v3/validators/cycles", GetValidatorCycles)
 	app.Get("/api/v3/validators/complaints", GetValidatorComplaints)

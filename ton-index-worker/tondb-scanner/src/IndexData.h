@@ -535,6 +535,24 @@ struct NominatorPoolEvent {
   bool withdraw_request_after;
 };
 
+struct NominatorPoolValidatorEvent {
+  td::Bits256 transaction_hash;
+  uint64_t transaction_lt;
+  uint32_t transaction_now;
+  uint32_t mc_seqno;
+
+  std::string pool_address;
+  std::string validator_address;
+  std::string event_type;
+  td::RefInt256 amount;
+  td::RefInt256 balance_delta;
+  td::RefInt256 balance_before;
+  td::RefInt256 balance_after;
+  std::optional<uint64_t> query_id;
+  std::optional<uint32_t> cycle_start;
+  uint32_t validator_reward_share;
+};
+
 struct ValidatorEvent {
   td::Bits256 transaction_hash;
   uint64_t transaction_lt;
@@ -836,6 +854,7 @@ using BlockchainEvent = std::variant<JettonTransfer,
                                      JettonBurn,
                                      NFTTransfer,
                                      NominatorPoolEvent,
+                                     NominatorPoolValidatorEvent,
                                      ValidatorEvent>;
 
 using BlockchainInterface = std::variant<JettonMasterData,

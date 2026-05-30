@@ -37,7 +37,7 @@ struct PartitionToDrop {
 constexpr int partition_manager_lock_namespace = 0x544f4e;  // "TON"
 constexpr int partition_manager_lock_id = 0x50415254;        // "PART"
 
-constexpr std::array<TableSpec, 12> create_order{{
+constexpr std::array<TableSpec, 13> create_order{{
     {"blocks", "mc_block_seqno"},
     {"shard_state", "mc_seqno"},
     {"transactions", "mc_block_seqno"},
@@ -46,13 +46,14 @@ constexpr std::array<TableSpec, 12> create_order{{
     {"jetton_burns", "mc_seqno"},
     {"nft_transfers", "mc_seqno"},
     {"nominator_pool_events", "mc_seqno"},
+    {"nominator_pool_validator_events", "mc_seqno"},
     {"validator_events", "mc_seqno"},
     {"traces", "mc_seqno_end"},
     {"actions", "trace_mc_seqno_end"},
     {"action_accounts", "trace_mc_seqno_end"},
 }};
 
-constexpr std::array<TableSpec, 12> drop_order{{
+constexpr std::array<TableSpec, 13> drop_order{{
     {"blocks", "mc_block_seqno"},
     {"shard_state", "mc_seqno"},
     {"transactions", "mc_block_seqno"},
@@ -61,6 +62,7 @@ constexpr std::array<TableSpec, 12> drop_order{{
     {"jetton_burns", "mc_seqno"},
     {"nft_transfers", "mc_seqno"},
     {"nominator_pool_events", "mc_seqno"},
+    {"nominator_pool_validator_events", "mc_seqno"},
     {"validator_events", "mc_seqno"},
     {"traces", "mc_seqno_end"},
     {"actions", "trace_mc_seqno_end"},

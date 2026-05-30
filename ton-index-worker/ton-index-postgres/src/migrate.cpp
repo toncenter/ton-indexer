@@ -1073,6 +1073,27 @@ create table if not exists nominator_pool_events
     partition by range (mc_seqno);
 create table if not exists nominator_pool_events_default partition of nominator_pool_events default;
 
+create table if not exists nominator_pool_validator_events
+(
+    tx_hash                tonhash not null,
+    tx_lt                  bigint  not null,
+    tx_now                 integer not null,
+    mc_seqno               integer not null,
+    pool_address           tonaddr not null,
+    validator_address      tonaddr not null,
+    event_type             varchar not null,
+    amount                 numeric not null,
+    balance_delta          numeric not null,
+    balance_before         numeric not null,
+    balance_after          numeric not null,
+    query_id               numeric,
+    cycle_start            integer,
+    validator_reward_share integer not null,
+    primary key (tx_hash, tx_lt, mc_seqno)
+)
+    partition by range (mc_seqno);
+create table if not exists nominator_pool_validator_events_default partition of nominator_pool_validator_events default;
+
 create table if not exists validator_events
 (
     tx_hash                  tonhash not null,
@@ -1507,6 +1528,9 @@ create index if not exists vesting_index_4 on vesting_contracts (id);
 
 create index if not exists nominator_pool_events_nominator_idx on nominator_pool_events(nominator_address, pool_address, tx_now desc, tx_lt desc, event_index desc);
 create index if not exists nominator_pool_events_pool_idx on nominator_pool_events(pool_address, tx_now desc, tx_lt desc, event_index desc);
+create index if not exists nominator_pool_validator_events_validator_idx on nominator_pool_validator_events(validator_address, pool_address, tx_now desc, tx_lt desc);
+create index if not exists nominator_pool_validator_events_pool_idx on nominator_pool_validator_events(pool_address, tx_now desc, tx_lt desc);
+create index if not exists nominator_pool_validator_events_cycle_idx on nominator_pool_validator_events(cycle_start);
 create index if not exists nominator_pools_index_1 on nominator_pools (id);
 create index if not exists nominator_pools_active_nominators_idx on nominator_pools using gin(active_nominators);
 create index if not exists validator_events_stake_holder_idx on validator_events(stake_holder_address, tx_now desc, tx_lt desc);

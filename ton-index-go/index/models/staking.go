@@ -71,6 +71,45 @@ type NominatorRewardsResponse struct {
 	Rewards       []NominatorReward `json:"rewards"`
 } // @name NominatorRewardsResponse
 
+type NominatorPoolValidatorEvent struct {
+	TxHash               HashType       `json:"tx_hash"`
+	TxLt                 int64          `json:"tx_lt,string"`
+	Utime                int32          `json:"utime"`
+	PoolAddress          AccountAddress `json:"pool_address"`
+	ValidatorAddress     AccountAddress `json:"validator_address"`
+	Type                 string         `json:"type" enums:"reward,penalty,deposit,withdrawal"` // "reward", "penalty", "deposit", "withdrawal"
+	Amount               string         `json:"amount"`
+	BalanceDelta         string         `json:"balance_delta"`
+	BalanceBefore        string         `json:"balance_before"`
+	BalanceAfter         string         `json:"balance_after"`
+	QueryId              *string        `json:"query_id,omitempty"`
+	CycleStart           *int32         `json:"cycle_start,omitempty"`
+	ValidatorRewardShare int32          `json:"validator_reward_share"`
+} // @name NominatorPoolValidatorEvent
+
+type NominatorPoolValidatorEventsResponse struct {
+	StartUtime *UtimeType                    `json:"start_utime,omitempty"`
+	EndUtime   *UtimeType                    `json:"end_utime,omitempty"`
+	Events     []NominatorPoolValidatorEvent `json:"events"`
+} // @name NominatorPoolValidatorEventsResponse
+
+type ValidatorPoolReward struct {
+	Utime         int32    `json:"utime"`
+	Reward        string   `json:"reward"`
+	BalanceBefore string   `json:"balance_before"`
+	TxHash        HashType `json:"tx_hash"`
+	TxLt          int64    `json:"tx_lt,string"`
+	CycleStart    *int32   `json:"cycle_start,omitempty"`
+	QueryId       *string  `json:"query_id,omitempty"`
+} // @name ValidatorPoolReward
+
+type ValidatorPoolRewardsResponse struct {
+	StartUtime    *UtimeType            `json:"start_utime,omitempty"`
+	EndUtime      *UtimeType            `json:"end_utime,omitempty"`
+	TotalOnPeriod string                `json:"total_on_period"`
+	Rewards       []ValidatorPoolReward `json:"rewards"`
+} // @name ValidatorPoolRewardsResponse
+
 type ValidatorEvent struct {
 	TxHash             HashType       `json:"tx_hash"`
 	TxLt               int64          `json:"tx_lt,string"`

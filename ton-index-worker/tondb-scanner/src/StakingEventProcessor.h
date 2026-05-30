@@ -76,6 +76,8 @@ private:
   static constexpr std::uint32_t ELECTOR_NEW_COMPLAINT = 0x52674370;
   static constexpr std::uint32_t ELECTOR_VOTE_COMPLAINT = 0x56744370;
   static constexpr std::int64_t ELECTOR_STAKE_FEE = 1000000000;
+  static constexpr std::uint32_t NOMINATOR_POOL_VALIDATOR_DEPOSIT = 4;
+  static constexpr std::uint32_t NOMINATOR_POOL_VALIDATOR_WITHDRAWAL = 5;
 
   td::RefInt256 zero_refint() const {
     return td::make_refint(td::BigInt256(0));
@@ -1039,7 +1041,7 @@ private:
     return rand_seed;
   }
 
-  bool is_recover_stake_ok(const schema::Transaction& transaction) {
+  bool is_recover_stake_ok(const schema::Transaction& transaction) const {
     if (!transaction.in_msg || transaction.in_msg->body.is_null()) {
       return false;
     }
@@ -1140,6 +1142,32 @@ private:
     return zero_refint() - value;
   }
 
+  struct NominatorPoolMessageHeader {
+    std::uint32_t opcode;
+    std::optional<std::uint64_t> query_id;
+  };
+
+  std::optional<NominatorPoolMessageHeader> parse_nominator_pool_message_header(
+      const schema::Transaction& transaction) const {
+    if (!transaction.in_msg || transaction.in_msg->body.is_null()) {
+      return std::nullopt;
+    }
+    auto body_ref = vm::load_cell_slice_ref(transaction.in_msg->body);
+    auto& body = body_ref.write();
+    if (body.size() < 32) {
+      return std::nullopt;
+    }
+
+    NominatorPoolMessageHeader header{
+        .opcode = static_cast<std::uint32_t>(body.fetch_ulong(32)),
+        .query_id = std::nullopt,
+    };
+    if (body.size() >= 64) {
+      header.query_id = static_cast<std::uint64_t>(body.fetch_ulong(64));
+    }
+    return header;
+  }
+
   std::map<std::string, PoolNominatorSnapshot> build_nominator_snapshots(
       const nominator_pool::ParsedStorage& storage) const {
     std::map<std::string, PoolNominatorSnapshot> result;
@@ -1211,6 +1239,51 @@ private:
     return event;
   }
 
+  std::optional<schema::NominatorPoolValidatorEvent> build_nominator_pool_validator_event(
+      const schema::Transaction& transaction,
+      const nominator_pool::ParsedStorage& before,
+      const nominator_pool::ParsedStorage& after) const {
+    auto balance_delta = after.validator_amount - before.validator_amount;
+    if (td::sgn(balance_delta) == 0) {
+      return std::nullopt;
+    }
+
+    const bool is_reward_transaction = is_recover_stake_ok(transaction);
+    auto header = parse_nominator_pool_message_header(transaction);
+
+    std::string event_type;
+    if (is_reward_transaction) {
+      event_type = td::sgn(balance_delta) > 0 ? "reward" : "penalty";
+    } else if (header.has_value() && header->opcode == NOMINATOR_POOL_VALIDATOR_DEPOSIT) {
+      event_type = "deposit";
+    } else if (header.has_value() && header->opcode == NOMINATOR_POOL_VALIDATOR_WITHDRAWAL) {
+      event_type = "withdrawal";
+    } else {
+      return std::nullopt;
+    }
+
+    schema::NominatorPoolValidatorEvent event;
+    event.transaction_hash = transaction.hash;
+    event.transaction_lt = transaction.lt;
+    event.transaction_now = transaction.now;
+    event.mc_seqno = transaction.mc_seqno;
+    event.pool_address = convert::to_raw_address(transaction.account);
+    event.validator_address = convert::to_raw_address(before.validator_address);
+    event.event_type = std::move(event_type);
+    event.amount = abs_refint(balance_delta);
+    event.balance_delta = balance_delta;
+    event.balance_before = before.validator_amount;
+    event.balance_after = after.validator_amount;
+    if (header.has_value()) {
+      event.query_id = header->query_id;
+    }
+    if (is_reward_transaction && before.stake_at != 0) {
+      event.cycle_start = before.stake_at;
+    }
+    event.validator_reward_share = static_cast<std::uint32_t>(before.validator_reward_share);
+    return event;
+  }
+
   std::vector<schema::NominatorPoolEvent> build_nominator_pool_events(
       const schema::Transaction& transaction,
       const nominator_pool::ParsedStorage& before,
@@ -1265,10 +1338,29 @@ private:
     return events;
   }
 
-  td::Result<std::vector<schema::NominatorPoolEvent>> replay_nominator_pool_account(
+  std::vector<schema::BlockchainEvent> build_nominator_pool_transaction_events(
+      const schema::Transaction& transaction,
+      const nominator_pool::ParsedStorage& before,
+      const nominator_pool::ParsedStorage& after) {
+    std::vector<schema::BlockchainEvent> events;
+
+    auto nominator_events = build_nominator_pool_events(transaction, before, after);
+    for (auto& event : nominator_events) {
+      events.push_back(std::move(event));
+    }
+
+    auto validator_event = build_nominator_pool_validator_event(transaction, before, after);
+    if (validator_event.has_value()) {
+      events.push_back(std::move(validator_event.value()));
+    }
+
+    return events;
+  }
+
+  td::Result<std::vector<schema::BlockchainEvent>> replay_nominator_pool_account(
       const schema::Block& block,
       std::vector<const schema::Transaction*> transactions) {
-    std::vector<schema::NominatorPoolEvent> events;
+    std::vector<schema::BlockchainEvent> events;
     std::sort(transactions.begin(), transactions.end(), [](const auto* lhs, const auto* rhs) {
       return lhs->lt < rhs->lt;
     });
@@ -1299,7 +1391,7 @@ private:
         if (transactions.size() == 1 && before_storage.is_ok()) {
           auto after_storage_r = parse_transaction_after_storage(*transaction);
           if (after_storage_r.is_ok()) {
-            auto transaction_events = build_nominator_pool_events(
+            auto transaction_events = build_nominator_pool_transaction_events(
                 *transaction, before_storage.move_as_ok(), after_storage_r.move_as_ok());
             for (auto& event : transaction_events) {
               events.push_back(std::move(event));
@@ -1313,7 +1405,8 @@ private:
 
       if (before_storage.is_ok()) {
         TRY_RESULT(after_storage, parse_pool_storage(emulation_result.account));
-        auto transaction_events = build_nominator_pool_events(*transaction, before_storage.move_as_ok(), after_storage);
+        auto transaction_events = build_nominator_pool_transaction_events(
+            *transaction, before_storage.move_as_ok(), after_storage);
         for (auto& event : transaction_events) {
           events.push_back(std::move(event));
         }
@@ -1324,7 +1417,7 @@ private:
     return events;
   }
 
-  td::Result<std::vector<schema::NominatorPoolEvent>> process_nominator_pool_events(const schema::Block& block) {
+  td::Result<std::vector<schema::BlockchainEvent>> process_nominator_pool_events(const schema::Block& block) {
     std::unordered_set<block::StdAddress> candidate_accounts;
     for (const auto& transaction : block.transactions) {
       if (has_nominator_pool_interface(transaction.account)) {
@@ -1339,7 +1432,7 @@ private:
       }
     }
 
-    std::vector<schema::NominatorPoolEvent> events;
+    std::vector<schema::BlockchainEvent> events;
     for (auto& [_, account_transactions] : transactions_by_account) {
       auto account_events = replay_nominator_pool_account(block, std::move(account_transactions));
       if (account_events.is_error()) {

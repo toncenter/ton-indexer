@@ -194,6 +194,167 @@ func (db *DbClient) GetNominatorRewards(
 	return response, nil
 }
 
+func (db *DbClient) GetNominatorPoolValidatorEvents(
+	validatorAddr *string,
+	poolAddr *string,
+	eventType *string,
+	utimeReq models.UtimeParams,
+	limit *int32,
+	settings models.RequestSettings,
+) ([]models.NominatorPoolValidatorEvent, error) {
+	ctx, cancelCtx := context.WithTimeout(context.Background(), settings.Timeout)
+	defer cancelCtx()
+
+	conn, err := db.Pool.Acquire(ctx)
+	if err != nil {
+		return nil, models.IndexError{Code: 500, Message: err.Error()}
+	}
+	defer conn.Release()
+
+	query := `
+		SELECT tx_hash, tx_lt, tx_now, pool_address, validator_address, event_type,
+		       amount::text, balance_delta::text, balance_before::text, balance_after::text,
+		       query_id::text, cycle_start, validator_reward_share
+		FROM nominator_pool_validator_events
+		WHERE true
+	`
+	args := []interface{}{}
+	argIdx := 1
+
+	if validatorAddr != nil {
+		query += fmt.Sprintf(" AND validator_address = $%d", argIdx)
+		args = append(args, *validatorAddr)
+		argIdx++
+	}
+	if poolAddr != nil {
+		query += fmt.Sprintf(" AND pool_address = $%d", argIdx)
+		args = append(args, *poolAddr)
+		argIdx++
+	}
+	if eventType != nil {
+		query += fmt.Sprintf(" AND event_type = $%d", argIdx)
+		args = append(args, *eventType)
+		argIdx++
+	}
+
+	query, args, _, err = appendStakingUtimeFilters(query, args, argIdx, "tx_now", utimeReq)
+	if err != nil {
+		return nil, err
+	}
+
+	query += " ORDER BY tx_now DESC, tx_lt DESC"
+	limitQuery, err := limitOnlyQuery(limit, settings)
+	if err != nil {
+		return nil, err
+	}
+	query += limitQuery
+
+	rows, err := conn.Query(ctx, query, args...)
+	if err != nil {
+		return nil, models.IndexError{Code: 500, Message: err.Error()}
+	}
+	defer rows.Close()
+
+	events := []models.NominatorPoolValidatorEvent{}
+	for rows.Next() {
+		var event models.NominatorPoolValidatorEvent
+		if err := rows.Scan(
+			&event.TxHash,
+			&event.TxLt,
+			&event.Utime,
+			&event.PoolAddress,
+			&event.ValidatorAddress,
+			&event.Type,
+			&event.Amount,
+			&event.BalanceDelta,
+			&event.BalanceBefore,
+			&event.BalanceAfter,
+			&event.QueryId,
+			&event.CycleStart,
+			&event.ValidatorRewardShare,
+		); err != nil {
+			return nil, models.IndexError{Code: 500, Message: err.Error()}
+		}
+		events = append(events, event)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, models.IndexError{Code: 500, Message: err.Error()}
+	}
+	return events, nil
+}
+
+func (db *DbClient) GetValidatorPoolRewards(
+	validatorAddr string,
+	poolAddr string,
+	utimeReq models.UtimeParams,
+	limit *int32,
+	settings models.RequestSettings,
+) (*models.ValidatorPoolRewardsResponse, error) {
+	ctx, cancelCtx := context.WithTimeout(context.Background(), settings.Timeout)
+	defer cancelCtx()
+
+	conn, err := db.Pool.Acquire(ctx)
+	if err != nil {
+		return nil, models.IndexError{Code: 500, Message: err.Error()}
+	}
+	defer conn.Release()
+
+	query := `
+		SELECT tx_hash, tx_lt, tx_now, amount::text, balance_before::text, cycle_start, query_id::text
+		FROM nominator_pool_validator_events
+		WHERE validator_address = $1 AND pool_address = $2 AND event_type = 'reward'
+	`
+	args := []interface{}{validatorAddr, poolAddr}
+	argIdx := 3
+
+	query, args, _, err = appendStakingUtimeFilters(query, args, argIdx, "tx_now", utimeReq)
+	if err != nil {
+		return nil, err
+	}
+
+	query += " ORDER BY tx_now DESC, tx_lt DESC"
+	limitQuery, err := limitOnlyQuery(limit, settings)
+	if err != nil {
+		return nil, err
+	}
+	query += limitQuery
+
+	rows, err := conn.Query(ctx, query, args...)
+	if err != nil {
+		return nil, models.IndexError{Code: 500, Message: err.Error()}
+	}
+	defer rows.Close()
+
+	rewards := []models.ValidatorPoolReward{}
+	totalOnPeriod := big.NewInt(0)
+	for rows.Next() {
+		var reward models.ValidatorPoolReward
+		if err := rows.Scan(
+			&reward.TxHash,
+			&reward.TxLt,
+			&reward.Utime,
+			&reward.Reward,
+			&reward.BalanceBefore,
+			&reward.CycleStart,
+			&reward.QueryId,
+		); err != nil {
+			return nil, models.IndexError{Code: 500, Message: err.Error()}
+		}
+		rewards = append(rewards, reward)
+		addNumericString(totalOnPeriod, reward.Reward)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, models.IndexError{Code: 500, Message: err.Error()}
+	}
+
+	return &models.ValidatorPoolRewardsResponse{
+		StartUtime:    utimeReq.StartUtime,
+		EndUtime:      utimeReq.EndUtime,
+		TotalOnPeriod: totalOnPeriod.String(),
+		Rewards:       rewards,
+	}, nil
+}
+
 func (db *DbClient) GetNominatorPools(nominatorAddr string, settings models.RequestSettings) ([]models.NominatorPoolPosition, error) {
 	ctx, cancelCtx := context.WithTimeout(context.Background(), settings.Timeout)
 	defer cancelCtx()
