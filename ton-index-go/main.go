@@ -2071,6 +2071,18 @@ func GetNominatorPool(c *fiber.Ctx) error {
 	if err != nil {
 		return err
 	}
+	addrList := []models.AccountAddress{*req.Pool, poolInfo.ValidatorAddress}
+	for _, nominator := range poolInfo.ActiveNominators {
+		addr, err := models.ParseAccountAddress(nominator.Address)
+		if err == nil && addr != nil {
+			addrList = append(addrList, *addr)
+		}
+	}
+	book, err := pool.QueryAddressBookByAddresses(addrList, requestSettings)
+	if err != nil {
+		return err
+	}
+	poolInfo.AddressBook = book
 
 	return c.Status(200).JSON(poolInfo)
 }
@@ -2115,11 +2127,23 @@ func GetNominatorPoolNominatorEvents(c *fiber.Ctx) error {
 	if err != nil {
 		return err
 	}
+	addrList := []models.AccountAddress{*req.Pool}
+	if req.Nominator != nil {
+		addrList = append(addrList, *req.Nominator)
+	}
+	for _, event := range events {
+		addrList = append(addrList, event.PoolAddress, event.NominatorAddress)
+	}
+	book, err := pool.QueryAddressBookByAddresses(addrList, requestSettings)
+	if err != nil {
+		return err
+	}
 
 	return c.Status(200).JSON(models.NominatorPoolEventsResponse{
-		StartUtime: utimeReq.StartUtime,
-		EndUtime:   utimeReq.EndUtime,
-		Events:     events,
+		StartUtime:  utimeReq.StartUtime,
+		EndUtime:    utimeReq.EndUtime,
+		Events:      events,
+		AddressBook: book,
 	})
 }
 
@@ -2147,9 +2171,18 @@ func GetNominatorPoolNominator(c *fiber.Ctx) error {
 	if err != nil {
 		return err
 	}
+	addrList := []models.AccountAddress{*req.Nominator}
+	for _, item := range pools {
+		addrList = append(addrList, item.PoolAddress)
+	}
+	book, err := pool.QueryAddressBookByAddresses(addrList, requestSettings)
+	if err != nil {
+		return err
+	}
 
 	return c.Status(200).JSON(models.NominatorPoolsResponse{
 		NominatorPools: pools,
+		AddressBook:    book,
 	})
 }
 
@@ -2187,6 +2220,12 @@ func GetNominatorPoolNominatorRewards(c *fiber.Ctx) error {
 	if err != nil {
 		return err
 	}
+	addrList := []models.AccountAddress{*req.Nominator, *req.Pool}
+	book, err := pool.QueryAddressBookByAddresses(addrList, requestSettings)
+	if err != nil {
+		return err
+	}
+	rewards.AddressBook = book
 
 	return c.Status(200).JSON(rewards)
 }
@@ -2237,11 +2276,26 @@ func GetNominatorPoolValidatorEvents(c *fiber.Ctx) error {
 	if err != nil {
 		return err
 	}
+	addrList := []models.AccountAddress{}
+	if req.Validator != nil {
+		addrList = append(addrList, *req.Validator)
+	}
+	if req.Pool != nil {
+		addrList = append(addrList, *req.Pool)
+	}
+	for _, event := range events {
+		addrList = append(addrList, event.PoolAddress, event.ValidatorAddress)
+	}
+	book, err := pool.QueryAddressBookByAddresses(addrList, requestSettings)
+	if err != nil {
+		return err
+	}
 
 	return c.Status(200).JSON(models.NominatorPoolValidatorEventsResponse{
-		StartUtime: utimeReq.StartUtime,
-		EndUtime:   utimeReq.EndUtime,
-		Events:     events,
+		StartUtime:  utimeReq.StartUtime,
+		EndUtime:    utimeReq.EndUtime,
+		Events:      events,
+		AddressBook: book,
 	})
 }
 
@@ -2279,6 +2333,12 @@ func GetNominatorPoolValidatorRewards(c *fiber.Ctx) error {
 	if err != nil {
 		return err
 	}
+	addrList := []models.AccountAddress{*req.Validator, *req.Pool}
+	book, err := pool.QueryAddressBookByAddresses(addrList, requestSettings)
+	if err != nil {
+		return err
+	}
+	rewards.AddressBook = book
 
 	return c.Status(200).JSON(rewards)
 }
@@ -2321,10 +2381,22 @@ func GetValidatorEvents(c *fiber.Ctx) error {
 	if err != nil {
 		return err
 	}
+	addrList := []models.AccountAddress{}
+	if req.StakeHolderAddress != nil {
+		addrList = append(addrList, *req.StakeHolderAddress)
+	}
+	for _, event := range events {
+		addrList = append(addrList, event.StakeHolderAddress)
+	}
+	book, err := pool.QueryAddressBookByAddresses(addrList, requestSettings)
+	if err != nil {
+		return err
+	}
 	return c.Status(200).JSON(models.ValidatorEventsResponse{
-		StartUtime: utimeReq.StartUtime,
-		EndUtime:   utimeReq.EndUtime,
-		Events:     events,
+		StartUtime:  utimeReq.StartUtime,
+		EndUtime:    utimeReq.EndUtime,
+		Events:      events,
+		AddressBook: book,
 	})
 }
 
@@ -2365,7 +2437,20 @@ func GetValidatorElections(c *fiber.Ctx) error {
 	if err != nil {
 		return err
 	}
-	return c.Status(200).JSON(models.ValidatorElectionsResponse{Elections: elections})
+	addrList := []models.AccountAddress{}
+	if req.StakeHolderAddress != nil {
+		addrList = append(addrList, *req.StakeHolderAddress)
+	}
+	for _, election := range elections {
+		for _, participant := range election.Participants {
+			addrList = append(addrList, participant.StakeHolderAddress)
+		}
+	}
+	book, err := pool.QueryAddressBookByAddresses(addrList, requestSettings)
+	if err != nil {
+		return err
+	}
+	return c.Status(200).JSON(models.ValidatorElectionsResponse{Elections: elections, AddressBook: book})
 }
 
 // GetValidatorCycles godoc
@@ -2405,7 +2490,15 @@ func GetValidatorCycles(c *fiber.Ctx) error {
 	if err != nil {
 		return err
 	}
-	return c.Status(200).JSON(models.ValidatorCyclesResponse{Cycles: cycles})
+	addrList := []models.AccountAddress{}
+	if req.StakeHolderAddress != nil {
+		addrList = append(addrList, *req.StakeHolderAddress)
+	}
+	book, err := pool.QueryAddressBookByAddresses(addrList, requestSettings)
+	if err != nil {
+		return err
+	}
+	return c.Status(200).JSON(models.ValidatorCyclesResponse{Cycles: cycles, AddressBook: book})
 }
 
 // GetValidatorComplaints godoc
@@ -2443,7 +2536,18 @@ func GetValidatorComplaints(c *fiber.Ctx) error {
 	if err != nil {
 		return err
 	}
-	return c.Status(200).JSON(models.ValidatorComplaintsResponse{Complaints: complaints})
+	addrList := []models.AccountAddress{}
+	if req.StakeHolderAddress != nil {
+		addrList = append(addrList, *req.StakeHolderAddress)
+	}
+	for _, complaint := range complaints {
+		addrList = append(addrList, complaint.RewardAddress)
+	}
+	book, err := pool.QueryAddressBookByAddresses(addrList, requestSettings)
+	if err != nil {
+		return err
+	}
+	return c.Status(200).JSON(models.ValidatorComplaintsResponse{Complaints: complaints, AddressBook: book})
 }
 
 func test() {

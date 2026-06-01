@@ -19,9 +19,10 @@ type NominatorPoolEvent struct {
 } // @name NominatorPoolEvent
 
 type NominatorPoolEventsResponse struct {
-	StartUtime *UtimeType           `json:"start_utime,omitempty"`
-	EndUtime   *UtimeType           `json:"end_utime,omitempty"`
-	Events     []NominatorPoolEvent `json:"events"`
+	StartUtime  *UtimeType           `json:"start_utime,omitempty"`
+	EndUtime    *UtimeType           `json:"end_utime,omitempty"`
+	Events      []NominatorPoolEvent `json:"events"`
+	AddressBook AddressBook          `json:"address_book"`
 } // @name NominatorPoolEventsResponse
 
 type NominatorPoolInfo struct {
@@ -35,6 +36,7 @@ type NominatorPoolInfo struct {
 	MinValidatorStake    string                `json:"min_validator_stake"`
 	MinNominatorStake    string                `json:"min_nominator_stake"`
 	ActiveNominators     []ActiveNominatorInfo `json:"active_nominators"`
+	AddressBook          AddressBook           `json:"address_book"`
 } // @name NominatorPoolInfo
 
 type ActiveNominatorInfo struct {
@@ -51,6 +53,7 @@ type NominatorPoolPosition struct {
 
 type NominatorPoolsResponse struct {
 	NominatorPools []NominatorPoolPosition `json:"nominator_pools"`
+	AddressBook    AddressBook             `json:"address_book"`
 } // @name NominatorPoolsResponse
 
 type NominatorReward struct {
@@ -66,6 +69,7 @@ type NominatorRewardsResponse struct {
 	EndUtime    *UtimeType        `json:"end_utime,omitempty"`
 	TotalOnPage string            `json:"total_on_page"`
 	Rewards     []NominatorReward `json:"rewards"`
+	AddressBook AddressBook       `json:"address_book"`
 } // @name NominatorRewardsResponse
 
 type NominatorPoolValidatorEvent struct {
@@ -85,9 +89,10 @@ type NominatorPoolValidatorEvent struct {
 } // @name NominatorPoolValidatorEvent
 
 type NominatorPoolValidatorEventsResponse struct {
-	StartUtime *UtimeType                    `json:"start_utime,omitempty"`
-	EndUtime   *UtimeType                    `json:"end_utime,omitempty"`
-	Events     []NominatorPoolValidatorEvent `json:"events"`
+	StartUtime  *UtimeType                    `json:"start_utime,omitempty"`
+	EndUtime    *UtimeType                    `json:"end_utime,omitempty"`
+	Events      []NominatorPoolValidatorEvent `json:"events"`
+	AddressBook AddressBook                   `json:"address_book"`
 } // @name NominatorPoolValidatorEventsResponse
 
 type NominatorPoolValidatorReward struct {
@@ -105,6 +110,7 @@ type NominatorPoolValidatorRewardsResponse struct {
 	EndUtime    *UtimeType                     `json:"end_utime,omitempty"`
 	TotalOnPage string                         `json:"total_on_page"`
 	Rewards     []NominatorPoolValidatorReward `json:"rewards"`
+	AddressBook AddressBook                    `json:"address_book"`
 } // @name NominatorPoolValidatorRewardsResponse
 
 type ValidatorEvent struct {
@@ -122,9 +128,10 @@ type ValidatorEvent struct {
 } // @name ValidatorEvent
 
 type ValidatorEventsResponse struct {
-	StartUtime *UtimeType       `json:"start_utime,omitempty"`
-	EndUtime   *UtimeType       `json:"end_utime,omitempty"`
-	Events     []ValidatorEvent `json:"events"`
+	StartUtime  *UtimeType       `json:"start_utime,omitempty"`
+	EndUtime    *UtimeType       `json:"end_utime,omitempty"`
+	Events      []ValidatorEvent `json:"events"`
+	AddressBook AddressBook      `json:"address_book"`
 } // @name ValidatorEventsResponse
 
 type ValidatorElectionParticipant struct {
@@ -147,7 +154,8 @@ type ValidatorElection struct {
 } // @name ValidatorElection
 
 type ValidatorElectionsResponse struct {
-	Elections []ValidatorElection `json:"elections"`
+	Elections   []ValidatorElection `json:"elections"`
+	AddressBook AddressBook         `json:"address_book"`
 } // @name ValidatorElectionsResponse
 
 type ValidatorCycleValidator struct {
@@ -181,7 +189,8 @@ type ValidatorCycle struct {
 } // @name ValidatorCycle
 
 type ValidatorCyclesResponse struct {
-	Cycles []ValidatorCycle `json:"cycles"`
+	Cycles      []ValidatorCycle `json:"cycles"`
+	AddressBook AddressBook      `json:"address_book"`
 } // @name ValidatorCyclesResponse
 
 type ValidatorComplaintVote struct {
@@ -211,5 +220,6 @@ type ValidatorComplaint struct {
 } // @name ValidatorComplaint
 
 type ValidatorComplaintsResponse struct {
-	Complaints []ValidatorComplaint `json:"complaints"`
+	Complaints  []ValidatorComplaint `json:"complaints"`
+	AddressBook AddressBook          `json:"address_book"`
 } // @name ValidatorComplaintsResponse
