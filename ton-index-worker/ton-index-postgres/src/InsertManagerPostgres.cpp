@@ -148,6 +148,9 @@ private:
   void insert_jetton_burns(pqxx::work &txn, bool with_copy);
   void insert_nft_transfers(pqxx::work &txn, bool with_copy);
   void insert_nominator_pool_events(pqxx::work &txn, bool with_copy);
+  void insert_nominator_pool_validator_events(pqxx::work &txn, bool with_copy);
+  void insert_validator_events(pqxx::work &txn, bool with_copy);
+  void insert_validator_snapshots(pqxx::work &txn);
   std::string insert_jetton_masters(pqxx::work &txn);
   std::string insert_jetton_wallets(pqxx::work &txn);
   std::string insert_nft_collections(pqxx::work &txn);
@@ -3000,6 +3003,8 @@ void InsertBatchPostgres::commit_prepared_batch() {
   insert_jetton_burns(txn, with_copy_);
   insert_nft_transfers(txn, with_copy_);
   insert_nominator_pool_events(txn, with_copy_);
+  insert_nominator_pool_validator_events(txn, with_copy_);
+  insert_validator_events(txn, with_copy_);
   insert_traces(txn, with_copy_);
   if (!kvrocks_state_only) {
     insert_contract_methods(txn);
@@ -3023,6 +3028,7 @@ void InsertBatchPostgres::commit_prepared_batch() {
     upsert_query += insert_nominator_pools(txn);
     upsert_query += insert_telemint(txn);
   }
+  insert_validator_snapshots(txn);
 
   td::Timer commit_timer{true};
   if (!upsert_query.empty()) {
@@ -3884,6 +3890,284 @@ void InsertBatchPostgres::insert_nominator_pool_events(pqxx::work &txn, bool wit
     }
   }
   stream.finish();
+}
+
+void InsertBatchPostgres::insert_nominator_pool_validator_events(pqxx::work &txn, bool with_copy) {
+  std::initializer_list<std::string_view> columns = {
+    "tx_hash", "tx_lt", "tx_now", "mc_seqno", "pool_address", "validator_address",
+    "event_type", "amount", "balance_delta", "balance_before", "balance_after",
+    "query_id", "cycle_start", "validator_reward_share"
+  };
+  PopulateTableStream stream(txn, "nominator_pool_validator_events", columns, 1000, with_copy);
+  if (!with_copy) {
+    stream.setConflictDoNothing();
+  }
+
+  for (const auto& task : insert_tasks_) {
+    for (const auto& event : task.parsed_block_->get_events<schema::NominatorPoolValidatorEvent>()) {
+      auto tuple = std::make_tuple(
+        event.transaction_hash,
+        event.transaction_lt,
+        event.transaction_now,
+        event.mc_seqno,
+        event.pool_address,
+        event.validator_address,
+        event.event_type,
+        event.amount,
+        event.balance_delta,
+        event.balance_before,
+        event.balance_after,
+        event.query_id,
+        event.cycle_start,
+        event.validator_reward_share
+      );
+      stream.insert_row(std::move(tuple));
+    }
+  }
+  stream.finish();
+}
+
+void InsertBatchPostgres::insert_validator_events(pqxx::work &txn, bool with_copy) {
+  std::initializer_list<std::string_view> columns = {
+    "tx_hash", "tx_lt", "tx_now", "mc_seqno", "event_type",
+    "stake_holder_address", "validator_pubkey",
+    "adnl_addr", "election_id", "query_id", "amount", "reason"
+  };
+  PopulateTableStream stream(txn, "validator_events", columns, 1000, with_copy);
+  if (!with_copy) {
+    stream.setConflictDoNothing();
+  }
+
+  for (const auto& task : insert_tasks_) {
+    for (const auto& event : task.parsed_block_->get_events<schema::ValidatorEvent>()) {
+      auto tuple = std::make_tuple(
+        event.transaction_hash,
+        event.transaction_lt,
+        event.transaction_now,
+        event.mc_seqno,
+        event.event_type,
+        event.stake_holder_address,
+        event.validator_pubkey,
+        event.adnl_addr,
+        event.election_id,
+        event.query_id,
+        event.amount,
+        event.reason
+      );
+      stream.insert_row(std::move(tuple));
+    }
+  }
+  stream.finish();
+}
+
+void InsertBatchPostgres::insert_validator_snapshots(pqxx::work &txn) {
+  auto should_replace_snapshot = [](uint32_t existing_seqno, uint32_t incoming_seqno) {
+    return existing_seqno <= incoming_seqno;
+  };
+
+  {
+    std::initializer_list<std::string_view> columns = {
+      "election_id", "elect_close", "min_stake", "total_stake", "failed", "finished", "source_mc_seqno"
+    };
+    PopulateTableStream stream(txn, "validator_elections", columns, 1000, false);
+    stream.setConflictDoUpdate({"election_id"}, "validator_elections.source_mc_seqno <= EXCLUDED.source_mc_seqno");
+
+    std::map<uint32_t, schema::ValidatorElection> latest_elections;
+    for (const auto& task : insert_tasks_) {
+      for (const auto& election : task.parsed_block_->validator_elections_) {
+        auto it = latest_elections.find(election.election_id);
+        if (it == latest_elections.end() ||
+            should_replace_snapshot(it->second.source_mc_seqno, election.source_mc_seqno)) {
+          latest_elections[election.election_id] = election;
+        }
+      }
+    }
+
+    for (const auto& [_, election] : latest_elections) {
+      stream.insert_row(std::make_tuple(
+        election.election_id,
+        election.elect_close,
+        election.min_stake,
+        election.total_stake,
+        election.failed,
+        election.finished,
+        election.source_mc_seqno
+      ));
+    }
+    stream.finish();
+  }
+
+  {
+    std::initializer_list<std::string_view> columns = {
+      "election_id", "validator_pubkey", "stake", "max_factor", "stake_holder_address", "adnl_addr", "source_mc_seqno"
+    };
+    PopulateTableStream stream(txn, "validator_election_participants", columns, 1000, false);
+    stream.setConflictDoUpdate(
+        {"election_id", "validator_pubkey", "stake_holder_address"},
+        "validator_election_participants.source_mc_seqno <= EXCLUDED.source_mc_seqno");
+
+    std::map<std::tuple<uint32_t, std::string, std::string>, schema::ValidatorElectionParticipant> latest_participants;
+    for (const auto& task : insert_tasks_) {
+      for (const auto& election : task.parsed_block_->validator_elections_) {
+        for (const auto& participant : election.participants) {
+          auto key = std::make_tuple(
+              participant.election_id,
+              participant.validator_pubkey,
+              participant.stake_holder_address);
+          auto it = latest_participants.find(key);
+          if (it == latest_participants.end() ||
+              should_replace_snapshot(it->second.source_mc_seqno, participant.source_mc_seqno)) {
+            latest_participants[std::move(key)] = participant;
+          }
+        }
+      }
+    }
+
+    for (const auto& [_, participant] : latest_participants) {
+      stream.insert_row(std::make_tuple(
+        participant.election_id,
+        participant.validator_pubkey,
+        participant.stake,
+        participant.max_factor,
+        participant.stake_holder_address,
+        participant.adnl_addr,
+        participant.source_mc_seqno
+      ));
+    }
+    stream.finish();
+  }
+
+  {
+    std::initializer_list<std::string_view> columns = {
+      "election_id", "utime_since", "utime_until", "total", "main", "total_weight",
+      "total_stake", "source_mc_seqno", "validators_elected_for", "elections_start_before",
+      "elections_end_before", "stake_held_for", "max_validators", "max_main_validators",
+      "min_validators", "min_stake", "max_stake", "min_total_stake", "max_stake_factor"
+    };
+    PopulateTableStream stream(txn, "validator_cycles", columns, 1000, false);
+    stream.setConflictDoUpdate(
+        {"utime_since"},
+        "validator_cycles.source_mc_seqno <= EXCLUDED.source_mc_seqno");
+
+    std::map<uint32_t, schema::ValidatorCycle> latest_cycles;
+    for (const auto& task : insert_tasks_) {
+      for (const auto& cycle : task.parsed_block_->validator_cycles_) {
+        auto it = latest_cycles.find(cycle.utime_since);
+        if (it == latest_cycles.end() ||
+            should_replace_snapshot(it->second.source_mc_seqno, cycle.source_mc_seqno)) {
+          latest_cycles[cycle.utime_since] = cycle;
+        }
+      }
+    }
+
+    for (const auto& [_, cycle] : latest_cycles) {
+      stream.insert_row(std::make_tuple(
+        cycle.election_id,
+        cycle.utime_since,
+        cycle.utime_until,
+        cycle.total,
+        cycle.main,
+        cycle.total_weight,
+        cycle.total_stake,
+        cycle.source_mc_seqno,
+        cycle.validators_elected_for,
+        cycle.elections_start_before,
+        cycle.elections_end_before,
+        cycle.stake_held_for,
+        cycle.max_validators,
+        cycle.max_main_validators,
+        cycle.min_validators,
+        cycle.min_stake,
+        cycle.max_stake,
+        cycle.min_total_stake,
+        cycle.max_stake_factor
+      ));
+    }
+    stream.finish();
+  }
+
+  {
+    std::initializer_list<std::string_view> columns = {
+      "utime_since", "validator_index", "validator_pubkey", "adnl_addr", "weight", "source_mc_seqno"
+    };
+    PopulateTableStream stream(txn, "validator_cycle_members", columns, 1000, false);
+    stream.setConflictDoUpdate(
+        {"utime_since", "validator_index"},
+        "validator_cycle_members.source_mc_seqno <= EXCLUDED.source_mc_seqno");
+
+    std::map<std::tuple<uint32_t, uint32_t>, schema::ValidatorCycleMember> latest_members;
+    for (const auto& task : insert_tasks_) {
+      for (const auto& cycle : task.parsed_block_->validator_cycles_) {
+        for (const auto& member : cycle.members) {
+          auto key = std::make_tuple(member.utime_since, member.validator_index);
+          auto it = latest_members.find(key);
+          if (it == latest_members.end() ||
+              should_replace_snapshot(it->second.source_mc_seqno, member.source_mc_seqno)) {
+            latest_members[std::move(key)] = member;
+          }
+        }
+      }
+    }
+
+    for (const auto& [_, member] : latest_members) {
+      stream.insert_row(std::make_tuple(
+        member.utime_since,
+        member.validator_index,
+        member.validator_pubkey,
+        member.adnl_addr,
+        member.weight,
+        member.source_mc_seqno
+      ));
+    }
+    stream.finish();
+  }
+
+  {
+    std::initializer_list<std::string_view> columns = {
+      "election_id", "complaint_hash", "validator_pubkey", "adnl_addr", "description_boc",
+      "created_at", "severity", "reward_address", "paid", "suggested_fine", "suggested_fine_part",
+      "voted_validators", "vset_id", "weight_remaining", "approved_percent", "is_passed", "source_mc_seqno"
+    };
+    PopulateTableStream stream(txn, "validator_complaints", columns, 1000, false);
+    stream.setConflictDoUpdate(
+        {"election_id", "complaint_hash"},
+        "validator_complaints.source_mc_seqno <= EXCLUDED.source_mc_seqno");
+
+    std::map<std::tuple<uint32_t, std::string>, schema::ValidatorComplaint> latest_complaints;
+    for (const auto& task : insert_tasks_) {
+      for (const auto& complaint : task.parsed_block_->validator_complaints_) {
+        auto key = std::make_tuple(complaint.election_id, complaint.complaint_hash);
+        auto it = latest_complaints.find(key);
+        if (it == latest_complaints.end() ||
+            should_replace_snapshot(it->second.source_mc_seqno, complaint.source_mc_seqno)) {
+          latest_complaints[std::move(key)] = complaint;
+        }
+      }
+    }
+
+    for (const auto& [_, complaint] : latest_complaints) {
+      stream.insert_row(std::make_tuple(
+        complaint.election_id,
+        complaint.complaint_hash,
+        complaint.validator_pubkey,
+        complaint.adnl_addr,
+        complaint.description_boc,
+        complaint.created_at,
+        complaint.severity,
+        complaint.reward_address,
+        complaint.paid,
+        complaint.suggested_fine,
+        complaint.suggested_fine_part,
+        complaint.voted_validators,
+        complaint.vset_id,
+        complaint.weight_remaining,
+        complaint.approved_percent,
+        complaint.is_passed,
+        complaint.source_mc_seqno
+      ));
+    }
+    stream.finish();
+  }
 }
 
 

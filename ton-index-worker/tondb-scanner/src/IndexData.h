@@ -535,6 +535,113 @@ struct NominatorPoolEvent {
   bool withdraw_request_after;
 };
 
+struct NominatorPoolValidatorEvent {
+  td::Bits256 transaction_hash;
+  uint64_t transaction_lt;
+  uint32_t transaction_now;
+  uint32_t mc_seqno;
+
+  std::string pool_address;
+  std::string validator_address;
+  std::string event_type;
+  td::RefInt256 amount;
+  td::RefInt256 balance_delta;
+  td::RefInt256 balance_before;
+  td::RefInt256 balance_after;
+  std::optional<uint64_t> query_id;
+  std::optional<uint32_t> cycle_start;
+  uint32_t validator_reward_share;
+};
+
+struct ValidatorEvent {
+  td::Bits256 transaction_hash;
+  uint64_t transaction_lt;
+  uint32_t transaction_now;
+  uint32_t mc_seqno;
+
+  std::string event_type;
+  std::string stake_holder_address;
+  std::optional<std::string> validator_pubkey;
+  std::optional<std::string> adnl_addr;
+  std::optional<uint32_t> election_id;
+  std::optional<uint64_t> query_id;
+  td::RefInt256 amount;
+  std::optional<int32_t> reason;
+};
+
+struct ValidatorElectionParticipant {
+  uint32_t election_id;
+  std::string validator_pubkey;
+  td::RefInt256 stake;
+  uint32_t max_factor;
+  std::string stake_holder_address;
+  std::string adnl_addr;
+  uint32_t source_mc_seqno;
+};
+
+struct ValidatorElection {
+  uint32_t election_id;
+  uint32_t elect_close;
+  td::RefInt256 min_stake;
+  td::RefInt256 total_stake;
+  bool failed;
+  bool finished;
+  uint32_t source_mc_seqno;
+  std::vector<ValidatorElectionParticipant> participants;
+};
+
+struct ValidatorCycleMember {
+  uint32_t utime_since;
+  uint32_t validator_index;
+  std::string validator_pubkey;
+  std::string adnl_addr;
+  uint64_t weight;
+  uint32_t source_mc_seqno;
+};
+
+struct ValidatorCycle {
+  std::optional<uint32_t> election_id;
+  uint32_t utime_since;
+  uint32_t utime_until;
+  uint32_t total;
+  uint32_t main;
+  uint64_t total_weight;
+  std::optional<td::RefInt256> total_stake;
+  uint32_t source_mc_seqno;
+  uint32_t validators_elected_for;
+  uint32_t elections_start_before;
+  uint32_t elections_end_before;
+  uint32_t stake_held_for;
+  uint32_t max_validators;
+  uint32_t max_main_validators;
+  uint32_t min_validators;
+  td::RefInt256 min_stake;
+  td::RefInt256 max_stake;
+  td::RefInt256 min_total_stake;
+  uint32_t max_stake_factor;
+  std::vector<ValidatorCycleMember> members;
+};
+
+struct ValidatorComplaint {
+  uint32_t election_id;
+  std::string complaint_hash;
+  std::string validator_pubkey;
+  std::optional<std::string> adnl_addr;
+  std::string description_boc;
+  uint32_t created_at;
+  uint32_t severity;
+  std::string reward_address;
+  td::RefInt256 paid;
+  td::RefInt256 suggested_fine;
+  uint32_t suggested_fine_part;
+  std::string voted_validators;
+  std::string vset_id;
+  int64_t weight_remaining;
+  double approved_percent;
+  bool is_passed;
+  uint32_t source_mc_seqno;
+};
+
 struct NFTCollectionData {
   std::string address;
   td::RefInt256 next_item_index;
@@ -746,7 +853,9 @@ struct MasterchainBlockDataState {
 using BlockchainEvent = std::variant<JettonTransfer,
                                      JettonBurn,
                                      NFTTransfer,
-                                     NominatorPoolEvent>;
+                                     NominatorPoolEvent,
+                                     NominatorPoolValidatorEvent,
+                                     ValidatorEvent>;
 
 using BlockchainInterface = std::variant<JettonMasterData,
                                          JettonWalletData,
@@ -800,6 +909,9 @@ struct ParsedBlock {
   std::vector<schema::Trace> traces_;
 
   std::vector<schema::BlockchainEvent> events_;
+  std::vector<schema::ValidatorElection> validator_elections_;
+  std::vector<schema::ValidatorCycle> validator_cycles_;
+  std::vector<schema::ValidatorComplaint> validator_complaints_;
   std::vector<schema::BlockchainInterface> interfaces_; // deprecated in favour of account_interfaces_
 
   std::unordered_map<block::StdAddress, std::vector<schema::BlockchainInterfaceV2>> account_interfaces_;

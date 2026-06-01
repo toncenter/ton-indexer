@@ -68,6 +68,7 @@ td::Result<ParsedStorage> parse_storage(td::Ref<vm::Cell> data_cell) {
       .nominators_count = pool_storage.nominators_count,
       .stake_amount_sent = stake_amount_sent,
       .validator_amount = validator_amount,
+      .stake_at = static_cast<uint32_t>(pool_storage.stake_at),
       .validator_address = validator_address,
       .validator_reward_share = pool_config.validator_reward_share,
       .max_nominators_count = pool_config.max_nominators_count,

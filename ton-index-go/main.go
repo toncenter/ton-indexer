@@ -2034,57 +2034,21 @@ func prepareHashes(hashes []models.HashType) []string {
 	return uniqueKeys
 }
 
-const stakingDefaultWindowSeconds models.UtimeType = 31 * 24 * 60 * 60
-const stakingMaxWindowSeconds models.UtimeType = 31 * 24 * 60 * 60
-
-func subtractUtime(value models.UtimeType, delta models.UtimeType) models.UtimeType {
-	if value < delta {
-		return 0
-	}
-	return value - delta
-}
-
-func normalizeStakingUtimeFilter(utimeReq *models.UtimeParams) error {
-	now := models.UtimeType(time.Now().Unix())
-
-	if utimeReq.StartUtime == nil && utimeReq.EndUtime == nil {
-		startUtime := subtractUtime(now, stakingDefaultWindowSeconds)
-		endUtime := now
-		utimeReq.StartUtime = &startUtime
-		utimeReq.EndUtime = &endUtime
-	} else if utimeReq.StartUtime == nil {
-		startUtime := subtractUtime(*utimeReq.EndUtime, stakingDefaultWindowSeconds)
-		utimeReq.StartUtime = &startUtime
-	} else if utimeReq.EndUtime == nil {
-		endUtime := now
-		utimeReq.EndUtime = &endUtime
-	}
-
-	if *utimeReq.StartUtime > *utimeReq.EndUtime {
-		return models.IndexError{Code: 422, Message: "start_utime must be less than or equal to end_utime"}
-	}
-	if *utimeReq.EndUtime-*utimeReq.StartUtime > stakingMaxWindowSeconds {
-		return models.IndexError{Code: 422, Message: "staking query time range must not exceed 31 days"}
-	}
-	return nil
-}
-
 func parseStakingUtimeFilter(c *fiber.Ctx) (models.UtimeParams, error) {
 	utimeReq := models.UtimeParams{}
-
 	if err := c.QueryParser(&utimeReq); err != nil {
 		return utimeReq, models.IndexError{Code: 422, Message: err.Error()}
 	}
-	if err := normalizeStakingUtimeFilter(&utimeReq); err != nil {
-		return utimeReq, err
+	if utimeReq.StartUtime != nil && utimeReq.EndUtime != nil && *utimeReq.StartUtime > *utimeReq.EndUtime {
+		return utimeReq, models.IndexError{Code: 422, Message: "start_utime must be less than or equal to end_utime"}
 	}
 	return utimeReq, nil
 }
 
-// GetPool godoc
-// @summary Get pool information
+// GetNominatorPool godoc
+// @summary Get nominator pool
 // @tags staking
-// @id getPool
+// @id getNominatorPool
 // @param pool query string true "Pool address in any form"
 // @produce json
 // @success 200 {object} models.NominatorPoolInfo
@@ -2092,8 +2056,8 @@ func parseStakingUtimeFilter(c *fiber.Ctx) (models.UtimeParams, error) {
 // @failure 404 {object} models.IndexError
 // @failure 422 {object} models.IndexError
 // @failure 500 {object} models.IndexError
-// @router /api/v3/nominators/pool [get]
-func GetPool(c *fiber.Ctx) error {
+// @router /api/v3/staking/nominatorPools/pool [get]
+func GetNominatorPool(c *fiber.Ctx) error {
 	requestSettings := GetRequestSettings(c, &settings)
 	req := models.NominatorPoolRequest{}
 
@@ -2107,24 +2071,37 @@ func GetPool(c *fiber.Ctx) error {
 	if err != nil {
 		return err
 	}
+	addrList := []models.AccountAddress{*req.Pool, poolInfo.ValidatorAddress}
+	for _, nominator := range poolInfo.ActiveNominators {
+		addr, err := models.ParseAccountAddress(nominator.Address)
+		if err == nil && addr != nil {
+			addrList = append(addrList, *addr)
+		}
+	}
+	book, err := pool.QueryAddressBookByAddresses(addrList, requestSettings)
+	if err != nil {
+		return err
+	}
+	poolInfo.AddressBook = book
 
 	return c.Status(200).JSON(poolInfo)
 }
 
-// GetNominatorPoolEvents godoc
-// @summary Get nominator pool events
+// GetNominatorPoolNominatorEvents godoc
+// @summary Get nominator events from nominator pools
 // @tags staking
-// @id getNominatorPoolEvents
+// @id getNominatorPoolNominatorEvents
 // @param pool query string true "Pool address in any form"
 // @param nominator query string false "Nominator address in any form"
-// @param start_utime query integer false "Query events with timestamp at or after given timestamp. Defaults to 31 days before end_utime or now. Time range must not exceed 31 days." minimum(0)
-// @param end_utime query integer false "Query events with timestamp at or before given timestamp. Defaults to now. Time range must not exceed 31 days." minimum(0)
+// @param start_utime query integer false "Query events with timestamp at or after given timestamp." minimum(0)
+// @param end_utime query integer false "Query events with timestamp at or before given timestamp." minimum(0)
+// @param limit query int32 false "Limit number of queried rows." minimum(1) maximum(1000) default(100)
 // @produce json
 // @success 200 {object} models.NominatorPoolEventsResponse
 // @failure 422 {object} models.IndexError
 // @failure 500 {object} models.IndexError
-// @router /api/v3/nominators/events [get]
-func GetNominatorPoolEvents(c *fiber.Ctx) error {
+// @router /api/v3/staking/nominatorPools/nominatorEvents [get]
+func GetNominatorPoolNominatorEvents(c *fiber.Ctx) error {
 	requestSettings := GetRequestSettings(c, &settings)
 	req := models.NominatorPoolEventsRequest{}
 
@@ -2146,29 +2123,41 @@ func GetNominatorPoolEvents(c *fiber.Ctx) error {
 		nominatorAddr = &value
 	}
 
-	events, err := pool.GetNominatorPoolEvents(string(*req.Pool), nominatorAddr, utimeReq, requestSettings)
+	events, err := pool.GetNominatorPoolEvents(string(*req.Pool), nominatorAddr, utimeReq, req.Limit, requestSettings)
+	if err != nil {
+		return err
+	}
+	addrList := []models.AccountAddress{*req.Pool}
+	if req.Nominator != nil {
+		addrList = append(addrList, *req.Nominator)
+	}
+	for _, event := range events {
+		addrList = append(addrList, event.PoolAddress, event.NominatorAddress)
+	}
+	book, err := pool.QueryAddressBookByAddresses(addrList, requestSettings)
 	if err != nil {
 		return err
 	}
 
 	return c.Status(200).JSON(models.NominatorPoolEventsResponse{
-		StartUtime: *utimeReq.StartUtime,
-		EndUtime:   *utimeReq.EndUtime,
-		Events:     events,
+		StartUtime:  utimeReq.StartUtime,
+		EndUtime:    utimeReq.EndUtime,
+		Events:      events,
+		AddressBook: book,
 	})
 }
 
-// GetNominatorPools godoc
-// @summary Get all pools where nominator has balance
+// GetNominatorPoolNominator godoc
+// @summary Get nominator positions in nominator pools
 // @tags staking
-// @id getNominatorPools
+// @id getNominatorPoolNominator
 // @param nominator query string true "Nominator address in any form"
 // @produce json
 // @success 200 {object} models.NominatorPoolsResponse
 // @failure 422 {object} models.IndexError
 // @failure 500 {object} models.IndexError
-// @router /api/v3/nominators/nominatorPools [get]
-func GetNominatorPools(c *fiber.Ctx) error {
+// @router /api/v3/staking/nominatorPools/nominator [get]
+func GetNominatorPoolNominator(c *fiber.Ctx) error {
 	requestSettings := GetRequestSettings(c, &settings)
 	req := models.NominatorRequest{}
 
@@ -2182,26 +2171,36 @@ func GetNominatorPools(c *fiber.Ctx) error {
 	if err != nil {
 		return err
 	}
+	addrList := []models.AccountAddress{*req.Nominator}
+	for _, item := range pools {
+		addrList = append(addrList, item.PoolAddress)
+	}
+	book, err := pool.QueryAddressBookByAddresses(addrList, requestSettings)
+	if err != nil {
+		return err
+	}
 
 	return c.Status(200).JSON(models.NominatorPoolsResponse{
 		NominatorPools: pools,
+		AddressBook:    book,
 	})
 }
 
-// GetNominatorRewards godoc
-// @summary Get nominator rewards
+// GetNominatorPoolNominatorRewards godoc
+// @summary Get nominator rewards from a nominator pool
 // @tags staking
-// @id getNominatorRewards
+// @id getNominatorPoolNominatorRewards
 // @param nominator query string true "Nominator address in any form"
 // @param pool query string true "Pool address in any form"
-// @param start_utime query integer false "Query rewards with timestamp at or after given timestamp. Defaults to 31 days before end_utime or now. Time range must not exceed 31 days." minimum(0)
-// @param end_utime query integer false "Query rewards with timestamp at or before given timestamp. Defaults to now. Time range must not exceed 31 days." minimum(0)
+// @param start_utime query integer false "Query rewards with timestamp at or after given timestamp." minimum(0)
+// @param end_utime query integer false "Query rewards with timestamp at or before given timestamp." minimum(0)
+// @param limit query int32 false "Limit number of queried rows." minimum(1) maximum(1000) default(100)
 // @produce json
 // @success 200 {object} models.NominatorRewardsResponse
 // @failure 422 {object} models.IndexError
 // @failure 500 {object} models.IndexError
-// @router /api/v3/nominators/rewards [get]
-func GetNominatorRewards(c *fiber.Ctx) error {
+// @router /api/v3/staking/nominatorPools/nominatorRewards [get]
+func GetNominatorPoolNominatorRewards(c *fiber.Ctx) error {
 	requestSettings := GetRequestSettings(c, &settings)
 	req := models.NominatorPoolNominatorRequest{}
 
@@ -2217,12 +2216,338 @@ func GetNominatorRewards(c *fiber.Ctx) error {
 		return err
 	}
 
-	rewards, err := pool.GetNominatorRewards(string(*req.Nominator), string(*req.Pool), utimeReq, requestSettings)
+	rewards, err := pool.GetNominatorRewards(string(*req.Nominator), string(*req.Pool), utimeReq, req.Limit, requestSettings)
+	if err != nil {
+		return err
+	}
+	addrList := []models.AccountAddress{*req.Nominator, *req.Pool}
+	book, err := pool.QueryAddressBookByAddresses(addrList, requestSettings)
+	if err != nil {
+		return err
+	}
+	rewards.AddressBook = book
+
+	return c.Status(200).JSON(rewards)
+}
+
+// GetNominatorPoolValidatorEvents godoc
+// @summary Get validator accounting events from nominator pools
+// @tags staking
+// @id getNominatorPoolValidatorEvents
+// @param validator query string false "Validator address in any form"
+// @param pool query string false "Pool address in any form"
+// @param type query string false "Event type"
+// @param start_utime query integer false "Query events with timestamp at or after given timestamp." minimum(0)
+// @param end_utime query integer false "Query events with timestamp at or before given timestamp." minimum(0)
+// @param limit query int32 false "Limit number of queried rows." minimum(1) maximum(1000) default(100)
+// @produce json
+// @success 200 {object} models.NominatorPoolValidatorEventsResponse
+// @failure 422 {object} models.IndexError
+// @failure 500 {object} models.IndexError
+// @router /api/v3/staking/nominatorPools/validatorEvents [get]
+func GetNominatorPoolValidatorEvents(c *fiber.Ctx) error {
+	requestSettings := GetRequestSettings(c, &settings)
+	req := models.NominatorPoolValidatorEventsRequest{}
+
+	if err := c.QueryParser(&req); err != nil {
+		return models.IndexError{Code: 422, Message: err.Error()}
+	}
+	if req.Validator == nil && req.Pool == nil {
+		return models.IndexError{Code: 422, Message: "validator or pool parameter is required"}
+	}
+
+	utimeReq, err := parseStakingUtimeFilter(c)
 	if err != nil {
 		return err
 	}
 
+	var validatorAddr *string
+	if req.Validator != nil {
+		value := string(*req.Validator)
+		validatorAddr = &value
+	}
+	var poolAddr *string
+	if req.Pool != nil {
+		value := string(*req.Pool)
+		poolAddr = &value
+	}
+
+	events, err := pool.GetNominatorPoolValidatorEvents(validatorAddr, poolAddr, req.EventType, utimeReq, req.Limit, requestSettings)
+	if err != nil {
+		return err
+	}
+	addrList := []models.AccountAddress{}
+	if req.Validator != nil {
+		addrList = append(addrList, *req.Validator)
+	}
+	if req.Pool != nil {
+		addrList = append(addrList, *req.Pool)
+	}
+	for _, event := range events {
+		addrList = append(addrList, event.PoolAddress, event.ValidatorAddress)
+	}
+	book, err := pool.QueryAddressBookByAddresses(addrList, requestSettings)
+	if err != nil {
+		return err
+	}
+
+	return c.Status(200).JSON(models.NominatorPoolValidatorEventsResponse{
+		StartUtime:  utimeReq.StartUtime,
+		EndUtime:    utimeReq.EndUtime,
+		Events:      events,
+		AddressBook: book,
+	})
+}
+
+// GetNominatorPoolValidatorRewards godoc
+// @summary Get validator rewards from a nominator pool
+// @tags staking
+// @id getNominatorPoolValidatorRewards
+// @param validator query string true "Validator address in any form"
+// @param pool query string true "Pool address in any form"
+// @param start_utime query integer false "Query rewards with timestamp at or after given timestamp." minimum(0)
+// @param end_utime query integer false "Query rewards with timestamp at or before given timestamp." minimum(0)
+// @param limit query int32 false "Limit number of queried rows." minimum(1) maximum(1000) default(100)
+// @produce json
+// @success 200 {object} models.NominatorPoolValidatorRewardsResponse
+// @failure 422 {object} models.IndexError
+// @failure 500 {object} models.IndexError
+// @router /api/v3/staking/nominatorPools/validatorRewards [get]
+func GetNominatorPoolValidatorRewards(c *fiber.Ctx) error {
+	requestSettings := GetRequestSettings(c, &settings)
+	req := models.NominatorPoolValidatorRewardsRequest{}
+
+	if err := c.QueryParser(&req); err != nil {
+		return models.IndexError{Code: 422, Message: err.Error()}
+	}
+	if req.Validator == nil || req.Pool == nil {
+		return models.IndexError{Code: 422, Message: "validator and pool parameters are required"}
+	}
+
+	utimeReq, err := parseStakingUtimeFilter(c)
+	if err != nil {
+		return err
+	}
+
+	rewards, err := pool.GetNominatorPoolValidatorRewards(string(*req.Validator), string(*req.Pool), utimeReq, req.Limit, requestSettings)
+	if err != nil {
+		return err
+	}
+	addrList := []models.AccountAddress{*req.Validator, *req.Pool}
+	book, err := pool.QueryAddressBookByAddresses(addrList, requestSettings)
+	if err != nil {
+		return err
+	}
+	rewards.AddressBook = book
+
 	return c.Status(200).JSON(rewards)
+}
+
+func validateValidatorAddressFilters(stakeHolderAddress *models.AccountAddress, adnlAddress *string) error {
+	if stakeHolderAddress != nil && adnlAddress != nil {
+		return models.IndexError{Code: 422, Message: "provide either stake_holder_address or adnl_address, not both"}
+	}
+	return nil
+}
+
+// GetValidatorEvents godoc
+// @summary Get validator stake/recover events
+// @tags staking
+// @id getValidatorEvents
+// @param stake_holder_address query string false "Stake holder address in any form"
+// @param validator_pubkey query string false "Validator public key hex"
+// @param type query string false "Event type"
+// @param start_utime query integer false "Query events with timestamp at or after given timestamp." minimum(0)
+// @param end_utime query integer false "Query events with timestamp at or before given timestamp." minimum(0)
+// @param limit query int32 false "Limit number of queried rows." minimum(1) maximum(1000) default(100)
+// @produce json
+// @success 200 {object} models.ValidatorEventsResponse
+// @failure 422 {object} models.IndexError
+// @failure 500 {object} models.IndexError
+// @router /api/v3/staking/validators/events [get]
+func GetValidatorEvents(c *fiber.Ctx) error {
+	requestSettings := GetRequestSettings(c, &settings)
+	req := models.ValidatorEventsRequest{}
+	if err := c.QueryParser(&req); err != nil {
+		return models.IndexError{Code: 422, Message: err.Error()}
+	}
+
+	utimeReq, err := parseStakingUtimeFilter(c)
+	if err != nil {
+		return err
+	}
+
+	events, err := pool.QueryValidatorEvents(req, utimeReq, requestSettings)
+	if err != nil {
+		return err
+	}
+	addrList := []models.AccountAddress{}
+	if req.StakeHolderAddress != nil {
+		addrList = append(addrList, *req.StakeHolderAddress)
+	}
+	for _, event := range events {
+		addrList = append(addrList, event.StakeHolderAddress)
+	}
+	book, err := pool.QueryAddressBookByAddresses(addrList, requestSettings)
+	if err != nil {
+		return err
+	}
+	return c.Status(200).JSON(models.ValidatorEventsResponse{
+		StartUtime:  utimeReq.StartUtime,
+		EndUtime:    utimeReq.EndUtime,
+		Events:      events,
+		AddressBook: book,
+	})
+}
+
+// GetValidatorElections godoc
+// @summary Get validator elections
+// @tags staking
+// @id getValidatorElections
+// @param election_id query integer false "Election id"
+// @param stake_holder_address query string false "Stake holder address in any form"
+// @param adnl_address query string false "ADNL address hex"
+// @param validator_pubkey query string false "Validator public key hex"
+// @param return_participants query boolean false "Return election participants" default(false)
+// @param finished query boolean false "Filter by finished flag"
+// @param start_utime query integer false "Query elections with election_id at or after given value. For elections, start_utime is applied to election_id, not elect_close." minimum(0)
+// @param end_utime query integer false "Query elections with election_id at or before given value. For elections, end_utime is applied to election_id, not elect_close." minimum(0)
+// @param limit query int32 false "Limit number of queried rows." minimum(1) maximum(1000) default(100)
+// @produce json
+// @success 200 {object} models.ValidatorElectionsResponse
+// @failure 422 {object} models.IndexError
+// @failure 500 {object} models.IndexError
+// @router /api/v3/staking/validators/elections [get]
+func GetValidatorElections(c *fiber.Ctx) error {
+	requestSettings := GetRequestSettings(c, &settings)
+	req := models.ValidatorElectionsRequest{}
+	if err := c.QueryParser(&req); err != nil {
+		return models.IndexError{Code: 422, Message: err.Error()}
+	}
+	if err := validateValidatorAddressFilters(req.StakeHolderAddress, req.AdnlAddress); err != nil {
+		return err
+	}
+
+	utimeReq, err := parseStakingUtimeFilter(c)
+	if err != nil {
+		return err
+	}
+
+	elections, err := pool.QueryValidatorElections(req, utimeReq, requestSettings)
+	if err != nil {
+		return err
+	}
+	addrList := []models.AccountAddress{}
+	if req.StakeHolderAddress != nil {
+		addrList = append(addrList, *req.StakeHolderAddress)
+	}
+	for _, election := range elections {
+		for _, participant := range election.Participants {
+			addrList = append(addrList, participant.StakeHolderAddress)
+		}
+	}
+	book, err := pool.QueryAddressBookByAddresses(addrList, requestSettings)
+	if err != nil {
+		return err
+	}
+	return c.Status(200).JSON(models.ValidatorElectionsResponse{Elections: elections, AddressBook: book})
+}
+
+// GetValidatorCycles godoc
+// @summary Get validator cycles
+// @tags staking
+// @id getValidatorCycles
+// @param cycle_start query integer false "Validator cycle start time"
+// @param election_id query integer false "Elector election id that produced the cycle"
+// @param stake_holder_address query string false "Stake holder address in any form"
+// @param adnl_address query string false "ADNL address hex"
+// @param validator_pubkey query string false "Validator public key hex"
+// @param return_validators query boolean false "Return validators in the set" default(false)
+// @param start_utime query integer false "Query cycles with cycle_start at or after given timestamp." minimum(0)
+// @param end_utime query integer false "Query cycles with cycle_start at or before given timestamp." minimum(0)
+// @param limit query int32 false "Limit number of queried rows." minimum(1) maximum(1000) default(100)
+// @produce json
+// @success 200 {object} models.ValidatorCyclesResponse
+// @failure 422 {object} models.IndexError
+// @failure 500 {object} models.IndexError
+// @router /api/v3/staking/validators/cycles [get]
+func GetValidatorCycles(c *fiber.Ctx) error {
+	requestSettings := GetRequestSettings(c, &settings)
+	req := models.ValidatorCyclesRequest{}
+	if err := c.QueryParser(&req); err != nil {
+		return models.IndexError{Code: 422, Message: err.Error()}
+	}
+	if err := validateValidatorAddressFilters(req.StakeHolderAddress, req.AdnlAddress); err != nil {
+		return err
+	}
+
+	utimeReq, err := parseStakingUtimeFilter(c)
+	if err != nil {
+		return err
+	}
+
+	cycles, err := pool.QueryValidatorCycles(req, utimeReq, requestSettings)
+	if err != nil {
+		return err
+	}
+	addrList := []models.AccountAddress{}
+	if req.StakeHolderAddress != nil {
+		addrList = append(addrList, *req.StakeHolderAddress)
+	}
+	book, err := pool.QueryAddressBookByAddresses(addrList, requestSettings)
+	if err != nil {
+		return err
+	}
+	return c.Status(200).JSON(models.ValidatorCyclesResponse{Cycles: cycles, AddressBook: book})
+}
+
+// GetValidatorComplaints godoc
+// @summary Get validator complaints
+// @tags staking
+// @id getValidatorComplaints
+// @param cycle_start query integer false "Validator cycle start time"
+// @param stake_holder_address query string false "Stake holder address in any form"
+// @param adnl_address query string false "ADNL address hex"
+// @param validator_pubkey query string false "Validator public key hex"
+// @param start_utime query integer false "Query complaints with created_at at or after given timestamp." minimum(0)
+// @param end_utime query integer false "Query complaints with created_at at or before given timestamp." minimum(0)
+// @param limit query int32 false "Limit number of queried rows." minimum(1) maximum(1000) default(100)
+// @produce json
+// @success 200 {object} models.ValidatorComplaintsResponse
+// @failure 422 {object} models.IndexError
+// @failure 500 {object} models.IndexError
+// @router /api/v3/staking/validators/complaints [get]
+func GetValidatorComplaints(c *fiber.Ctx) error {
+	requestSettings := GetRequestSettings(c, &settings)
+	req := models.ValidatorComplaintsRequest{}
+	if err := c.QueryParser(&req); err != nil {
+		return models.IndexError{Code: 422, Message: err.Error()}
+	}
+	if err := validateValidatorAddressFilters(req.StakeHolderAddress, req.AdnlAddress); err != nil {
+		return err
+	}
+
+	utimeReq, err := parseStakingUtimeFilter(c)
+	if err != nil {
+		return err
+	}
+
+	complaints, err := pool.QueryValidatorComplaints(req, utimeReq, requestSettings)
+	if err != nil {
+		return err
+	}
+	addrList := []models.AccountAddress{}
+	if req.StakeHolderAddress != nil {
+		addrList = append(addrList, *req.StakeHolderAddress)
+	}
+	for _, complaint := range complaints {
+		addrList = append(addrList, complaint.RewardAddress)
+	}
+	book, err := pool.QueryAddressBookByAddresses(addrList, requestSettings)
+	if err != nil {
+		return err
+	}
+	return c.Status(200).JSON(models.ValidatorComplaintsResponse{Complaints: complaints, AddressBook: book})
 }
 
 func test() {
@@ -2411,11 +2736,17 @@ func main() {
 	app.Get("/api/v3/multisig/wallets", GetMultisigs)
 	app.Get("/api/v3/multisig/orders", GetMultisigOrders)
 
-	// nominators (staking)
-	app.Get("/api/v3/nominators/pool", GetPool)
-	app.Get("/api/v3/nominators/events", GetNominatorPoolEvents)
-	app.Get("/api/v3/nominators/nominatorPools", GetNominatorPools)
-	app.Get("/api/v3/nominators/rewards", GetNominatorRewards)
+	// staking
+	app.Get("/api/v3/staking/nominatorPools/pool", GetNominatorPool)
+	app.Get("/api/v3/staking/nominatorPools/nominator", GetNominatorPoolNominator)
+	app.Get("/api/v3/staking/nominatorPools/nominatorEvents", GetNominatorPoolNominatorEvents)
+	app.Get("/api/v3/staking/nominatorPools/nominatorRewards", GetNominatorPoolNominatorRewards)
+	app.Get("/api/v3/staking/nominatorPools/validatorEvents", GetNominatorPoolValidatorEvents)
+	app.Get("/api/v3/staking/nominatorPools/validatorRewards", GetNominatorPoolValidatorRewards)
+	app.Get("/api/v3/staking/validators/events", GetValidatorEvents)
+	app.Get("/api/v3/staking/validators/elections", GetValidatorElections)
+	app.Get("/api/v3/staking/validators/cycles", GetValidatorCycles)
+	app.Get("/api/v3/staking/validators/complaints", GetValidatorComplaints)
 
 	// actions
 	app.Get("/api/v3/actions", GetActions)

@@ -301,11 +301,61 @@ type NominatorRequest struct {
 type NominatorPoolNominatorRequest struct {
 	Pool      *AccountAddress `query:"pool"`
 	Nominator *AccountAddress `query:"nominator"`
+	Limit     *int32          `query:"limit"`
 }
 
 type NominatorPoolEventsRequest struct {
 	Pool      *AccountAddress `query:"pool"`
 	Nominator *AccountAddress `query:"nominator"`
+	Limit     *int32          `query:"limit"`
+}
+
+type NominatorPoolValidatorEventsRequest struct {
+	Validator *AccountAddress `query:"validator"`
+	Pool      *AccountAddress `query:"pool"`
+	EventType *string         `query:"type"`
+	Limit     *int32          `query:"limit"`
+}
+
+type NominatorPoolValidatorRewardsRequest struct {
+	Validator *AccountAddress `query:"validator"`
+	Pool      *AccountAddress `query:"pool"`
+	Limit     *int32          `query:"limit"`
+}
+
+type ValidatorEventsRequest struct {
+	StakeHolderAddress *AccountAddress `query:"stake_holder_address"`
+	ValidatorPubkey    *string         `query:"validator_pubkey"`
+	EventType          *string         `query:"type"`
+	Limit              *int32          `query:"limit"`
+}
+
+type ValidatorElectionsRequest struct {
+	ElectionId         *int32          `query:"election_id"`
+	StakeHolderAddress *AccountAddress `query:"stake_holder_address"`
+	AdnlAddress        *string         `query:"adnl_address"`
+	ValidatorPubkey    *string         `query:"validator_pubkey"`
+	ReturnParticipants *bool           `query:"return_participants"`
+	Finished           *bool           `query:"finished"`
+	Limit              *int32          `query:"limit"`
+}
+
+type ValidatorCyclesRequest struct {
+	CycleStart         *int32          `query:"cycle_start"`
+	ElectionId         *int32          `query:"election_id"`
+	StakeHolderAddress *AccountAddress `query:"stake_holder_address"`
+	AdnlAddress        *string         `query:"adnl_address"`
+	ValidatorPubkey    *string         `query:"validator_pubkey"`
+	ReturnValidators   *bool           `query:"return_validators"`
+	Limit              *int32          `query:"limit"`
+}
+
+type ValidatorComplaintsRequest struct {
+	CycleStart         *int32          `query:"cycle_start"`
+	StakeHolderAddress *AccountAddress `query:"stake_holder_address"`
+	AdnlAddress        *string         `query:"adnl_address"`
+	ValidatorPubkey    *string         `query:"validator_pubkey"`
+	Limit              *int32          `query:"limit"`
 }
 
 type TestRequest struct {

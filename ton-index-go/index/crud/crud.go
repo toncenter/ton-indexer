@@ -48,6 +48,10 @@ func limitQuery(lim models.LimitParams, settings models.RequestSettings) (string
 	return query, nil
 }
 
+func limitOnlyQuery(limit *int32, settings models.RequestSettings) (string, error) {
+	return limitQuery(models.LimitParams{Limit: limit}, settings)
+}
+
 func filterByArray[T any](clmn string, values []T) string {
 	filter_list := []string{}
 	filterStringIfaceType := reflect.TypeOf((*models.FilterStringInterface)(nil)).Elem()
@@ -201,6 +205,38 @@ func (db *DbClient) queryKvrocksAddressBook(addrList []models.AccountAddress, se
 		return models.AddressBook{}, nil
 	}
 	return QueryAddressBookImplKvrocks(addrList, db.Kvrocks, settings)
+}
+
+func (db *DbClient) QueryAddressBookByAddresses(addrList []models.AccountAddress, settings models.RequestSettings) (models.AddressBook, error) {
+	if len(addrList) == 0 || settings.NoAddressBook {
+		return models.AddressBook{}, nil
+	}
+
+	addrSet := make(map[models.AccountAddress]struct{}, len(addrList))
+	uniqueAddrList := make([]models.AccountAddress, 0, len(addrList))
+	for _, addr := range addrList {
+		if addr.IsAddressNone() {
+			continue
+		}
+		if _, ok := addrSet[addr]; ok {
+			continue
+		}
+		addrSet[addr] = struct{}{}
+		uniqueAddrList = append(uniqueAddrList, addr)
+	}
+	if len(uniqueAddrList) == 0 {
+		return models.AddressBook{}, nil
+	}
+
+	if db.Kvrocks != nil {
+		return QueryAddressBookImplKvrocks(uniqueAddrList, db.Kvrocks, settings)
+	}
+	conn, err := db.Pool.Acquire(context.Background())
+	if err != nil {
+		return nil, models.IndexError{Code: 500, Message: err.Error()}
+	}
+	defer conn.Release()
+	return QueryAddressBookImpl(uniqueAddrList, conn, settings)
 }
 
 func SubstituteImgproxyBaseUrl(metadata *models.Metadata, base_url string) {
