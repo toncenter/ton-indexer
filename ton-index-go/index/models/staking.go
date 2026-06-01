@@ -62,10 +62,10 @@ type NominatorReward struct {
 } // @name NominatorReward
 
 type NominatorRewardsResponse struct {
-	StartUtime    *UtimeType        `json:"start_utime,omitempty"`
-	EndUtime      *UtimeType        `json:"end_utime,omitempty"`
-	TotalOnPeriod string            `json:"total_on_period"`
-	Rewards       []NominatorReward `json:"rewards"`
+	StartUtime  *UtimeType        `json:"start_utime,omitempty"`
+	EndUtime    *UtimeType        `json:"end_utime,omitempty"`
+	TotalOnPage string            `json:"total_on_page"`
+	Rewards     []NominatorReward `json:"rewards"`
 } // @name NominatorRewardsResponse
 
 type NominatorPoolValidatorEvent struct {
@@ -101,10 +101,10 @@ type NominatorPoolValidatorReward struct {
 } // @name NominatorPoolValidatorReward
 
 type NominatorPoolValidatorRewardsResponse struct {
-	StartUtime    *UtimeType                     `json:"start_utime,omitempty"`
-	EndUtime      *UtimeType                     `json:"end_utime,omitempty"`
-	TotalOnPeriod string                         `json:"total_on_period"`
-	Rewards       []NominatorPoolValidatorReward `json:"rewards"`
+	StartUtime  *UtimeType                     `json:"start_utime,omitempty"`
+	EndUtime    *UtimeType                     `json:"end_utime,omitempty"`
+	TotalOnPage string                         `json:"total_on_page"`
+	Rewards     []NominatorPoolValidatorReward `json:"rewards"`
 } // @name NominatorPoolValidatorRewardsResponse
 
 type ValidatorEvent struct {

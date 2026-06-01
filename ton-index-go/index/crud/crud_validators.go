@@ -95,6 +95,7 @@ func (db *DbClient) QueryValidatorEvents(
 
 func (db *DbClient) QueryValidatorElections(
 	req models.ValidatorElectionsRequest,
+	utimeReq models.UtimeParams,
 	settings models.RequestSettings,
 ) ([]models.ValidatorElection, error) {
 	ctx, cancelCtx := context.WithTimeout(context.Background(), settings.Timeout)
@@ -146,8 +147,12 @@ func (db *DbClient) QueryValidatorElections(
 			WHERE p.election_id = validator_elections.election_id%s
 		)`, strings.Join(participantFilters, ""))
 	}
+	query, args, _, err = appendStakingUtimeFilters(query, args, argIdx, "election_id", utimeReq)
+	if err != nil {
+		return nil, err
+	}
 	query += " ORDER BY election_id DESC"
-	limit, err := limitQuery(req.LimitParams, settings)
+	limit, err := limitOnlyQuery(req.Limit, settings)
 	if err != nil {
 		return nil, err
 	}
@@ -233,6 +238,7 @@ func (db *DbClient) queryValidatorElectionParticipants(
 
 func (db *DbClient) QueryValidatorCycles(
 	req models.ValidatorCyclesRequest,
+	utimeReq models.UtimeParams,
 	settings models.RequestSettings,
 ) ([]models.ValidatorCycle, error) {
 	ctx, cancelCtx := context.WithTimeout(context.Background(), settings.Timeout)
@@ -295,8 +301,12 @@ func (db *DbClient) QueryValidatorCycles(
 		args = append(args, strings.ToUpper(*req.ValidatorPubkey))
 		argIdx++
 	}
+	query, args, _, err = appendStakingUtimeFilters(query, args, argIdx, "utime_since", utimeReq)
+	if err != nil {
+		return nil, err
+	}
 	query += " ORDER BY utime_since DESC"
-	limit, err := limitQuery(req.LimitParams, settings)
+	limit, err := limitOnlyQuery(req.Limit, settings)
 	if err != nil {
 		return nil, err
 	}
@@ -393,6 +403,7 @@ func (db *DbClient) queryValidatorCycleValidators(
 
 func (db *DbClient) QueryValidatorComplaints(
 	req models.ValidatorComplaintsRequest,
+	utimeReq models.UtimeParams,
 	settings models.RequestSettings,
 ) ([]models.ValidatorComplaint, error) {
 	ctx, cancelCtx := context.WithTimeout(context.Background(), settings.Timeout)
@@ -440,8 +451,12 @@ func (db *DbClient) QueryValidatorComplaints(
 		args = append(args, strings.ToUpper(*req.AdnlAddress))
 		argIdx++
 	}
-	query += " ORDER BY vc.utime_since DESC, c.created_at DESC, c.complaint_hash"
-	limit, err := limitQuery(req.LimitParams, settings)
+	query, args, _, err = appendStakingUtimeFilters(query, args, argIdx, "c.created_at", utimeReq)
+	if err != nil {
+		return nil, err
+	}
+	query += " ORDER BY c.created_at DESC, c.complaint_hash"
+	limit, err := limitOnlyQuery(req.Limit, settings)
 	if err != nil {
 		return nil, err
 	}

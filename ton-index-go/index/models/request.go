@@ -337,7 +337,7 @@ type ValidatorElectionsRequest struct {
 	ValidatorPubkey    *string         `query:"validator_pubkey"`
 	ReturnParticipants *bool           `query:"return_participants"`
 	Finished           *bool           `query:"finished"`
-	LimitParams
+	Limit              *int32          `query:"limit"`
 }
 
 type ValidatorCyclesRequest struct {
@@ -347,7 +347,7 @@ type ValidatorCyclesRequest struct {
 	AdnlAddress        *string         `query:"adnl_address"`
 	ValidatorPubkey    *string         `query:"validator_pubkey"`
 	ReturnValidators   *bool           `query:"return_validators"`
-	LimitParams
+	Limit              *int32          `query:"limit"`
 }
 
 type ValidatorComplaintsRequest struct {
@@ -355,7 +355,7 @@ type ValidatorComplaintsRequest struct {
 	StakeHolderAddress *AccountAddress `query:"stake_holder_address"`
 	AdnlAddress        *string         `query:"adnl_address"`
 	ValidatorPubkey    *string         `query:"validator_pubkey"`
-	LimitParams
+	Limit              *int32          `query:"limit"`
 }
 
 type TestRequest struct {

@@ -162,7 +162,7 @@ func (db *DbClient) GetNominatorRewards(
 	defer rewardRows.Close()
 
 	rewards := []models.NominatorReward{}
-	totalOnPeriod := big.NewInt(0)
+	totalOnPage := big.NewInt(0)
 
 	for rewardRows.Next() {
 		var reward models.NominatorReward
@@ -176,17 +176,17 @@ func (db *DbClient) GetNominatorRewards(
 			return nil, models.IndexError{Code: 500, Message: err.Error()}
 		}
 		rewards = append(rewards, reward)
-		addNumericString(totalOnPeriod, reward.Reward)
+		addNumericString(totalOnPage, reward.Reward)
 	}
 	if err := rewardRows.Err(); err != nil {
 		return nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
 
 	response := &models.NominatorRewardsResponse{
-		TotalOnPeriod: totalOnPeriod.String(),
-		Rewards:       rewards,
-		StartUtime:    utimeReq.StartUtime,
-		EndUtime:      utimeReq.EndUtime,
+		TotalOnPage: totalOnPage.String(),
+		Rewards:     rewards,
+		StartUtime:  utimeReq.StartUtime,
+		EndUtime:    utimeReq.EndUtime,
 	}
 	return response, nil
 }
@@ -323,7 +323,7 @@ func (db *DbClient) GetNominatorPoolValidatorRewards(
 	defer rows.Close()
 
 	rewards := []models.NominatorPoolValidatorReward{}
-	totalOnPeriod := big.NewInt(0)
+	totalOnPage := big.NewInt(0)
 	for rows.Next() {
 		var reward models.NominatorPoolValidatorReward
 		if err := rows.Scan(
@@ -338,17 +338,17 @@ func (db *DbClient) GetNominatorPoolValidatorRewards(
 			return nil, models.IndexError{Code: 500, Message: err.Error()}
 		}
 		rewards = append(rewards, reward)
-		addNumericString(totalOnPeriod, reward.Reward)
+		addNumericString(totalOnPage, reward.Reward)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
 
 	return &models.NominatorPoolValidatorRewardsResponse{
-		StartUtime:    utimeReq.StartUtime,
-		EndUtime:      utimeReq.EndUtime,
-		TotalOnPeriod: totalOnPeriod.String(),
-		Rewards:       rewards,
+		StartUtime:  utimeReq.StartUtime,
+		EndUtime:    utimeReq.EndUtime,
+		TotalOnPage: totalOnPage.String(),
+		Rewards:     rewards,
 	}, nil
 }
 

@@ -2338,8 +2338,9 @@ func GetValidatorEvents(c *fiber.Ctx) error {
 // @param validator_pubkey query string false "Validator public key hex"
 // @param return_participants query boolean false "Return election participants" default(false)
 // @param finished query boolean false "Filter by finished flag"
-// @param limit query int32 false "Limit number of queried rows. Use with *offset* to batch read." minimum(1) maximum(1000) default(10)
-// @param offset query int32 false "Offset."
+// @param start_utime query integer false "Query elections with election_id at or after given value. For elections, start_utime is applied to election_id, not elect_close." minimum(0)
+// @param end_utime query integer false "Query elections with election_id at or before given value. For elections, end_utime is applied to election_id, not elect_close." minimum(0)
+// @param limit query int32 false "Limit number of queried rows." minimum(1) maximum(1000) default(100)
 // @produce json
 // @success 200 {object} models.ValidatorElectionsResponse
 // @failure 422 {object} models.IndexError
@@ -2355,7 +2356,12 @@ func GetValidatorElections(c *fiber.Ctx) error {
 		return err
 	}
 
-	elections, err := pool.QueryValidatorElections(req, requestSettings)
+	utimeReq, err := parseStakingUtimeFilter(c)
+	if err != nil {
+		return err
+	}
+
+	elections, err := pool.QueryValidatorElections(req, utimeReq, requestSettings)
 	if err != nil {
 		return err
 	}
@@ -2372,8 +2378,9 @@ func GetValidatorElections(c *fiber.Ctx) error {
 // @param adnl_address query string false "ADNL address hex"
 // @param validator_pubkey query string false "Validator public key hex"
 // @param return_validators query boolean false "Return validators in the set" default(false)
-// @param limit query int32 false "Limit number of queried rows. Use with *offset* to batch read." minimum(1) maximum(1000) default(10)
-// @param offset query int32 false "Offset."
+// @param start_utime query integer false "Query cycles with cycle_start at or after given timestamp." minimum(0)
+// @param end_utime query integer false "Query cycles with cycle_start at or before given timestamp." minimum(0)
+// @param limit query int32 false "Limit number of queried rows." minimum(1) maximum(1000) default(100)
 // @produce json
 // @success 200 {object} models.ValidatorCyclesResponse
 // @failure 422 {object} models.IndexError
@@ -2389,7 +2396,12 @@ func GetValidatorCycles(c *fiber.Ctx) error {
 		return err
 	}
 
-	cycles, err := pool.QueryValidatorCycles(req, requestSettings)
+	utimeReq, err := parseStakingUtimeFilter(c)
+	if err != nil {
+		return err
+	}
+
+	cycles, err := pool.QueryValidatorCycles(req, utimeReq, requestSettings)
 	if err != nil {
 		return err
 	}
@@ -2404,8 +2416,9 @@ func GetValidatorCycles(c *fiber.Ctx) error {
 // @param stake_holder_address query string false "Stake holder address in any form"
 // @param adnl_address query string false "ADNL address hex"
 // @param validator_pubkey query string false "Validator public key hex"
-// @param limit query int32 false "Limit number of queried rows. Use with *offset* to batch read." minimum(1) maximum(1000) default(10)
-// @param offset query int32 false "Offset."
+// @param start_utime query integer false "Query complaints with created_at at or after given timestamp." minimum(0)
+// @param end_utime query integer false "Query complaints with created_at at or before given timestamp." minimum(0)
+// @param limit query int32 false "Limit number of queried rows." minimum(1) maximum(1000) default(100)
 // @produce json
 // @success 200 {object} models.ValidatorComplaintsResponse
 // @failure 422 {object} models.IndexError
@@ -2421,7 +2434,12 @@ func GetValidatorComplaints(c *fiber.Ctx) error {
 		return err
 	}
 
-	complaints, err := pool.QueryValidatorComplaints(req, requestSettings)
+	utimeReq, err := parseStakingUtimeFilter(c)
+	if err != nil {
+		return err
+	}
+
+	complaints, err := pool.QueryValidatorComplaints(req, utimeReq, requestSettings)
 	if err != nil {
 		return err
 	}
