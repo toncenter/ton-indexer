@@ -1,6 +1,7 @@
 #pragma once
 #include <queue>
 #include <functional>
+#include <vector>
 #include "validator/manager-disk.h"
 #include "validator/db/rootdb.hpp"
 
@@ -18,6 +19,9 @@ private:
   float catch_up_interval_;
   bool is_ready_ = false;
   ton::BlockSeqno last_known_seqno_{0};
+  bool catch_up_in_progress_{false};
+  std::vector<td::Promise<td::Unit>> catch_up_promises_;
+  std::vector<td::Promise<td::Unit>> pending_catch_up_promises_;
 
   td::actor::ActorOwn<ton::validator::ValidatorManagerInterface> validator_manager_;
   td::actor::ActorOwn<ton::validator::RootDb> db_;
@@ -40,7 +44,8 @@ public:
   void fetch_block_by_id(ton::BlockIdExt block_id, td::Promise<schema::BlockDataState> promise);
   void request_catch_up(td::Promise<td::Unit> promise);
 private:
-  void catch_up_with_primary(td::Promise<td::Unit> promise);
+  void start_catch_up_with_primary();
+  void catch_up_finished(td::Result<td::Unit> result, double elapsed_ms);
 };
 
 struct BlockIdExtHasher {

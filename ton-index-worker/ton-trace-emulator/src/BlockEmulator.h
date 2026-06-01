@@ -61,6 +61,7 @@ private:
     size_t in_progress_cnt_{0};
 
     int traces_cnt_{0};
+    bool finished_{false};
 
     td::Timestamp start_time_;
 
@@ -79,6 +80,7 @@ private:
     void trace_interfaces_error(td::Bits256 trace_root_tx_hash, td::Status error, MeasurementPtr measurement);
     void trace_emulated(Trace trace, MeasurementPtr measurement);
     void trace_finished(td::Bits256, MeasurementPtr measurement);
+    void finish_block_if_done();
 
 public:
     McBlockEmulator(schema::MasterchainBlockDataState mc_data_state,

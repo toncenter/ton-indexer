@@ -7,6 +7,7 @@
 #include <vector>
 #include <functional>
 #include <cstdint>
+#include <optional>
 #include "td/actor/actor.h"
 #include "DbScanner.h"
 #include "OverlayListener.h"
@@ -42,6 +43,7 @@ class TraceEmulatorScheduler : public td::actor::Actor {
 
     std::unordered_set<ton::BlockSeqno> seqnos_to_fetch_;
     std::map<ton::BlockSeqno, schema::MasterchainBlockDataState> blocks_to_emulate_;
+    std::deque<ton::BlockIdExt> signed_blocks_to_fetch_queue_;
     std::deque<ton::BlockIdExt> signed_block_queue_;
     std::deque<ton::BlockIdExt> seen_signed_block_order_;
     std::unordered_set<ton::BlockIdExt, BlockIdExtHasher> seen_signed_blocks_;
@@ -59,19 +61,35 @@ class TraceEmulatorScheduler : public td::actor::Actor {
     td::Timestamp next_health_update_;
     std::uint32_t last_finalized_mc_block_time_{0};
     std::uint32_t last_confirmed_block_time_{0};
+    std::optional<ton::BlockSeqno> pending_applied_mc_seqno_;
+    std::deque<ton::BlockIdExt> pending_signed_blocks_;
+    std::optional<ton::BlockSeqno> catch_up_applied_mc_seqno_;
+    std::deque<ton::BlockIdExt> catch_up_signed_blocks_;
+    bool db_catch_up_in_progress_{false};
+    std::size_t finalized_blocks_inflight_{0};
+    std::size_t confirmed_blocks_inflight_{0};
 
     void handle_block_signed(ton::BlockIdExt block_id);
     void handle_block_applied(ton::BlockIdExt block_id);
+    void request_db_catch_up();
+    bool has_pending_db_events() const;
+    bool has_ready_finalized_block() const;
+    void db_catch_up_finished(td::Result<td::Unit> result);
+    void requeue_catch_up_batch();
+    void process_catch_up_batch();
 
     void got_last_mc_seqno(ton::BlockSeqno last_known_seqno);
     void fetch_seqnos();
     void fetch_error(std::uint32_t seqno, td::Status error);
     void seqno_fetched(std::uint32_t seqno, schema::MasterchainBlockDataState mc_data_state);
     void emulate_blocks();
+    void finalized_block_finished(ton::BlockSeqno seqno);
     void enqueue_signed_block(ton::BlockIdExt block_id);
+    void fetch_signed_blocks();
     void signed_block_fetched(ton::BlockIdExt block_id, schema::BlockDataState block_data_state);
     void signed_block_error(ton::BlockIdExt block_id, td::Status error);
     void process_signed_blocks();
+    void confirmed_block_finished(ton::BlockIdExt block_id);
     bool remember_seen_signed_block(ton::BlockIdExt block_id);
     std::function<void(Trace, td::Promise<td::Unit>, MeasurementPtr)> make_signed_trace_processor(const ton::BlockIdExt& block_id_ext);
     std::function<void(Trace, td::Promise<td::Unit>, MeasurementPtr)> make_finalized_trace_processor(const schema::MasterchainBlockDataState& mc_data_state);
