@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -16,14 +17,27 @@ type DbClient struct {
 }
 
 func afterConnectRegisterTypes(ctx context.Context, conn *pgx.Conn) error {
-	data_type_names := []string{
+	text_type_names := []string{
 		"tonaddr",
-		"_tonaddr",
 		"tonhash",
+		"tonbytes",
+	}
+	for _, type_name := range text_type_names {
+		var oid uint32
+		err := conn.QueryRow(ctx, "select $1::text::regtype::oid", type_name).Scan(&oid)
+		if err != nil {
+			return fmt.Errorf("failed to load type '%s': %v", type_name, err)
+		}
+		conn.TypeMap().RegisterType(&pgtype.Type{Name: type_name, OID: oid, Codec: pgtype.TextCodec{}})
+	}
+
+	data_type_names := []string{
+		"_tonaddr",
 		"_tonhash",
+		"_tonbytes",
 		"peer_swap_details",
-		"_peer_swap_details",
 		"liquidity_vault_excess_details",
+		"_peer_swap_details",
 		"_liquidity_vault_excess_details",
 	}
 	for _, type_name := range data_type_names {

@@ -107,7 +107,8 @@ CREATE TYPE tonaddr (
    output = tonaddr_out,
    send = tonaddr_send,
    receive = tonaddr_recv,
-   internallength = 36,
+   internallength = variable,
+   storage = plain,
    alignment = int4
 );
 
@@ -158,3 +159,85 @@ CREATE OPERATOR CLASS tonaddr_ops
         OPERATOR        4       >= ,
         OPERATOR        5       > ,
         FUNCTION        1       tonaddr_cmp(tonaddr, tonaddr);
+
+-- TonBytes type
+CREATE TYPE tonbytes;
+
+CREATE OR REPLACE FUNCTION tonbytes_in(cstring)
+   RETURNS tonbytes
+   AS 'MODULE_PATHNAME', 'tonbytes_in'
+   LANGUAGE C IMMUTABLE STRICT;
+
+CREATE OR REPLACE FUNCTION tonbytes_out(tonbytes)
+   RETURNS cstring
+   AS 'MODULE_PATHNAME', 'tonbytes_out'
+   LANGUAGE C IMMUTABLE STRICT;
+
+CREATE FUNCTION tonbytes_recv(internal)
+   RETURNS tonbytes
+   AS 'MODULE_PATHNAME', 'tonbytes_recv'
+   LANGUAGE C IMMUTABLE STRICT;
+
+CREATE FUNCTION tonbytes_send(tonbytes)
+   RETURNS bytea
+   AS 'MODULE_PATHNAME', 'tonbytes_send'
+   LANGUAGE C IMMUTABLE STRICT;
+
+
+CREATE TYPE tonbytes (
+   input = tonbytes_in,
+   output = tonbytes_out,
+   send = tonbytes_send,
+   receive = tonbytes_recv,
+   internallength = variable,
+   storage = extended,
+   alignment = int4
+);
+
+CREATE FUNCTION tonbytes_lt(tonbytes, tonbytes) RETURNS bool
+   AS 'MODULE_PATHNAME', 'tonbytes_lt' LANGUAGE C IMMUTABLE STRICT;
+CREATE FUNCTION tonbytes_le(tonbytes, tonbytes) RETURNS bool
+   AS 'MODULE_PATHNAME', 'tonbytes_le' LANGUAGE C IMMUTABLE STRICT;
+CREATE FUNCTION tonbytes_eq(tonbytes, tonbytes) RETURNS bool
+   AS 'MODULE_PATHNAME', 'tonbytes_eq' LANGUAGE C IMMUTABLE STRICT;
+CREATE FUNCTION tonbytes_gt(tonbytes, tonbytes) RETURNS bool
+   AS 'MODULE_PATHNAME', 'tonbytes_gt' LANGUAGE C IMMUTABLE STRICT;
+CREATE FUNCTION tonbytes_ge(tonbytes, tonbytes) RETURNS bool
+   AS 'MODULE_PATHNAME', 'tonbytes_ge' LANGUAGE C IMMUTABLE STRICT;
+CREATE FUNCTION tonbytes_cmp(tonbytes, tonbytes) RETURNS int4
+   AS 'MODULE_PATHNAME', 'tonbytes_cmp' LANGUAGE C IMMUTABLE STRICT;
+
+CREATE OPERATOR < (
+   leftarg = tonbytes, rightarg = tonbytes, procedure = tonbytes_lt,
+   commutator = > , negator = >= ,
+   restrict = scalarltsel, join = scalarltjoinsel
+);
+CREATE OPERATOR <= (
+   leftarg = tonbytes, rightarg = tonbytes, procedure = tonbytes_le,
+   commutator = >= , negator = > ,
+   restrict = scalarlesel, join = scalarlejoinsel
+);
+CREATE OPERATOR = (
+   leftarg = tonbytes, rightarg = tonbytes, procedure = tonbytes_eq,
+   commutator = = ,
+   restrict = eqsel, join = eqjoinsel
+);
+CREATE OPERATOR >= (
+   leftarg = tonbytes, rightarg = tonbytes, procedure = tonbytes_ge,
+   commutator = <= , negator = < ,
+   restrict = scalargesel, join = scalargejoinsel
+);
+CREATE OPERATOR > (
+   leftarg = tonbytes, rightarg = tonbytes, procedure = tonbytes_gt,
+   commutator = < , negator = <= ,
+   restrict = scalargtsel, join = scalargtjoinsel
+);
+
+CREATE OPERATOR CLASS tonbytes_ops
+    DEFAULT FOR TYPE tonbytes USING btree AS
+        OPERATOR        1       < ,
+        OPERATOR        2       <= ,
+        OPERATOR        3       = ,
+        OPERATOR        4       >= ,
+        OPERATOR        5       > ,
+        FUNCTION        1       tonbytes_cmp(tonbytes, tonbytes);

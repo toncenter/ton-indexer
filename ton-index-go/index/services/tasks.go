@@ -41,14 +41,14 @@ func NewBackgroundTaskManager(pg_dsn string, channel_size int, min_conns int, ma
 	defer conn.Release()
 	user := pool.Config().ConnConfig.User
 
-	row := conn.QueryRow(context.Background(), "SELECT has_table_privilege($1, 'background_tasks', 'INSERT, UPDATE, DELETE')", user)
+	row := conn.QueryRow(context.Background(), "SELECT has_table_privilege($1, '_background_tasks', 'INSERT, UPDATE, DELETE')", user)
 	var has_privilege bool
 	err = row.Scan(&has_privilege)
 	if err != nil {
 		return nil, err
 	}
 	if !has_privilege {
-		return nil, errors.New("user does not have required privileges on background_tasks table")
+		return nil, errors.New("user does not have required privileges on _background_tasks table")
 	}
 	return &TaskManager{
 		pool:        pool,
@@ -74,7 +74,7 @@ func (manager *TaskManager) loop(ctx context.Context) {
 	}
 	tx_failed := false
 	for _, task := range tasks {
-		_, err := tx.Exec(ctx, "INSERT INTO background_tasks (type, data, status) "+
+		_, err := tx.Exec(ctx, "INSERT INTO _background_tasks (type, data, status) "+
 			"VALUES ($1, $2, 'ready') ON CONFLICT DO NOTHING", task.Type, task.Data)
 		if err != nil {
 			log.Printf("Error inserting task: %v", err)

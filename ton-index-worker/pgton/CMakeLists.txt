@@ -9,3 +9,4 @@ add_postgresql_extension(pgton
   REGRESS basic)
 
 enable_testing()
+
