@@ -23,9 +23,31 @@ endif()
 list(APPEND CMAKE_MODULE_PATH ${CMAKE_SOURCE_DIR}/cmake)
 add_subdirectory(external/ton EXCLUDE_FROM_ALL)
 add_subdirectory(external/libpqxx EXCLUDE_FROM_ALL)
+
+# The TON subtree already provides an lz4 target.  Tell clickhouse-cpp to use
+# that configured library instead of adding its bundled target with the same
+# plain name.
+set(WITH_SYSTEM_LZ4 ON CACHE BOOL "Use configured LZ4 for clickhouse-cpp" FORCE)
+set(WITH_SYSTEM_ABSEIL ON CACHE BOOL "Use configured Abseil for clickhouse-cpp" FORCE)
+if (TARGET absl::int128)
+    # clickhouse-cpp calls find_package(absl); route it to TON's in-tree Abseil
+    # targets instead of importing a second system Abseil package.
+    set(absl_DIR "${CMAKE_CURRENT_LIST_DIR}/cmake/absl" CACHE PATH "Use TON-provided Abseil targets for clickhouse-cpp" FORCE)
+endif()
 add_subdirectory(external/clickhouse-cpp EXCLUDE_FROM_ALL)
 set(REDIS_PLUS_PLUS_BUILD_TEST OFF CACHE BOOL "disable test" FORCE)
+
+# workaround to link static libhiredis
+set(TON_INDEXER_CMAKE_FIND_LIBRARY_SUFFIXES ${CMAKE_FIND_LIBRARY_SUFFIXES})
+set(CMAKE_FIND_LIBRARY_SUFFIXES .a)
+find_library(TON_INDEXER_HIREDIS_STATIC_LIB hiredis REQUIRED)
+set(CMAKE_FIND_LIBRARY_SUFFIXES ${TON_INDEXER_CMAKE_FIND_LIBRARY_SUFFIXES})
+unset(TON_INDEXER_CMAKE_FIND_LIBRARY_SUFFIXES)
+set(HIREDIS_LIB "${TON_INDEXER_HIREDIS_STATIC_LIB}" CACHE FILEPATH "hiredis static library" FORCE)
+set(REDIS_PLUS_PLUS_BUILD_SHARED OFF CACHE BOOL "disable shared redis++" FORCE)
 add_subdirectory(external/redis-plus-plus EXCLUDE_FROM_ALL)
+target_link_libraries(redis++_static PUBLIC ${TON_INDEXER_HIREDIS_STATIC_LIB})
+
 set(MSGPACK_USE_BOOST OFF CACHE BOOL "disable boost" FORCE)
 set(MSGPACK_USE_STD_VARIANT_ADAPTOR ON CACHE BOOL "enable std::variant" FORCE)
 add_subdirectory(external/msgpack-c EXCLUDE_FROM_ALL)

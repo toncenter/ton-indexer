@@ -513,7 +513,7 @@ int main(int argc, char *argv[]) {
       insert_manager_.reset();
       parse_manager_.reset();
       db_scanner_.reset();
-      td::actor::SchedulerContext::get()->stop();
+      td::actor::SchedulerContext::get().stop();
     });
     scheduler.run();
   }

@@ -1233,6 +1233,22 @@ create unlogged table if not exists _classifier_tasks
 );
 create index if not exists _classifier_tasks_mc_seqno_idx on _classifier_tasks (mc_seqno desc);
 
+create table if not exists blocks_to_classify
+(
+    mc_seqno integer primary key
+);
+
+create table if not exists classifier_watermark
+(
+    id integer primary key check (id = 1),
+    last_scheduled_mc_seqno integer not null
+);
+insert into classifier_watermark(id, last_scheduled_mc_seqno)
+select 1, coalesce(max(seqno), 0) + 100
+from blocks
+where workchain = -1
+on conflict (id) do nothing;
+
 create unlogged table if not exists _classifier_failed_traces
 (
     id       serial,
@@ -1278,9 +1294,23 @@ create or replace function on_new_mc_block_func()
     returns trigger
     language plpgsql as
 $$
+declare
+    watermark integer;
 begin
-    insert into _classifier_tasks(mc_seqno, start_after)
-    values (NEW.seqno, now() + interval '1 seconds');
+    select last_scheduled_mc_seqno
+    into watermark
+    from classifier_watermark
+    where id = 1;
+
+    if NEW.seqno <= watermark then
+        insert into _classifier_tasks(mc_seqno, start_after)
+        values (NEW.seqno, now() + interval '1 seconds');
+    else
+        insert into blocks_to_classify(mc_seqno)
+        values (NEW.seqno)
+        on conflict (mc_seqno) do nothing;
+    end if;
+
     return null;
 end;
 $$;
@@ -1291,6 +1321,50 @@ create or replace trigger on_new_mc_block
     for each row
     when (new.workchain = '-1'::integer)
 execute procedure on_new_mc_block_func();
+
+create or replace function drain_classifiable_prefix()
+    returns trigger
+    language plpgsql as
+$$
+declare
+    cur integer;
+    watermark integer;
+begin
+    select last_scheduled_mc_seqno
+    into watermark
+    from classifier_watermark
+    where id = 1
+    for update skip locked;
+
+    if not found then
+        return null;
+    end if;
+
+    cur := watermark + 1;
+    loop
+        exit when not exists (select 1 from blocks_to_classify where mc_seqno = cur);
+        insert into _classifier_tasks(mc_seqno, start_after)
+        values (cur, now() + interval '1 seconds');
+        delete from blocks_to_classify where mc_seqno = cur;
+        cur := cur + 1;
+    end loop;
+
+    if cur > watermark + 1 then
+        update classifier_watermark
+        set last_scheduled_mc_seqno = cur - 1
+        where id = 1
+          and last_scheduled_mc_seqno < cur - 1;
+    end if;
+
+    return null;
+end;
+$$;
+
+create or replace trigger on_block_buffered
+    after insert
+    on blocks_to_classify
+    for each row
+execute procedure drain_classifiable_prefix();
 
 create or replace function advance_ton_indexer_progress()
     returns integer
@@ -1355,6 +1429,32 @@ create or replace trigger advance_ton_indexer_progress
     for each row
     when (new.workchain = '-1'::integer)
 execute procedure advance_ton_indexer_progress_func();
+
+create or replace function notify_dex_pools_change() returns trigger as
+$$
+declare
+    target_dex dex_type;
+begin
+    if TG_OP = 'DELETE' then
+        target_dex := OLD.dex;
+    else
+        target_dex := NEW.dex;
+    end if;
+
+    if target_dex = 'dedust' then
+        perform pg_notify('dex_pools_changes', '');
+    end if;
+
+    return null;
+end;
+$$ language plpgsql;
+
+drop trigger if exists dex_pools_change_trg on dex_pools;
+create trigger dex_pools_change_trg
+    after insert or delete
+    on dex_pools
+    for each row
+execute function notify_dex_pools_change();
 
 -- real owner of nft item
 CREATE OR REPLACE FUNCTION update_nft_real_owner() RETURNS TRIGGER AS

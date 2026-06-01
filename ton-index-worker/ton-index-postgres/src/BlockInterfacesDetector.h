@@ -70,15 +70,20 @@ public:
             if (account_state.code.is_null()) {
                 continue;
             }
-            td::actor::create_actor<FullDetector>("InterfacesDetector", account_state.account, account_state.code, account_state.data, shard_states, block_->mc_block_.config_, 
-                td::PromiseCreator::lambda([SelfId = actor_id(this), account_state, promise = ig.get_promise()](std::vector<typename FullDetector::DetectedInterface> interfaces) mutable {
-                    td::actor::send_closure(SelfId, &BlockInterfaceProcessor::process_address_interfaces, account_state.account, std::move(interfaces), 
+            td::actor::create_actor<FullDetector>("InterfacesDetector", account_state.account, account_state.code, account_state.data, shard_states, block_->mc_block_.config_,
+                td::PromiseCreator::lambda([SelfId = actor_id(this), account_state, promise = ig.get_promise()](td::Result<std::vector<typename FullDetector::DetectedInterface>> interfaces) mutable {
+                    if (interfaces.is_error()) {
+                        promise.set_error(interfaces.move_as_error());
+                        return;
+                    }
+                    auto detected_interfaces = interfaces.move_as_ok();
+                    td::actor::send_closure(SelfId, &BlockInterfaceProcessor::process_address_interfaces, account_state.account, std::move(detected_interfaces),
                                             account_state.code_hash.value(), account_state.data_hash.value(), account_state.last_trans_lt, account_state.timestamp, std::move(promise));
             })).release();
         }
     }
 
-    void process_address_interfaces(block::StdAddress address, std::vector<typename FullDetector::DetectedInterface> interfaces, 
+    void process_address_interfaces(block::StdAddress address, std::vector<typename FullDetector::DetectedInterface> interfaces,
                                     td::Bits256 code_hash, td::Bits256 data_hash, uint64_t last_trans_lt, uint32_t last_trans_now, td::Promise<td::Unit> promise) {
         for (auto& interface : interfaces) {
             std::visit([&](auto&& arg) {

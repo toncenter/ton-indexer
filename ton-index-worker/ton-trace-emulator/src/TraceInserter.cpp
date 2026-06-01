@@ -1,10 +1,16 @@
 #include "TraceInserter.h"
 #include "Serializer.hpp"
 #include "Statistics.h"
+#include <cstdint>
 #include <optional>
 #include <queue>
 
 namespace {
+
+constexpr bool kPipelineTransactionCommands = false;
+constexpr bool kCreateDedicatedTransactionConnection = false;
+constexpr const char* kNewTraceChannel = "new_trace"; // for classsifier and others
+constexpr const char* kNewPendingTraceChannel = "new_pending_trace"; // for streaming only
 
 std::string finality_name(FinalityState finality) {
     switch (finality) {
@@ -48,6 +54,8 @@ public:
 
             trace_key_ = td::base64_encode(trace_.ext_in_msg_hash_norm.as_slice());
             auto existing_fields_count = transaction_.redis().hlen(trace_key_);
+            bool has_existing_trace = existing_fields_count > 0;
+            measurement_->set_otel_attribute("ton.redis.existing_fields_count", static_cast<std::int64_t>(existing_fields_count));
             if (existing_fields_count > static_cast<long long>(kMaxExistingTraceFields)) {
                 LOG(WARNING) << "Skipping trace insert for " << trace_key_
                              << ": existing trace hash is too large (" << existing_fields_count << " fields)";
@@ -77,7 +85,10 @@ public:
                 auto msg_hash_key = td::base64_encode(redis_node.transaction.in_msg.value().hash.as_slice());
 
                 // if existing node is more advanced (e.g. it's finalized, but we are inserting emulated), skip subtree
-                auto existing_node = load_existing_node(trace_key_, msg_hash_key);
+                std::optional<RedisTraceNode> existing_node;
+                if (has_existing_trace) {
+                    existing_node = load_existing_node(trace_key_, msg_hash_key);
+                }
                 if (existing_node &&
                     static_cast<int>(existing_node->finality) > static_cast<int>(redis_node.finality)) {
                     continue;
@@ -89,7 +100,7 @@ public:
                     }
                 }
 
-                if (redis_node.finality != FinalityState::Emulated) {
+                if (has_existing_trace && redis_node.finality != FinalityState::Emulated) {
                     delete_db_subtree(msg_hash_key, tx_keys_to_delete, addr_keys_to_delete,
                                       existing_node ? &*existing_node : nullptr);
                 }
@@ -98,10 +109,13 @@ public:
             }
 
             if (flattened_trace.empty()) {
+                measurement_->set_otel_attribute("ton.redis.flattened_nodes_count", static_cast<std::int64_t>(0));
                 promise_.set_value(td::Unit());
                 stop();
                 return;
             }
+            measurement_->set_otel_attribute("ton.redis.flattened_nodes_count", static_cast<std::int64_t>(flattened_trace.size()));
+            measurement_->set_otel_attribute("ton.redis.deleted_nodes_count", static_cast<std::int64_t>(tx_keys_to_delete.size()));
 
             // delete previously emulated trace
             if (tx_keys_to_delete.size() > 0) {
@@ -114,6 +128,9 @@ public:
 
             std::string commited_txs_hashes = trace_key_ + ":";
             bool has_commited_txs = false;
+            bool has_pending_txs = false;
+            std::vector<std::pair<std::string, std::string>> trace_fields_to_set;
+            trace_fields_to_set.reserve(flattened_trace.size() + trace_.interfaces.size() + 4);
 
             // insert new trace
             for (const auto& entry : flattened_trace) {
@@ -122,13 +139,15 @@ public:
                 std::stringstream buffer;
                 msgpack::pack(buffer, node);
 
-                transaction_.hset(trace_key_, node_key, buffer.str());
+                trace_fields_to_set.emplace_back(node_key, buffer.str());
 
                 auto addr_raw = std::to_string(node.transaction.account.workchain) + ":" + node.transaction.account.addr.to_hex();
                 auto by_addr_key = trace_key_ + ":" + td::base64_encode(node.transaction.in_msg.value().hash.as_slice());
                 transaction_.zadd(addr_raw, by_addr_key, node.transaction.lt);
 
-                if (node.finality != FinalityState::Emulated) {
+                if (node.finality == FinalityState::Emulated) {
+                    has_pending_txs = true;
+                } else {
                     if (has_commited_txs) {
                         commited_txs_hashes += ",";
                     }
@@ -143,7 +162,7 @@ public:
                 std::stringstream buffer;
                 msgpack::pack(buffer, interfaces_redis);
                 auto addr_raw = std::to_string(addr.workchain) + ":" + addr.addr.to_hex();
-                transaction_.hset(trace_key_, addr_raw, buffer.str());
+                trace_fields_to_set.emplace_back(addr_raw, buffer.str());
             }
             
             for (const auto& [addr, account] : trace_.committed_accounts) {
@@ -208,9 +227,9 @@ public:
                 if (it != trace_.emulated_accounts.end()) {
                     const auto& [address, account] = *it;
                     if (account.code.not_null()) {
-                        transaction_.hset(trace_key_,
-                                          "root_account_code_hash",
-                                          td::base64_encode(account.code->get_hash().as_slice()));
+                        trace_fields_to_set.emplace_back(
+                            "root_account_code_hash",
+                            td::base64_encode(account.code->get_hash().as_slice()));
                     }
                 }
             }
@@ -218,17 +237,25 @@ public:
                 measurement_->set_finality(finality_name(trace_.root->finality_state));
                 measurement_->set_operation(trace_emulator_operation(trace_.root->finality_state));
             }
-            measurement_->set_out_channel("new_trace");
-            transaction_.hset(trace_key_, "root_node", td::base64_encode(trace_.ext_in_msg_hash.as_slice()));
-            transaction_.hset(trace_key_, "depth_limit_exceeded", trace_.tx_limit_exceeded ? "1" : "0");
-            for (const auto& [field, value] : measurement_->otel_propagation_fields()) {
-                transaction_.hset(trace_key_, field, value);
+            measurement_->set_out_channel(kNewTraceChannel);
+            trace_fields_to_set.emplace_back("root_node", td::base64_encode(trace_.ext_in_msg_hash.as_slice()));
+            trace_fields_to_set.emplace_back("depth_limit_exceeded", trace_.tx_limit_exceeded ? "1" : "0");
+            auto otel_fields = measurement_->otel_propagation_fields();
+            trace_fields_to_set.reserve(trace_fields_to_set.size() + otel_fields.size());
+            for (const auto& [field, value] : otel_fields) {
+                trace_fields_to_set.emplace_back(field, value);
+            }
+            if (!trace_fields_to_set.empty()) {
+                transaction_.hset(trace_key_, trace_fields_to_set.begin(), trace_fields_to_set.end());
             }
             
             transaction_.set("tr_in_msg:" + td::base64_encode(trace_.ext_in_msg_hash.as_slice()), trace_key_);
             transaction_.expire("tr_in_msg:" + td::base64_encode(trace_.ext_in_msg_hash.as_slice()), 600);
 
-            transaction_.publish("new_trace", trace_key_);
+            if (has_pending_txs) {
+                transaction_.publish(kNewPendingTraceChannel, trace_key_);
+            }
+            transaction_.publish(kNewTraceChannel, trace_key_);
             
             transaction_.exec();
 
@@ -314,5 +341,10 @@ public:
 };
 
 void RedisInsertManager::insert(Trace trace, td::Promise<td::Unit> promise, MeasurementPtr measurement) {
-    td::actor::create_actor<TraceInserter>("TraceInserter", redis_.transaction(), std::move(trace), std::move(promise), measurement).release();
+    td::actor::create_actor<TraceInserter>(
+        "TraceInserter",
+        redis_.transaction(kPipelineTransactionCommands, kCreateDedicatedTransactionConnection),
+        std::move(trace),
+        std::move(promise),
+        measurement).release();
 }

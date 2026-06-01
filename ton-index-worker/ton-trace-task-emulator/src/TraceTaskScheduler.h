@@ -31,7 +31,7 @@ class TraceTaskScheduler : public td::actor::Actor {
     void fetch_error(std::uint32_t seqno, td::Status error);
     void seqno_fetched(std::uint32_t seqno, schema::MasterchainBlockDataState mc_data_state);
 
-    void alarm();
+    void alarm() override;
 
   public:
     TraceTaskScheduler(td::actor::ActorId<DbScanner> db_scanner, td::actor::ActorId<ITaskResultInserter> insert_manager,

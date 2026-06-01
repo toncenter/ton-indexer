@@ -321,8 +321,8 @@ struct TraceEdge {
   std::string str() const {
     td::StringBuilder sb;
     sb << "TraceEdge("
-       << trace_id << ", "
-       << msg_hash << ", "
+       << td::base64_encode(trace_id.as_slice()) << ", "
+       << td::base64_encode(msg_hash.as_slice()) << ", "
        << (left_tx.has_value() ? td::base64_encode(left_tx.value().as_slice()) : "null") << ", "
        << (right_tx.has_value() ? td::base64_encode(right_tx.value().as_slice()) : "null") << ", "
        << (incomplete) << ", " << broken << ")";

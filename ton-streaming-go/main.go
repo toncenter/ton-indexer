@@ -20,7 +20,7 @@ import (
 
 var (
 	redisAddr               = flag.String("redis", "localhost:6379", "Redis server dsn")
-	tracesChannel           = flag.String("traces-channel", "new_trace", "Redis channel for blockchain events")
+	tracesChannel           = flag.String("traces-channel", "new_pending_trace", "Redis channel for pending trace updates")
 	commitedTxsChannel      = flag.String("commited-txs-channel", "new_finalized_txs", "Redis channel for committed transactions")
 	confirmedTxsChannel     = flag.String("confirmed-txs-channel", "new_confirmed_txs", "Redis channel for confirmed transactions")
 	classifiedTracesChannel = flag.String("classified-traces-channel", "classified_trace", "Redis channel for classified traces")
@@ -33,6 +33,7 @@ var (
 	testnet                 = flag.Bool("testnet", false, "Use testnet")
 	pg                      = flag.String("pg", "", "PostgreSQL connection string")
 	imgProxyBaseUrl         = flag.String("imgproxy-baseurl", "", "Image proxy base URL")
+	enableV1                = flag.Bool("enable-v1", false, "Enable deprecated v1 streaming endpoints and Redis consumers")
 )
 
 func main() {
@@ -73,19 +74,24 @@ func main() {
 		log.Printf("AddressBook and Metadata will not be available")
 	}
 
-	streamingv1.InitConfig(streamingv1.Config{
-		DBClient:        dbClient,
-		Testnet:         *testnet,
-		ImgProxyBaseURL: *imgProxyBaseUrl,
-	})
+	var manager *streamingv1.ClientManager
+	if *enableV1 {
+		streamingv1.InitConfig(streamingv1.Config{
+			DBClient:        dbClient,
+			Testnet:         *testnet,
+			ImgProxyBaseURL: *imgProxyBaseUrl,
+		})
 
-	manager := streamingv1.NewClientManager()
-	go manager.Run()
+		manager = streamingv1.NewClientManager()
+		go manager.Run()
 
-	go streamingv1.SubscribeToTraces(ctx, rdb, manager, *tracesChannel)
-	go streamingv1.SubscribeToCommittedTransactions(ctx, rdb, manager, *commitedTxsChannel)
-	go streamingv1.SubscribeToClassifiedTraces(ctx, rdb, manager, *classifiedTracesChannel)
-	go streamingv1.SubscribeToInvalidatedTraces(ctx, rdb, manager)
+		go streamingv1.SubscribeToTraces(ctx, rdb, manager, *tracesChannel)
+		go streamingv1.SubscribeToCommittedTransactions(ctx, rdb, manager, *commitedTxsChannel)
+		go streamingv1.SubscribeToClassifiedTraces(ctx, rdb, manager, *classifiedTracesChannel)
+		go streamingv1.SubscribeToInvalidatedTraces(ctx, rdb, manager)
+	} else {
+		log.Printf("v1 streaming API disabled; pass --enable-v1 to enable it")
+	}
 
 	streamingv2.InitConfig(streamingv2.Config{
 		DBClient:        dbClient,
@@ -116,16 +122,18 @@ func main() {
 
 	api.Get("/healthz", healthzHandler(rdb))
 
-	api.Post("/v1/sse", streamingv1.SSEHandler(manager))
+	if *enableV1 {
+		api.Post("/v1/sse", streamingv1.SSEHandler(manager))
 
-	api.Use("/v1/ws", func(c *fiber.Ctx) error {
-		if websocket.IsWebSocketUpgrade(c) {
-			c.Locals("allowed", true)
-			return c.Next()
-		}
-		return fiber.ErrUpgradeRequired
-	})
-	api.Get("/v1/ws", websocket.New(streamingv1.WebSocketHandler(manager)))
+		api.Use("/v1/ws", func(c *fiber.Ctx) error {
+			if websocket.IsWebSocketUpgrade(c) {
+				c.Locals("allowed", true)
+				return c.Next()
+			}
+			return fiber.ErrUpgradeRequired
+		})
+		api.Get("/v1/ws", websocket.New(streamingv1.WebSocketHandler(manager)))
+	}
 
 	api.Post("/v2/sse", streamingv2.SSEHandler(v2Manager))
 

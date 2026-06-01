@@ -224,7 +224,7 @@ int main(int argc, char *argv[]) {
   }
 
   auto watcher = td::create_shared_destructor([] {
-    td::actor::SchedulerContext::get()->stop();
+    td::actor::SchedulerContext::get().stop();
   });
 
   td::actor::Scheduler scheduler({threads});

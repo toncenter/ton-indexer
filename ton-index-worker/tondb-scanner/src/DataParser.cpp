@@ -608,7 +608,7 @@ td::Result<std::vector<schema::Transaction>> ParseQuery::parse_transactions(cons
       try {
         value = acc_dict.extract_value(
             acc_dict.vm::DictionaryFixed::lookup_nearest_key(cur_addr.bits(), 256, true, allow_same));
-      } catch (vm::VmError err) {
+      } catch (const vm::VmError& err) {
         return td::Status::Error(PSLICE() << "error while traversing account block dictionary: " << err.get_msg());
       }
       if (value.is_null()) {
@@ -628,7 +628,7 @@ td::Result<std::vector<schema::Transaction>> ParseQuery::parse_transactions(cons
         try {
           tvalue = trans_dict.extract_value_ref(
               trans_dict.vm::DictionaryFixed::lookup_nearest_key(cur_trans.bits(), 64, true));
-        } catch (vm::VmError err) {
+        } catch (const vm::VmError& err) {
           return td::Status::Error(PSLICE() << "error while traversing transaction dictionary of an AccountBlock: " << err.get_msg());
         }
         if (tvalue.is_null()) {
@@ -684,7 +684,7 @@ td::Result<std::vector<schema::Transaction>> ParseQuery::parse_transactions(cons
         account_states[cur_addr] = {schema_tx.account_state_hash_after, schema_tx.lt, schema_tx.hash};
       }
     }
-  } catch (vm::VmError err) {
+  } catch (const vm::VmError& err) {
       return td::Status::Error(PSLICE() << "error while parsing AccountBlocks : " << err.get_msg());
   }
   return res;

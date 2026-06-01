@@ -2,6 +2,8 @@
 #include "smc-interfaces/InterfacesDetector.h"
 #include "smc-interfaces/FetchAccountFromShard.h"
 
+#include <cstdint>
+
 void TraceInterfaceDetector::start_up() {
     td::MultiPromise mp;
     auto ig = mp.init_guard();
@@ -12,6 +14,8 @@ void TraceInterfaceDetector::start_up() {
 
     // Detect interfaces for final state of each emulated account
     std::unordered_set<block::StdAddress> processed_addresses;
+    std::int64_t emulated_detector_tasks = 0;
+    std::int64_t committed_detector_tasks = 0;
     for (auto it = trace_.emulated_accounts.rbegin(); it != trace_.emulated_accounts.rend(); it++) {
         const auto& [address, account] = *it;
         if (processed_addresses.count(address)) {
@@ -20,16 +24,21 @@ void TraceInterfaceDetector::start_up() {
         processed_addresses.insert(address);
         trace_.interfaces[address] = {};
         td::actor::create_actor<Trace::Detector>
-            ("InterfacesDetector", address, account.code, account.data, shard_states_, config_, 
-            td::PromiseCreator::lambda([SelfId = actor_id(this), address, promise = ig.get_promise()](std::vector<typename Trace::Detector::DetectedInterface> interfaces) mutable {
-                td::actor::send_closure(SelfId, &TraceInterfaceDetector::got_interfaces, address, std::move(interfaces), false, std::move(promise));
-        })).release();
+            ("InterfacesDetector", address, account.code, account.data, shard_states_, config_,
+            td::PromiseCreator::lambda([SelfId = actor_id(this), address, promise = ig.get_promise()](td::Result<std::vector<typename Trace::Detector::DetectedInterface>> interfaces) mutable {
+                if (interfaces.is_error()) {
+                    promise.set_error(interfaces.move_as_error());
+                    return;
+                }
+                td::actor::send_closure(SelfId, &TraceInterfaceDetector::got_interfaces, address, interfaces.move_as_ok(), false, std::move(promise));
+            })).release();
+        emulated_detector_tasks++;
     }
 
     // For committed accounts fetch block::Account and detect interfaces
     for (const auto& address : trace_.get_addresses(true)) {
         std::optional<block::Account> account_state;
-        
+
         for (const auto& shard_state : shard_states_) {
             block::gen::ShardStateUnsplit::Record sstate;
             if (!tlb::unpack_cell(shard_state, sstate)) {
@@ -69,14 +78,24 @@ void TraceInterfaceDetector::start_up() {
 
         if (account_state->status == block::Account::acc_active && account_state->code.not_null() && account_state->data.not_null()) {
             td::actor::create_actor<Trace::Detector>("InterfacesDetector", address, account_state->code, account_state->data, shard_states_, config_,
-                td::PromiseCreator::lambda([SelfId = actor_id(this), address, promise = ig.get_promise()](std::vector<typename Trace::Detector::DetectedInterface> interfaces) mutable {
-                    td::actor::send_closure(SelfId, &TraceInterfaceDetector::got_interfaces, address, std::move(interfaces), true, std::move(promise));
-            })).release();
+                td::PromiseCreator::lambda([SelfId = actor_id(this), address, promise = ig.get_promise()](td::Result<std::vector<typename Trace::Detector::DetectedInterface>> interfaces) mutable {
+                    if (interfaces.is_error()) {
+                        promise.set_error(interfaces.move_as_error());
+                        return;
+                    }
+                    td::actor::send_closure(SelfId, &TraceInterfaceDetector::got_interfaces, address, interfaces.move_as_ok(), true, std::move(promise));
+                })).release();
         } else {
             // Account is not active, skip interface detection
             LOG(DEBUG) << "Account " << std::to_string(address.workchain) << ":" << address.addr.to_hex() << " is not active, skipping interface detection";
             got_interfaces(address, {}, true, ig.get_promise());
         }
+        committed_detector_tasks++;
+    }
+    if (measurement_) {
+        measurement_->set_otel_attribute("ton.interfaces.emulated_accounts_count", emulated_detector_tasks);
+        measurement_->set_otel_attribute("ton.interfaces.committed_accounts_count", committed_detector_tasks);
+        measurement_->set_otel_attribute("ton.interfaces.detector_tasks_count", emulated_detector_tasks + committed_detector_tasks);
     }
 }
 

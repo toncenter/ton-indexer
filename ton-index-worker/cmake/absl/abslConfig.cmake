@@ -1,0 +1,8 @@
+if (TARGET absl::int128)
+    set(absl_FOUND TRUE)
+else()
+    set(absl_FOUND FALSE)
+    if (absl_FIND_REQUIRED)
+        message(FATAL_ERROR "TON-provided Abseil target absl::int128 is required but was not configured")
+    endif()
+endif()
