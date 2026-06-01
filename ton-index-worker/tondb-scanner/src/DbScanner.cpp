@@ -344,18 +344,51 @@ void DbScanner::request_catch_up(td::Promise<td::Unit> promise) {
     promise.set_error(td::Status::Error("cannot catch up in readonly mode"));
     return;
   }
-  catch_up_with_primary(std::move(promise));
+  if (catch_up_in_progress_) {
+    pending_catch_up_promises_.push_back(std::move(promise));
+    return;
+  }
+  catch_up_promises_.push_back(std::move(promise));
+  start_catch_up_with_primary();
 }
 
-void DbScanner::catch_up_with_primary(td::Promise<td::Unit> promise) {
-  auto R = td::PromiseCreator::lambda([SelfId = actor_id(this), this, timer = td::Timer{}, p = std::move(promise)](td::Result<td::Unit> R) mutable {
-    R.ensure();
-    p.set_value(td::Unit());
-    this->is_ready_ = true;
-    timer.pause();
-    g_statistics.record_time(CATCH_UP_WITH_PRIMARY, timer.elapsed() * 1e3);
+void DbScanner::start_catch_up_with_primary() {
+  if (catch_up_in_progress_ || catch_up_promises_.empty()) {
+    return;
+  }
+  catch_up_in_progress_ = true;
+  auto R = td::PromiseCreator::lambda([SelfId = actor_id(this), timer = td::Timer{}](td::Result<td::Unit> R) mutable {
+    auto elapsed_ms = timer.elapsed() * 1e3;
+    td::actor::send_closure(SelfId, &DbScanner::catch_up_finished, std::move(R), elapsed_ms);
   });
   td::actor::send_closure(db_, &RootDb::try_catch_up_with_primary, std::move(R));
+}
+
+void DbScanner::catch_up_finished(td::Result<td::Unit> result, double elapsed_ms) {
+  catch_up_in_progress_ = false;
+  g_statistics.record_time(CATCH_UP_WITH_PRIMARY, elapsed_ms);
+
+  auto promises = std::move(catch_up_promises_);
+  catch_up_promises_.clear();
+
+  if (result.is_error()) {
+    auto error = result.move_as_error();
+    auto error_message = error.to_string();
+    for (auto& promise : promises) {
+      promise.set_error(td::Status::Error(error_message));
+    }
+  } else {
+    is_ready_ = true;
+    for (auto& promise : promises) {
+      promise.set_value(td::Unit());
+    }
+  }
+
+  if (!pending_catch_up_promises_.empty()) {
+    catch_up_promises_ = std::move(pending_catch_up_promises_);
+    pending_catch_up_promises_.clear();
+    start_catch_up_with_primary();
+  }
 }
 
 void DbScanner::fetch_seqno(std::uint32_t mc_seqno, td::Promise<schema::MasterchainBlockDataState> promise) {
@@ -375,5 +408,5 @@ void DbScanner::alarm() {
     R.ensure();
   });
 
-  td::actor::send_closure(actor_id(this), &DbScanner::catch_up_with_primary, std::move(P));
+  request_catch_up(std::move(P));
 }

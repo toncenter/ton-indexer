@@ -335,6 +335,7 @@ void McBlockEmulator::emulate_traces(MeasurementPtr measurement) {
 
         td::actor::create_actor<MasterchainBlockEmulator>("MasterchainBlockEmulator", context_ref, std::move(msgs_to_emulate), std::move(P), tx_measurement).release();
     }
+    finish_block_if_done();
 }
 
 void McBlockEmulator::children_emulated(std::unique_ptr<TraceNode> parent_node,
@@ -392,6 +393,7 @@ void McBlockEmulator::trace_error(td::Bits256 tx_hash, td::Bits256 trace_root_tx
     measurement->end_otel_child_span("emulate_tail");
     in_progress_cnt_--;
     measurement->emit_otel_span();
+    finish_block_if_done();
 }
 
 void McBlockEmulator::trace_interfaces_error(td::Bits256 trace_root_tx_hash, td::Status error, MeasurementPtr measurement) {
@@ -400,6 +402,7 @@ void McBlockEmulator::trace_interfaces_error(td::Bits256 trace_root_tx_hash, td:
     measurement->end_otel_child_span("detect_interfaces");
     in_progress_cnt_--;
     measurement->emit_otel_span();
+    finish_block_if_done();
 }
 
 void McBlockEmulator::trace_emulated(Trace trace, MeasurementPtr measurement) {
@@ -424,12 +427,18 @@ void McBlockEmulator::trace_finished(td::Bits256, MeasurementPtr measurement) {
     traces_cnt_++;
     measurement->emit_otel_span();
 
-    if (in_progress_cnt_ == 0) {
-        auto blkid = mc_data_state_.shard_blocks_[0].block_data->block_id().id;
-        LOG(INFO) << "Finished emulating block " << blkid.to_str() << ": " << traces_cnt_ << " traces in " << (td::Timestamp::now().at() - start_time_.at()) * 1000 << " ms";
-        promise_.set_value(td::Unit());
-        stop();
+    finish_block_if_done();
+}
+
+void McBlockEmulator::finish_block_if_done() {
+    if (finished_ || in_progress_cnt_ != 0) {
+        return;
     }
+    finished_ = true;
+    auto blkid = mc_data_state_.shard_blocks_[0].block_data->block_id().id;
+    LOG(INFO) << "Finished emulating block " << blkid.to_str() << ": " << traces_cnt_ << " traces in " << (td::Timestamp::now().at() - start_time_.at()) * 1000 << " ms";
+    promise_.set_value(td::Unit());
+    stop();
 }
 
 void ConfirmedBlockEmulator::start_up() {

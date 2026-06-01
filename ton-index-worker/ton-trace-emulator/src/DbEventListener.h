@@ -6,6 +6,7 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <errno.h>
+#include <cstddef>
 
 
 class TraceEmulatorScheduler;
@@ -28,5 +29,5 @@ class DbEventListener : public td::actor::Actor {
 
     bool ensure_open();
 
-    void process_buffer();
+    std::size_t process_buffer(std::size_t max_events);
 };
