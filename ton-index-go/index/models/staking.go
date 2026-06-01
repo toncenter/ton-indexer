@@ -205,7 +205,7 @@ type ValidatorComplaint struct {
 	SuggestedFinePart int32                    `json:"suggested_fine_part"`
 	VotedValidators   []ValidatorComplaintVote `json:"voted_validators"`
 	VsetId            string                   `json:"vset_id"`
-	WeightRemaining   int64                    `json:"weight_remaining"`
+	WeightRemaining   int64                    `json:"weight_remaining,string"`
 	ApprovedPercent   float64                  `json:"approved_percent"`
 	IsPassed          bool                     `json:"is_passed"`
 } // @name ValidatorComplaint
