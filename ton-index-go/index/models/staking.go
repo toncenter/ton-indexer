@@ -4,8 +4,6 @@ type NominatorPoolEvent struct {
 	TxHash                HashType       `json:"tx_hash"`
 	TxLt                  int64          `json:"tx_lt,string"`
 	Utime                 int32          `json:"utime"`
-	McSeqno               int32          `json:"mc_seqno"`
-	TraceId               *HashType      `json:"trace_id,omitempty"`
 	PoolAddress           AccountAddress `json:"pool_address"`
 	NominatorAddress      AccountAddress `json:"nominator_address"`
 	Type                  string         `json:"type" enums:"reward,deposit,withdrawal,pending_deposit_activation,withdrawal_request"` // "reward", "deposit", "withdrawal", "pending_deposit_activation", "withdrawal_request"
@@ -56,12 +54,11 @@ type NominatorPoolsResponse struct {
 } // @name NominatorPoolsResponse
 
 type NominatorReward struct {
-	Utime       int32     `json:"utime"`
-	Reward      string    `json:"reward"`
-	StakeBefore string    `json:"stake_before"`
-	TxHash      HashType  `json:"tx_hash"`
-	TxLt        int64     `json:"tx_lt,string"`
-	TraceId     *HashType `json:"trace_id,omitempty"`
+	Utime       int32    `json:"utime"`
+	Reward      string   `json:"reward"`
+	StakeBefore string   `json:"stake_before"`
+	TxHash      HashType `json:"tx_hash"`
+	TxLt        int64    `json:"tx_lt,string"`
 } // @name NominatorReward
 
 type NominatorRewardsResponse struct {

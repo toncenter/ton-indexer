@@ -54,7 +54,7 @@ func (db *DbClient) GetNominatorPoolEvents(
 	events := []models.NominatorPoolEvent{}
 
 	eventQuery := `
-		SELECT tx_hash, tx_lt, tx_now, mc_seqno, trace_id, pool_address, nominator_address,
+		SELECT tx_hash, tx_lt, tx_now, pool_address, nominator_address,
 		       event_type, amount::text, balance_delta::text, pending_balance_delta::text, balance_before::text,
 		       balance_after::text, pending_balance_before::text, pending_balance_after::text,
 		       withdraw_request_before, withdraw_request_after
@@ -92,8 +92,6 @@ func (db *DbClient) GetNominatorPoolEvents(
 			&event.TxHash,
 			&event.TxLt,
 			&event.Utime,
-			&event.McSeqno,
-			&event.TraceId,
 			&event.PoolAddress,
 			&event.NominatorAddress,
 			&event.Type,
@@ -138,7 +136,7 @@ func (db *DbClient) GetNominatorRewards(
 	defer conn.Release()
 
 	rewardQuery := `
-		SELECT tx_hash, tx_lt, tx_now, amount::text, balance_before::text, trace_id
+		SELECT tx_hash, tx_lt, tx_now, amount::text, balance_before::text
 		FROM nominator_pool_events
 		WHERE nominator_address = $1 AND pool_address = $2 AND event_type = 'reward'
 	`
@@ -174,7 +172,6 @@ func (db *DbClient) GetNominatorRewards(
 			&reward.Utime,
 			&reward.Reward,
 			&reward.StakeBefore,
-			&reward.TraceId,
 		); err != nil {
 			return nil, models.IndexError{Code: 500, Message: err.Error()}
 		}
