@@ -19,7 +19,7 @@ services:
     restart: unless-stopped
 
   event-classifier:
-    image: toncenter/ton-indexer-classifier:v1.2.8
+    image: toncenter/ton-indexer-classifier:v1.3.0
     build:
       context: .
       dockerfile: Dockerfile
@@ -41,7 +41,7 @@ services:
       internal:
 
   index-api:
-    image: toncenter/ton-indexer-api:v1.2.8
+    image: toncenter/ton-indexer-api:v1.3.0
     build:
       context: .
       dockerfile: Dockerfile
@@ -69,7 +69,7 @@ services:
       internal:
 
   run-migrations:
-    image: toncenter/ton-indexer-worker:v1.2.8
+    image: toncenter/ton-indexer-worker:v1.3.0
     ulimits:
       nofile:
         soft: 1000000
@@ -88,11 +88,11 @@ services:
       TON_WORKER_BINARY: ton-index-postgres-migrate
     networks:
       internal:
-    command: ton-index-postgres-migrate --pg postgresql://${POSTGRES_USER}@${POSTGRES_HOST}:${POSTGRES_PORT}/${POSTGRES_DB}
+    command: ton-index-postgres-migrate --pg postgresql://${POSTGRES_USER}@${POSTGRES_HOST}:${POSTGRES_PORT}/${POSTGRES_DB} --custom-types
     restart: on-failure
 
   index-worker:
-    image: toncenter/ton-indexer-worker:v1.2.8
+    image: toncenter/ton-indexer-worker:v1.3.0
     ulimits:
       nofile:
         soft: 1000000
@@ -121,7 +121,11 @@ services:
     restart: unless-stopped
 
   postgres:
-    image: postgres:17
+    image: toncenter/ton-indexer-postres:v1.3.0
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: postgres
     environment: 
       <<: *index-pg-access
     ports:
@@ -137,7 +141,7 @@ services:
     shm_size: 2G
     restart: unless-stopped
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - postgres_data:/var/lib/postgresql/
     networks:
       internal:
     logging:
@@ -148,7 +152,7 @@ services:
 # additional: offchain metadata indexer
   metadata-fetcher:
     profiles: [metadata]
-    image: toncenter/ton-indexer-metadata-fetcher:v1.2.8
+    image: toncenter/ton-indexer-metadata-fetcher:v1.3.0
     build:
       context: .
       dockerfile: Dockerfile
@@ -184,7 +188,7 @@ services:
 # additional: API Emulate
   emulate-task-emulator:
     profiles: [emulate]
-    image: toncenter/ton-indexer-worker:v1.2.8
+    image: toncenter/ton-indexer-worker:v1.3.0
     ulimits:
       nofile:
         soft: 1000000
@@ -228,7 +232,7 @@ services:
 
   emulate-event-classifier:
     profiles: [emulate]
-    image: toncenter/ton-indexer-classifier:v1.2.8
+    image: toncenter/ton-indexer-classifier:v1.3.0
     build:
       context: .
       dockerfile: Dockerfile
@@ -253,7 +257,7 @@ services:
 
   emulate-api:
     profiles: [emulate]
-    image: toncenter/ton-indexer-emulate-api:v1.2.8
+    image: toncenter/ton-indexer-emulate-api:v1.3.0
     build:
       context: .
       dockerfile: Dockerfile
@@ -279,7 +283,7 @@ services:
 
   metadata-cache:
     profiles: [ metadata ]
-    image: toncenter/ton-metadata-cache:v1.2.8
+    image: toncenter/ton-metadata-cache:v1.3.0
     build:
       context: .
       dockerfile: Dockerfile
