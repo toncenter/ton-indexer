@@ -7,12 +7,12 @@
 
 #include "crypto/vm/cp0.h"
 
-#include "InsertManagerPostgres.h"
+#include "../../index-engine/src/IndexScheduler.h"
 #include "DataParser.h"
 #include "DbScanner.h"
-#include "TraceAssembler.h"
 #include "EventProcessor.h"
-#include "IndexScheduler.h"
+#include "InsertManagerPostgres.h"
+#include "TraceAssembler.h"
 
 #include <atomic>
 #include <limits>
@@ -460,7 +460,7 @@ int main(int argc, char *argv[]) {
     LOG(ERROR) << "--pg-manage-partitions cannot be used with bounded archive indexing (--from and --to)";
     std::_Exit(2);
   }
-  td::mkdir(working_dir).ensure();
+  td::mkpath(working_dir + "/").ensure();
 
   if (max_queue_size > 0) {
     max_queue.mc_blocks_ = max_queue_size;

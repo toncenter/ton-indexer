@@ -3,12 +3,14 @@
 #include "td/utils/format.h"
 #include "td/utils/logging.h"
 #include "td/utils/check.h"
+#include "td/utils/port/path.h"
 
 #include "crypto/vm/cp0.h"
 
 #include "InsertManagerClickhouse.h"
 #include "DataParser.h"
 #include "DbScanner.h"
+#include "TraceAssembler.h"
 #include "EventProcessor.h"
 #include "IndexScheduler.h"
 
@@ -26,7 +28,8 @@ int main(int argc, char *argv[]) {
 
   // options
   td::uint32 threads = 7;
-  td::int32 stats_timeout = 10;
+  td::uint32 io_workers = 1;
+  td::int32 stats_timeout = 1;
   std::string db_root;
   std::string working_dir;
   td::uint32 last_known_seqno = 0;
@@ -34,13 +37,16 @@ int main(int argc, char *argv[]) {
   td::uint32 to_seqno = 0;
   bool force_index = false;
   InsertManagerClickhouse::Credential credential;
+  bool testnet = false;
 
   std::uint32_t max_active_tasks = 7;
   std::uint32_t max_insert_actors = 12;
   
-  QueueState max_queue{200000, 200000, 1000000, 1000000};
+  std::int32_t max_queue_size{-1};
+  std::int32_t max_batch_size{-1};
+  QueueState max_queue{10000, 100000, 100000, 100000};
   QueueState batch_size{2000, 2000, 10000, 10000};
-  
+
   td::OptionParser p;
   p.set_description("Parse TON DB and insert data into Clickhouse");
   p.add_option('\0', "help", "prints_help", [&]() {
@@ -56,29 +62,8 @@ int main(int argc, char *argv[]) {
   p.add_option('W', "working-dir", "Path to index working dir for secondary rocksdb logs", [&](td::Slice fname) { 
     working_dir = fname.str();
   });
-  p.add_option('h', "host", "Clickhouse host address",  [&](td::Slice value) { 
-    credential.host = value.str();
-  });
-  p.add_checked_option('p', "port", "Clickhouse port", [&](td::Slice value) {
-    int port;
-    try{
-      port = std::stoi(value.str());
-      if (!(port >= 0 && port < 65536))
-        return td::Status::Error("Port must be a number between 0 and 65535");
-    } catch(...) {
-      return td::Status::Error(ton::ErrorCode::error, "bad value for --port: not a number");
-    }
-    credential.port = port;
-    return td::Status::OK();
-  });
-  p.add_option('u', "user", "Clickhouse username", [&](td::Slice value) { 
-    credential.user = value.str();
-  });
-  p.add_option('P', "password", "Clickhouse password", [&](td::Slice value) { 
-    credential.password = value.str();
-  });
-  p.add_option('d', "dbname", "Clickhouse database name", [&](td::Slice value) { 
-    credential.dbname = value.str();
+  p.add_option('\0', "ch", "Clickhouse connection string",  [&](td::Slice value) {
+    credential.set_conn_str(value.str());
   });
   p.add_checked_option('f', "from", "Masterchain seqno to start indexing from", [&](td::Slice fname) { 
     int v;
@@ -104,7 +89,7 @@ int main(int argc, char *argv[]) {
     force_index = true;
     LOG(WARNING) << "Force reindexing enabled";
   });
-  p.add_checked_option('\0', "max-active-tasks", "Max active reading tasks", [&](td::Slice fname) { 
+  p.add_checked_option('\0', "max-active-tasks", "Max active reading tasks", [&](td::Slice fname) {
     int v;
     try {
       v = std::stoi(fname.str());
@@ -190,7 +175,28 @@ int main(int argc, char *argv[]) {
     batch_size.msgs_ = v;
     return td::Status::OK();
   });
-  
+
+  p.add_checked_option('\0', "max-queue-size", "Max size of insert queue", [&](td::Slice fname) {
+    int v;
+    try {
+      v = std::stoi(fname.str());
+    } catch (...) {
+      return td::Status::Error(ton::ErrorCode::error, "bad value for --max-queue-size: not a number");
+    }
+    max_queue_size = v;
+    return td::Status::OK();
+  });
+  p.add_checked_option('\0', "max-batch-size", "Max size of batch", [&](td::Slice fname) {
+    int v;
+    try {
+      v = std::stoi(fname.str());
+    } catch (...) {
+      return td::Status::Error(ton::ErrorCode::error, "bad value for --max-queue-size: not a number");
+    }
+    max_batch_size = v;
+    return td::Status::OK();
+  });
+
   // scheduler settings
   p.add_checked_option('t', "threads", "Scheduler threads (default: 7)", [&](td::Slice fname) { 
     int v;
@@ -200,6 +206,16 @@ int main(int argc, char *argv[]) {
       return td::Status::Error(ton::ErrorCode::error, "bad value for --threads: not a number");
     }
     threads = v;
+    return td::Status::OK();
+  });
+  p.add_checked_option('\0', "io-workers", "Scheduler IO workers (default: 1)", [&](td::Slice fname) {
+    int v;
+    try {
+      v = std::stoi(fname.str());
+    } catch (...) {
+      return td::Status::Error(ton::ErrorCode::error, "bad value for --io-workers: not a number");
+    }
+    io_workers = v;
     return td::Status::OK();
   });
   p.add_checked_option('\0', "stats-freq", "Pause between printing stats in seconds", [&](td::Slice fname) { 
@@ -217,23 +233,41 @@ int main(int argc, char *argv[]) {
     LOG(ERROR) << "failed to parse options: " << S.move_as_error();
     std::_Exit(2);
   }
-
   if (working_dir.size() == 0) {
-    working_dir = PSTRING() << "/tmp/index_worker_" << getpid();
-    LOG(WARNING) << "Working dir not specified, using " << working_dir;
+    LOG(ERROR) << "Please specify working directory with -W or --working-dir";
+    std::_Exit(2);
   }
+  td::mkpath(working_dir + "/").ensure();
+
+  if (max_queue_size > 0) {
+    max_queue.mc_blocks_ = max_queue_size;
+    max_queue.blocks_ = max_queue_size;
+    max_queue.txs_ = max_queue_size;
+    max_queue.msgs_ = max_queue_size;
+    max_queue.traces_ = max_queue_size;
+  }
+
+  if (max_batch_size > 0) {
+    batch_size.mc_blocks_ = max_batch_size;
+    batch_size.blocks_ = max_batch_size;
+    batch_size.txs_ = max_batch_size;
+    batch_size.msgs_ = max_batch_size;
+    batch_size.traces_ = max_batch_size;
+  }
+
+  NftItemDetectorR::is_testnet = testnet;
 
   auto watcher = td::create_shared_destructor([] {
     td::actor::SchedulerContext::get().stop();
   });
 
-  td::actor::Scheduler scheduler({threads});
+  td::actor::Scheduler scheduler({td::actor::Scheduler::NodeInfo{threads, io_workers}});
   scheduler.run_in_context([&] { insert_manager_ = td::actor::create_actor<InsertManagerClickhouse>("insertmanager", credential); });
   scheduler.run_in_context([&] { parse_manager_ = td::actor::create_actor<ParseManager>("parsemanager"); });
-  scheduler.run_in_context([&] { db_scanner_ = td::actor::create_actor<DbScanner>("scanner", db_root, dbs_secondary, working_dir); });
+  scheduler.run_in_context([&] { db_scanner_ = td::actor::create_actor<DbScanner>("scanner", db_root, dbs_secondary, working_dir + "/secondary_logs"); });
 
   scheduler.run_in_context([&, watcher = std::move(watcher)] { index_scheduler_ = td::actor::create_actor<IndexScheduler>("indexscheduler", db_scanner_.get(), 
-    insert_manager_.get(), parse_manager_.get(), from_seqno, to_seqno, force_index, max_active_tasks, max_queue, stats_timeout, watcher); 
+    insert_manager_.get(), parse_manager_.get(), working_dir, from_seqno, to_seqno, force_index, max_active_tasks, max_queue, stats_timeout, watcher);
   });
   scheduler.run_in_context([&] { 
     td::actor::send_closure(insert_manager_, &InsertManagerClickhouse::set_parallel_inserts_actors, max_insert_actors);
