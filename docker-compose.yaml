@@ -121,7 +121,7 @@ services:
     restart: unless-stopped
 
   postgres:
-    image: toncenter/ton-indexer-postres:v1.3.0
+    image: toncenter/ton-indexer-postgres:v1.3.0
     build:
       context: .
       dockerfile: Dockerfile
