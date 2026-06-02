@@ -28,7 +28,7 @@ func afterConnectRegisterTypes(ctx context.Context, conn *pgx.Conn) error {
 		if err != nil {
 			return fmt.Errorf("failed to load type '%s': %v", type_name, err)
 		}
-		conn.TypeMap().RegisterType(&pgtype.Type{Name: type_name, OID: oid, Codec: pgtype.TextCodec{}})
+		conn.TypeMap().RegisterType(&pgtype.Type{Name: type_name, OID: oid, Codec: &pgtype.TextFormatOnlyCodec{Codec: pgtype.TextCodec{}}})
 	}
 
 	data_type_names := []string{

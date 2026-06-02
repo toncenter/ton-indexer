@@ -28,6 +28,14 @@ SELECT
 none_addr|ext_addr|ext_addr_nibble|var_addr|var_partial_addr|var_addr_long
 addr_none|ext$5:A8|ext$12:ABC|var$7:ABC|var$7:AC_|var$-2:123ABCDEF
 (1 row)
+SELECT ''::tonhash;
+ERROR:  empty input is not allowed for type tonhash
+LINE 1: SELECT ''::tonhash;
+               ^
+SELECT ''::tonaddr;
+ERROR:  empty input is not allowed for type tonaddr
+LINE 1: SELECT ''::tonaddr;
+               ^
 CREATE INDEX test_index_1 ON test(h);
 CREATE INDEX test_index_2 ON test(id, h);
 CREATE INDEX test_index_3 ON test(h, a);
@@ -35,7 +43,26 @@ CREATE INDEX test_index_4 ON test(a, h);
 CREATE INDEX test_index_5 ON test(a, id);
 CREATE INDEX test_index_6 ON test(b);
 CREATE INDEX test_index_7 ON test(b, h);
+CREATE INDEX test_hash_index_h ON test USING hash(h);
+CREATE INDEX test_hash_index_a ON test USING hash(a);
+CREATE INDEX test_hash_index_b ON test USING hash(b);
 SELECT * FROM test WHERE h = 'ANT/iLBgHDlgMYBZXVUAABj4////////AAAAAAAAAAA=';
+id|h|a|b
+2|ANT/iLBgHDlgMYBZXVUAABj4////////AAAAAAAAAAA=|-1:79DCEFAE9F68AB8F4D8A2CDABCE377A94365881866540B0FF87860851493D2C4|aGVsbG8=
+(1 row)
+SELECT * FROM test WHERE h = 'ANT/iLBgHDlgMYBZXVUAABj4////////AAAAAAAAAAA='::varchar;
+id|h|a|b
+2|ANT/iLBgHDlgMYBZXVUAABj4////////AAAAAAAAAAA=|-1:79DCEFAE9F68AB8F4D8A2CDABCE377A94365881866540B0FF87860851493D2C4|aGVsbG8=
+(1 row)
+SELECT * FROM test WHERE 'ANT/iLBgHDlgMYBZXVUAABj4////////AAAAAAAAAAA='::varchar = h;
+id|h|a|b
+2|ANT/iLBgHDlgMYBZXVUAABj4////////AAAAAAAAAAA=|-1:79DCEFAE9F68AB8F4D8A2CDABCE377A94365881866540B0FF87860851493D2C4|aGVsbG8=
+(1 row)
+SELECT * FROM test WHERE h = 'ANT/iLBgHDlgMYBZXVUAABj4////////AAAAAAAAAAA='::text;
+id|h|a|b
+2|ANT/iLBgHDlgMYBZXVUAABj4////////AAAAAAAAAAA=|-1:79DCEFAE9F68AB8F4D8A2CDABCE377A94365881866540B0FF87860851493D2C4|aGVsbG8=
+(1 row)
+SELECT * FROM test WHERE h = ANY(ARRAY['ANT/iLBgHDlgMYBZXVUAABj4////////AAAAAAAAAAA=']::varchar[]);
 id|h|a|b
 2|ANT/iLBgHDlgMYBZXVUAABj4////////AAAAAAAAAAA=|-1:79DCEFAE9F68AB8F4D8A2CDABCE377A94365881866540B0FF87860851493D2C4|aGVsbG8=
 (1 row)

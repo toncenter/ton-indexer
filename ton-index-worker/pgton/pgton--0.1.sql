@@ -42,6 +42,10 @@ CREATE FUNCTION tonhash_ge(tonhash, tonhash) RETURNS bool
    AS 'MODULE_PATHNAME', 'tonhash_ge' LANGUAGE C IMMUTABLE STRICT;
 CREATE FUNCTION tonhash_cmp(tonhash, tonhash) RETURNS int4
    AS 'MODULE_PATHNAME', 'tonhash_cmp' LANGUAGE C IMMUTABLE STRICT;
+CREATE FUNCTION tonhash_hash(tonhash) RETURNS int4
+   AS 'MODULE_PATHNAME', 'tonhash_hash' LANGUAGE C IMMUTABLE STRICT;
+CREATE FUNCTION tonhash_hash_extended(tonhash, int8) RETURNS int8
+   AS 'MODULE_PATHNAME', 'tonhash_hash_extended' LANGUAGE C IMMUTABLE STRICT;
 
 CREATE OPERATOR < (
    leftarg = tonhash, rightarg = tonhash, procedure = tonhash_lt,
@@ -56,6 +60,7 @@ CREATE OPERATOR <= (
 CREATE OPERATOR = (
    leftarg = tonhash, rightarg = tonhash, procedure = tonhash_eq,
    commutator = = ,
+   hashes,
    restrict = eqsel, join = eqjoinsel
 );
 CREATE OPERATOR >= (
@@ -77,6 +82,112 @@ CREATE OPERATOR CLASS tonhash_ops
         OPERATOR        4       >= ,
         OPERATOR        5       > ,
         FUNCTION        1       tonhash_cmp(tonhash, tonhash);
+
+CREATE OPERATOR CLASS tonhash_hash_ops
+    DEFAULT FOR TYPE tonhash USING hash AS
+        OPERATOR        1       = ,
+        FUNCTION        1       tonhash_hash(tonhash),
+        FUNCTION        2       tonhash_hash_extended(tonhash, int8);
+
+CREATE FUNCTION tonhash_eq(tonhash, text) RETURNS bool
+   AS $$ SELECT $1 = $2::tonhash $$
+   LANGUAGE SQL IMMUTABLE STRICT;
+CREATE FUNCTION tonhash_eq(text, tonhash) RETURNS bool
+   AS $$ SELECT $1::tonhash = $2 $$
+   LANGUAGE SQL IMMUTABLE STRICT;
+CREATE FUNCTION tonhash_eq(tonhash, character varying) RETURNS bool
+   AS $$ SELECT $1 = $2::tonhash $$
+   LANGUAGE SQL IMMUTABLE STRICT;
+CREATE FUNCTION tonhash_eq(character varying, tonhash) RETURNS bool
+   AS $$ SELECT $1::tonhash = $2 $$
+   LANGUAGE SQL IMMUTABLE STRICT;
+
+CREATE FUNCTION tonhash_cmp(tonhash, text) RETURNS int4
+   AS $$ SELECT tonhash_cmp($1, $2::tonhash) $$
+   LANGUAGE SQL IMMUTABLE STRICT;
+CREATE FUNCTION tonhash_cmp(text, tonhash) RETURNS int4
+   AS $$ SELECT tonhash_cmp($1::tonhash, $2) $$
+   LANGUAGE SQL IMMUTABLE STRICT;
+CREATE FUNCTION tonhash_cmp(tonhash, character varying) RETURNS int4
+   AS $$ SELECT tonhash_cmp($1, $2::tonhash) $$
+   LANGUAGE SQL IMMUTABLE STRICT;
+CREATE FUNCTION tonhash_cmp(character varying, tonhash) RETURNS int4
+   AS $$ SELECT tonhash_cmp($1::tonhash, $2) $$
+   LANGUAGE SQL IMMUTABLE STRICT;
+CREATE FUNCTION tonhash_cmp(text, text) RETURNS int4
+   AS $$ SELECT tonhash_cmp($1::tonhash, $2::tonhash) $$
+   LANGUAGE SQL IMMUTABLE STRICT;
+CREATE FUNCTION tonhash_cmp(text, character varying) RETURNS int4
+   AS $$ SELECT tonhash_cmp($1::tonhash, $2::tonhash) $$
+   LANGUAGE SQL IMMUTABLE STRICT;
+CREATE FUNCTION tonhash_cmp(character varying, text) RETURNS int4
+   AS $$ SELECT tonhash_cmp($1::tonhash, $2::tonhash) $$
+   LANGUAGE SQL IMMUTABLE STRICT;
+CREATE FUNCTION tonhash_cmp(character varying, character varying) RETURNS int4
+   AS $$ SELECT tonhash_cmp($1::tonhash, $2::tonhash) $$
+   LANGUAGE SQL IMMUTABLE STRICT;
+
+CREATE FUNCTION tonhash_hash(text) RETURNS int4
+   AS $$ SELECT tonhash_hash($1::tonhash) $$
+   LANGUAGE SQL IMMUTABLE STRICT;
+CREATE FUNCTION tonhash_hash(character varying) RETURNS int4
+   AS $$ SELECT tonhash_hash($1::tonhash) $$
+   LANGUAGE SQL IMMUTABLE STRICT;
+CREATE FUNCTION tonhash_hash_extended(text, int8) RETURNS int8
+   AS $$ SELECT tonhash_hash_extended($1::tonhash, $2) $$
+   LANGUAGE SQL IMMUTABLE STRICT;
+CREATE FUNCTION tonhash_hash_extended(character varying, int8) RETURNS int8
+   AS $$ SELECT tonhash_hash_extended($1::tonhash, $2) $$
+   LANGUAGE SQL IMMUTABLE STRICT;
+
+CREATE OPERATOR = (
+   leftarg = tonhash, rightarg = text, procedure = tonhash_eq,
+   commutator = = ,
+   hashes,
+   restrict = eqsel, join = eqjoinsel
+);
+CREATE OPERATOR = (
+   leftarg = text, rightarg = tonhash, procedure = tonhash_eq,
+   commutator = = ,
+   hashes,
+   restrict = eqsel, join = eqjoinsel
+);
+CREATE OPERATOR = (
+   leftarg = tonhash, rightarg = character varying, procedure = tonhash_eq,
+   commutator = = ,
+   hashes,
+   restrict = eqsel, join = eqjoinsel
+);
+CREATE OPERATOR = (
+   leftarg = character varying, rightarg = tonhash, procedure = tonhash_eq,
+   commutator = = ,
+   hashes,
+   restrict = eqsel, join = eqjoinsel
+);
+
+ALTER OPERATOR FAMILY tonhash_ops USING btree ADD
+        OPERATOR        3       = (tonhash, text),
+        OPERATOR        3       = (text, tonhash),
+        OPERATOR        3       = (tonhash, character varying),
+        OPERATOR        3       = (character varying, tonhash),
+        FUNCTION        1       tonhash_cmp(tonhash, text),
+        FUNCTION        1       tonhash_cmp(text, tonhash),
+        FUNCTION        1       tonhash_cmp(tonhash, character varying),
+        FUNCTION        1       tonhash_cmp(character varying, tonhash),
+        FUNCTION        1       tonhash_cmp(text, text),
+        FUNCTION        1       tonhash_cmp(text, character varying),
+        FUNCTION        1       tonhash_cmp(character varying, text),
+        FUNCTION        1       tonhash_cmp(character varying, character varying);
+
+ALTER OPERATOR FAMILY tonhash_hash_ops USING hash ADD
+        OPERATOR        1       = (tonhash, text),
+        OPERATOR        1       = (text, tonhash),
+        OPERATOR        1       = (tonhash, character varying),
+        OPERATOR        1       = (character varying, tonhash),
+        FUNCTION        1       tonhash_hash(text),
+        FUNCTION        1       tonhash_hash(character varying),
+        FUNCTION        2       tonhash_hash_extended(text, int8),
+        FUNCTION        2       tonhash_hash_extended(character varying, int8);
 
 -- TonAddr type
 CREATE TYPE tonaddr;
@@ -124,6 +235,10 @@ CREATE FUNCTION tonaddr_ge(tonaddr, tonaddr) RETURNS bool
    AS 'MODULE_PATHNAME', 'tonaddr_ge' LANGUAGE C IMMUTABLE STRICT;
 CREATE FUNCTION tonaddr_cmp(tonaddr, tonaddr) RETURNS int4
    AS 'MODULE_PATHNAME', 'tonaddr_cmp' LANGUAGE C IMMUTABLE STRICT;
+CREATE FUNCTION tonaddr_hash(tonaddr) RETURNS int4
+   AS 'MODULE_PATHNAME', 'tonaddr_hash' LANGUAGE C IMMUTABLE STRICT;
+CREATE FUNCTION tonaddr_hash_extended(tonaddr, int8) RETURNS int8
+   AS 'MODULE_PATHNAME', 'tonaddr_hash_extended' LANGUAGE C IMMUTABLE STRICT;
 
 CREATE OPERATOR < (
    leftarg = tonaddr, rightarg = tonaddr, procedure = tonaddr_lt,
@@ -138,6 +253,7 @@ CREATE OPERATOR <= (
 CREATE OPERATOR = (
    leftarg = tonaddr, rightarg = tonaddr, procedure = tonaddr_eq,
    commutator = = ,
+   hashes,
    restrict = eqsel, join = eqjoinsel
 );
 CREATE OPERATOR >= (
@@ -159,6 +275,12 @@ CREATE OPERATOR CLASS tonaddr_ops
         OPERATOR        4       >= ,
         OPERATOR        5       > ,
         FUNCTION        1       tonaddr_cmp(tonaddr, tonaddr);
+
+CREATE OPERATOR CLASS tonaddr_hash_ops
+    DEFAULT FOR TYPE tonaddr USING hash AS
+        OPERATOR        1       = ,
+        FUNCTION        1       tonaddr_hash(tonaddr),
+        FUNCTION        2       tonaddr_hash_extended(tonaddr, int8);
 
 -- TonBytes type
 CREATE TYPE tonbytes;
@@ -206,6 +328,10 @@ CREATE FUNCTION tonbytes_ge(tonbytes, tonbytes) RETURNS bool
    AS 'MODULE_PATHNAME', 'tonbytes_ge' LANGUAGE C IMMUTABLE STRICT;
 CREATE FUNCTION tonbytes_cmp(tonbytes, tonbytes) RETURNS int4
    AS 'MODULE_PATHNAME', 'tonbytes_cmp' LANGUAGE C IMMUTABLE STRICT;
+CREATE FUNCTION tonbytes_hash(tonbytes) RETURNS int4
+   AS 'MODULE_PATHNAME', 'tonbytes_hash' LANGUAGE C IMMUTABLE STRICT;
+CREATE FUNCTION tonbytes_hash_extended(tonbytes, int8) RETURNS int8
+   AS 'MODULE_PATHNAME', 'tonbytes_hash_extended' LANGUAGE C IMMUTABLE STRICT;
 
 CREATE OPERATOR < (
    leftarg = tonbytes, rightarg = tonbytes, procedure = tonbytes_lt,
@@ -220,6 +346,7 @@ CREATE OPERATOR <= (
 CREATE OPERATOR = (
    leftarg = tonbytes, rightarg = tonbytes, procedure = tonbytes_eq,
    commutator = = ,
+   hashes,
    restrict = eqsel, join = eqjoinsel
 );
 CREATE OPERATOR >= (
@@ -241,3 +368,9 @@ CREATE OPERATOR CLASS tonbytes_ops
         OPERATOR        4       >= ,
         OPERATOR        5       > ,
         FUNCTION        1       tonbytes_cmp(tonbytes, tonbytes);
+
+CREATE OPERATOR CLASS tonbytes_hash_ops
+    DEFAULT FOR TYPE tonbytes USING hash AS
+        OPERATOR        1       = ,
+        FUNCTION        1       tonbytes_hash(tonbytes),
+        FUNCTION        2       tonbytes_hash_extended(tonbytes, int8);

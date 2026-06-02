@@ -5,6 +5,7 @@
 #include <string.h>
 
 #include "common/base64.h"
+#include "common/hashfn.h"
 #include "fmgr.h"
 #include "libpq/pqformat.h"
 #include "utils/builtins.h"
@@ -51,6 +52,8 @@ PG_FUNCTION_INFO_V1(tonhash_eq);
 PG_FUNCTION_INFO_V1(tonhash_gt);
 PG_FUNCTION_INFO_V1(tonhash_ge);
 PG_FUNCTION_INFO_V1(tonhash_cmp);
+PG_FUNCTION_INFO_V1(tonhash_hash);
+PG_FUNCTION_INFO_V1(tonhash_hash_extended);
 
 
 Datum tonhash_in(PG_FUNCTION_ARGS) {
@@ -59,7 +62,8 @@ Datum tonhash_in(PG_FUNCTION_ARGS) {
     TonHash *result;
 
     if (len == 0) {
-        PG_RETURN_NULL();
+        ereport(ERROR, (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
+            errmsg("empty input is not allowed for type %s", "tonhash")));
     }
     result = (TonHash*) palloc(sizeof(TonHash));
 
@@ -182,6 +186,19 @@ Datum tonhash_cmp(PG_FUNCTION_ARGS) {
     PG_RETURN_INT32(tonhash_cmp_internal(a, b));
 }
 
+Datum tonhash_hash(PG_FUNCTION_ARGS) {
+    TonHash *hash = (TonHash*) PG_GETARG_POINTER(0);
+
+    return hash_any((const unsigned char*) hash->data, TON_HASH_SIZE);
+}
+
+Datum tonhash_hash_extended(PG_FUNCTION_ARGS) {
+    TonHash *hash = (TonHash*) PG_GETARG_POINTER(0);
+    uint64 seed = (uint64) PG_GETARG_INT64(1);
+
+    return hash_any_extended((const unsigned char*) hash->data, TON_HASH_SIZE, seed);
+}
+
 // TonAddr type. It stores TON raw addresses as a compact varlena payload.
 typedef struct TonAddr {
     int32 vl_len_;
@@ -213,6 +230,8 @@ PG_FUNCTION_INFO_V1(tonaddr_eq);
 PG_FUNCTION_INFO_V1(tonaddr_gt);
 PG_FUNCTION_INFO_V1(tonaddr_ge);
 PG_FUNCTION_INFO_V1(tonaddr_cmp);
+PG_FUNCTION_INFO_V1(tonaddr_hash);
+PG_FUNCTION_INFO_V1(tonaddr_hash_extended);
 
 
 static int
@@ -497,7 +516,8 @@ Datum tonaddr_in(PG_FUNCTION_ARGS) {
     long workchain;
 
     if (len == 0) {
-        PG_RETURN_NULL();
+        ereport(ERROR, (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
+            errmsg("empty input is not allowed for type %s", "tonaddr")));
     }
     if (strcmp(str, "addr_none") == 0) {
         PG_RETURN_POINTER(tonaddr_make_none());
@@ -816,6 +836,31 @@ Datum tonaddr_cmp(PG_FUNCTION_ARGS) {
     PG_RETURN_INT32(result);
 }
 
+Datum tonaddr_hash(PG_FUNCTION_ARGS) {
+    TonAddr *addr = (TonAddr*) PG_GETARG_VARLENA_PP(0);
+    const uint8 *data = (const uint8*) VARDATA_ANY(addr);
+    int payload_len = VARSIZE_ANY_EXHDR(addr);
+    Datum result;
+
+    tonaddr_validate_payload_or_error(data, payload_len);
+    result = hash_any((const unsigned char*) data, payload_len);
+    PG_FREE_IF_COPY(addr, 0);
+    return result;
+}
+
+Datum tonaddr_hash_extended(PG_FUNCTION_ARGS) {
+    TonAddr *addr = (TonAddr*) PG_GETARG_VARLENA_PP(0);
+    const uint8 *data = (const uint8*) VARDATA_ANY(addr);
+    int payload_len = VARSIZE_ANY_EXHDR(addr);
+    uint64 seed = (uint64) PG_GETARG_INT64(1);
+    Datum result;
+
+    tonaddr_validate_payload_or_error(data, payload_len);
+    result = hash_any_extended((const unsigned char*) data, payload_len, seed);
+    PG_FREE_IF_COPY(addr, 0);
+    return result;
+}
+
 // TonBytes type. It stores arbitrary bytes and exposes them as base64 text.
 typedef struct TonBytes {
     int32 vl_len_;
@@ -833,6 +878,8 @@ PG_FUNCTION_INFO_V1(tonbytes_eq);
 PG_FUNCTION_INFO_V1(tonbytes_gt);
 PG_FUNCTION_INFO_V1(tonbytes_ge);
 PG_FUNCTION_INFO_V1(tonbytes_cmp);
+PG_FUNCTION_INFO_V1(tonbytes_hash);
+PG_FUNCTION_INFO_V1(tonbytes_hash_extended);
 
 Datum tonbytes_in(PG_FUNCTION_ARGS) {
     char *str = PG_GETARG_CSTRING(0);
@@ -951,4 +998,25 @@ Datum tonbytes_cmp(PG_FUNCTION_ARGS) {
     PG_FREE_IF_COPY(a, 0);
     PG_FREE_IF_COPY(b, 1);
     PG_RETURN_INT32(result);
+}
+
+Datum tonbytes_hash(PG_FUNCTION_ARGS) {
+    TonBytes *bytes = (TonBytes*) PG_GETARG_VARLENA_PP(0);
+    Datum result;
+
+    result = hash_any((const unsigned char*) VARDATA_ANY(bytes),
+                      VARSIZE_ANY_EXHDR(bytes));
+    PG_FREE_IF_COPY(bytes, 0);
+    return result;
+}
+
+Datum tonbytes_hash_extended(PG_FUNCTION_ARGS) {
+    TonBytes *bytes = (TonBytes*) PG_GETARG_VARLENA_PP(0);
+    uint64 seed = (uint64) PG_GETARG_INT64(1);
+    Datum result;
+
+    result = hash_any_extended((const unsigned char*) VARDATA_ANY(bytes),
+                               VARSIZE_ANY_EXHDR(bytes), seed);
+    PG_FREE_IF_COPY(bytes, 0);
+    return result;
 }

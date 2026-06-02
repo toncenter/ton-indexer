@@ -19,6 +19,8 @@ SELECT
     'var$7:abc'::tonaddr AS var_addr,
     'var$7:AC_'::tonaddr AS var_partial_addr,
     'var$-2:123abcdef'::tonaddr AS var_addr_long;
+SELECT ''::tonhash;
+SELECT ''::tonaddr;
 
 CREATE INDEX test_index_1 ON test(h);
 CREATE INDEX test_index_2 ON test(id, h);
@@ -27,8 +29,15 @@ CREATE INDEX test_index_4 ON test(a, h);
 CREATE INDEX test_index_5 ON test(a, id);
 CREATE INDEX test_index_6 ON test(b);
 CREATE INDEX test_index_7 ON test(b, h);
+CREATE INDEX test_hash_index_h ON test USING hash(h);
+CREATE INDEX test_hash_index_a ON test USING hash(a);
+CREATE INDEX test_hash_index_b ON test USING hash(b);
 
 SELECT * FROM test WHERE h = 'ANT/iLBgHDlgMYBZXVUAABj4////////AAAAAAAAAAA=';
+SELECT * FROM test WHERE h = 'ANT/iLBgHDlgMYBZXVUAABj4////////AAAAAAAAAAA='::varchar;
+SELECT * FROM test WHERE 'ANT/iLBgHDlgMYBZXVUAABj4////////AAAAAAAAAAA='::varchar = h;
+SELECT * FROM test WHERE h = 'ANT/iLBgHDlgMYBZXVUAABj4////////AAAAAAAAAAA='::text;
+SELECT * FROM test WHERE h = ANY(ARRAY['ANT/iLBgHDlgMYBZXVUAABj4////////AAAAAAAAAAA=']::varchar[]);
 SELECT * FROM test WHERE a = '0:934F64BE8E43994563C6FCAAAA18B772B74E7D314D3D87CAD992F8711D32C635';
 SELECT * FROM test WHERE b = 'aGVsbG8=';
 SELECT ''::tonbytes IS NULL AS empty_tonbytes_is_null, ''::tonbytes = ''::tonbytes AS empty_tonbytes_eq;

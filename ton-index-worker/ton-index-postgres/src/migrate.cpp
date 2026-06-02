@@ -537,8 +537,8 @@ create table if not exists transactions
     bounce_fwd_fees              bigint,
     split_info_cur_shard_pfx_len int,
     split_info_acc_split_depth   int,
-    split_info_this_addr         tonaddr,
-    split_info_sibling_addr      tonaddr,
+    split_info_this_addr         tonhash,
+    split_info_sibling_addr      tonhash,
     primary key (hash, lt, mc_block_seqno)
 ) partition by range (mc_block_seqno);
 create table if not exists transactions_default partition of transactions default;
