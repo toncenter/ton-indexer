@@ -145,9 +145,15 @@ func UtimeTypeConverter(value string) reflect.Value {
 }
 
 func OpcodeTypeConverter(value string) reflect.Value {
-	value = strings.TrimPrefix(value, "0x")
+	hasHexPrefix := strings.HasPrefix(value, "0x") || strings.HasPrefix(value, "0X")
+	if hasHexPrefix {
+		value = value[2:]
+	}
 	if res, err := strconv.ParseUint(value, 16, 32); err == nil {
-		return reflect.ValueOf(OpcodeType(res))
+		return reflect.ValueOf(OpcodeType(int32(uint32(res))))
+	}
+	if hasHexPrefix {
+		return reflect.Value{}
 	}
 	if res, err := strconv.ParseInt(value, 10, 32); err == nil {
 		return reflect.ValueOf(OpcodeType(res))
