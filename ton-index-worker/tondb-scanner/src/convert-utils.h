@@ -10,6 +10,7 @@ namespace convert {
   td::Result<std::string> to_raw_address(td::Ref<vm::CellSlice> cs);
 
   std::string to_raw_address(block::StdAddress address);
+  std::optional<std::string> to_raw_address(std::optional<block::StdAddress> address);
 
   td::Result<block::StdAddress> to_std_address(td::Ref<vm::CellSlice> cs);
 

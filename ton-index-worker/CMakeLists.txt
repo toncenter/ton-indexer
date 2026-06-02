@@ -81,6 +81,7 @@ add_subdirectory(ton-smc-scanner)
 add_subdirectory(ton-trace-emulator)
 add_subdirectory(ton-trace-task-emulator)
 add_subdirectory(celldb-migrate)
+add_subdirectory(index-engine)
 
 if (PGTON)
     message("Building pgton")

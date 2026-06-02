@@ -7,13 +7,12 @@
 
 #include "crypto/vm/cp0.h"
 
-#include "InsertManagerPostgres.h"
+#include "../../index-engine/src/IndexScheduler.h"
 #include "DataParser.h"
 #include "DbScanner.h"
-#include "TraceAssembler.h"
 #include "EventProcessor.h"
-#include "IndexScheduler.h"
-
+#include "InsertManagerPostgres.h"
+#include "TraceAssembler.h"
 
 int main(int argc, char *argv[]) {
   SET_VERBOSITY_LEVEL(verbosity_INFO);
@@ -287,7 +286,7 @@ int main(int argc, char *argv[]) {
     LOG(ERROR) << "Please specify working directory with -W or --working-dir";
     std::_Exit(2);
   }
-  td::mkdir(working_dir).ensure();
+  td::mkpath(working_dir + "/").ensure();
 
   if (max_queue_size > 0) {
     max_queue.mc_blocks_ = max_queue_size;
