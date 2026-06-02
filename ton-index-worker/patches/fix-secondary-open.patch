@@ -1,0 +1,113 @@
+diff --git a/db/version_edit_handler.cc b/db/version_edit_handler.cc
+index 42d83b84d..7d7e6911e 100644
+--- a/db/version_edit_handler.cc
++++ b/db/version_edit_handler.cc
+@@ -1047,6 +1047,47 @@ Status ManifestTailer::Initialize() {
+   return s;
+ }
+ 
++Status ManifestTailer::PrepareForCatchUpAfterRecover() {
++  assert(Mode::kRecovery == mode_);
++  assert(!initialized_);
++
++  ColumnFamilySet* cfd_set = version_set_->GetColumnFamilySet();
++  assert(cfd_set);
++  bool has_log_number = false;
++  uint64_t log_number = 0;
++  for (auto* cfd : *cfd_set) {
++    if (cfd->IsDropped()) {
++      continue;
++    }
++    assert(cfd->initialized());
++    if (!has_log_number || cfd->GetLogNumber() > log_number) {
++      log_number = cfd->GetLogNumber();
++      has_log_number = true;
++    }
++    assert(builders_.find(cfd->GetID()) == builders_.end());
++    builders_.emplace(cfd->GetID(), VersionBuilderUPtr(
++                                        new BaseReferencedVersionBuilder(
++                                            cfd, this,
++                                            track_found_and_missing_files_,
++                                            allow_incomplete_valid_version_)));
++  }
++  assert(has_log_number);
++
++  version_edit_params_.SetLogNumber(log_number);
++  version_edit_params_.SetPrevLogNumber(version_set_->prev_log_number());
++  auto next_file_number = version_set_->current_next_file_number();
++  assert(next_file_number > 0);
++  version_edit_params_.SetNextFile(next_file_number - 1);
++  version_edit_params_.SetMaxColumnFamily(cfd_set->GetMaxColumnFamily());
++  version_edit_params_.SetMinLogNumberToKeep(
++      version_set_->min_log_number_to_keep());
++  version_edit_params_.SetLastSequence(version_set_->LastSequence());
++
++  initialized_ = true;
++  mode_ = Mode::kCatchUp;
++  return Status::OK();
++}
++
+ Status ManifestTailer::ApplyVersionEdit(VersionEdit& edit,
+                                         ColumnFamilyData** cfd) {
+   Status s = VersionEditHandler::ApplyVersionEdit(edit, cfd);
+diff --git a/db/version_edit_handler.h b/db/version_edit_handler.h
+index 1d4b22e3c..65500ac73 100644
+--- a/db/version_edit_handler.h
++++ b/db/version_edit_handler.h
+@@ -373,6 +373,8 @@ class ManifestTailer : public VersionEditHandlerPointInTime {
+     ClearReadBuffer();
+   }
+ 
++  Status PrepareForCatchUpAfterRecover();
++
+   std::unordered_set<ColumnFamilyData*>& GetUpdatedColumnFamilies() {
+     return cfds_changed_;
+   }
+diff --git a/db/version_set.cc b/db/version_set.cc
+index cf89ec8ad..ab3d1e1c8 100644
+--- a/db/version_set.cc
++++ b/db/version_set.cc
+@@ -7860,19 +7860,36 @@ Status ReactiveVersionSet::Recover(
+   if (!s.ok()) {
+     return s;
+   }
++
+   log::Reader* reader = manifest_reader->get();
+   assert(reader);
+ 
+-  manifest_tailer_.reset(new ManifestTailer(
+-      column_families, const_cast<ReactiveVersionSet*>(this), io_tracer_,
+-      read_options_, EpochNumberRequirement::kMightMissing));
+-
+-  manifest_tailer_->Iterate(*reader, manifest_reader_status->get());
+-
+-  s = manifest_tailer_->status();
++  // TON indexer workaround for RocksDB secondary-open regression. After
++  // RocksDB PR #12928 (first released in v9.6.1), secondary point-in-time
++  // recovery can spend minutes replaying long MANIFEST histories through
++  // ManifestTailer because it repeatedly materializes intermediate Version
++  // states. Open the final manifest state with the regular VersionEditHandler
++  // instead, then bootstrap ManifestTailer in catch-up mode so
++  // TryCatchUpWithPrimary() continues tailing from this reader position.
++  VersionEditHandler handler(
++      /*read_only=*/true, column_families,
++      const_cast<ReactiveVersionSet*>(this),
++      /*track_found_and_missing_files=*/false,
++      /*no_error_if_files_missing=*/false, io_tracer_, read_options_,
++      /*allow_incomplete_valid_version=*/false,
++      EpochNumberRequirement::kMightMissing);
++  handler.Iterate(*reader, manifest_reader_status->get());
++  s = handler.status();
+   if (s.ok()) {
+     RecoverEpochNumbers();
++  } else {
++    return s;
+   }
++
++  manifest_tailer_.reset(new ManifestTailer(
++      column_families, const_cast<ReactiveVersionSet*>(this), io_tracer_,
++      read_options_, EpochNumberRequirement::kMightMissing));
++  s = manifest_tailer_->PrepareForCatchUpAfterRecover();
+   return s;
+ }
+ 
