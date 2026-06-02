@@ -1233,21 +1233,37 @@ create unlogged table if not exists _classifier_tasks
 );
 create index if not exists _classifier_tasks_mc_seqno_idx on _classifier_tasks (mc_seqno desc);
 
-create table if not exists blocks_to_classify
-(
-    mc_seqno integer primary key
-);
-
-create table if not exists classifier_watermark
+create table if not exists classifier_progress
 (
     id integer primary key check (id = 1),
-    last_scheduled_mc_seqno integer not null
+    last_scheduled_mc_seqno integer not null,
+    updated_at timestamptz not null default now()
 );
-insert into classifier_watermark(id, last_scheduled_mc_seqno)
-select 1, coalesce(max(seqno), 0) + 100
-from blocks
-where workchain = -1
-on conflict (id) do nothing;
+do $$
+declare
+    current_max integer;
+    initial_progress integer;
+    old_watermark integer;
+begin
+    select coalesce(max(seqno), 0)
+    into current_max
+    from blocks
+    where workchain = -1;
+
+    initial_progress := current_max;
+    if to_regclass('classifier_watermark') is not null then
+        execute 'select last_scheduled_mc_seqno from classifier_watermark where id = 1'
+        into old_watermark;
+        if old_watermark is not null then
+            initial_progress := least(old_watermark, current_max);
+        end if;
+    end if;
+
+    insert into classifier_progress(id, last_scheduled_mc_seqno)
+    values (1, initial_progress)
+    on conflict (id) do nothing;
+end;
+$$;
 
 create unlogged table if not exists _classifier_failed_traces
 (
@@ -1290,25 +1306,78 @@ create table if not exists ton_indexer_progress
 );
 
 -- triggers
+do $$
+begin
+    if to_regclass('blocks_to_classify') is not null then
+        execute 'drop trigger if exists on_block_buffered on blocks_to_classify';
+    end if;
+end;
+$$;
+
+drop function if exists drain_classifiable_prefix();
+
+create or replace function drain_classifier_progress(max_count integer default 1000)
+    returns integer
+    language plpgsql as
+$$
+declare
+    cur integer;
+    watermark integer;
+    scheduled_count integer := 0;
+begin
+    if max_count is null or max_count <= 0 then
+        max_count := 1000;
+    end if;
+
+    select last_scheduled_mc_seqno
+    into watermark
+    from classifier_progress
+    where id = 1
+    for update skip locked;
+
+    if not found then
+        return 0;
+    end if;
+
+    cur := watermark + 1;
+    loop
+        exit when scheduled_count >= max_count;
+        exit when not exists (select 1
+                              from blocks
+                              where workchain = '-1'::integer
+                                and seqno = cur);
+
+        insert into _classifier_tasks(mc_seqno, start_after)
+        values (cur, now() + interval '1 seconds');
+        scheduled_count := scheduled_count + 1;
+        cur := cur + 1;
+    end loop;
+
+    if scheduled_count > 0 then
+        update classifier_progress
+        set last_scheduled_mc_seqno = cur - 1,
+            updated_at = now()
+        where id = 1
+          and last_scheduled_mc_seqno < cur - 1;
+    end if;
+
+    return scheduled_count;
+end;
+$$;
+
 create or replace function on_new_mc_block_func()
     returns trigger
     language plpgsql as
 $$
-declare
-    watermark integer;
 begin
-    select last_scheduled_mc_seqno
-    into watermark
-    from classifier_watermark
-    where id = 1;
-
-    if NEW.seqno <= watermark then
+    if exists (select 1
+               from classifier_progress
+               where id = 1
+                 and last_scheduled_mc_seqno >= NEW.seqno) then
         insert into _classifier_tasks(mc_seqno, start_after)
         values (NEW.seqno, now() + interval '1 seconds');
     else
-        insert into blocks_to_classify(mc_seqno)
-        values (NEW.seqno)
-        on conflict (mc_seqno) do nothing;
+        perform drain_classifier_progress();
     end if;
 
     return null;
@@ -1321,50 +1390,6 @@ create or replace trigger on_new_mc_block
     for each row
     when (new.workchain = '-1'::integer)
 execute procedure on_new_mc_block_func();
-
-create or replace function drain_classifiable_prefix()
-    returns trigger
-    language plpgsql as
-$$
-declare
-    cur integer;
-    watermark integer;
-begin
-    select last_scheduled_mc_seqno
-    into watermark
-    from classifier_watermark
-    where id = 1
-    for update skip locked;
-
-    if not found then
-        return null;
-    end if;
-
-    cur := watermark + 1;
-    loop
-        exit when not exists (select 1 from blocks_to_classify where mc_seqno = cur);
-        insert into _classifier_tasks(mc_seqno, start_after)
-        values (cur, now() + interval '1 seconds');
-        delete from blocks_to_classify where mc_seqno = cur;
-        cur := cur + 1;
-    end loop;
-
-    if cur > watermark + 1 then
-        update classifier_watermark
-        set last_scheduled_mc_seqno = cur - 1
-        where id = 1
-          and last_scheduled_mc_seqno < cur - 1;
-    end if;
-
-    return null;
-end;
-$$;
-
-create or replace trigger on_block_buffered
-    after insert
-    on blocks_to_classify
-    for each row
-execute procedure drain_classifiable_prefix();
 
 create or replace function advance_ton_indexer_progress()
     returns integer

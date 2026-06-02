@@ -125,6 +125,10 @@ class UnclassifiedEventsReader(mp.Process):
         rows = []
         with SyncSessionMaker() as session:
             try:
+                session.execute(
+                    text("SELECT drain_classifier_progress(:max_count)"),
+                    {"max_count": max(self.batch_size, 1000)},
+                )
                 query = f'''
                                WITH A AS (
                                    SELECT id 
@@ -281,7 +285,7 @@ class EventClassifierWorker(mp.Process):
                     if task.trace_id is not None:
                         exists = True
                     elif task.mc_seqno is not None:
-                        sql = f'select mc_seqno from blocks_classified where mc_seqno = {task.mc_seqno}'
+                        sql = f'select mc_seqno from _blocks_classified where mc_seqno = {task.mc_seqno}'
                         result = await session.execute(sql)
                         rows = result.fetchall()
                         exists = len(rows) > 0
@@ -389,7 +393,7 @@ class EventClassifierWorker(mp.Process):
                 # await session.execute(f"delete from _classifier_tasks where id = {task.id};")
                 if not is_trace_batch:
                     for task in tasks:
-                        await session.execute(f"insert into blocks_classified(mc_seqno) values ({task.mc_seqno}) on conflict do nothing;")
+                        await session.execute(f"insert into _blocks_classified(mc_seqno) values ({task.mc_seqno}) on conflict do nothing;")
                 task_ids = [task.id for task in tasks]
                 await session.execute(f"delete from _classifier_tasks where id in ({','.join(map(str, task_ids))});")
                 await session.commit()
