@@ -587,10 +587,10 @@ func (n *ActionsNotification) AdjustForClient(client *Client) any {
 	var adjustedActionAddresses [][]string
 	var adjustedAddressBook *indexModels.AddressBook
 	var adjustedMetadata *indexModels.Metadata
-	if n.AddressBook != nil {
+	if client.Subscription.IncludeAddressBook && n.AddressBook != nil {
 		adjustedAddressBook = &indexModels.AddressBook{}
 	}
-	if n.Metadata != nil {
+	if client.Subscription.IncludeMetadata && n.Metadata != nil {
 		adjustedMetadata = &indexModels.Metadata{}
 	}
 	allAddresses := map[string]bool{}
@@ -674,10 +674,10 @@ func (n *TransactionsNotification) AdjustForClient(client *Client) any {
 	var adjustedTransactions []indexModels.Transaction
 	var adjustedAddressBook *indexModels.AddressBook
 	var adjustedMetadata *indexModels.Metadata
-	if n.AddressBook != nil {
+	if client.Subscription.IncludeAddressBook && n.AddressBook != nil {
 		adjustedAddressBook = &indexModels.AddressBook{}
 	}
-	if n.Metadata != nil {
+	if client.Subscription.IncludeMetadata && n.Metadata != nil {
 		adjustedMetadata = &indexModels.Metadata{}
 	}
 
@@ -782,6 +782,15 @@ func (n *TraceNotification) AdjustForClient(client *Client) any {
 		client.TracesForPotentialInvalidation[n.TraceExternalHashNorm] = true
 	}
 
+	var addressBook *indexModels.AddressBook
+	if client.Subscription.IncludeAddressBook {
+		addressBook = n.AddressBook
+	}
+	var metadata *indexModels.Metadata
+	if client.Subscription.IncludeMetadata {
+		metadata = n.Metadata
+	}
+
 	return &TraceNotification{
 		Type:                  n.Type,
 		Finality:              n.Finality,
@@ -789,8 +798,8 @@ func (n *TraceNotification) AdjustForClient(client *Client) any {
 		Trace:                 n.Trace,
 		Transactions:          n.Transactions,
 		Actions:               adjustedActions,
-		AddressBook:           n.AddressBook,
-		Metadata:              n.Metadata,
+		AddressBook:           addressBook,
+		Metadata:              metadata,
 	}
 }
 
@@ -829,7 +838,22 @@ func (n *JettonsNotification) AdjustForClient(client *Client) any {
 	}
 	if client.Subscription.InterestedIn(EventJettonsChange, []string{n.Jetton.Address.String()}) ||
 		client.Subscription.InterestedIn(EventJettonsChange, []string{n.Jetton.Owner.String()}) {
-		return n
+		var addressBook *indexModels.AddressBook
+		if client.Subscription.IncludeAddressBook {
+			addressBook = n.AddressBook
+		}
+		var metadata *indexModels.Metadata
+		if client.Subscription.IncludeMetadata {
+			metadata = n.Metadata
+		}
+
+		return &JettonsNotification{
+			Type:        n.Type,
+			Finality:    n.Finality,
+			Jetton:      n.Jetton,
+			AddressBook: addressBook,
+			Metadata:    metadata,
+		}
 	}
 	return nil
 }
