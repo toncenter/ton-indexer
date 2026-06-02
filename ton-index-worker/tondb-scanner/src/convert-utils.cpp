@@ -59,7 +59,7 @@ td::Result<std::string> convert::to_raw_address(td::Ref<vm::CellSlice> cs) {
           TRY_STATUS(apply_anycast(addr.anycast, addr.address.write().bits()));
           return "var$" + std::to_string(addr.workchain_id) + ":" +
                  std::to_string(addr.addr_len) + ":" +
-                 addr.address->to_hex();
+                 bits_to_padded_hex(addr.address->cbits(), addr.addr_len);
         }
         case block::gen::MsgAddressInt::addr_std: {
           block::gen::MsgAddressInt::Record_addr_std addr;

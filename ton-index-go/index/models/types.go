@@ -23,6 +23,7 @@ type AccountAddressStruct struct {
 	Kind      AddressKind
 	Workchain int32
 	ExtLen    int32
+	AddrLen   int32
 	Addr      string
 }
 

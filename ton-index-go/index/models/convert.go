@@ -11,6 +11,10 @@ import (
 	"github.com/xssnick/tonutils-go/address"
 )
 
+const (
+	tonAddressMaxBits = 511
+)
+
 // string
 func (v *ShardId) String() string {
 	return fmt.Sprintf("%X", uint64(*v))
@@ -43,16 +47,62 @@ func (v *BytesType) String() string {
 func (a *AccountAddressStruct) String() string {
 	switch a.Kind {
 	case AddressNone:
-		return ""
+		return "addr_none"
 	case AddressStd:
 		return fmt.Sprintf("%d:%s", a.Workchain, a.Addr)
 	case AddressVar:
-		return "addr_var$unsupported"
+		return fmt.Sprintf("var$%d:%d:%s", a.Workchain, a.AddrLen, a.Addr)
 	case AddressExt:
-		return fmt.Sprintf("addr_ext$%d:%s", a.ExtLen, a.Addr)
+		return fmt.Sprintf("ext$%d:%s", a.ExtLen, a.Addr)
 	default:
-		return "addr_unknown"
+		return "unsupported"
 	}
+}
+
+func addressHexValue(c byte) int {
+	switch {
+	case c >= '0' && c <= '9':
+		return int(c - '0')
+	case c >= 'a' && c <= 'f':
+		return int(c-'a') + 10
+	case c >= 'A' && c <= 'F':
+		return int(c-'A') + 10
+	default:
+		return -1
+	}
+}
+
+func parseAddressBitLen(value string) (int32, error) {
+	bitLen, err := strconv.ParseInt(value, 10, 32)
+	if err != nil {
+		return 0, err
+	}
+	if bitLen < 0 || bitLen > tonAddressMaxBits {
+		return 0, fmt.Errorf("invalid address bit length: %d", bitLen)
+	}
+	return int32(bitLen), nil
+}
+
+func normalizeAddressHex(value string, bitLen int32) (string, error) {
+	expectedLen := int((bitLen + 3) / 4)
+	if len(value) != expectedLen {
+		return "", fmt.Errorf("wrong address hex length: %d != %d", len(value), expectedLen)
+	}
+	for i := 0; i < len(value); i++ {
+		if addressHexValue(value[i]) < 0 {
+			return "", fmt.Errorf("invalid address hex value: %s", value)
+		}
+	}
+	if expectedLen > 0 {
+		unusedBits := (4 - (bitLen & 3)) & 3
+		if unusedBits != 0 {
+			lastNibble := addressHexValue(value[expectedLen-1])
+			if lastNibble&((1<<unusedBits)-1) != 0 {
+				return "", fmt.Errorf("unused address bits must be zero")
+			}
+		}
+	}
+	return strings.ToUpper(value), nil
 }
 
 // parsers
@@ -71,8 +121,8 @@ func ParseAccountAddressStruct(value string) (*AccountAddressStruct, error) {
 		return &AccountAddressStruct{Kind: AddressNone}, nil
 	}
 	// parse address extern
-	if strings.HasPrefix(value, "addr_ext$") {
-		value = strings.TrimPrefix(value, "addr_ext$")
+	if strings.HasPrefix(value, "ext$") {
+		value = strings.TrimPrefix(value, "ext$")
 		parts := strings.SplitN(value, ":", 2)
 		if len(parts) != 2 {
 			return nil, fmt.Errorf("invalid address format: %s", value)
@@ -80,23 +130,46 @@ func ParseAccountAddressStruct(value string) (*AccountAddressStruct, error) {
 
 		res := AccountAddressStruct{Kind: AddressExt}
 
-		extLen, err := strconv.ParseInt(parts[0], 10, 32)
+		extLen, err := parseAddressBitLen(parts[0])
 		if err != nil {
 			return nil, err
 		}
-		res.ExtLen = int32(extLen)
+		res.ExtLen = extLen
 
-		extAddr, err := hex.DecodeString(parts[1])
+		extAddr, err := normalizeAddressHex(parts[1], extLen)
 		if err != nil {
 			return nil, err
 		}
-		res.Addr = fmt.Sprintf("%X", extAddr)
+		res.Addr = extAddr
 		return &res, nil
 	}
 
 	// parse var address
-	if strings.HasPrefix(value, "addr_var$") {
-		return &AccountAddressStruct{Kind: AddressVar}, nil
+	if strings.HasPrefix(value, "var$") {
+		value = strings.TrimPrefix(value, "var$")
+		parts := strings.SplitN(value, ":", 3)
+		if len(parts) != 3 {
+			return nil, fmt.Errorf("invalid address format: %s", value)
+		}
+
+		workchain, err := strconv.ParseInt(parts[0], 10, 32)
+		if err != nil {
+			return nil, err
+		}
+		addrLen, err := parseAddressBitLen(parts[1])
+		if err != nil {
+			return nil, err
+		}
+		addrHex, err := normalizeAddressHex(parts[2], addrLen)
+		if err != nil {
+			return nil, err
+		}
+		return &AccountAddressStruct{
+			Kind:      AddressVar,
+			Workchain: int32(workchain),
+			AddrLen:   addrLen,
+			Addr:      addrHex,
+		}, nil
 	}
 
 	// parse std address

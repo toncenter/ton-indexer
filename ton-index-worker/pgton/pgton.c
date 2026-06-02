@@ -125,8 +125,16 @@ Datum tonhash_out(PG_FUNCTION_ARGS) {
 
 Datum tonhash_recv(PG_FUNCTION_ARGS) {
     StringInfo buf = (StringInfo) PG_GETARG_POINTER(0);
-    TonHash *result = (TonHash*) palloc(sizeof(TonHash));
+    int len = buf->len - buf->cursor;
+    TonHash *result;
     
+    if (len != TON_HASH_SIZE) {
+        ereport(ERROR, (errcode(ERRCODE_INVALID_BINARY_REPRESENTATION),
+            errmsg("invalid binary representation for type %s: expected %d bytes, got %d",
+                   "tonhash", TON_HASH_SIZE, len)));
+    }
+
+    result = (TonHash*) palloc(sizeof(TonHash));
     memcpy(result->data, pq_getmsgbytes(buf, TON_HASH_SIZE), TON_HASH_SIZE);
     PG_RETURN_POINTER(result);
 }
