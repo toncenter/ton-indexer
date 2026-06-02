@@ -189,10 +189,10 @@ type BouncePhase struct {
 } // @name BouncePhase
 
 type SplitInfo struct {
-	CurShardPfxLen *int32          `json:"cur_shard_pfx_len,omitempty"`
-	AccSplitDepth  *int32          `json:"acc_split_depth,omitempty"`
-	ThisAddr       *AccountAddress `json:"this_addr,omitempty"`
-	SiblingAddr    *AccountAddress `json:"sibling_addr,omitempty"`
+	CurShardPfxLen *int32    `json:"cur_shard_pfx_len,omitempty"`
+	AccSplitDepth  *int32    `json:"acc_split_depth,omitempty"`
+	ThisAddr       *HashType `json:"this_addr,omitempty"`
+	SiblingAddr    *HashType `json:"sibling_addr,omitempty"`
 } // @name SplitInfo
 
 type TransactionDescr struct {
