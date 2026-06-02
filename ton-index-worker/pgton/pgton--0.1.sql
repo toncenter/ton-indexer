@@ -92,27 +92,15 @@ CREATE OPERATOR CLASS tonhash_hash_ops
 CREATE FUNCTION tonhash_eq(tonhash, text) RETURNS bool
    AS $$ SELECT $1 = $2::tonhash $$
    LANGUAGE SQL IMMUTABLE STRICT;
-CREATE FUNCTION tonhash_eq(text, tonhash) RETURNS bool
-   AS $$ SELECT $1::tonhash = $2 $$
-   LANGUAGE SQL IMMUTABLE STRICT;
 CREATE FUNCTION tonhash_eq(tonhash, character varying) RETURNS bool
    AS $$ SELECT $1 = $2::tonhash $$
-   LANGUAGE SQL IMMUTABLE STRICT;
-CREATE FUNCTION tonhash_eq(character varying, tonhash) RETURNS bool
-   AS $$ SELECT $1::tonhash = $2 $$
    LANGUAGE SQL IMMUTABLE STRICT;
 
 CREATE FUNCTION tonhash_cmp(tonhash, text) RETURNS int4
    AS $$ SELECT tonhash_cmp($1, $2::tonhash) $$
    LANGUAGE SQL IMMUTABLE STRICT;
-CREATE FUNCTION tonhash_cmp(text, tonhash) RETURNS int4
-   AS $$ SELECT tonhash_cmp($1::tonhash, $2) $$
-   LANGUAGE SQL IMMUTABLE STRICT;
 CREATE FUNCTION tonhash_cmp(tonhash, character varying) RETURNS int4
    AS $$ SELECT tonhash_cmp($1, $2::tonhash) $$
-   LANGUAGE SQL IMMUTABLE STRICT;
-CREATE FUNCTION tonhash_cmp(character varying, tonhash) RETURNS int4
-   AS $$ SELECT tonhash_cmp($1::tonhash, $2) $$
    LANGUAGE SQL IMMUTABLE STRICT;
 CREATE FUNCTION tonhash_cmp(text, text) RETURNS int4
    AS $$ SELECT tonhash_cmp($1::tonhash, $2::tonhash) $$
@@ -142,38 +130,20 @@ CREATE FUNCTION tonhash_hash_extended(character varying, int8) RETURNS int8
 
 CREATE OPERATOR = (
    leftarg = tonhash, rightarg = text, procedure = tonhash_eq,
-   commutator = = ,
-   hashes,
-   restrict = eqsel, join = eqjoinsel
-);
-CREATE OPERATOR = (
-   leftarg = text, rightarg = tonhash, procedure = tonhash_eq,
-   commutator = = ,
    hashes,
    restrict = eqsel, join = eqjoinsel
 );
 CREATE OPERATOR = (
    leftarg = tonhash, rightarg = character varying, procedure = tonhash_eq,
-   commutator = = ,
-   hashes,
-   restrict = eqsel, join = eqjoinsel
-);
-CREATE OPERATOR = (
-   leftarg = character varying, rightarg = tonhash, procedure = tonhash_eq,
-   commutator = = ,
    hashes,
    restrict = eqsel, join = eqjoinsel
 );
 
 ALTER OPERATOR FAMILY tonhash_ops USING btree ADD
         OPERATOR        3       = (tonhash, text),
-        OPERATOR        3       = (text, tonhash),
         OPERATOR        3       = (tonhash, character varying),
-        OPERATOR        3       = (character varying, tonhash),
         FUNCTION        1       tonhash_cmp(tonhash, text),
-        FUNCTION        1       tonhash_cmp(text, tonhash),
         FUNCTION        1       tonhash_cmp(tonhash, character varying),
-        FUNCTION        1       tonhash_cmp(character varying, tonhash),
         FUNCTION        1       tonhash_cmp(text, text),
         FUNCTION        1       tonhash_cmp(text, character varying),
         FUNCTION        1       tonhash_cmp(character varying, text),
@@ -181,9 +151,7 @@ ALTER OPERATOR FAMILY tonhash_ops USING btree ADD
 
 ALTER OPERATOR FAMILY tonhash_hash_ops USING hash ADD
         OPERATOR        1       = (tonhash, text),
-        OPERATOR        1       = (text, tonhash),
         OPERATOR        1       = (tonhash, character varying),
-        OPERATOR        1       = (character varying, tonhash),
         FUNCTION        1       tonhash_hash(text),
         FUNCTION        1       tonhash_hash(character varying),
         FUNCTION        2       tonhash_hash_extended(text, int8),
@@ -281,6 +249,58 @@ CREATE OPERATOR CLASS tonaddr_hash_ops
         OPERATOR        1       = ,
         FUNCTION        1       tonaddr_hash(tonaddr),
         FUNCTION        2       tonaddr_hash_extended(tonaddr, int8);
+
+CREATE FUNCTION tonaddr_eq(tonaddr, text) RETURNS bool
+   AS $$ SELECT $1 = $2::tonaddr $$
+   LANGUAGE SQL IMMUTABLE STRICT;
+CREATE FUNCTION tonaddr_eq(tonaddr, character varying) RETURNS bool
+   AS $$ SELECT $1 = $2::tonaddr $$
+   LANGUAGE SQL IMMUTABLE STRICT;
+
+CREATE FUNCTION tonaddr_cmp(tonaddr, text) RETURNS int4
+   AS $$ SELECT tonaddr_cmp($1, $2::tonaddr) $$
+   LANGUAGE SQL IMMUTABLE STRICT;
+CREATE FUNCTION tonaddr_cmp(tonaddr, character varying) RETURNS int4
+   AS $$ SELECT tonaddr_cmp($1, $2::tonaddr) $$
+   LANGUAGE SQL IMMUTABLE STRICT;
+
+CREATE FUNCTION tonaddr_hash(text) RETURNS int4
+   AS $$ SELECT tonaddr_hash($1::tonaddr) $$
+   LANGUAGE SQL IMMUTABLE STRICT;
+CREATE FUNCTION tonaddr_hash(character varying) RETURNS int4
+   AS $$ SELECT tonaddr_hash($1::tonaddr) $$
+   LANGUAGE SQL IMMUTABLE STRICT;
+CREATE FUNCTION tonaddr_hash_extended(text, int8) RETURNS int8
+   AS $$ SELECT tonaddr_hash_extended($1::tonaddr, $2) $$
+   LANGUAGE SQL IMMUTABLE STRICT;
+CREATE FUNCTION tonaddr_hash_extended(character varying, int8) RETURNS int8
+   AS $$ SELECT tonaddr_hash_extended($1::tonaddr, $2) $$
+   LANGUAGE SQL IMMUTABLE STRICT;
+
+CREATE OPERATOR = (
+   leftarg = tonaddr, rightarg = text, procedure = tonaddr_eq,
+   hashes,
+   restrict = eqsel, join = eqjoinsel
+);
+CREATE OPERATOR = (
+   leftarg = tonaddr, rightarg = character varying, procedure = tonaddr_eq,
+   hashes,
+   restrict = eqsel, join = eqjoinsel
+);
+
+ALTER OPERATOR FAMILY tonaddr_ops USING btree ADD
+        OPERATOR        3       = (tonaddr, text),
+        OPERATOR        3       = (tonaddr, character varying),
+        FUNCTION        1       tonaddr_cmp(tonaddr, text),
+        FUNCTION        1       tonaddr_cmp(tonaddr, character varying);
+
+ALTER OPERATOR FAMILY tonaddr_hash_ops USING hash ADD
+        OPERATOR        1       = (tonaddr, text),
+        OPERATOR        1       = (tonaddr, character varying),
+        FUNCTION        1       tonaddr_hash(text),
+        FUNCTION        1       tonaddr_hash(character varying),
+        FUNCTION        2       tonaddr_hash_extended(text, int8),
+        FUNCTION        2       tonaddr_hash_extended(character varying, int8);
 
 -- TonBytes type
 CREATE TYPE tonbytes;
