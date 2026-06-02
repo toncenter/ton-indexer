@@ -1391,20 +1391,33 @@ create or replace trigger on_new_mc_block
     when (new.workchain = '-1'::integer)
 execute procedure on_new_mc_block_func();
 
-create or replace function advance_ton_indexer_progress()
+create or replace function advance_ton_indexer_progress(max_count integer, wait_for_lock boolean)
     returns integer
     language plpgsql as
 $$
 declare
     next_seqno      integer;
     finalized_seqno integer;
+    advanced_count  integer := 0;
 begin
-    perform 1 from ton_indexer_progress where id = 1 for update;
+    if wait_for_lock then
+        perform 1 from ton_indexer_progress where id = 1 for update;
+    else
+        perform 1 from ton_indexer_progress where id = 1 for update skip locked;
+    end if;
+
     if not found then
-        return null;
+        select finalized_mc_seqno
+        into finalized_seqno
+        from ton_indexer_progress
+        where id = 1;
+
+        return finalized_seqno;
     end if;
 
     loop
+        exit when max_count is not null and advanced_count >= max_count;
+
         select finalized_mc_seqno + 1
         into next_seqno
         from ton_indexer_progress
@@ -1419,6 +1432,7 @@ begin
         set finalized_mc_seqno = next_seqno,
             updated_at         = now()
         where id = 1;
+        advanced_count := advanced_count + 1;
     end loop;
 
     select finalized_mc_seqno
@@ -1428,6 +1442,13 @@ begin
 
     return finalized_seqno;
 end;
+$$;
+
+create or replace function advance_ton_indexer_progress()
+    returns integer
+    language sql as
+$$
+    select advance_ton_indexer_progress(null::integer, true);
 $$;
 
 create or replace function advance_ton_indexer_progress_func()
@@ -1443,7 +1464,7 @@ begin
         return null;
     end if;
 
-    perform advance_ton_indexer_progress();
+    perform advance_ton_indexer_progress(1000, false);
     return null;
 end;
 $$;

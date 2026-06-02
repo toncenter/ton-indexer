@@ -182,6 +182,7 @@ private:
   void ensure_inserted();
   std::optional<std::pair<std::uint32_t, std::uint32_t>> get_batch_seqno_range() const;
   void ensure_batch_partitions(pqxx::connection& c);
+  void advance_progress_after_commit(pqxx::connection& c);
   void drop_old_partitions_after_commit(pqxx::connection& c);
 };
 
@@ -2818,6 +2819,20 @@ void InsertBatchPostgres::drop_old_partitions_after_commit(pqxx::connection& c) 
   }
 }
 
+void InsertBatchPostgres::advance_progress_after_commit(pqxx::connection& c) {
+  if (disable_progress_advance_) {
+    return;
+  }
+
+  try {
+    pqxx::work txn(c);
+    txn.exec("SELECT advance_ton_indexer_progress(1000, false)");
+    txn.commit();
+  } catch (const std::exception& e) {
+    LOG(WARNING) << "Failed to advance Postgres indexer progress after commit: " << e.what();
+  }
+}
+
 void InsertBatchPostgres::do_insert() {
   bool preparing = false;
   try {
@@ -3043,6 +3058,7 @@ void InsertBatchPostgres::commit_prepared_batch() {
   txn.commit();
   commit_timer.pause();
 
+  advance_progress_after_commit(c);
   drop_old_partitions_after_commit(c);
 
   for (auto& task : insert_tasks_) {
