@@ -8,7 +8,6 @@ import (
 	"strings"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/lib/pq"
 	"github.com/toncenter/ton-indexer/ton-index-go/index/models"
 	"github.com/toncenter/ton-indexer/ton-index-go/index/parse"
 )
@@ -506,13 +505,13 @@ func (db *DbClient) QueryTransactionsExternalHashes(ctx context.Context, txIDs [
 	}
 
 	query := `
-        SELECT DISTINCT tr.external_hash 
-        FROM traces tr
-        INNER JOIN transactions tx ON tr.trace_id = tx.trace_id
-        WHERE tx.hash = ANY($1)
-        AND tr.external_hash IS NOT NULL`
+	        SELECT DISTINCT tr.external_hash
+	        FROM traces tr
+	        INNER JOIN transactions tx ON tr.trace_id = tx.trace_id
+	        WHERE tx.hash = ANY($1::tonhash[])
+	        AND tr.external_hash IS NOT NULL`
 
-	rows, err := conn.Query(ctx, query, pq.Array(stringTxIDs))
+	rows, err := conn.Query(ctx, query, stringTxIDs)
 	if err != nil {
 		return nil, models.IndexError{Code: 500, Message: err.Error()}
 	}

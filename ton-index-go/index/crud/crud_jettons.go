@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/lib/pq"
 	"github.com/toncenter/ton-indexer/ton-index-go/index/detect"
 	"github.com/toncenter/ton-indexer/ton-index-go/index/models"
 	"github.com/toncenter/ton-indexer/ton-index-go/index/parse"
@@ -287,9 +286,9 @@ func queryJettonWalletsTokenInfo(addr_list []models.AccountAddress, conn *pgxpoo
 
 	query := `SELECT jw.address, jw.owner, jw.balance, jw.jetton 
 			  FROM jetton_wallets jw 
-			  WHERE jw.address = ANY($1) AND NOT jw.destroyed`
+			  WHERE jw.address = ANY($1::tonaddr[]) AND NOT jw.destroyed`
 
-	rows, err := conn.Query(ctx, query, pq.Array(addr_list))
+	rows, err := conn.Query(ctx, query, tonaddrArrayParam(addr_list))
 	if err != nil {
 		return nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
