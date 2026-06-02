@@ -15,7 +15,7 @@ from typing import List, Tuple
 from typing import Optional
 
 import msgpack
-from sqlalchemy import Column, Integer, String, Boolean, event, delete
+from sqlalchemy import Column, Integer, String, Boolean, event, delete, func
 from sqlalchemy import select, and_, literal, tuple_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.dialects.postgresql import ARRAY as PG_ARRAY
@@ -138,6 +138,8 @@ def composite_value(value, type_):
             except AttributeError:
                 field_value = value[i]
         fields.append(composite_field_value(field_value, column.type))
+    if len(fields) == 1:
+        return func.ROW(*fields).cast(type_)
     return tuple_(*fields).cast(type_)
 
 
