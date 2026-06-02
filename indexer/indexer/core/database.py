@@ -11,10 +11,11 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy_utils import create_database, database_exists, CompositeType
 
-from sqlalchemy import Column, String, Integer, BigInteger, Boolean, Index, Enum, Numeric
+from sqlalchemy import Column, String, Integer, BigInteger, Boolean, Index, Enum, Numeric, cast
 from sqlalchemy.schema import ForeignKeyConstraint
 from sqlalchemy import ForeignKey
 from sqlalchemy.orm import relationship, foreign, remote
+from sqlalchemy.types import UserDefinedType
 
 from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.dialects.postgresql import JSONB
@@ -83,6 +84,59 @@ def init_database(create=False):
 # types
 AccountStatus = Enum('uninit', 'frozen', 'active', 'nonexist', name='account_status')
 
+
+class _PgTonType(UserDefinedType):
+    cache_ok = True
+    type_name: str
+
+    def get_col_spec(self, **kw):
+        return self.type_name
+
+    def bind_expression(self, bindvalue):
+        return cast(bindvalue, self)
+
+
+class TonHash(_PgTonType):
+    cache_ok = True
+    type_name = "tonhash"
+
+
+class TonAddr(_PgTonType):
+    cache_ok = True
+    type_name = "tonaddr"
+
+
+class TonBytes(_PgTonType):
+    cache_ok = True
+    type_name = "tonbytes"
+
+
+class _PgTonArray(ARRAY):
+    cache_ok = True
+    item_type: type[_PgTonType]
+
+    def __init__(self, item_type=None, **kwargs):
+        super().__init__(item_type or self.item_type(), **kwargs)
+
+    def bind_expression(self, bindvalue):
+        return cast(bindvalue, self)
+
+
+class TonHashArray(_PgTonArray):
+    cache_ok = True
+    item_type = TonHash
+
+
+class TonAddrArray(_PgTonArray):
+    cache_ok = True
+    item_type = TonAddr
+
+
+class TonBytesArray(_PgTonArray):
+    cache_ok = True
+    item_type = TonBytes
+
+
 class FinalityState(IntEnum):
     pending = 0
     confirmed = 1
@@ -140,8 +194,8 @@ class Block(Base):
     workchain: int = Column(Integer, primary_key=True)
     shard: int = Column(BigInteger, primary_key=True)
     seqno: int = Column(Integer, primary_key=True)
-    root_hash: str = Column(String(44))
-    file_hash: str = Column(String(44))
+    root_hash: str = Column(TonHash)
+    file_hash: str = Column(TonHash)
 
     mc_block_seqno: int = Column(Integer, nullable=True)
 
@@ -173,8 +227,8 @@ class Block(Base):
     prev_key_block_seqno: int = Column(Integer)
     vert_seqno: int = Column(Integer)
     master_ref_seqno: int = Column(Integer, nullable=True)
-    rand_seed: str = Column(String(44))
-    created_by: str = Column(String)
+    rand_seed: str = Column(TonHash)
+    created_by: str = Column(TonHash)
 
     tx_count: int = Column(Integer)
     prev_blocks: List[Any] = Column(JSONB)
@@ -184,9 +238,9 @@ class Block(Base):
 
 class Trace(Base):
     __tablename__ = 'traces'
-    trace_id = Column(String(44), primary_key=True)
-    external_hash: str = Column(String)
-    external_hash_norm: str = Column(String)
+    trace_id = Column(TonHash, primary_key=True)
+    external_hash: str = Column(TonHash)
+    external_hash_norm: str = Column(TonHash)
     mc_seqno_start: int = Column(Integer)
     mc_seqno_end: int = Column(Integer)
     start_lt: int = Column(BigInteger)
@@ -226,8 +280,8 @@ class Trace(Base):
 
 class TraceEdge(Base):
     __tablename__ = 'trace_edges'
-    trace_id: str = Column(String(44), ForeignKey("traces.trace_id"), primary_key=True)
-    msg_hash: str = Column(String(44), primary_key=True)
+    trace_id: str = Column(TonHash, ForeignKey("traces.trace_id"), primary_key=True)
+    msg_hash: str = Column(TonHash, primary_key=True)
     left_tx: str = Column(String)
     right_tx: str = Column(String)
     incomplete: bool = Column(Boolean)
@@ -237,9 +291,9 @@ class TraceEdge(Base):
 
 class ActionAccount(Base):
     __tablename__ = 'action_accounts'
-    action_id: str = Column(String, primary_key=True)
-    trace_id: str = Column(String, primary_key=True)
-    account: str = Column(String(70), primary_key=True)
+    action_id: str = Column(TonHash, primary_key=True)
+    trace_id: str = Column(TonHash, primary_key=True)
+    account: str = Column(TonAddr, primary_key=True)
     trace_end_lt: int = Column(Numeric)
     action_end_lt: int = Column(Numeric)
     trace_end_utime: int = Column(Numeric)
@@ -249,24 +303,24 @@ class ActionAccount(Base):
 class Action(Base):
     __tablename__ = 'actions'
 
-    trace_id: str = Column(String(44), nullable=False, primary_key=True)
-    action_id: str = Column(String, nullable=False, primary_key=True)
+    trace_id: str = Column(TonHash, nullable=False, primary_key=True)
+    action_id: str = Column(TonHash, nullable=False, primary_key=True)
     type: str = Column(String())
-    tx_hashes: list[str] = Column(ARRAY(String()))
+    tx_hashes: list[str] = Column(TonHashArray())
     value: int | None = Column(Numeric)
     amount: int | None = Column(Numeric)
     start_lt: int | None = Column(BigInteger)
     end_lt: int | None = Column(BigInteger)
     start_utime: int | None = Column(BigInteger)
     end_utime: int | None = Column(BigInteger)
-    source: str | None = Column(String(70))
-    source_secondary: str | None = Column(String(70))
-    destination: str | None = Column(String(70))
-    destination_secondary: str | None = Column(String(70))
-    asset: str | None = Column(String(70))
-    asset_secondary: str | None = Column(String(70))
-    asset2: str | None = Column(String(70))
-    asset2_secondary: str | None = Column(String(70))
+    source: str | None = Column(TonAddr)
+    source_secondary: str | None = Column(TonAddr)
+    destination: str | None = Column(TonAddr)
+    destination_secondary: str | None = Column(TonAddr)
+    asset: str | None = Column(TonAddr)
+    asset_secondary: str | None = Column(TonAddr)
+    asset2: str | None = Column(TonAddr)
+    asset2_secondary: str | None = Column(TonAddr)
     opcode: int | None = Column(BigInteger)
     success: bool = Column(Boolean)
     finality: FinalityState = FinalityState.finalized
@@ -275,11 +329,11 @@ class Action(Base):
         Column("encrypted", Boolean)
     ]))
     jetton_transfer_data = Column(CompositeType("jetton_transfer_details", [
-        Column("response_destination", String),
+        Column("response_destination", TonAddr),
         Column("forward_amount", Numeric),
         Column("query_id", Numeric),
-        Column("custom_payload", String),
-        Column("forward_payload", String),
+        Column("custom_payload", TonBytes),
+        Column("forward_payload", TonBytes),
         Column("comment", String),
         Column("is_encrypted_comment", Boolean)
     ]))
@@ -287,14 +341,14 @@ class Action(Base):
         Column("is_purchase", Boolean),
         Column("price", Numeric),
         Column("query_id", Numeric),
-        Column("custom_payload", String),
-        Column("forward_payload", String),
+        Column("custom_payload", TonBytes),
+        Column("forward_payload", TonBytes),
         Column("forward_amount", Numeric),
-        Column("response_destination", String),
+        Column("response_destination", TonAddr),
         Column("nft_item_index", Numeric),
         Column("marketplace", String),
-        Column("real_prev_owner", String),
-        Column("marketplace_address", String),
+        Column("real_prev_owner", TonAddr),
+        Column("marketplace_address", TonAddr),
         Column("payout_amount", Numeric),
         Column("payout_comment_encrypted", Boolean),
         Column("payout_comment_encoded", Boolean),
@@ -303,27 +357,27 @@ class Action(Base):
     ]))
     jetton_swap_data = Column(CompositeType("jetton_swap_details", [
         Column("dex", String),
-        Column("sender", String),
+        Column("sender", TonAddr),
         Column("dex_incoming_transfer", CompositeType("dex_transfer_details",[
             Column("amount", Numeric),
-            Column("asset", String),
-            Column("source", String),
-            Column("destination", String),
-            Column("source_jetton_wallet", String),
-            Column("destination_jetton_wallet", String)
+            Column("asset", TonAddr),
+            Column("source", TonAddr),
+            Column("destination", TonAddr),
+            Column("source_jetton_wallet", TonAddr),
+            Column("destination_jetton_wallet", TonAddr)
         ])),
         Column("dex_outgoing_transfer", CompositeType("dex_transfer_details", [
             Column("amount", Numeric),
-            Column("asset", String),
-            Column("source", String),
-            Column("destination", String),
-            Column("source_jetton_wallet", String),
-            Column("destination_jetton_wallet", String)
+            Column("asset", TonAddr),
+            Column("source", TonAddr),
+            Column("destination", TonAddr),
+            Column("source_jetton_wallet", TonAddr),
+            Column("destination_jetton_wallet", TonAddr)
         ])),
         Column("peer_swaps", ARRAY(CompositeType("peer_swap_details", [
-            Column("asset_in", String),
+            Column("asset_in", TonAddr),
             Column("amount_in", Numeric),
-            Column("asset_out", String),
+            Column("asset_out", TonAddr),
             Column("amount_out", Numeric),
         ]))),
         Column("min_out_amount", Numeric)
@@ -346,23 +400,23 @@ class Action(Base):
         Column("royalty_fee_base", Numeric),
         Column("max_bid", Numeric),
         Column("min_bid", Numeric),
-        Column("marketplace_fee_address", String),
-        Column("royalty_address", String),
+        Column("marketplace_fee_address", TonAddr),
+        Column("royalty_address", TonAddr),
         Column("marketplace", String)
     ]))
     evaa_supply_data = Column(CompositeType("evaa_supply_details", [
-        Column("sender_jetton_wallet", String),
-        Column("recipient_jetton_wallet", String),
-        Column("master_jetton_wallet", String),
-        Column("master", String),
+        Column("sender_jetton_wallet", TonAddr),
+        Column("recipient_jetton_wallet", TonAddr),
+        Column("master_jetton_wallet", TonAddr),
+        Column("master", TonAddr),
         Column("asset_id", String),
         Column("is_ton", Boolean)
     ]))
     evaa_withdraw_data = Column(CompositeType("evaa_withdraw_details", [
-        Column("sender_jetton_wallet", String),
-        Column("recipient_jetton_wallet", String),
-        Column("master_jetton_wallet", String),
-        Column("master", String),
+        Column("sender_jetton_wallet", TonAddr),
+        Column("recipient_jetton_wallet", TonAddr),
+        Column("master_jetton_wallet", TonAddr),
+        Column("master", TonAddr),
         Column("fail_reason", String),
         Column("asset_id", String)
     ]))
@@ -376,52 +430,52 @@ class Action(Base):
         Column("dex", String),
         Column("amount1", Numeric),  # actual amount deposited
         Column("amount2", Numeric),  # actual amount deposited
-        Column("asset1", String),
-        Column("asset2", String),
-        Column('user_jetton_wallet_1', String),
-        Column('user_jetton_wallet_2', String),
+        Column("asset1", TonAddr),
+        Column("asset2", TonAddr),
+        Column('user_jetton_wallet_1', TonAddr),
+        Column('user_jetton_wallet_2', TonAddr),
         Column("lp_tokens_minted", Numeric),  # or `liquidity` points credited (if it's an NFT)
-        Column("target_asset_1", String),
-        Column("target_asset_2", String),  # these should be the same as asset_(1,2)
+        Column("target_asset_1", TonAddr),
+        Column("target_asset_2", TonAddr),  # these should be the same as asset_(1,2)
         Column("target_amount_1", Numeric),  # desired amount to be deposited
         Column("target_amount_2", Numeric),  # desired amount to be deposited
         Column("vault_excesses", ARRAY(CompositeType("liquidity_vault_excess_details", [
-            Column("asset", String),
+            Column("asset", TonAddr),
             Column("amount", Numeric),  # usually amount_(1,2) - target_amount_(1,2)
         ]))),
         # fields for tonco (concentrated liquidity):
         Column("tick_lower", Numeric),
         Column("tick_upper", Numeric),
         Column("nft_index", Numeric),
-        Column("nft_address", String),
+        Column("nft_address", TonAddr),
     ]))
     dex_withdraw_liquidity_data = Column(CompositeType("dex_withdraw_liquidity_details", [
         Column("dex", String),
         Column("amount1", Numeric),
         Column("amount2", Numeric),
-        Column('asset1_out', String),
-        Column('asset2_out', String),
-        Column('user_jetton_wallet_1', String),
-        Column('user_jetton_wallet_2', String),
-        Column('dex_jetton_wallet_1', String),
-        Column('dex_jetton_wallet_2', String),
+        Column('asset1_out', TonAddr),
+        Column('asset2_out', TonAddr),
+        Column('user_jetton_wallet_1', TonAddr),
+        Column('user_jetton_wallet_2', TonAddr),
+        Column('dex_jetton_wallet_1', TonAddr),
+        Column('dex_jetton_wallet_2', TonAddr),
         Column("lp_tokens_burnt", Numeric),
-        Column('dex_wallet_1', String),
-        Column('dex_wallet_2', String),
+        Column('dex_wallet_1', TonAddr),
+        Column('dex_wallet_2', TonAddr),
         # new fields for tonco (concentrated liquidity):
         Column('burned_nft_index', Numeric),
-        Column('burned_nft_address', String),
+        Column('burned_nft_address', TonAddr),
         Column('tick_lower', Numeric),
         Column('tick_upper', Numeric)
     ]))
     jvault_claim_data = Column(CompositeType("jvault_claim_details", [
-        Column("claimed_jettons", ARRAY(String())),
+        Column("claimed_jettons", TonAddrArray()),
         Column("claimed_amounts", ARRAY(Numeric()))
     ]))
     jvault_stake_data = Column(CompositeType("jvault_stake_details", [
         Column("period", Numeric),
         Column("minted_stake_jettons", Numeric),
-        Column("stake_wallet", String)
+        Column("stake_wallet", TonAddr)
     ]))
     multisig_create_order_data = Column(CompositeType("multisig_create_order_details", [
         Column("query_id", Numeric),
@@ -430,7 +484,7 @@ class Action(Base):
         Column("is_signed_by_creator", Boolean),
         Column("creator_index", Numeric),
         Column("expiration_date", Numeric),
-        Column("order_boc", String),
+        Column("order_boc", TonBytes),
     ]))
     multisig_approve_data = Column(CompositeType("multisig_approve_details", [
         Column("signer_index", Numeric),
@@ -441,28 +495,28 @@ class Action(Base):
         Column("order_seqno", Numeric),
         Column("expiration_date", Numeric),
         Column("approvals_num", Numeric),
-        Column("signers_hash", String),
-        Column("order_boc", String),
+        Column("signers_hash", TonHash),
+        Column("order_boc", TonBytes),
     ]))
     vesting_send_message_data = Column(CompositeType("vesting_send_message_details", [
         Column("query_id", Numeric),
-        Column("message_boc", String),
+        Column("message_boc", TonBytes),
     ]))
     vesting_add_whitelist_data = Column(CompositeType("vesting_add_whitelist_details", [
         Column("query_id", Numeric),
-        Column("accounts_added", ARRAY(String()))
+        Column("accounts_added", TonAddrArray())
     ]))
     staking_data = Column(CompositeType("staking_details", [
         Column("provider", String),
-        Column("ts_nft", String),
+        Column("ts_nft", TonAddr),
         Column("tokens_burnt", Numeric),
         Column("tokens_minted", Numeric),
     ]))
     tonco_deploy_pool_data = Column(CompositeType("tonco_deploy_pool_details", [
-        Column("jetton0_router_wallet", String),
-        Column("jetton1_router_wallet", String),
-        Column("jetton0_minter", String),
-        Column("jetton1_minter", String),
+        Column("jetton0_router_wallet", TonAddr),
+        Column("jetton1_router_wallet", TonAddr),
+        Column("jetton0_minter", TonAddr),
+        Column("jetton1_minter", TonAddr),
         Column("tick_spacing", Integer),
         Column("initial_price_x96", Numeric),
         Column("protocol_fee", Integer),
@@ -473,18 +527,18 @@ class Action(Base):
     coffee_create_pool_data = Column(CompositeType("coffee_create_pool_details", [
         Column("amount_1", Numeric),
         Column("amount_2", Numeric),
-        Column("initiator_1", String),
-        Column("initiator_2", String),
-        Column("provided_asset", String),
+        Column("initiator_1", TonAddr),
+        Column("initiator_2", TonAddr),
+        Column("provided_asset", TonAddr),
         Column("lp_tokens_minted", Numeric),
-        Column("pool_creator_contract", String)
+        Column("pool_creator_contract", TonAddr)
     ]))
     coffee_staking_deposit_data = Column(CompositeType("coffee_staking_deposit_details", [
-        Column("minted_item_address", String),
+        Column("minted_item_address", TonAddr),
         Column("minted_item_index", Numeric),
     ]))
     coffee_staking_withdraw_data = Column(CompositeType("coffee_staking_withdraw_details", [
-        Column("nft_address", String),
+        Column("nft_address", TonAddr),
         Column("nft_index", Numeric),
         Column("points", Numeric),
     ]))
@@ -492,11 +546,11 @@ class Action(Base):
         Column("send_request_id", Numeric),
         Column("msglib_manager", String),
         Column("msglib", String),
-        Column("uln", String),
+        Column("uln", TonAddr),
         Column("native_fee", Numeric),
         Column("zro_fee", Numeric),
-        Column("endpoint", String),
-        Column("channel", String),
+        Column("endpoint", TonAddr),
+        Column("channel", TonAddr),
     ]))
     layerzero_packet_data = Column(CompositeType("layerzero_packet_details", [
         Column("src_oapp", String),
@@ -510,10 +564,10 @@ class Action(Base):
     layerzero_dvn_verify_data = Column(CompositeType("layerzero_dvn_verify_details", [
         Column("nonce", Numeric),
         Column("status", String), # "succeeded" | "nonce_out_of_range" | "dvn_not_configured" | "unknown_<code>"
-        Column("dvn", String),
-        Column("proxy", String),
-        Column("uln", String),
-        Column("uln_connection", String),
+        Column("dvn", TonAddr),
+        Column("proxy", TonAddr),
+        Column("uln", TonAddr),
+        Column("uln_connection", TonAddr),
     ]))
     cocoon_worker_payout_data = Column(CompositeType("cocoon_worker_payout_details", [
         Column("payout_type", String),  # "regular" or "last"
@@ -567,8 +621,8 @@ class Action(Base):
     ]))
     trace_end_lt: int = Column(Numeric)
     trace_end_utime: int = Column(Numeric)
-    trace_external_hash: str = Column(String)
-    trace_external_hash_norm: str = Column(String)
+    trace_external_hash: str = Column(TonHash)
+    trace_external_hash_norm: str = Column(TonHash)
     mc_seqno_end: int = Column(Numeric)
     trace_mc_seqno_end: int = Column(Numeric)
     value_extra_currencies: dict = Column(JSONB)
@@ -619,14 +673,14 @@ class Transaction(Base):
     block_shard = Column(BigInteger)
     block_seqno = Column(Integer)
     mc_block_seqno = Column(Integer)
-    trace_id = Column(String(44))
+    trace_id = Column(TonHash)
 
     block = relationship("Block", back_populates="transactions")
 
-    account: str = Column(String)
-    hash: str = Column(String, primary_key=True)
+    account: str = Column(TonAddr)
+    hash: str = Column(TonHash, primary_key=True)
     lt: int = Column(BigInteger)
-    prev_trans_hash = Column(String)
+    prev_trans_hash = Column(TonHash)
     prev_trans_lt = Column(BigInteger)
     now: int = Column(Integer)
 
@@ -635,8 +689,8 @@ class Transaction(Base):
 
     total_fees = Column(BigInteger)
 
-    account_state_hash_before = Column(String)
-    account_state_hash_after = Column(String)
+    account_state_hash_before = Column(TonHash)
+    account_state_hash_after = Column(TonHash)
 
     descr = Column(Enum('ord', 'storage', 'tick_tock', 'split_prepare',
                         'split_install', 'merge_prepare', 'merge_install', name='descr_type'))
@@ -663,8 +717,8 @@ class Transaction(Base):
     compute_exit_code: int = Column(Integer)
     compute_exit_arg: int = Column(Integer)
     compute_vm_steps: int = Column(BigInteger)
-    compute_vm_init_state_hash: str = Column(String)
-    compute_vm_final_state_hash: str = Column(String)
+    compute_vm_init_state_hash: str = Column(TonHash)
+    compute_vm_final_state_hash: str = Column(TonHash)
     action_success: bool = Column(Boolean)
     action_valid: bool = Column(Boolean)
     action_no_funds: bool = Column(Boolean)
@@ -677,7 +731,7 @@ class Transaction(Base):
     action_spec_actions: int = Column(Integer)
     action_skipped_actions: int = Column(Integer)
     action_msgs_created: int = Column(Integer)
-    action_action_list_hash: str = Column(String)
+    action_action_list_hash: str = Column(TonHash)
     action_tot_msg_size_cells: int = Column(BigInteger)
     action_tot_msg_size_bits: int = Column(BigInteger)
     bounce = Column(Enum('negfunds', 'nofunds', 'ok', name='bounce_type'))
@@ -688,8 +742,8 @@ class Transaction(Base):
     bounce_fwd_fees: int = Column(BigInteger)
     split_info_cur_shard_pfx_len: int = Column(Integer)
     split_info_acc_split_depth: int = Column(Integer)
-    split_info_this_addr: str = Column(String)
-    split_info_sibling_addr: str = Column(String)
+    split_info_this_addr: str = Column(TonHash)
+    split_info_sibling_addr: str = Column(TonHash)
 
     account_state_before = relationship("AccountState",
                                         foreign_keys=[account_state_hash_before],
@@ -712,24 +766,24 @@ class Transaction(Base):
 class AccountState(Base):
     __tablename__ = 'account_states'
 
-    hash = Column(String, primary_key=True)
-    account = Column(String)
+    hash = Column(TonHash, primary_key=True)
+    account = Column(TonAddr)
     balance = Column(BigInteger)
     account_status = Column(AccountStatus)
-    frozen_hash = Column(String)
-    code_hash = Column(String)
-    data_hash = Column(String)
+    frozen_hash = Column(TonHash)
+    code_hash = Column(TonHash)
+    data_hash = Column(TonHash)
 
 
 class Message(Base):
     __tablename__ = 'messages'
-    msg_hash: str = Column(String(44), primary_key=True)
-    tx_hash: str = Column(String(44), ForeignKey("transactions.hash"), primary_key=True)
+    msg_hash: str = Column(TonHash, primary_key=True)
+    tx_hash: str = Column(TonHash, ForeignKey("transactions.hash"), primary_key=True)
     tx_lt: int = Column(BigInteger, primary_key=True)
     direction = Column(Enum('out', 'in', name='msg_direction'), primary_key=True)
-    trace_id: str = Column(String(44))
-    source: str = Column(String)
-    destination: str = Column(String)
+    trace_id: str = Column(TonHash)
+    source: str = Column(TonAddr)
+    destination: str = Column(TonAddr)
     value: int = Column(BigInteger)
     fwd_fee: int = Column(BigInteger)
     ihr_fee: int = Column(BigInteger)
@@ -740,8 +794,8 @@ class Message(Base):
     bounce: bool = Column(Boolean)
     bounced: bool = Column(Boolean)
     import_fee: int = Column(BigInteger)
-    body_hash: str = Column(String(44))
-    init_state_hash: Optional[str] = Column(String(44), nullable=True)
+    body_hash: str = Column(TonHash)
+    init_state_hash: Optional[str] = Column(TonHash, nullable=True)
     value_extra_currencies: dict = Column(JSONB, nullable=True)
 
     transaction = relationship("Transaction",
@@ -785,21 +839,21 @@ class Message(Base):
 class MessageContent(Base):
     __tablename__ = 'message_contents'
 
-    hash: str = Column(String(44), primary_key=True)
-    body: str = Column(String)
+    hash: str = Column(TonHash, primary_key=True)
+    body: str = Column(TonBytes)
 
     # message = relationship("Message", back_populates="message_content")
 
 
 class JettonWallet(Base):
     __tablename__ = 'jetton_wallets'
-    address = Column(String, primary_key=True)
+    address = Column(TonAddr, primary_key=True)
     balance: int = Column(Numeric)
-    owner = Column(String)
-    jetton = Column(String)
+    owner = Column(TonAddr)
+    jetton = Column(TonAddr)
     last_transaction_lt = Column(BigInteger)
-    code_hash = Column(String)
-    data_hash = Column(String)
+    code_hash = Column(TonHash)
+    data_hash = Column(TonHash)
     destroyed = Column(Boolean, default=False)
 
     transfers: List["JettonTransfer"] = relationship("JettonTransfer",
@@ -818,31 +872,31 @@ class JettonWallet(Base):
 
 class JettonMaster(Base):
     __tablename__ = 'jetton_masters'
-    address = Column(String, primary_key=True)
+    address = Column(TonAddr, primary_key=True)
     total_supply: int = Column(Numeric)
     mintable: bool = Column(Boolean)
-    admin_address = Column(String, nullable=True)
+    admin_address = Column(TonAddr, nullable=True)
     jetton_content = Column(JSONB, nullable=True)
-    jetton_wallet_code_hash = Column(String)
-    code_hash = Column(String)
-    data_hash = Column(String)
+    jetton_wallet_code_hash = Column(TonHash)
+    code_hash = Column(TonHash)
+    data_hash = Column(TonHash)
     last_transaction_lt = Column(BigInteger)
     destroyed = Column(Boolean, default=False)
 
 
 class JettonTransfer(Base):
     __tablename__ = 'jetton_transfers'
-    transaction_hash = Column(String, ForeignKey("transactions.hash"), primary_key=True)
+    transaction_hash = Column(TonHash, ForeignKey("transactions.hash"), primary_key=True)
     query_id: int = Column(Numeric)
     amount: int = Column(Numeric)
-    source = Column(String)
-    destination = Column(String)
-    jetton_wallet_address = Column(String)
-    response_destination = Column(String)
-    custom_payload = Column(String)
+    source = Column(TonAddr)
+    destination = Column(TonAddr)
+    jetton_wallet_address = Column(TonAddr)
+    response_destination = Column(TonAddr)
+    custom_payload = Column(TonBytes)
     forward_ton_amount: int = Column(Numeric)
-    forward_payload = Column(String)
-    trace_id = Column(String(44))
+    forward_payload = Column(TonBytes)
+    trace_id = Column(TonHash)
 
     transaction: Transaction = relationship("Transaction")
     jetton_wallet: JettonWallet = relationship("JettonWallet",
@@ -852,13 +906,13 @@ class JettonTransfer(Base):
 
 class JettonBurn(Base):
     __tablename__ = 'jetton_burns'
-    transaction_hash = Column(String, ForeignKey("transactions.hash"), primary_key=True)
+    transaction_hash = Column(TonHash, ForeignKey("transactions.hash"), primary_key=True)
     query_id: int = Column(Numeric)
-    owner: str = Column(String)
-    jetton_wallet_address: str = Column(String)
+    owner: str = Column(TonAddr)
+    jetton_wallet_address: str = Column(TonAddr)
     amount: int = Column(Numeric)
-    response_destination = Column(String)
-    custom_payload = Column(String)
+    response_destination = Column(TonAddr)
+    custom_payload = Column(TonBytes)
 
     transaction: Transaction = relationship("Transaction")
     jetton_wallet: JettonWallet = relationship("JettonWallet",
@@ -868,12 +922,12 @@ class JettonBurn(Base):
 
 class NFTCollection(Base):
     __tablename__ = 'nft_collections'
-    address = Column(String, primary_key=True)
+    address = Column(TonAddr, primary_key=True)
     next_item_index: int = Column(Numeric)
-    owner_address = Column(String)
+    owner_address = Column(TonAddr)
     collection_content = Column(JSONB)
-    data_hash = Column(String)
-    code_hash = Column(String)
+    data_hash = Column(TonHash)
+    code_hash = Column(TonHash)
     last_transaction_lt = Column(BigInteger)
     destroyed = Column(Boolean, default=False)
 
@@ -884,15 +938,15 @@ class NFTCollection(Base):
 
 class NFTItem(Base):
     __tablename__ = 'nft_items'
-    address = Column(String, primary_key=True)
+    address = Column(TonAddr, primary_key=True)
     init: bool = Column(Boolean)
     index: int = Column(Numeric)
-    collection_address = Column(String)  # TODO: index
-    owner_address = Column(String)  # TODO: index
+    collection_address = Column(TonAddr)  # TODO: index
+    owner_address = Column(TonAddr)  # TODO: index
     content = Column(JSONB)
     last_transaction_lt = Column(BigInteger)
-    code_hash = Column(String)
-    data_hash = Column(String)
+    code_hash = Column(TonHash)
+    data_hash = Column(TonHash)
     destroyed = Column(Boolean, default=False)
 
     collection: Optional[NFTCollection] = relationship('NFTCollection',
@@ -906,15 +960,15 @@ class NFTItem(Base):
 
 class NFTTransfer(Base):
     __tablename__ = 'nft_transfers'
-    transaction_hash = Column(String, ForeignKey("transactions.hash"), primary_key=True)
+    transaction_hash = Column(TonHash, ForeignKey("transactions.hash"), primary_key=True)
     query_id: int = Column(Numeric)
-    nft_item_address = Column(String)  # TODO: index
-    old_owner = Column(String)  # TODO: index
-    new_owner = Column(String)  # TODO: index
-    response_destination = Column(String)
-    custom_payload = Column(String)
+    nft_item_address = Column(TonAddr)  # TODO: index
+    old_owner = Column(TonAddr)  # TODO: index
+    new_owner = Column(TonAddr)  # TODO: index
+    response_destination = Column(TonAddr)
+    custom_payload = Column(TonBytes)
     forward_amount: int = Column(Numeric)
-    forward_payload = Column(String)
+    forward_payload = Column(TonBytes)
 
     transaction: Transaction = relationship("Transaction")
     nft_item: NFTItem = relationship("NFTItem",
@@ -925,37 +979,37 @@ class NFTTransfer(Base):
 class NftSale(Base):
     __tablename__  = 'getgems_nft_sales'
 
-    address = Column(String, primary_key=True)
+    address = Column(TonAddr, primary_key=True)
     is_complete = Column(Boolean)
     created_at = Column(BigInteger)
-    marketplace_address = Column(String)
-    nft_address = Column(String)
-    nft_owner_address = Column(String)
+    marketplace_address = Column(TonAddr)
+    nft_address = Column(TonAddr)
+    nft_owner_address = Column(TonAddr)
     full_price = Column(Numeric)
-    marketplace_fee_address = Column(String)
+    marketplace_fee_address = Column(TonAddr)
     marketplace_fee = Column(Numeric)
-    royalty_address = Column(String)
+    royalty_address = Column(TonAddr)
     royalty_amount = Column(Numeric)
-    code_hash = Column(String)
+    code_hash = Column(TonHash)
     destroyed = Column(Boolean, default=False)
 
 
 class NftAuction(Base):
     __tablename__ = 'getgems_nft_auctions'
 
-    address = Column(String, primary_key=True)
-    nft_addr = Column(String)
-    nft_owner = Column(String)
+    address = Column(TonAddr, primary_key=True)
+    nft_addr = Column(TonAddr)
+    nft_owner = Column(TonAddr)
     last_bid = Column(Numeric)
-    mp_addr = Column(String)
-    mp_fee_addr = Column(String)
+    mp_addr = Column(TonAddr)
+    mp_fee_addr = Column(TonAddr)
     mp_fee_factor = Column(Numeric)
     mp_fee_base = Column(Numeric)
-    royalty_fee_addr = Column(String)
+    royalty_fee_addr = Column(TonAddr)
     royalty_fee_base = Column(Numeric)
     max_bid = Column(Numeric)
     min_bid = Column(Numeric)
-    code_hash = Column(String)
+    code_hash = Column(TonHash)
     destroyed = Column(Boolean, default=False)
 
 
@@ -963,34 +1017,34 @@ class MultisigOrder(Base):
     __tablename__ = 'multisig_orders'
 
     id = Column(BigInteger, primary_key=True, autoincrement=True)
-    address = Column(String, nullable=False, unique=True)
-    multisig_address = Column(String)
+    address = Column(TonAddr, nullable=False, unique=True)
+    multisig_address = Column(TonAddr)
     order_seqno = Column(Numeric)
     threshold = Column(BigInteger)
     sent_for_execution = Column(Boolean)
     approvals_mask = Column(Numeric)
     approvals_num = Column(BigInteger)
     expiration_date = Column(BigInteger)
-    order_boc = Column(String)
-    signers = Column(ARRAY(String()))
+    order_boc = Column(TonBytes)
+    signers = Column(TonAddrArray())
     last_transaction_lt = Column(BigInteger)
-    code_hash = Column(String)
-    data_hash = Column(String)
+    code_hash = Column(TonHash)
+    data_hash = Column(TonHash)
     destroyed = Column(Boolean, default=False)
 
 
 class LatestAccountState(Base):
     __tablename__ = 'latest_account_states'
-    account = Column(String, primary_key=True)
-    hash = Column(String)
-    code_hash = Column(String)
-    data_hash = Column(String)
-    frozen_hash = Column(String)
+    account = Column(TonAddr, primary_key=True)
+    hash = Column(TonHash)
+    code_hash = Column(TonHash)
+    data_hash = Column(TonHash)
+    frozen_hash = Column(TonHash)
     account_status = Column(String)
     timestamp = Column(Integer)
     last_trans_lt = Column(BigInteger)
     balance: int = Column(Numeric)
-    data_boc: str = Column(String)
+    data_boc: str = Column(TonBytes)
 
 # Indexes
 # Index("blocks_index_1", Block.workchain, Block.shard, Block.seqno)
