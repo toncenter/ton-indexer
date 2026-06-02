@@ -121,11 +121,11 @@ const ton::BlockSeqno FIRST_INDEXABLE_MC_SEQNO = 1;
 
 // Startup policy:
 // - Bounded archive mode is selected by --from + --to. It does not use
-//   ton_indexer_progress: without --force it reads existing masterchain seqnos
+//   _ton_indexer_progress: without --force it reads existing masterchain seqnos
 //   from blocks and only writes missing ones; with --force it writes the whole
 //   range. In both cases --prewarm only extends the read/TraceAssembler start,
 //   not the insert range.
-// - Normal mode uses ton_indexer_progress as the durable source of truth.
+// - Normal mode uses _ton_indexer_progress as the durable source of truth.
 //   If the row is missing, it is initialized from --from and indexing starts
 //   exactly there. Once the row exists, --from is only a deployment default and
 //   is ignored on restart.

@@ -1233,7 +1233,7 @@ create unlogged table if not exists _classifier_tasks
 );
 create index if not exists _classifier_tasks_mc_seqno_idx on _classifier_tasks (mc_seqno desc);
 
-create table if not exists classifier_progress
+create table if not exists _classifier_progress
 (
     id integer primary key check (id = 1),
     last_scheduled_mc_seqno integer not null,
@@ -1259,7 +1259,7 @@ begin
         end if;
     end if;
 
-    insert into classifier_progress(id, last_scheduled_mc_seqno)
+    insert into _classifier_progress(id, last_scheduled_mc_seqno)
     values (1, initial_progress)
     on conflict (id) do nothing;
 end;
@@ -1287,18 +1287,18 @@ create unlogged table if not exists _background_tasks
     error      varchar
 );
 
-create unlogged table if not exists ton_indexer_leader
+create unlogged table if not exists _ton_indexer_leader
 (
     id               integer primary key check (id = 1),
     leader_worker_id varchar     not null,
     last_heartbeat   timestamptz not null,
     started_at       timestamptz not null
 );
-insert into ton_indexer_leader (id, leader_worker_id, last_heartbeat, started_at)
+insert into _ton_indexer_leader (id, leader_worker_id, last_heartbeat, started_at)
 values (1, 'none', NOW() - INTERVAL '1 hour', NOW() - INTERVAL '1 hour')
 on conflict (id) do nothing;
 
-create table if not exists ton_indexer_progress
+create table if not exists _ton_indexer_progress
 (
     id                 integer primary key check (id = 1),
     finalized_mc_seqno integer     not null,
@@ -1331,7 +1331,7 @@ begin
 
     select last_scheduled_mc_seqno
     into watermark
-    from classifier_progress
+    from _classifier_progress
     where id = 1
     for update skip locked;
 
@@ -1354,7 +1354,7 @@ begin
     end loop;
 
     if scheduled_count > 0 then
-        update classifier_progress
+        update _classifier_progress
         set last_scheduled_mc_seqno = cur - 1,
             updated_at = now()
         where id = 1
@@ -1371,7 +1371,7 @@ create or replace function on_new_mc_block_func()
 $$
 begin
     if exists (select 1
-               from classifier_progress
+               from _classifier_progress
                where id = 1
                  and last_scheduled_mc_seqno >= NEW.seqno) then
         insert into _classifier_tasks(mc_seqno, start_after)
@@ -1401,15 +1401,15 @@ declare
     advanced_count  integer := 0;
 begin
     if wait_for_lock then
-        perform 1 from ton_indexer_progress where id = 1 for update;
+        perform 1 from _ton_indexer_progress where id = 1 for update;
     else
-        perform 1 from ton_indexer_progress where id = 1 for update skip locked;
+        perform 1 from _ton_indexer_progress where id = 1 for update skip locked;
     end if;
 
     if not found then
         select finalized_mc_seqno
         into finalized_seqno
-        from ton_indexer_progress
+        from _ton_indexer_progress
         where id = 1;
 
         return finalized_seqno;
@@ -1420,7 +1420,7 @@ begin
 
         select finalized_mc_seqno + 1
         into next_seqno
-        from ton_indexer_progress
+        from _ton_indexer_progress
         where id = 1;
 
         exit when not exists (select 1
@@ -1428,7 +1428,7 @@ begin
                               where workchain = '-1'::integer
                                 and seqno = next_seqno);
 
-        update ton_indexer_progress
+        update _ton_indexer_progress
         set finalized_mc_seqno = next_seqno,
             updated_at         = now()
         where id = 1;
@@ -1437,7 +1437,7 @@ begin
 
     select finalized_mc_seqno
     into finalized_seqno
-    from ton_indexer_progress
+    from _ton_indexer_progress
     where id = 1;
 
     return finalized_seqno;

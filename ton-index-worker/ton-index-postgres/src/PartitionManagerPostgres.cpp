@@ -300,7 +300,7 @@ void PartitionManagerPostgres::drop_old_partitions(pqxx::connection& c) const {
   }
   txn.exec("SET LOCAL lock_timeout = '250ms'").no_rows();
 
-  auto progress = txn.exec("SELECT finalized_mc_seqno FROM ton_indexer_progress WHERE id = 1");
+  auto progress = txn.exec("SELECT finalized_mc_seqno FROM _ton_indexer_progress WHERE id = 1");
   if (progress.empty()) {
     txn.commit();
     return;

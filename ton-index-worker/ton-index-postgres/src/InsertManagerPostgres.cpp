@@ -259,7 +259,7 @@ void PostgresLeaderHeartbeat::refresh_heartbeat() {
     pqxx::connection c(connection_string_);
     pqxx::work txn(c);
     auto updated = txn.exec(R"(
-      UPDATE ton_indexer_leader
+      UPDATE _ton_indexer_leader
       SET last_heartbeat = clock_timestamp()
       WHERE id = 1 AND leader_worker_id = $1
       RETURNING 1;
@@ -312,7 +312,7 @@ void ensure_still_leader(pqxx::work& txn, const std::string& worker_id) {
     WITH ts AS (
       SELECT clock_timestamp() AS checked_at
     )
-    UPDATE ton_indexer_leader
+    UPDATE _ton_indexer_leader
     SET last_heartbeat = ts.checked_at
     FROM ts
     WHERE id = 1
@@ -2702,17 +2702,17 @@ std::string get_worker_id() {
 bool InsertBatchPostgres::try_acquire_leader_lock(pqxx::connection& c, const std::string& worker_id) {
   auto query = R"(
   WITH grab AS (
-    INSERT INTO ton_indexer_leader(id, leader_worker_id, last_heartbeat, started_at)
+    INSERT INTO _ton_indexer_leader(id, leader_worker_id, last_heartbeat, started_at)
     VALUES (1, $1, now(), now())
     ON CONFLICT(id) DO UPDATE SET
       leader_worker_id = excluded.leader_worker_id,
       last_heartbeat = excluded.last_heartbeat,
       started_at = CASE
-        WHEN ton_indexer_leader.leader_worker_id = excluded.leader_worker_id THEN ton_indexer_leader.started_at
+        WHEN _ton_indexer_leader.leader_worker_id = excluded.leader_worker_id THEN _ton_indexer_leader.started_at
         ELSE excluded.started_at
       END
-    WHERE ton_indexer_leader.id = 1 AND (ton_indexer_leader.last_heartbeat < NOW() - INTERVAL '20 seconds'
-      OR ton_indexer_leader.leader_worker_id = $1)
+    WHERE _ton_indexer_leader.id = 1 AND (_ton_indexer_leader.last_heartbeat < NOW() - INTERVAL '20 seconds'
+      OR _ton_indexer_leader.leader_worker_id = $1)
     RETURNING 1
   )
   SELECT (SELECT COUNT(*) FROM grab) AS won_the_lock;
@@ -4383,7 +4383,7 @@ void InsertManagerPostgres::ensure_resume_state_initialized(td::Promise<bool> pr
     const auto initial_from_seqno = from_seqno >= first_indexable_mc_seqno ? from_seqno : first_indexable_mc_seqno;
     const auto initial_finalized_seqno = initial_from_seqno - 1;
     auto inserted = txn.exec(
-        "INSERT INTO ton_indexer_progress(id, finalized_mc_seqno, updated_at) "
+        "INSERT INTO _ton_indexer_progress(id, finalized_mc_seqno, updated_at) "
         "VALUES (1, $1, NOW()) "
         "ON CONFLICT (id) DO NOTHING "
         "RETURNING id",
@@ -4401,7 +4401,7 @@ void InsertManagerPostgres::ensure_resume_state_initialized(td::Promise<bool> pr
 }
 
 // Returns the next seqno for normal indexing. The first process that sees an
-// empty ton_indexer_progress table seeds it from --from, then fast-forwards it
+// empty _ton_indexer_progress table seeds it from --from, then fast-forwards it
 // through the already present contiguous masterchain blocks. Later restarts
 // always resume from persisted finalized_mc_seqno + 1 and do not trust --from.
 void InsertManagerPostgres::get_resume_seqno(td::Promise<InsertManagerInterface::ResumeState> promise,
@@ -4414,7 +4414,7 @@ void InsertManagerPostgres::get_resume_seqno(td::Promise<InsertManagerInterface:
     const auto initial_from_seqno = from_seqno >= first_indexable_mc_seqno ? from_seqno : first_indexable_mc_seqno;
     const auto initial_finalized_seqno = initial_from_seqno - 1;
     auto inserted = txn.exec(
-        "INSERT INTO ton_indexer_progress(id, finalized_mc_seqno, updated_at) "
+        "INSERT INTO _ton_indexer_progress(id, finalized_mc_seqno, updated_at) "
         "VALUES (1, $1, NOW()) "
         "ON CONFLICT (id) DO NOTHING "
         "RETURNING finalized_mc_seqno",
@@ -4425,9 +4425,9 @@ void InsertManagerPostgres::get_resume_seqno(td::Promise<InsertManagerInterface:
     if (initialized_from_cli) {
       finalized_seqno = inserted[0][0].as<std::int32_t>();
     } else {
-      auto rows = txn.exec("SELECT finalized_mc_seqno FROM ton_indexer_progress WHERE id = 1");
+      auto rows = txn.exec("SELECT finalized_mc_seqno FROM _ton_indexer_progress WHERE id = 1");
       if (rows.empty()) {
-        throw std::runtime_error("ton_indexer_progress row is missing");
+        throw std::runtime_error("_ton_indexer_progress row is missing");
       }
       finalized_seqno = rows[0][0].as<std::int32_t>();
     }
