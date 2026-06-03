@@ -51,10 +51,21 @@ index 42d83b84d..7d7e6911e 100644
                                          ColumnFamilyData** cfd) {
    Status s = VersionEditHandler::ApplyVersionEdit(edit, cfd);
 diff --git a/db/version_edit_handler.h b/db/version_edit_handler.h
-index 1d4b22e3c..65500ac73 100644
+index 1d4b22e3c..a6e3e61ce 100644
 --- a/db/version_edit_handler.h
 +++ b/db/version_edit_handler.h
-@@ -373,6 +373,8 @@ class ManifestTailer : public VersionEditHandlerPointInTime {
+@@ -31,6 +31,10 @@ class VersionEditHandlerBase {
+ 
+   AtomicGroupReadBuffer& GetReadBuffer() { return read_buffer_; }
+ 
++  void CopyReadBufferFrom(const VersionEditHandlerBase& handler) {
++    read_buffer_ = handler.read_buffer_;
++  }
++
+  protected:
+   explicit VersionEditHandlerBase(const ReadOptions& read_options,
+                                   uint64_t max_read_size)
+@@ -373,6 +377,8 @@ class ManifestTailer : public VersionEditHandlerPointInTime {
      ClearReadBuffer();
    }
  
@@ -64,10 +75,10 @@ index 1d4b22e3c..65500ac73 100644
      return cfds_changed_;
    }
 diff --git a/db/version_set.cc b/db/version_set.cc
-index cf89ec8ad..ab3d1e1c8 100644
+index cf89ec8ad..34eff3b61 100644
 --- a/db/version_set.cc
 +++ b/db/version_set.cc
-@@ -7860,19 +7860,36 @@ Status ReactiveVersionSet::Recover(
+@@ -7860,19 +7860,38 @@ Status ReactiveVersionSet::Recover(
    if (!s.ok()) {
      return s;
    }
@@ -107,6 +118,8 @@ index cf89ec8ad..ab3d1e1c8 100644
 +  manifest_tailer_.reset(new ManifestTailer(
 +      column_families, const_cast<ReactiveVersionSet*>(this), io_tracer_,
 +      read_options_, EpochNumberRequirement::kMightMissing));
++  // Preserve any AtomicGroup that reached EOF before becoming replayable.
++  manifest_tailer_->CopyReadBufferFrom(handler);
 +  s = manifest_tailer_->PrepareForCatchUpAfterRecover();
    return s;
  }
