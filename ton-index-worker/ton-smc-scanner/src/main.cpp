@@ -189,7 +189,7 @@ int main(int argc, char *argv[]) {
     kvrocks_config.db = v;
     return td::Status::OK();
   });
-  p.add_checked_option('\0', "kvrocks-pool-size", "Kvrocks connection pool size (default: 4)", [&](td::Slice value) {
+  p.add_checked_option('\0', "kvrocks-pool-size", "Kvrocks connection pool size (default: 32)", [&](td::Slice value) {
     int v;
     try {
       v = std::stoi(value.str());
@@ -202,7 +202,7 @@ int main(int argc, char *argv[]) {
     kvrocks_config.pool_size = static_cast<std::size_t>(v);
     return td::Status::OK();
   });
-  p.add_checked_option('\0', "kvrocks-connect-timeout-ms", "Kvrocks connection timeout in milliseconds (default: 1000)", [&](td::Slice value) {
+  p.add_checked_option('\0', "kvrocks-connect-timeout-ms", "Kvrocks connection timeout in milliseconds (default: 10000)", [&](td::Slice value) {
     int v;
     try {
       v = std::stoi(value.str());
@@ -215,7 +215,7 @@ int main(int argc, char *argv[]) {
     kvrocks_config.connect_timeout = std::chrono::milliseconds(v);
     return td::Status::OK();
   });
-  p.add_checked_option('\0', "kvrocks-socket-timeout-ms", "Kvrocks read/write timeout in milliseconds (default: 1000)", [&](td::Slice value) {
+  p.add_checked_option('\0', "kvrocks-socket-timeout-ms", "Kvrocks read/write timeout in milliseconds (default: 10000)", [&](td::Slice value) {
     int v;
     try {
       v = std::stoi(value.str());
@@ -228,7 +228,7 @@ int main(int argc, char *argv[]) {
     kvrocks_config.socket_timeout = std::chrono::milliseconds(v);
     return td::Status::OK();
   });
-  p.add_checked_option('\0', "kvrocks-pool-wait-timeout-ms", "Kvrocks connection pool wait timeout in milliseconds (default: 1000)", [&](td::Slice value) {
+  p.add_checked_option('\0', "kvrocks-pool-wait-timeout-ms", "Kvrocks connection pool wait timeout in milliseconds (default: 10000)", [&](td::Slice value) {
     int v;
     try {
       v = std::stoi(value.str());
