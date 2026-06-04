@@ -199,9 +199,7 @@ public:
     transfer.query_id = transfer_record.query_id;
     transfer.nft_item = transaction.account;
     transfer.nft_item_index = nft_item.index;
-    if (nft_item.collection_address.has_value()) {
-      transfer.nft_collection = convert::to_raw_address(nft_item.collection_address.value());
-    }
+    transfer.nft_collection = convert::to_raw_address(nft_item.collection_address);
     if (!transaction.in_msg.has_value() || !transaction.in_msg.value().source) {
       return td::Status::Error("Failed to fetch NFT old owner address");
     }

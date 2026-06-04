@@ -711,7 +711,7 @@ struct NFTTransfer {
   uint64_t query_id;
   block::StdAddress nft_item;
   td::RefInt256 nft_item_index;  // ignore
-  std::string nft_collection;  // ignore
+  std::optional<std::string> nft_collection;  // ignore
   std::string old_owner;
   std::string new_owner;
   std::string response_destination;

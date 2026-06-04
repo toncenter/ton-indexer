@@ -16,7 +16,9 @@ create_db 5010   # cold primary
 
 
 ./build/ton-index-worker/ton-index-postgres/ton-index-postgres-migrate \
-  --pg "host=127.0.0.1 port=5000 dbname=${POSTGRES_DB} user=postgres password=${PATRONI_POSTGRES_PASSWORD}"
+  --pg "host=127.0.0.1 port=5000 dbname=${POSTGRES_DB} user=postgres password=${PATRONI_POSTGRES_PASSWORD}" \
+  --custom-types
 
 ./build/ton-index-worker/ton-index-postgres/ton-index-postgres-migrate \
-  --pg "host=127.0.0.1 port=5010 dbname=${POSTGRES_DB} user=postgres password=${PATRONI_POSTGRES_PASSWORD}"
+  --pg "host=127.0.0.1 port=5010 dbname=${POSTGRES_DB} user=postgres password=${PATRONI_POSTGRES_PASSWORD}" \
+  --custom-types

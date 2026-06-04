@@ -194,9 +194,43 @@ ENV C_FORCE_ROOT=1
 ENTRYPOINT [ "/app/entrypoint.sh" ]
 
 
-## postgresql service image
-FROM postgres:18-bookworm AS postgres
-COPY --from=core-builder /app/build/pgton/pgton.so /usr/lib/postgresql/18/lib/
-COPY --from=core-builder /app/build/pgton/pgton.control /usr/share/postgresql/18/extension/
+## pgton extension builder
+FROM postgres:18-bookworm AS pgton-builder
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+         build-essential \
+         cmake \
+         postgresql-server-dev-18 \
+    && rm -rf /var/lib/apt/lists/*
+COPY ton-index-worker/cmake /app/cmake
+COPY ton-index-worker/pgton /app/pgton
+WORKDIR /app/build
+RUN cmake -DCMAKE_BUILD_TYPE=Release ../pgton \
+    && cmake --build . --target pgton
+
+
+## postgresql service image base
+FROM postgres:18-bookworm AS postgres-pgton
+COPY --from=pgton-builder /app/build/pgton.so /usr/lib/postgresql/18/lib/
+COPY --from=pgton-builder /app/build/pgton.control /usr/share/postgresql/18/extension/
 COPY ton-index-worker/pgton/pgton--0.1.sql /usr/share/postgresql/18/extension/
 
+
+## patroni postgresql service image
+FROM postgres-pgton AS patroni-postgres
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+         python3 \
+         python3-venv \
+         ca-certificates \
+         curl \
+    && rm -rf /var/lib/apt/lists/* \
+    && python3 -m venv /opt/patroni \
+    && /opt/patroni/bin/pip install --no-cache-dir --upgrade pip \
+    && /opt/patroni/bin/pip install --no-cache-dir "patroni[etcd3]" psycopg2-binary \
+    && ln -s /opt/patroni/bin/patroni /usr/local/bin/patroni \
+    && ln -s /opt/patroni/bin/patronictl /usr/local/bin/patronictl
+
+
+## postgresql service image
+FROM postgres-pgton AS postgres

@@ -108,20 +108,8 @@ services:
     <<: &patroni-common
       build:
         context: .
-        dockerfile_inline: |
-          FROM postgres:18
-          RUN apt-get update \
-              && apt-get install -y --no-install-recommends \
-                   python3 \
-                   python3-venv \
-                   ca-certificates \
-                   curl \
-              && rm -rf /var/lib/apt/lists/* \
-              && python3 -m venv /opt/patroni \
-              && /opt/patroni/bin/pip install --no-cache-dir --upgrade pip \
-              && /opt/patroni/bin/pip install --no-cache-dir "patroni[etcd3]" psycopg2-binary \
-              && ln -s /opt/patroni/bin/patroni /usr/local/bin/patroni \
-              && ln -s /opt/patroni/bin/patronictl /usr/local/bin/patronictl
+        dockerfile: Dockerfile
+        target: patroni-postgres
       image: local/patroni-postgres:18
       entrypoint: ["/bin/bash", "-ec"]
       command:

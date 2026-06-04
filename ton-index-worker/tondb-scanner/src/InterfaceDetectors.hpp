@@ -846,7 +846,9 @@ public:
     transfer.query_id = transfer_record.query_id;
     transfer.nft_item = transaction.account;
     transfer.nft_item_index = contract_data.index;
-    transfer.nft_collection = contract_data.collection_address;
+    if (contract_data.collection_address != "addr_none") {
+      transfer.nft_collection = contract_data.collection_address;
+    }
     if (!transaction.in_msg.has_value() || !transaction.in_msg.value().source) {
       promise.set_error(td::Status::Error(ErrorCode::EVENT_PARSING_ERROR, "Failed to fetch NFT old owner address"));
       return;
