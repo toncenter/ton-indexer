@@ -9,7 +9,6 @@
 // #include "InsertManagerPostgres.h"
 #include "DataParser.h"
 #include "DbScanner.h"
-#include "EventProcessor.h"
 #include "IntegrityChecker.h"
 
 

@@ -10,7 +10,6 @@
 #include "../../index-engine/src/IndexScheduler.h"
 #include "DataParser.h"
 #include "DbScanner.h"
-#include "EventProcessor.h"
 #include "InsertManagerPostgres.h"
 #include "TraceAssembler.h"
 

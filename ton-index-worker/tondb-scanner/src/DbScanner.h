@@ -7,7 +7,6 @@
 
 #include "IndexData.h"
 #include "DataParser.h"
-#include "EventProcessor.h"
 
 enum ScannerMode { dbs_readonly, dbs_secondary };
 

@@ -7,7 +7,7 @@
 
 #include "IndexData.h"
 #include "DbScanner.h"
-#include "EventProcessor.h"
+#include "ActionDetector.h"
 #include "TraceAssembler.h"
 #include "InsertManager.h"
 #include "DataParser.h"

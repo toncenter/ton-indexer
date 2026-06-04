@@ -358,21 +358,6 @@ struct TraceAssemblerState {
   std::vector<Trace> pending_traces_;
 };
 
-struct JettonMasterData {
-  std::string address;
-  td::RefInt256 total_supply;
-  bool mintable;
-  std::optional<std::string> admin_address;
-  std::optional<std::map<std::string, std::string>> jetton_content;
-  vm::CellHash jetton_wallet_code_hash;
-  vm::CellHash data_hash;
-  vm::CellHash code_hash;
-  uint64_t last_transaction_lt;
-  uint32_t last_transaction_now;
-  std::string code_boc;
-  std::string data_boc;
-};
-
 struct JettonMasterDataV2 {
   block::StdAddress address;
   td::RefInt256 total_supply;
@@ -384,17 +369,6 @@ struct JettonMasterDataV2 {
   td::Bits256 code_hash;
   uint64_t last_transaction_lt;
   uint32_t last_transaction_now;
-};
-
-struct JettonWalletData {
-  td::RefInt256 balance;
-  std::string address;
-  std::string owner;
-  std::string jetton;
-  uint64_t last_transaction_lt;
-  uint32_t last_transaction_now;
-  vm::CellHash code_hash;
-  vm::CellHash data_hash;
 };
 
 struct JettonWalletDataV2 {
@@ -642,19 +616,6 @@ struct ValidatorComplaint {
   uint32_t source_mc_seqno;
 };
 
-struct NFTCollectionData {
-  std::string address;
-  td::RefInt256 next_item_index;
-  std::optional<std::string> owner_address;
-  std::optional<std::map<std::string, std::string>> collection_content;
-  vm::CellHash data_hash;
-  vm::CellHash code_hash;
-  uint64_t last_transaction_lt;
-  uint32_t last_transaction_now;
-  std::string code_boc;
-  std::string data_boc;
-};
-
 struct NFTCollectionDataV2 {
   block::StdAddress address;
   td::RefInt256 next_item_index;
@@ -664,19 +625,6 @@ struct NFTCollectionDataV2 {
   uint32_t last_transaction_now;
   td::Bits256 data_hash;
   td::Bits256 code_hash;
-};
-
-struct NFTItemData {
-  std::string address;
-  bool init;
-  td::RefInt256 index;
-  std::string collection_address;
-  std::string owner_address;
-  std::optional<std::map<std::string, std::string>> content;
-  uint64_t last_transaction_lt;
-  uint32_t last_transaction_now;
-  vm::CellHash code_hash;
-  vm::CellHash data_hash;
 };
 
 struct NFTItemDataV2 {
@@ -857,12 +805,6 @@ using BlockchainEvent = std::variant<JettonTransfer,
                                      NominatorPoolValidatorEvent,
                                      ValidatorEvent>;
 
-using BlockchainInterface = std::variant<JettonMasterData,
-                                         JettonWalletData,
-                                         NFTCollectionData,
-                                         NFTItemData>;
-
-
 using BlockchainInterfaceV2 = std::variant<JettonWalletDataV2,
                                            JettonMasterDataV2,
                                            NFTCollectionDataV2,
@@ -912,7 +854,6 @@ struct ParsedBlock {
   std::vector<schema::ValidatorElection> validator_elections_;
   std::vector<schema::ValidatorCycle> validator_cycles_;
   std::vector<schema::ValidatorComplaint> validator_complaints_;
-  std::vector<schema::BlockchainInterface> interfaces_; // deprecated in favour of account_interfaces_
 
   std::unordered_map<block::StdAddress, std::vector<schema::BlockchainInterfaceV2>> account_interfaces_;
 
@@ -922,18 +863,6 @@ struct ParsedBlock {
     for (auto& event: events_) {
       if (std::holds_alternative<T>(event)) {
         result.push_back(std::get<T>(event));
-      }
-    }
-    return result;
-  }
-
-  // deprecated
-  template <class T>
-  std::vector<T> get_accounts() {
-    std::vector<T> result;
-    for (auto& interface: interfaces_) {
-      if (std::holds_alternative<T>(interface)) {
-        result.push_back(std::get<T>(interface));
       }
     }
     return result;
