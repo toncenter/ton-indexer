@@ -95,14 +95,16 @@ public:
                       std::int32_t latest_states_prepare_chunk_size = 128,
                       PartitionManagerConfig partition_config = {},
                       bool no_leader = false,
-                      bool disable_progress_advance = false) :
+                      bool disable_progress_advance = false,
+                      bool pg_skip_state_tables = false) :
     credential_(std::move(credential)), kvrocks_(std::move(kvrocks)), leader_heartbeat_(leader_heartbeat), worker_id_(std::move(worker_id)),
     insert_tasks_(std::move(insert_tasks)), promise_(std::move(promise)), max_data_depth_(max_data_depth),
     latest_states_prepare_parallelism_(latest_states_prepare_parallelism),
     latest_states_prepare_chunk_size_(latest_states_prepare_chunk_size),
     partition_config_(partition_config),
     no_leader_(no_leader),
-    disable_progress_advance_(disable_progress_advance) {
+    disable_progress_advance_(disable_progress_advance),
+    pg_skip_state_tables_(pg_skip_state_tables) {
       // sorting in descending seqno order for easier processing of interfaces
       std::sort(insert_tasks_.begin(), insert_tasks_.end(), [](const auto& a, const auto& b) {
         return a.mc_seqno_ > b.mc_seqno_;
@@ -125,6 +127,7 @@ private:
   PartitionManagerConfig partition_config_;
   bool no_leader_;
   bool disable_progress_advance_;
+  bool pg_skip_state_tables_;
   bool with_copy_{true};
   bool is_leader_{false};
   std::optional<LeaderHeartbeatGuard> leader_heartbeat_guard_;
@@ -1511,7 +1514,8 @@ class PrepareLatestAccountStatesChunkActor final : public td::actor::Actor {
 };
 
 void collect_and_prepare_batch_rows(const std::vector<InsertTaskStruct>& insert_tasks, PreparedBatchPostgres& prepared_batch,
-                                    std::vector<LatestAccountStateSourceRow>& latest_account_state_sources) {
+                                    std::vector<LatestAccountStateSourceRow>& latest_account_state_sources,
+                                    bool prepare_state_tables) {
   std::unordered_map<block::StdAddress, DestroyedAccountState> destroyed_accounts;
   for (const auto& task : insert_tasks) {
     for (const auto& account_state : task.parsed_block_->account_states_) {
@@ -1532,7 +1536,7 @@ void collect_and_prepare_batch_rows(const std::vector<InsertTaskStruct>& insert_
     return convert::to_raw_address(key);
   });
 
-  {
+  if (prepare_state_tables) {
     struct MessageContentValue {
       std::string body;
       std::uint32_t source_mc_seqno;
@@ -1586,7 +1590,7 @@ void collect_and_prepare_batch_rows(const std::vector<InsertTaskStruct>& insert_
     }
   }
 
-  {
+  if (prepare_state_tables) {
     for (const auto& task : insert_tasks) {
       for (const auto& account_state : task.parsed_block_->account_states_) {
         if (account_state.account_status == "nonexist") {
@@ -1728,6 +1732,10 @@ void collect_and_prepare_batch_rows(const std::vector<InsertTaskStruct>& insert_
         .nodes = trace.nodes_,
       });
     }
+  }
+
+  if (!prepare_state_tables) {
+    return;
   }
 
   {
@@ -2883,9 +2891,11 @@ void InsertBatchPostgres::begin_prepare() {
   prepared_batch_ = std::make_shared<PreparedBatchPostgres>();
   prepare_state_ = std::make_shared<InsertBatchPostgresPrepareState>();
 
-  collect_and_prepare_batch_rows(insert_tasks_, *prepared_batch_, prepare_state_->latest_account_state_sources);
+  const bool prepare_state_tables = kvrocks_ != nullptr || !pg_skip_state_tables_;
+  collect_and_prepare_batch_rows(insert_tasks_, *prepared_batch_, prepare_state_->latest_account_state_sources,
+                                 prepare_state_tables);
 
-  if (prepare_state_->latest_account_state_sources.empty()) {
+  if (!prepare_state_tables || prepare_state_->latest_account_state_sources.empty()) {
     prepare_state_.reset();
     return;
   }
@@ -2994,7 +3004,7 @@ void InsertBatchPostgres::commit_prepared_batch() {
   // Keep Postgres as the durable progress source without holding a Postgres
   // transaction open while Kvrocks performs network writes.
   insert_kvrocks();
-  const bool kvrocks_state_only = kvrocks_ != nullptr;
+  const bool write_postgres_state_tables = !pg_skip_state_tables_ && kvrocks_ == nullptr;
 
   td::Timer connect_timer;
   pqxx::connection c(connection_string_);
@@ -3010,7 +3020,7 @@ void InsertBatchPostgres::commit_prepared_batch() {
   insert_shard_state(txn, with_copy_);
   insert_transactions(txn, with_copy_);
   insert_messages(txn, with_copy_);
-  if (!kvrocks_state_only) {
+  if (write_postgres_state_tables) {
     insert_account_states(txn, with_copy_);
     insert_message_contents(txn);
   }
@@ -3021,14 +3031,14 @@ void InsertBatchPostgres::commit_prepared_batch() {
   insert_nominator_pool_validator_events(txn, with_copy_);
   insert_validator_events(txn, with_copy_);
   insert_traces(txn, with_copy_);
-  if (!kvrocks_state_only) {
+  if (write_postgres_state_tables) {
     insert_contract_methods(txn);
   }
   data_timer.pause();
 
   td::Timer states_timer;
   std::string upsert_query;
-  if (!kvrocks_state_only) {
+  if (write_postgres_state_tables) {
     upsert_query += insert_jetton_masters(txn);
     upsert_query += insert_jetton_wallets(txn);
     upsert_query += insert_nft_collections(txn);
@@ -4299,6 +4309,9 @@ void InsertManagerPostgres::start_up() {
   if (disable_progress_advance_) {
     LOG(INFO) << "Postgres indexer progress advancement is disabled for this writer";
   }
+  if (pg_skip_state_tables_) {
+    LOG(INFO) << "Postgres state/key-value/current table writes are disabled for this writer";
+  }
   
   worker_id_ = get_worker_id();
   if (no_leader_) {
@@ -4348,7 +4361,8 @@ void InsertManagerPostgres::create_insert_actor(std::vector<InsertTaskStruct> in
       latest_states_prepare_chunk_size_,
       partition_config_,
       no_leader_,
-      disable_progress_advance_).release();
+      disable_progress_advance_,
+      pg_skip_state_tables_).release();
 }
 
 void InsertManagerPostgres::get_existing_seqnos(td::Promise<std::vector<std::uint32_t>> promise, std::int32_t from_seqno, std::int32_t to_seqno) {

@@ -42,6 +42,7 @@ int main(int argc, char *argv[]) {
   bool custom_types = false;
   bool create_indexes = true;
   bool run_migrations = true;
+  bool pg_skip_state_tables = false;
   InsertManagerPostgres::Credential credential;
   KvrocksConfig kvrocks_config;
   PartitionManagerConfig partition_config;
@@ -148,6 +149,9 @@ int main(int argc, char *argv[]) {
 
   p.add_option('\0', "pg-manage-partitions", "Manage hot PostgreSQL range partitions for historical tables", [&]() {
     partition_config.enabled = true;
+  });
+  p.add_option('\0', "pg-skip-state-tables", "Do not write PostgreSQL state/key-value/current tables; historical/event tables are still written", [&]() {
+    pg_skip_state_tables = true;
   });
   p.add_checked_option('\0', "pg-partition-size-mc-seqnos", "PostgreSQL partition size in masterchain seqnos", [&](td::Slice value) {
     std::uint64_t v;
@@ -487,7 +491,8 @@ int main(int argc, char *argv[]) {
   td::actor::Scheduler scheduler({td::actor::Scheduler::NodeInfo{threads, io_workers}});
   scheduler.run_in_context([&] {
     insert_manager_ = td::actor::create_actor<InsertManagerPostgres>(
-        "insertmanager", credential, kvrocks_config, partition_config, no_leader, bounded_archive_range);
+        "insertmanager", credential, kvrocks_config, partition_config, no_leader, bounded_archive_range,
+        pg_skip_state_tables);
   });
   scheduler.run_in_context([&] { parse_manager_ = td::actor::create_actor<ParseManager>("parsemanager"); });
   scheduler.run_in_context([&] { db_scanner_ = td::actor::create_actor<DbScanner>("scanner", db_root, dbs_secondary, working_dir + "/secondary_logs"); });
