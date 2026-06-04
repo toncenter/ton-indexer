@@ -11,7 +11,6 @@
 #include "DataParser.h"
 #include "DbScanner.h"
 #include "TraceAssembler.h"
-#include "EventProcessor.h"
 #include "IndexScheduler.h"
 
 
