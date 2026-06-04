@@ -3,7 +3,6 @@ package crud
 import (
 	"context"
 
-	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/toncenter/ton-indexer/ton-index-go/index/models"
 	"github.com/toncenter/ton-indexer/ton-index-go/index/parse"
 
@@ -12,11 +11,6 @@ import (
 
 // Query GetGems Sales
 func queryGetgemsSalesImpl(addresses []models.AccountAddress, conn *pgxpool.Conn, settings models.RequestSettings) ([]models.RawNFTSale, error) {
-	addrStrings := make([]models.AccountAddress, len(addresses))
-	for i, a := range addresses {
-		addrStrings[i] = a
-	}
-
 	query := `
 		SELECT
 			'getgems_sale' as sale_type,
@@ -53,13 +47,13 @@ func queryGetgemsSalesImpl(addresses []models.AccountAddress, conn *pgxpool.Conn
 		FROM getgems_nft_sales as s
 		LEFT JOIN nft_items N ON s.nft_address = N.address AND NOT N.destroyed
 		LEFT JOIN nft_collections C ON N.collection_address = C.address AND NOT C.destroyed
-		WHERE s.address = ANY($1) AND NOT s.destroyed
+		WHERE s.address = ANY($1::tonaddr[]) AND NOT s.destroyed
 	`
 
 	ctx, cancel_ctx := context.WithTimeout(context.Background(), settings.Timeout)
 	defer cancel_ctx()
 
-	rows, err := conn.Query(ctx, query, pgtype.FlatArray[models.AccountAddress](addrStrings))
+	rows, err := conn.Query(ctx, query, tonaddrArrayParam(addresses))
 	if err != nil {
 		return nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
@@ -118,11 +112,6 @@ func queryGetgemsSalesImpl(addresses []models.AccountAddress, conn *pgxpool.Conn
 
 // Query GetGems Auctions
 func queryGetgemsAuctionsImpl(addresses []models.AccountAddress, conn *pgxpool.Conn, settings models.RequestSettings) ([]models.RawNFTSale, error) {
-	addrStrings := make([]models.AccountAddress, len(addresses))
-	for i, a := range addresses {
-		addrStrings[i] = a
-	}
-
 	query := `
 		SELECT
 			'getgems_auction' as sale_type,
@@ -168,13 +157,13 @@ func queryGetgemsAuctionsImpl(addresses []models.AccountAddress, conn *pgxpool.C
 		FROM getgems_nft_auctions as a
 		LEFT JOIN nft_items N ON a.nft_addr = N.address AND NOT N.destroyed
 		LEFT JOIN nft_collections C ON N.collection_address = C.address AND NOT C.destroyed
-		WHERE a.address = ANY($1) AND NOT a.destroyed
+		WHERE a.address = ANY($1::tonaddr[]) AND NOT a.destroyed
 	`
 
 	ctx, cancel_ctx := context.WithTimeout(context.Background(), settings.Timeout)
 	defer cancel_ctx()
 
-	rows, err := conn.Query(ctx, query, pgtype.FlatArray[models.AccountAddress](addrStrings))
+	rows, err := conn.Query(ctx, query, tonaddrArrayParam(addresses))
 	if err != nil {
 		return nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
@@ -242,11 +231,6 @@ func queryGetgemsAuctionsImpl(addresses []models.AccountAddress, conn *pgxpool.C
 
 // Query Telemint NFTs
 func queryTelemintImpl(addresses []models.AccountAddress, conn *pgxpool.Conn, settings models.RequestSettings) ([]models.RawNFTSale, error) {
-	addrStrings := make([]models.AccountAddress, len(addresses))
-	for i, a := range addresses {
-		addrStrings[i] = a
-	}
-
 	query := `
 		SELECT
 			'telemint' as sale_type,
@@ -270,13 +254,13 @@ func queryTelemintImpl(addresses []models.AccountAddress, conn *pgxpool.Conn, se
 			t.code_hash,
 			t.data_hash
 		FROM telemint_nft_items as t
-		WHERE t.address = ANY($1) AND NOT t.destroyed
+		WHERE t.address = ANY($1::tonaddr[]) AND NOT t.destroyed
 	`
 
 	ctx, cancel_ctx := context.WithTimeout(context.Background(), settings.Timeout)
 	defer cancel_ctx()
 
-	rows, err := conn.Query(ctx, query, pgtype.FlatArray[models.AccountAddress](addrStrings))
+	rows, err := conn.Query(ctx, query, tonaddrArrayParam(addresses))
 	if err != nil {
 		return nil, models.IndexError{Code: 500, Message: err.Error()}
 	}

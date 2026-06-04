@@ -146,7 +146,7 @@ func fetchTasks(ctx context.Context, pool *pgxpool.Pool) ([]FetchTask, error) {
 	defer conn.Release()
 
 	rows, err := conn.Query(ctx, `
-        SELECT id, type, data, retries  FROM background_tasks
+        SELECT id, type, data, retries  FROM _background_tasks
         WHERE status = 'ready'
         AND type = 'fetch_metadata' AND retries <= $1
         AND (retry_at <= EXTRACT(EPOCH FROM NOW())::bigint OR retry_at is NULL)
@@ -279,7 +279,7 @@ func extractURL(metadata map[string]interface{}) (string, error) {
 
 // completeTask removes the task from the tasks table.
 func completeTask(ctx context.Context, tx pgx.Tx, task FetchTask) error {
-	query := "DELETE FROM background_tasks WHERE id = $1"
+	query := "DELETE FROM _background_tasks WHERE id = $1"
 	_, err := tx.Exec(ctx, query, task.TaskId)
 	if err != nil {
 		return fmt.Errorf("failed to delete task: %v", err)
@@ -506,7 +506,7 @@ func handleTaskFailure(ctx context.Context, tx pgx.Tx, kvrocks *KvrocksStore, ta
 
 	if task.Retry < max_retries {
 		_, err := tx.Exec(ctx, `
-        UPDATE background_tasks
+        UPDATE _background_tasks
         SET status = 'ready',
             retry_at = EXTRACT(EPOCH FROM NOW())::bigint + $1,
         	retries = retries + 1,
@@ -519,7 +519,7 @@ func handleTaskFailure(ctx context.Context, tx pgx.Tx, kvrocks *KvrocksStore, ta
 		}
 	} else {
 		_, err := tx.Exec(ctx, `
-		UPDATE background_tasks
+		UPDATE _background_tasks
 		SET status = 'failed', error = $2, retries = retries + 1
 		WHERE id = $1`, task.TaskId, taskErr.Error())
 		if err != nil {
@@ -575,7 +575,7 @@ func createTables(ctx context.Context, pool *pgxpool.Pool, createAddressMetadata
 	}
 	defer conn.Release()
 	_, err = conn.Exec(ctx, `
-		create unlogged table if not exists background_tasks 
+		create unlogged table if not exists _background_tasks 
 		(
 			id         bigint generated always as identity
 				constraint background_tasks_pk
@@ -591,7 +591,7 @@ func createTables(ctx context.Context, pool *pgxpool.Pool, createAddressMetadata
 	`)
 
 	if err != nil {
-		return fmt.Errorf("failed to create background_tasks table: %v", err)
+		return fmt.Errorf("failed to create _background_tasks table: %v", err)
 	}
 
 	if !createAddressMetadata {
@@ -649,7 +649,7 @@ func updateStalledTasks(ctx context.Context, pool *pgxpool.Pool) {
 		}
 
 		_, err = conn.Exec(ctx, `
-            UPDATE background_tasks
+            UPDATE _background_tasks
             SET status = 'ready',
                 retry_at =  EXTRACT(EPOCH FROM NOW())::bigint + LEAST(
                     $1 * POWER($2, retries - 1),
@@ -817,7 +817,7 @@ func main() {
 				log.Printf("failed to acquire worker: %s\n", err.Error())
 				continue
 			}
-			_, err := pool.Exec(ctx, `UPDATE background_tasks
+			_, err := pool.Exec(ctx, `UPDATE _background_tasks
 					SET status = 'in_progress',
 						started_at = EXTRACT(EPOCH FROM NOW())::bigint
 					WHERE id = $1`,

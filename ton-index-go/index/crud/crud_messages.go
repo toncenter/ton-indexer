@@ -26,8 +26,8 @@ func buildMessagesQuery(
 		M.value_extra_currencies, M.fwd_fee, M.ihr_fee, M.extra_flags, M.created_lt, M.created_at, M.opcode, M.ihr_disabled, M.bounce, 
 		M.bounced, M.import_fee, M.body_hash, M.init_state_hash, M.msg_hash_norm`
 	clmn_query := `'', 0, M.msg_hash, '', ` + rest_columns + `, 
-		max(case when M.direction='in' then M.tx_hash else null end) as in_tx_hash, 
-		max(case when M.direction='out' then M.tx_hash else null end) as out_tx_hash`
+		(array_agg(M.tx_hash ORDER BY M.tx_lt) FILTER (WHERE M.direction='in'))[1] as in_tx_hash,
+		(array_agg(M.tx_hash ORDER BY M.tx_lt) FILTER (WHERE M.direction='out'))[1] as out_tx_hash`
 	from_query := ` messages as M `
 	groupby_query := ` group by M.msg_hash, ` + rest_columns
 	filter_list := []string{}

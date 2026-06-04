@@ -15,16 +15,20 @@ from typing import List, Tuple
 from typing import Optional
 
 import msgpack
-from sqlalchemy import Column, Integer, String, Boolean, event, delete
-from sqlalchemy import select, and_
+from sqlalchemy import Column, Integer, String, Boolean, event, delete, func
+from sqlalchemy import select, and_, literal, tuple_
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.dialects.postgresql import ARRAY as PG_ARRAY
+from sqlalchemy.dialects.postgresql import array as pg_array
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import sessionmaker, selectinload
 from sqlalchemy.orm.attributes import set_committed_value
 from sqlalchemy.sql import text
+from sqlalchemy_utils import CompositeType
 
 from indexer.core import redis
 from indexer.core import kvrocks
-from indexer.core.database import Base, ActionAccount
+from indexer.core.database import Base, ActionAccount, TonHash
 from indexer.core.database import engine, Trace, Transaction, Message, MessageContent, Action, SyncSessionMaker
 from indexer.core.settings import Settings
 from indexer.events import context
@@ -87,6 +91,8 @@ async def hydrate_message_contents_from_kvrocks(traces: list[Trace]):
 
 def add_on_conflict_ignore(conn, cursor, statement, parameters, context, executemany):
     stipped_statement = statement.lstrip().upper()
+    if ' ON CONFLICT ' in stipped_statement:
+        return statement, parameters
     if stipped_statement.startswith('INSERT INTO ACTIONS'):
         statement += " ON CONFLICT DO NOTHING"
     elif stipped_statement.startswith('INSERT INTO ACTION_ACCOUNTS'):
@@ -95,18 +101,60 @@ def add_on_conflict_ignore(conn, cursor, statement, parameters, context, execute
     return statement, parameters
 
 
+def mapped_non_null_values(model):
+    return {
+        column.key: bind_value(getattr(model, column.key), column.type)
+        for column in model.__mapper__.columns
+        if column.key in model.__dict__ and getattr(model, column.key) is not None
+    }
+
+
+def bind_value(value, type_):
+    if isinstance(type_, CompositeType):
+        return composite_value(value, type_)
+    return value
+
+
+def composite_field_value(value, type_):
+    if isinstance(type_, CompositeType):
+        if value is None:
+            return literal(None).cast(type_)
+        return composite_value(value, type_)
+    if isinstance(type_, PG_ARRAY) and isinstance(type_.item_type, CompositeType):
+        if value is None:
+            return literal(None).cast(type_)
+        return pg_array([composite_value(item, type_.item_type) for item in value]).cast(type_)
+    return literal(value, type_=type_)
+
+
+def composite_value(value, type_):
+    fields = []
+    for i, column in enumerate(type_.columns):
+        if isinstance(value, dict):
+            field_value = value.get(column.name)
+        else:
+            try:
+                field_value = getattr(value, column.name)
+            except AttributeError:
+                field_value = value[i]
+        fields.append(composite_field_value(field_value, column.type))
+    if len(fields) == 1:
+        return func.ROW(*fields).cast(type_)
+    return tuple_(*fields).cast(type_)
+
+
 class ClassifierTask(Base):
     __tablename__ = '_classifier_tasks'
     id: int = Column(Integer, primary_key=True)
     mc_seqno: int = Column(Integer)
-    trace_id: str = Column(String(44))
+    trace_id: str = Column(TonHash)
     pending: bool = Column(Boolean)
 
 
 class ClassifierFailedTrace(Base):
     __tablename__ = '_classifier_failed_traces'
     id: int = Column(Integer, primary_key=True)
-    trace_id: str = Column(String(44))
+    trace_id: str = Column(TonHash)
     error: str = Column(String)
 
 
@@ -361,8 +409,12 @@ class EventClassifierWorker(mp.Process):
                     #     for aa in action.get_action_accounts():
                     #         await session.execute(insert(ActionAccount).values({k: v for k, v in aa.__dict__.items() if not k.startswith('_')}).on_conflict_do_nothing())
                     #     # session.add_all(action.get_action_accounts())
-                    session.add_all(actions)
                     for action in actions:
+                        await session.execute(
+                            pg_insert(Action)
+                            .values(mapped_non_null_values(action))
+                            .on_conflict_do_nothing()
+                        )
                         concat_key = action.action_id + '_' + action.trace_id
                         if concat_key in inserted_actions:
                             raise Exception(f"Duplicate action: {concat_key}")
@@ -374,14 +426,18 @@ class EventClassifierWorker(mp.Process):
                                 raise Exception(f"Duplicate action account: {account_concat_key}")
                             else:
                                 inserted_action_accounts.add(account_concat_key)
-                        session.add_all(action.get_action_accounts())
+                            await session.execute(
+                                pg_insert(ActionAccount)
+                                .values(mapped_non_null_values(action_account))
+                                .on_conflict_do_nothing()
+                            )
 
                     if state == 'ok':
                         ok_traces.append(trace_id)
                     else:
                         err = f'{exc}' if exc is not None else None
                         sql = text(f"""insert into _classifier_failed_traces(trace_id, broken, error) 
-                                                values (:tid, false, :err) on conflict do nothing;""")
+                                                values (CAST(:tid AS tonhash), false, :err) on conflict do nothing;""")
                         await session.execute(sql.bindparams(tid=trace_id, err=err))
                         if state == 'broken':
                             broken_traces.append(trace_id)

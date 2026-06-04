@@ -8,7 +8,6 @@ import (
 	"reflect"
 	"strings"
 
-	"github.com/lib/pq"
 	"github.com/toncenter/ton-indexer/ton-index-go/index/detect"
 	"github.com/toncenter/ton-indexer/ton-index-go/index/models"
 	"github.com/toncenter/ton-indexer/ton-index-go/index/services"
@@ -80,6 +79,18 @@ func filterByArray[T any](clmn string, values []T) string {
 	return ``
 }
 
+func tonaddrArrayParam(addrList []models.AccountAddress) []string {
+	result := make([]string, len(addrList))
+	for i, addr := range addrList {
+		if (&addr).IsAddressNone() {
+			result[i] = "addr_none"
+		} else {
+			result[i] = string(addr)
+		}
+	}
+	return result
+}
+
 func QueryMetadataImpl(addr_list []models.AccountAddress, conn *pgxpool.Conn, settings models.RequestSettings) (models.Metadata, error) {
 	if settings.UseCache {
 		metadata, err := services.AddressInfoCacheClient.GetMetadata(addr_list)
@@ -106,13 +117,13 @@ func QueryMetadataImpl(addr_list []models.AccountAddress, conn *pgxpool.Conn, se
 		addr_list = append(addr_list, additional_addrs...)
 	}
 
-	query := "select n.address, m.valid, 'nft_items' as type, m.name, m.symbol, m.description, m.image, m.extra, n.index from nft_items n left join address_metadata m on n.address = m.address and m.type = 'nft_items' where n.address = ANY($1) and not n.destroyed" +
+	query := "select n.address, m.valid, 'nft_items' as type, m.name, m.symbol, m.description, m.image, m.extra, n.index from nft_items n left join address_metadata m on n.address = m.address and m.type = 'nft_items' where n.address = ANY($1::tonaddr[]) and not n.destroyed" +
 		" union all " +
-		"select c.address, m.valid, 'nft_collections' as type, m.name, m.symbol, m.description, m.image, m.extra, null as index from nft_collections c left join address_metadata m on c.address = m.address and m.type = 'nft_collections' where c.address = ANY($1) and not c.destroyed" +
+		"select c.address, m.valid, 'nft_collections' as type, m.name, m.symbol, m.description, m.image, m.extra, null as index from nft_collections c left join address_metadata m on c.address = m.address and m.type = 'nft_collections' where c.address = ANY($1::tonaddr[]) and not c.destroyed" +
 		" union all " +
-		"select j.address, m.valid, 'jetton_masters' as type, m.name, m.symbol, m.description, m.image, m.extra, null as index from jetton_masters j left join address_metadata m on j.address = m.address and m.type = 'jetton_masters'  where j.address = ANY($1) and not j.destroyed"
+		"select j.address, m.valid, 'jetton_masters' as type, m.name, m.symbol, m.description, m.image, m.extra, null as index from jetton_masters j left join address_metadata m on j.address = m.address and m.type = 'jetton_masters'  where j.address = ANY($1::tonaddr[]) and not j.destroyed"
 
-	rows, err := conn.Query(ctx, query, pq.Array(addr_list))
+	rows, err := conn.Query(ctx, query, tonaddrArrayParam(addr_list))
 	if err != nil {
 		return nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
