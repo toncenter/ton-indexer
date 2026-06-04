@@ -175,5 +175,6 @@ private:
   td::Promise<Result> promise_;
 
   static bool get_asset(td::Ref<vm::CellSlice> slice, std::optional<block::StdAddress>& address);
+  static bool get_asset_v2(td::Ref<vm::CellSlice> slice, std::optional<block::StdAddress>& address);
   void verify_with_factory(td::Ref<vm::Cell> factory_code, td::Ref<vm::Cell> factory_data, Result pool_data);
 };
