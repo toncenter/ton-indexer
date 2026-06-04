@@ -1,5 +1,6 @@
 #include "PostgreSQLInserter.h"
 
+#include <algorithm>
 #include <cstdlib>
 
 #include <pqxx/pqxx>
@@ -12,15 +13,56 @@ bool has_nft_real_owner_data(const kvrocks_state::StateBatch& batch) {
   return !batch.nft_items.empty() || !batch.getgems_nft_sales.empty() || !batch.getgems_nft_auctions.empty();
 }
 
+bool is_retriable_insert_error(const std::exception& e) {
+  if (dynamic_cast<const sw::redis::IoError*>(&e) != nullptr ||
+      dynamic_cast<const sw::redis::ClosedError*>(&e) != nullptr ||
+      dynamic_cast<const pqxx::broken_connection*>(&e) != nullptr) {
+    return true;
+  }
+
+  const auto* redis_error = dynamic_cast<const sw::redis::Error*>(&e);
+  if (redis_error == nullptr) {
+    return false;
+  }
+  const std::string message = redis_error->what();
+  return message.find("Failed to fetch a connection") != std::string::npos;
+}
+
+std::chrono::milliseconds insert_retry_delay(const ScannerInsertConfig& config, std::uint32_t retry_index) {
+  auto delay_ms = std::max<std::int64_t>(0, config.insert_retry_initial_delay.count());
+  const auto max_delay_ms = std::max<std::int64_t>(delay_ms, config.insert_retry_max_delay.count());
+  for (std::uint32_t i = 1; i < retry_index && delay_ms < max_delay_ms; ++i) {
+    delay_ms = std::min(delay_ms * 2, max_delay_ms);
+  }
+  return std::chrono::milliseconds(delay_ms);
+}
+
 }  // namespace
 
 void PostgreSQLInserter::start_up() {
+  try_insert();
+}
+
+void PostgreSQLInserter::alarm() {
+  try_insert();
+}
+
+void PostgreSQLInserter::try_insert() {
+  ++attempt_;
   try {
     auto batch = kvrocks_state::prepare_point_state_batch(data_, config_.source_mc_seqno, config_.max_data_depth);
     insert_kvrocks(batch);
     insert_postgres(batch);
     promise_.set_value(td::Unit());
   } catch (const std::exception& e) {
+    if (attempt_ <= config_.max_insert_retries && is_retriable_insert_error(e)) {
+      auto delay = insert_retry_delay(config_, attempt_);
+      LOG(WARNING) << "Failed to insert scanner data on attempt " << attempt_ << "/"
+                   << (config_.max_insert_retries + 1) << ", retrying in " << delay.count()
+                   << " ms: " << e.what();
+      alarm_timestamp() = td::Timestamp::in(delay.count() / 1000.0);
+      return;
+    }
     promise_.set_error(td::Status::Error("Error inserting scanner data: " + std::string(e.what())));
   }
 

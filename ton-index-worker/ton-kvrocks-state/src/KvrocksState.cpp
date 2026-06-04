@@ -1345,6 +1345,11 @@ std::string KvrocksConfig::describe() const {
   ss << " pool_size=" << pool_size;
   ss << " connect_timeout_ms=" << connect_timeout.count();
   ss << " socket_timeout_ms=" << socket_timeout.count();
+  ss << " wait_timeout_ms=" << wait_timeout.count();
+  if (use_sentinel()) {
+    ss << " sentinel_retry_interval_ms=" << sentinel_retry_interval.count();
+    ss << " sentinel_max_retry=" << sentinel_max_retry;
+  }
   return ss.str();
 }
 

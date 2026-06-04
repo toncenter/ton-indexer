@@ -10,6 +10,7 @@
 #include "SmcScanner.h"
 
 #include <atomic>
+#include <chrono>
 #include <string>
 #include <unistd.h>
 
@@ -75,6 +76,9 @@ int main(int argc, char *argv[]) {
   Options options_;
   bool is_testnet = false;
   std::int32_t max_data_depth = 0;
+  std::uint32_t max_insert_retries = 5;
+  std::chrono::milliseconds insert_retry_initial_delay{500};
+  std::chrono::milliseconds insert_retry_max_delay{5000};
   std::string jemalloc_profile_prefix = "/tmp/ton-smc-scanner.heap";
   
   td::OptionParser p;
@@ -114,6 +118,19 @@ int main(int argc, char *argv[]) {
       return td::Status::Error("bad value for --batch-size: not a number");
     }
     options_.batch_size_ = v;
+    return td::Status::OK();
+  });
+  p.add_checked_option('\0', "max-parallel-batches", "Maximum parallel account range scanners per shard (default: 8)", [&](td::Slice value) {
+    int v;
+    try {
+      v = std::stoi(value.str());
+    } catch (...) {
+      return td::Status::Error("bad value for --max-parallel-batches: not a number");
+    }
+    if (v <= 0) {
+      return td::Status::Error("--max-parallel-batches must be positive");
+    }
+    options_.max_parallel_batches_ = v;
     return td::Status::OK();
   });
   p.add_checked_option('\0', "reload-shard-state-every-batches",
@@ -172,11 +189,89 @@ int main(int argc, char *argv[]) {
     kvrocks_config.db = v;
     return td::Status::OK();
   });
+  p.add_checked_option('\0', "kvrocks-pool-size", "Kvrocks connection pool size (default: 4)", [&](td::Slice value) {
+    int v;
+    try {
+      v = std::stoi(value.str());
+    } catch (...) {
+      return td::Status::Error("bad value for --kvrocks-pool-size: not a number");
+    }
+    if (v <= 0) {
+      return td::Status::Error("--kvrocks-pool-size must be positive");
+    }
+    kvrocks_config.pool_size = static_cast<std::size_t>(v);
+    return td::Status::OK();
+  });
+  p.add_checked_option('\0', "kvrocks-connect-timeout-ms", "Kvrocks connection timeout in milliseconds (default: 1000)", [&](td::Slice value) {
+    int v;
+    try {
+      v = std::stoi(value.str());
+    } catch (...) {
+      return td::Status::Error("bad value for --kvrocks-connect-timeout-ms: not a number");
+    }
+    if (v < 0) {
+      return td::Status::Error("--kvrocks-connect-timeout-ms must be non-negative");
+    }
+    kvrocks_config.connect_timeout = std::chrono::milliseconds(v);
+    return td::Status::OK();
+  });
+  p.add_checked_option('\0', "kvrocks-socket-timeout-ms", "Kvrocks read/write timeout in milliseconds (default: 1000)", [&](td::Slice value) {
+    int v;
+    try {
+      v = std::stoi(value.str());
+    } catch (...) {
+      return td::Status::Error("bad value for --kvrocks-socket-timeout-ms: not a number");
+    }
+    if (v < 0) {
+      return td::Status::Error("--kvrocks-socket-timeout-ms must be non-negative");
+    }
+    kvrocks_config.socket_timeout = std::chrono::milliseconds(v);
+    return td::Status::OK();
+  });
+  p.add_checked_option('\0', "kvrocks-pool-wait-timeout-ms", "Kvrocks connection pool wait timeout in milliseconds (default: 1000)", [&](td::Slice value) {
+    int v;
+    try {
+      v = std::stoi(value.str());
+    } catch (...) {
+      return td::Status::Error("bad value for --kvrocks-pool-wait-timeout-ms: not a number");
+    }
+    if (v < 0) {
+      return td::Status::Error("--kvrocks-pool-wait-timeout-ms must be non-negative");
+    }
+    kvrocks_config.wait_timeout = std::chrono::milliseconds(v);
+    return td::Status::OK();
+  });
   p.add_option('\0', "kvrocks-sentinel-user", "Kvrocks Sentinel username", [&](td::Slice value) {
     kvrocks_config.sentinel_user = value.str();
   });
   p.add_option('\0', "kvrocks-sentinel-password", "Kvrocks Sentinel password", [&](td::Slice value) {
     kvrocks_config.sentinel_password = value.str();
+  });
+  p.add_checked_option('\0', "kvrocks-sentinel-retry-interval-ms", "Kvrocks Sentinel retry interval in milliseconds (default: 100)", [&](td::Slice value) {
+    int v;
+    try {
+      v = std::stoi(value.str());
+    } catch (...) {
+      return td::Status::Error("bad value for --kvrocks-sentinel-retry-interval-ms: not a number");
+    }
+    if (v < 0) {
+      return td::Status::Error("--kvrocks-sentinel-retry-interval-ms must be non-negative");
+    }
+    kvrocks_config.sentinel_retry_interval = std::chrono::milliseconds(v);
+    return td::Status::OK();
+  });
+  p.add_checked_option('\0', "kvrocks-sentinel-max-retry", "Kvrocks Sentinel max retries (default: 2)", [&](td::Slice value) {
+    int v;
+    try {
+      v = std::stoi(value.str());
+    } catch (...) {
+      return td::Status::Error("bad value for --kvrocks-sentinel-max-retry: not a number");
+    }
+    if (v < 0) {
+      return td::Status::Error("--kvrocks-sentinel-max-retry must be non-negative");
+    }
+    kvrocks_config.sentinel_max_retry = static_cast<std::size_t>(v);
+    return td::Status::OK();
   });
   p.add_checked_option('\0', "max-data-depth", "Max data cell depth to store in latest account states", [&](td::Slice value) {
     int v;
@@ -186,6 +281,45 @@ int main(int argc, char *argv[]) {
       return td::Status::Error("bad value for --max-data-depth: not a number");
     }
     max_data_depth = v;
+    return td::Status::OK();
+  });
+  p.add_checked_option('\0', "insert-retries", "Retries for transient insert errors (default: 5)", [&](td::Slice value) {
+    int v;
+    try {
+      v = std::stoi(value.str());
+    } catch (...) {
+      return td::Status::Error("bad value for --insert-retries: not a number");
+    }
+    if (v < 0) {
+      return td::Status::Error("--insert-retries must be non-negative");
+    }
+    max_insert_retries = static_cast<std::uint32_t>(v);
+    return td::Status::OK();
+  });
+  p.add_checked_option('\0', "insert-retry-initial-delay-ms", "Initial delay before retrying transient insert errors (default: 500)", [&](td::Slice value) {
+    int v;
+    try {
+      v = std::stoi(value.str());
+    } catch (...) {
+      return td::Status::Error("bad value for --insert-retry-initial-delay-ms: not a number");
+    }
+    if (v < 0) {
+      return td::Status::Error("--insert-retry-initial-delay-ms must be non-negative");
+    }
+    insert_retry_initial_delay = std::chrono::milliseconds(v);
+    return td::Status::OK();
+  });
+  p.add_checked_option('\0', "insert-retry-max-delay-ms", "Maximum delay before retrying transient insert errors (default: 5000)", [&](td::Slice value) {
+    int v;
+    try {
+      v = std::stoi(value.str());
+    } catch (...) {
+      return td::Status::Error("bad value for --insert-retry-max-delay-ms: not a number");
+    }
+    if (v < 0) {
+      return td::Status::Error("--insert-retry-max-delay-ms must be non-negative");
+    }
+    insert_retry_max_delay = std::chrono::milliseconds(v);
     return td::Status::OK();
   });
   p.add_option('W', "working-dir", "Path for working directory, for storing checkpoints", [&](td::Slice fname) {
@@ -234,10 +368,21 @@ int main(int argc, char *argv[]) {
       LOG(ERROR) << "--kvrocks-master is required with --kvrocks-sentinels";
       std::exit(2);
     }
+    if (kvrocks_config.use_sentinel() &&
+        (kvrocks_config.connect_timeout == std::chrono::milliseconds(0) ||
+         kvrocks_config.socket_timeout == std::chrono::milliseconds(0))) {
+      LOG(ERROR) << "--kvrocks-connect-timeout-ms and --kvrocks-socket-timeout-ms must be positive with --kvrocks-sentinels";
+      std::exit(2);
+    }
   }
 
   if (pg_dsn.empty() && !kvrocks_config.enabled) {
     LOG(ERROR) << "You must specify at least one sink: --pg or --kvrocks/--kvrocks-sentinels";
+    std::exit(2);
+  }
+
+  if (insert_retry_max_delay < insert_retry_initial_delay) {
+    LOG(ERROR) << "--insert-retry-max-delay-ms must be greater than or equal to --insert-retry-initial-delay-ms";
     std::exit(2);
   }
 
@@ -279,6 +424,9 @@ int main(int argc, char *argv[]) {
     insert_config.kvrocks_config = kvrocks_config;
     insert_config.source_mc_seqno = options_.seqno_;
     insert_config.max_data_depth = max_data_depth;
+    insert_config.max_insert_retries = max_insert_retries;
+    insert_config.insert_retry_initial_delay = insert_retry_initial_delay;
+    insert_config.insert_retry_max_delay = insert_retry_max_delay;
     insert_manager = td::actor::create_actor<PostgreSQLInsertManager>("insert_manager", insert_config, options_.batch_size_);
     options_.insert_manager_ = insert_manager.get();
     td::actor::create_actor<SmcScanner>("smcscanner", db_scanner.get(), options_).release();

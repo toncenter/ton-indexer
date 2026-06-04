@@ -31,10 +31,10 @@ struct KvrocksConfig {
   std::optional<std::string> sentinel_user;
   std::optional<std::string> sentinel_password;
 
-  std::size_t pool_size{4};
-  std::chrono::milliseconds connect_timeout{1000};
-  std::chrono::milliseconds socket_timeout{1000};
-  std::chrono::milliseconds wait_timeout{1000};
+  std::size_t pool_size{32};
+  std::chrono::milliseconds connect_timeout{10000};
+  std::chrono::milliseconds socket_timeout{10000};
+  std::chrono::milliseconds wait_timeout{10000};
   std::chrono::milliseconds sentinel_retry_interval{100};
   std::size_t sentinel_max_retry{2};
 
