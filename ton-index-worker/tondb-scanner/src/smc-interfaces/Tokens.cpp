@@ -535,6 +535,11 @@ const std::unordered_set<std::string> DEDUST_POOL_CODE_HASHES {
   "C0F9D14FBC8E14F0D72CBA2214165EEE35836AB174130912BAF9DBFA43EAD562"
 };
 
+const std::unordered_set<std::string> DEDUST_V2_POOL_CODE_HASHES {
+  "3997A5C1EE8923E93CF3A6A98EA3EF9482C64DD8AEA2BA8365689E14D99C760D", // CPMM v2.0
+  "5851780D2386E989B9AB956DA7CEC5C69A667B9E525F628DCBA5EB02C1EE0367"  // CPMM v2.1
+};
+
 const auto DEDUST_FACTORY_ADDRESS = block::StdAddress::parse("EQBfBWT7X2BHg9tXAxzhz2aKiNTU1tpt5NsiK0uSDW_YAJ67").move_as_ok();
 
 DedustPoolDetector::DedustPoolDetector(block::StdAddress address,
@@ -553,8 +558,46 @@ void DedustPoolDetector::start_up() {
     return;
   }
 
-  if (!DEDUST_POOL_CODE_HASHES.contains(code_cell_->get_hash().to_hex())) {
+  const auto code_hash = code_cell_->get_hash().to_hex();
+  const bool is_v1 = DEDUST_POOL_CODE_HASHES.contains(code_hash);
+  const bool is_v2 = DEDUST_V2_POOL_CODE_HASHES.contains(code_hash);
+  if (!is_v1 && !is_v2) {
     promise_.set_error(td::Status::Error("Code hash mismatch"));
+    stop();
+    return;
+  }
+
+  if (is_v2) {
+    // get_pool_data returns 19 entries, only first 11 checked. No factory verification for V2
+    auto stack_r = execute_smc_method_nullable<11>(address_, code_cell_, data_cell_, config_, "get_pool_data", {}, {
+                                            vm::StackEntry::Type::t_int, vm::StackEntry::Type::t_int, vm::StackEntry::Type::t_int,
+                                            vm::StackEntry::Type::t_slice, vm::StackEntry::Type::t_slice,
+                                            vm::StackEntry::Type::t_cell, vm::StackEntry::Type::t_cell, nullable(vm::StackEntry::Type::t_cell),
+                                            vm::StackEntry::Type::t_int, vm::StackEntry::Type::t_int, vm::StackEntry::Type::t_int
+                                          });
+    if (stack_r.is_error()) {
+      promise_.set_error(stack_r.move_as_error());
+      stop();
+      return;
+    }
+    auto stack = stack_r.move_as_ok();
+
+    Result data;
+    data.asset_1_slice = stack[3].as_slice();
+    data.asset_2_slice = stack[4].as_slice();
+    if (!get_asset_v2(stack[3].as_slice(), data.asset_1) || !get_asset_v2(stack[4].as_slice(), data.asset_2)) {
+      promise_.set_error(td::Status::Error("Unsupported V2 asset encoding"));
+      stop();
+      return;
+    }
+
+    data.is_stable = false;
+    auto base_fee_bps = stack[8].as_int()->to_long();
+    data.fee = base_fee_bps / 10000.0;
+    data.reserve_1 = stack[9].as_int();
+    data.reserve_2 = stack[10].as_int();
+
+    promise_.set_value(std::move(data));
     stop();
     return;
   }
@@ -698,6 +741,26 @@ bool DedustPoolDetector::get_asset(td::Ref<vm::CellSlice> slice, std::optional<b
     const ton::StdSmcAddress addr_bytes{addr_ptr};
 
     address = block::StdAddress(workchain_id, addr_bytes);
+    return true;
+  }
+  return false;
+}
+
+bool DedustPoolDetector::get_asset_v2(td::Ref<vm::CellSlice> slice, std::optional<block::StdAddress> &address) {
+  // V2 asset is a standard MsgAddress; peek tag since extract_std_address fails on addr_none
+  auto peek = slice->clone();
+  unsigned tag = 0;
+  if (!peek.fetch_uint_to(2, tag)) {
+    return false;
+  }
+  if (tag == 0) {  // addr_none = native TON
+    address = std::nullopt;
+    return true;
+  }
+  block::StdAddress std_addr;
+  block::tlb::MsgAddressInt addr_int{};
+  if (addr_int.extract_std_address(slice, std_addr, true)) {
+    address = std_addr;
     return true;
   }
   return false;
