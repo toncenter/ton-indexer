@@ -1,6 +1,7 @@
 
 #include "OverlayListener.h"
 #include <cstdint>
+#include <map>
 #include <tdutils/td/utils/filesystem.h>
 #include "TraceInterfaceDetector.h"
 
@@ -76,7 +77,10 @@ void OverlayListener::start_up() {
     b.as_slice().copy_from(as_slice(X));
     auto overlay_id_full = ton::overlay::OverlayIdFull{std::move(b)};
     auto overlay_id = overlay_id_full.compute_short_id();
-    auto rules = ton::overlay::OverlayPrivacyRules{ton::overlay::Overlays::max_fec_broadcast_size()};
+    auto rules = ton::overlay::OverlayPrivacyRules{
+        ton::overlay::Overlays::max_fec_broadcast_size(),
+        ton::overlay::CertificateFlags::AllowFec,
+        std::map<ton::PublicKeyHash, td::uint32>{}};
 
     td::IPAddress addr;
     if (addr.init_host_port(inet_addr_).is_error()) {
