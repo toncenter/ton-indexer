@@ -18,7 +18,6 @@ target_link_libraries(
     ton-kvrocks-state
     ton-observability
     pqxx
-    hiredis
     redis++_static
 )
 target_link_options(ton-index-postgres PUBLIC -rdynamic)

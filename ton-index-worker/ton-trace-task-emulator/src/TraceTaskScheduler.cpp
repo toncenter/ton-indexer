@@ -1,8 +1,9 @@
 #include "TraceTaskScheduler.h"
-#include "TaskResultInserter.h"
-#include "td/utils/filesystem.h"
-#include "common/delay.h"
 
+#include "Statistics.h"
+#include "TaskResultInserter.h"
+#include "common/delay.h"
+#include "td/utils/filesystem.h"
 
 void TraceTaskScheduler::start_up() {
     alarm_timestamp() = td::Timestamp::in(0.1);
