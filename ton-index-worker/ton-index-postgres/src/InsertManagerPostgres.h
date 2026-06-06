@@ -34,14 +34,14 @@ private:
   std::int32_t latest_states_prepare_chunk_size_{128};
   bool no_leader_{false};
   bool disable_progress_advance_{false};
-  bool pg_skip_state_tables_{false};
+  bool kvrocks_skip_current_tables_{false};
 public:
   InsertManagerPostgres(Credential credential, KvrocksConfig kvrocks_config = {}, PartitionManagerConfig partition_config = {},
                         bool no_leader = false, bool disable_progress_advance = false,
-                        bool pg_skip_state_tables = false) :
+                        bool kvrocks_skip_current_tables = false) :
     credential_(credential), kvrocks_config_(std::move(kvrocks_config)), partition_config_(partition_config),
     no_leader_(no_leader), disable_progress_advance_(disable_progress_advance),
-    pg_skip_state_tables_(pg_skip_state_tables) {}
+    kvrocks_skip_current_tables_(kvrocks_skip_current_tables) {}
 
   void start_up() override;
 
