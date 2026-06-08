@@ -29,7 +29,7 @@ struct KvrocksConfig {
 
   std::size_t pool_size{128};
   std::chrono::milliseconds connect_timeout{1000};
-  std::chrono::milliseconds socket_timeout{1000};
+  std::chrono::milliseconds socket_timeout{10000};
   std::chrono::milliseconds wait_timeout{1000};
   std::chrono::milliseconds sentinel_retry_interval{100};
   std::size_t sentinel_max_retry{2};
