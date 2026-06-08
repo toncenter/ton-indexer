@@ -1222,7 +1222,7 @@ create table if not exists _blocks_classified
     mc_seqno integer not null primary key
 );
 
-create unlogged table if not exists _classifier_tasks
+create table if not exists _classifier_tasks
 (
     id          serial,
     mc_seqno    integer,
@@ -1259,13 +1259,15 @@ begin
         end if;
     end if;
 
-    insert into _classifier_progress(id, last_scheduled_mc_seqno)
-    values (1, initial_progress)
-    on conflict (id) do nothing;
+    if current_max > 0 or old_watermark is not null then
+        insert into _classifier_progress(id, last_scheduled_mc_seqno)
+        values (1, initial_progress)
+        on conflict (id) do nothing;
+    end if;
 end;
 $$;
 
-create unlogged table if not exists _classifier_failed_traces
+create table if not exists _classifier_failed_traces
 (
     id       serial,
     trace_id tonhash,
@@ -1274,7 +1276,7 @@ create unlogged table if not exists _classifier_failed_traces
 );
 
 -- TODO: rework this table
-create unlogged table if not exists _background_tasks
+create table if not exists _background_tasks
 (
     id         bigint generated always as identity
         constraint background_tasks_pk primary key,
@@ -1287,7 +1289,7 @@ create unlogged table if not exists _background_tasks
     error      varchar
 );
 
-create unlogged table if not exists _ton_indexer_leader
+create table if not exists _ton_indexer_leader
 (
     id               integer primary key check (id = 1),
     leader_worker_id varchar     not null,
@@ -1370,6 +1372,10 @@ create or replace function on_new_mc_block_func()
     language plpgsql as
 $$
 begin
+    insert into _classifier_progress(id, last_scheduled_mc_seqno)
+    values (1, NEW.seqno - 1)
+    on conflict (id) do nothing;
+
     if exists (select 1
                from _classifier_progress
                where id = 1
