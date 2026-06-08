@@ -15,6 +15,5 @@ target_compile_features(ton-kvrocks-state PRIVATE cxx_std_20)
 target_link_libraries(ton-kvrocks-state
     PUBLIC
         tondb-scanner
-        hiredis
         redis++_static
 )

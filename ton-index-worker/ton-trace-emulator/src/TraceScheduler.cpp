@@ -1,18 +1,19 @@
 #include "TraceScheduler.h"
 #include "BlockEmulator.h"
+#include "Statistics.h"
 #include "TraceInserter.h"
-#include "td/utils/filesystem.h"
-#include "td/utils/Status.h"
 #include "common/delay.h"
-#include "validator/interfaces/block-handle.h"
+#include "td/utils/Status.h"
+#include "td/utils/filesystem.h"
+#include "td/utils/overloaded.h"
 #include "tl-utils/common-utils.hpp"
 #include "ton/ton-tl.hpp"
-#include "td/utils/overloaded.h"
-#include <unistd.h>
-#include <fcntl.h>
-#include <errno.h>
+#include "validator/interfaces/block-handle.h"
 #include <chrono>
 #include <cstdint>
+#include <errno.h>
+#include <fcntl.h>
+#include <unistd.h>
 
 namespace {
 constexpr const char* kHealthKey = "health:ton-trace-emulator";
