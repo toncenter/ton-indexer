@@ -21,6 +21,14 @@ namespace kvrocks_state {
 namespace {
 
 constexpr std::size_t KVROCKS_PIPELINE_FLUSH_SIZE = 1000;
+constexpr long long KVROCKS_INDEX_SNAPSHOT_CONFLICT = -1;
+constexpr std::size_t KVROCKS_INDEX_SNAPSHOT_MAX_RETRIES = 5;
+
+class KvrocksIndexSnapshotConflict final : public std::runtime_error {
+public:
+  KvrocksIndexSnapshotConflict() : std::runtime_error("Kvrocks indexed write snapshot conflict") {
+  }
+};
 
 std::string trim(std::string value) {
   auto is_space = [](unsigned char ch) {
@@ -124,13 +132,27 @@ if current and tonumber(current) > tonumber(ARGV[1]) then
   return 0
 end
 
-local old_count = tonumber(redis.call('HGET', KEYS[1], 'idx_count') or '0')
+local old_count = tonumber(ARGV[3])
+local idx_count = tonumber(ARGV[4])
+local actual_old_count = tonumber(redis.call('HGET', KEYS[1], 'idx_count') or '0')
+if actual_old_count ~= old_count then
+  return -1
+end
+
 for i = 1, old_count do
-  local old_key = redis.call('HGET', KEYS[1], 'idx_key_' .. i)
-  local old_member = redis.call('HGET', KEYS[1], 'idx_member_' .. i)
-  if old_key and old_member then
-    redis.call('ZREM', old_key, old_member)
+  local old_key = KEYS[2 + i]
+  local old_member = ARGV[4 + i]
+  local actual_old_key = redis.call('HGET', KEYS[1], 'idx_key_' .. i)
+  local actual_old_member = redis.call('HGET', KEYS[1], 'idx_member_' .. i)
+  if (not actual_old_key) or actual_old_key ~= old_key or (not actual_old_member) or actual_old_member ~= old_member then
+    return -1
   end
+end
+
+for i = 1, old_count do
+  local old_key = KEYS[2 + i]
+  local old_member = ARGV[4 + i]
+  redis.call('ZREM', old_key, old_member)
 end
 
 local first_seen = redis.call('HGET', KEYS[1], 'first_seen_seqno')
@@ -143,13 +165,13 @@ redis.call('HSET', KEYS[1],
   'first_seen_seqno', first_seen)
 redis.call('SET', KEYS[2], ARGV[2])
 
-local idx_count = tonumber(ARGV[3])
 redis.call('HSET', KEYS[1], 'idx_count', idx_count)
-local pos = 4
+local key_pos = 3 + old_count
+local arg_pos = 5 + old_count
 for i = 1, idx_count do
-  local idx_key = ARGV[pos]
-  local idx_member = ARGV[pos + 1]
-  local idx_score = ARGV[pos + 2]
+  local idx_key = KEYS[key_pos]
+  local idx_member = ARGV[arg_pos]
+  local idx_score = ARGV[arg_pos + 1]
   if idx_score == '__first_seen__' then
     idx_score = first_seen
   end
@@ -157,7 +179,8 @@ for i = 1, idx_count do
   redis.call('HSET', KEYS[1],
     'idx_key_' .. i, idx_key,
     'idx_member_' .. i, idx_member)
-  pos = pos + 3
+  key_pos = key_pos + 1
+  arg_pos = arg_pos + 2
 end
 
 for i = idx_count + 1, old_count do
@@ -176,13 +199,27 @@ if (not current) or tonumber(current) > tonumber(ARGV[1]) then
   return 0
 end
 
-local old_count = tonumber(redis.call('HGET', KEYS[1], 'idx_count') or '0')
+local old_count = tonumber(ARGV[3])
+local idx_count = tonumber(ARGV[4])
+local actual_old_count = tonumber(redis.call('HGET', KEYS[1], 'idx_count') or '0')
+if actual_old_count ~= old_count then
+  return -1
+end
+
 for i = 1, old_count do
-  local old_key = redis.call('HGET', KEYS[1], 'idx_key_' .. i)
-  local old_member = redis.call('HGET', KEYS[1], 'idx_member_' .. i)
-  if old_key and old_member then
-    redis.call('ZREM', old_key, old_member)
+  local old_key = KEYS[2 + i]
+  local old_member = ARGV[4 + i]
+  local actual_old_key = redis.call('HGET', KEYS[1], 'idx_key_' .. i)
+  local actual_old_member = redis.call('HGET', KEYS[1], 'idx_member_' .. i)
+  if (not actual_old_key) or actual_old_key ~= old_key or (not actual_old_member) or actual_old_member ~= old_member then
+    return -1
   end
+end
+
+for i = 1, old_count do
+  local old_key = KEYS[2 + i]
+  local old_member = ARGV[4 + i]
+  redis.call('ZREM', old_key, old_member)
 end
 
 local first_seen = redis.call('HGET', KEYS[1], 'first_seen_seqno')
@@ -195,13 +232,13 @@ redis.call('HSET', KEYS[1],
   'first_seen_seqno', first_seen)
 redis.call('SET', KEYS[2], ARGV[2])
 
-local idx_count = tonumber(ARGV[3])
 redis.call('HSET', KEYS[1], 'idx_count', idx_count)
-local pos = 4
+local key_pos = 3 + old_count
+local arg_pos = 5 + old_count
 for i = 1, idx_count do
-  local idx_key = ARGV[pos]
-  local idx_member = ARGV[pos + 1]
-  local idx_score = ARGV[pos + 2]
+  local idx_key = KEYS[key_pos]
+  local idx_member = ARGV[arg_pos]
+  local idx_score = ARGV[arg_pos + 1]
   if idx_score == '__first_seen__' then
     idx_score = first_seen
   end
@@ -209,7 +246,8 @@ for i = 1, idx_count do
   redis.call('HSET', KEYS[1],
     'idx_key_' .. i, idx_key,
     'idx_member_' .. i, idx_member)
-  pos = pos + 3
+  key_pos = key_pos + 1
+  arg_pos = arg_pos + 2
 end
 
 for i = idx_count + 1, old_count do
@@ -233,13 +271,14 @@ redis.call('HSET', KEYS[1],
   'first_seen_seqno', ARGV[1])
 redis.call('SET', KEYS[2], ARGV[2])
 
-local idx_count = tonumber(ARGV[3])
+local idx_count = tonumber(ARGV[4])
 redis.call('HSET', KEYS[1], 'idx_count', idx_count)
-local pos = 4
+local key_pos = 3
+local arg_pos = 5
 for i = 1, idx_count do
-  local idx_key = ARGV[pos]
-  local idx_member = ARGV[pos + 1]
-  local idx_score = ARGV[pos + 2]
+  local idx_key = KEYS[key_pos]
+  local idx_member = ARGV[arg_pos]
+  local idx_score = ARGV[arg_pos + 1]
   if idx_score == '__first_seen__' then
     idx_score = ARGV[1]
   end
@@ -247,7 +286,8 @@ for i = 1, idx_count do
   redis.call('HSET', KEYS[1],
     'idx_key_' .. i, idx_key,
     'idx_member_' .. i, idx_member)
-  pos = pos + 3
+  key_pos = key_pos + 1
+  arg_pos = arg_pos + 2
 end
 
 return 1
@@ -301,6 +341,24 @@ std::string kvrocks_payload_key(const std::string& table, const std::string& id)
 
 std::string kvrocks_index_key(const std::string& table, const std::string& name) {
   return "ton-index:v1:idx:" + table + ":" + name;
+}
+
+std::size_t parse_kvrocks_index_count(const sw::redis::OptionalString& value, const std::string& key) {
+  if (!value) {
+    return 0;
+  }
+
+  std::size_t pos = 0;
+  unsigned long long count = 0;
+  try {
+    count = std::stoull(*value, &pos);
+  } catch (const std::exception&) {
+    throw std::runtime_error("Invalid Kvrocks idx_count for " + key + ": " + *value);
+  }
+  if (pos != value->size() || count > std::numeric_limits<std::size_t>::max()) {
+    throw std::runtime_error("Invalid Kvrocks idx_count for " + key + ": " + *value);
+  }
+  return static_cast<std::size_t>(count);
 }
 
 std::string address_key(const block::StdAddress& address) {
@@ -2679,10 +2737,26 @@ bool is_kvrocks_no_script_error(const std::exception& e) {
 }
 
 KvrocksBatchWriter::KvrocksBatchWriter(sw::redis::Redis& redis, const StateBatch& batch)
-    : redis_(redis), pipeline_(redis.pipeline(false)), batch_(batch) {
+    : redis_(redis), pipeline_(redis.pipeline(true)), batch_(batch) {
 }
 
 void KvrocksBatchWriter::write() {
+  for (std::size_t attempt = 1; attempt <= KVROCKS_INDEX_SNAPSHOT_MAX_RETRIES; ++attempt) {
+    reset_pipeline();
+    try {
+      write_once();
+      return;
+    } catch (const KvrocksIndexSnapshotConflict& e) {
+      if (attempt == KVROCKS_INDEX_SNAPSHOT_MAX_RETRIES) {
+        throw;
+      }
+      LOG(WARNING) << e.what() << ", retrying Kvrocks batch attempt " << (attempt + 1) << "/"
+                   << KVROCKS_INDEX_SNAPSHOT_MAX_RETRIES;
+    }
+  }
+}
+
+void KvrocksBatchWriter::write_once() {
   for (const auto& row : batch_.message_contents) {
     queue_set_once("message_contents", hash_key(row.hash), row.source_mc_seqno, build_payload(row));
   }
@@ -2781,6 +2855,7 @@ void KvrocksBatchWriter::queue_set_once(const std::string& table, const std::str
   pipeline_.evalsha(kvrocks_set_once_script_sha(), {key, payload_key}, {source, payload});
   ++pending_;
   ++queued_;
+  pending_row_keys_.insert(key);
   flush_if_needed();
 }
 
@@ -2792,6 +2867,7 @@ void KvrocksBatchWriter::queue_set_current(const std::string& table, const std::
   pipeline_.evalsha(kvrocks_set_current_script_sha(), {key, payload_key}, {source, payload});
   ++pending_;
   ++queued_;
+  pending_row_keys_.insert(key);
   flush_if_needed();
 }
 
@@ -2803,49 +2879,116 @@ void KvrocksBatchWriter::queue_set_current_existing(const std::string& table, co
   pipeline_.evalsha(kvrocks_set_current_existing_script_sha(), {key, payload_key}, {source, payload});
   ++pending_;
   ++queued_;
+  pending_row_keys_.insert(key);
   flush_if_needed();
 }
 
 void KvrocksBatchWriter::queue_set_indexed_current(const std::string& table, const std::string& id,
                                                    std::uint32_t source_mc_seqno, const std::string& payload,
                                                    const std::vector<KvrocksIndexEntry>& indexes) {
-  queue_set_indexed(kvrocks_set_indexed_current_script_sha(), table, id, source_mc_seqno, payload, indexes);
+  queue_set_indexed(kvrocks_set_indexed_current_script_sha(), table, id, source_mc_seqno, payload, indexes, true);
 }
 
 void KvrocksBatchWriter::queue_set_indexed_current_existing(const std::string& table, const std::string& id,
                                                             std::uint32_t source_mc_seqno,
                                                             const std::string& payload,
                                                             const std::vector<KvrocksIndexEntry>& indexes) {
-  queue_set_indexed(kvrocks_set_indexed_current_existing_script_sha(), table, id, source_mc_seqno, payload, indexes);
+  queue_set_indexed(kvrocks_set_indexed_current_existing_script_sha(), table, id, source_mc_seqno, payload, indexes,
+                    true);
 }
 
 void KvrocksBatchWriter::queue_set_indexed_once(const std::string& table, const std::string& id,
                                                 std::uint32_t source_mc_seqno, const std::string& payload,
                                                 const std::vector<KvrocksIndexEntry>& indexes) {
-  queue_set_indexed(kvrocks_set_indexed_once_script_sha(), table, id, source_mc_seqno, payload, indexes);
+  queue_set_indexed(kvrocks_set_indexed_once_script_sha(), table, id, source_mc_seqno, payload, indexes, false);
 }
 
 void KvrocksBatchWriter::queue_set_indexed(const std::string& script_sha, const std::string& table,
                                            const std::string& id, std::uint32_t source_mc_seqno,
                                            const std::string& payload,
-                                           const std::vector<KvrocksIndexEntry>& indexes) {
+                                           const std::vector<KvrocksIndexEntry>& indexes, bool read_old_indexes) {
   const auto key = kvrocks_key(table, id);
   const auto payload_key = kvrocks_payload_key(table, id);
+  if (read_old_indexes && pending_row_keys_.count(key) != 0) {
+    flush();
+  }
+  const auto old_indexes = read_old_indexes ? read_old_index_snapshot(key) : std::vector<KvrocksIndexSnapshotEntry>{};
+
+  std::vector<std::string> keys;
+  keys.reserve(2 + old_indexes.size() + indexes.size());
+  keys.push_back(key);
+  keys.push_back(payload_key);
+  for (const auto& old_index : old_indexes) {
+    keys.push_back(old_index.key);
+  }
+  for (const auto& index : indexes) {
+    keys.push_back(index.key);
+  }
+
   std::vector<std::string> args;
-  args.reserve(3 + indexes.size() * 3);
+  args.reserve(4 + old_indexes.size() + indexes.size() * 2);
   args.push_back(std::to_string(source_mc_seqno));
   args.push_back(payload);
+  args.push_back(std::to_string(old_indexes.size()));
   args.push_back(std::to_string(indexes.size()));
+  for (const auto& old_index : old_indexes) {
+    args.push_back(old_index.member);
+  }
   for (const auto& index : indexes) {
-    args.push_back(index.key);
     args.push_back(index.member);
     args.push_back(index.score);
   }
-  std::array<std::string, 2> keys{key, payload_key};
   pipeline_.evalsha(script_sha, keys.begin(), keys.end(), args.begin(), args.end());
   ++pending_;
   ++queued_;
+  pending_row_keys_.insert(key);
   flush_if_needed();
+}
+
+std::vector<KvrocksIndexSnapshotEntry> KvrocksBatchWriter::read_old_index_snapshot(const std::string& key) {
+  td::Timer exec_timer;
+  const auto old_count = parse_kvrocks_index_count(redis_.hget(key, "idx_count"), key);
+  if (old_count == 0) {
+    exec_timer.pause();
+    exec_elapsed_millis_ += exec_timer.elapsed() * 1e3;
+    return {};
+  }
+
+  std::vector<std::string> fields;
+  fields.reserve(old_count * 2);
+  for (std::size_t i = 1; i <= old_count; ++i) {
+    fields.push_back("idx_key_" + std::to_string(i));
+    fields.push_back("idx_member_" + std::to_string(i));
+  }
+
+  std::vector<sw::redis::OptionalString> values;
+  values.reserve(fields.size());
+  redis_.hmget(key, fields.begin(), fields.end(), std::back_inserter(values));
+  exec_timer.pause();
+  exec_elapsed_millis_ += exec_timer.elapsed() * 1e3;
+
+  if (values.size() != fields.size()) {
+    throw std::runtime_error("Kvrocks HMGET old index snapshot reply count mismatch for " + key);
+  }
+
+  std::vector<KvrocksIndexSnapshotEntry> snapshot;
+  snapshot.reserve(old_count);
+  for (std::size_t i = 0; i < old_count; ++i) {
+    const auto& index_key = values[i * 2];
+    const auto& index_member = values[i * 2 + 1];
+    if (!index_key || !index_member) {
+      throw KvrocksIndexSnapshotConflict();
+    }
+    snapshot.push_back({*index_key, *index_member});
+  }
+  return snapshot;
+}
+
+void KvrocksBatchWriter::reset_pipeline() {
+  pipeline_ = redis_.pipeline(true);
+  pending_ = 0;
+  queued_ = 0;
+  pending_row_keys_.clear();
 }
 
 void KvrocksBatchWriter::flush_if_needed() {
@@ -2864,12 +3007,19 @@ void KvrocksBatchWriter::flush() {
   if (replies.size() != pending_) {
     throw std::runtime_error("Kvrocks pipeline reply count mismatch");
   }
+  bool snapshot_conflict = false;
   for (std::size_t i = 0; i < replies.size(); ++i) {
-    replies.get<long long>(i);
+    if (replies.get<long long>(i) == KVROCKS_INDEX_SNAPSHOT_CONFLICT) {
+      snapshot_conflict = true;
+    }
   }
   exec_timer.pause();
   exec_elapsed_millis_ += exec_timer.elapsed() * 1e3;
   pending_ = 0;
+  pending_row_keys_.clear();
+  if (snapshot_conflict) {
+    throw KvrocksIndexSnapshotConflict();
+  }
 }
 
 void write_batch_with_script_reload(sw::redis::Redis& redis, const StateBatch& batch) {

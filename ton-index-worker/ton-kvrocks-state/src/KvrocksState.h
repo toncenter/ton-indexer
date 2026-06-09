@@ -7,6 +7,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <unordered_set>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -441,6 +442,11 @@ struct KvrocksIndexEntry {
   std::string score;
 };
 
+struct KvrocksIndexSnapshotEntry {
+  std::string key;
+  std::string member;
+};
+
 using PointStateData = std::variant<schema::AccountState,
                                     schema::JettonMasterDataV2,
                                     schema::JettonWalletDataV2,
@@ -483,6 +489,7 @@ public:
   double exec_elapsed_millis() const;
 
 private:
+  void write_once();
   void queue_set_once(const std::string& table, const std::string& id, std::uint32_t source_mc_seqno,
                       const std::string& payload);
   void queue_set_current(const std::string& table, const std::string& id, std::uint32_t source_mc_seqno,
@@ -498,7 +505,9 @@ private:
                               const std::string& payload, const std::vector<KvrocksIndexEntry>& indexes);
   void queue_set_indexed(const std::string& script_sha, const std::string& table, const std::string& id,
                          std::uint32_t source_mc_seqno, const std::string& payload,
-                         const std::vector<KvrocksIndexEntry>& indexes);
+                         const std::vector<KvrocksIndexEntry>& indexes, bool read_old_indexes);
+  std::vector<KvrocksIndexSnapshotEntry> read_old_index_snapshot(const std::string& key);
+  void reset_pipeline();
   void flush_if_needed();
   void flush();
 
@@ -507,6 +516,7 @@ private:
   const StateBatch& batch_;
   std::size_t pending_{0};
   std::size_t queued_{0};
+  std::unordered_set<std::string> pending_row_keys_;
   double exec_elapsed_millis_{0.0};
 };
 
