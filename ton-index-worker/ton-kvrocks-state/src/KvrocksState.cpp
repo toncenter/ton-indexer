@@ -21,6 +21,7 @@ namespace kvrocks_state {
 namespace {
 
 constexpr std::size_t KVROCKS_PIPELINE_FLUSH_SIZE = 1000;
+constexpr std::size_t KVROCKS_INDEX_SNAPSHOT_CHUNK_SIZE = 1000;
 constexpr long long KVROCKS_INDEX_SNAPSHOT_CONFLICT = -1;
 constexpr std::size_t KVROCKS_INDEX_SNAPSHOT_MAX_RETRIES = 5;
 
@@ -2767,10 +2768,39 @@ void KvrocksBatchWriter::write_once() {
     queue_set_once("contract_methods", hash_key(row.code_hash), row.source_mc_seqno, build_payload(row));
   }
 
-  for (const auto& row : batch_.latest_account_states) {
-    queue_set_indexed_current("latest_account_states", address_key(row.account), row.source_mc_seqno, build_payload(row),
-                              build_indexes(row));
-  }
+  auto make_indexed_write = [](const std::string& script_sha, const std::string& table, const std::string& id,
+                               std::uint32_t source_mc_seqno, std::string payload,
+                               std::vector<KvrocksIndexEntry> indexes, bool read_old_indexes) {
+    const auto key = kvrocks_key(table, id);
+    return IndexedWrite{script_sha, key, kvrocks_payload_key(table, id), source_mc_seqno, std::move(payload),
+                        std::move(indexes), read_old_indexes};
+  };
+
+  auto queue_indexed_current_rows = [&](const auto& rows, const std::string& table, auto id_fn) {
+    std::vector<IndexedWrite> writes;
+    writes.reserve(rows.size());
+    for (const auto& row : rows) {
+      writes.push_back(make_indexed_write(kvrocks_set_indexed_current_script_sha(), table, id_fn(row),
+                                          row.source_mc_seqno, build_payload(row), build_indexes(row), true));
+    }
+    queue_indexed_writes(writes);
+  };
+
+  auto queue_indexed_interface_current_rows = [&](const auto& rows, const std::string& table, auto id_fn) {
+    std::vector<IndexedWrite> writes;
+    writes.reserve(rows.size());
+    for (const auto& row : rows) {
+      const auto& script_sha = row.destroyed ? kvrocks_set_indexed_current_existing_script_sha()
+                                             : kvrocks_set_indexed_current_script_sha();
+      writes.push_back(make_indexed_write(script_sha, table, id_fn(row), row.source_mc_seqno, build_payload(row),
+                                          build_indexes(row), true));
+    }
+    queue_indexed_writes(writes);
+  };
+
+  queue_indexed_current_rows(batch_.latest_account_states, "latest_account_states", [](const auto& row) {
+    return address_key(row.account);
+  });
 
   auto queue_interface_current = [&](const std::string& table, const std::string& id, const auto& row) {
     auto payload = build_payload(row);
@@ -2780,56 +2810,46 @@ void KvrocksBatchWriter::write_once() {
       queue_set_current(table, id, row.source_mc_seqno, payload);
     }
   };
-  auto queue_indexed_interface_current = [&](const std::string& table, const std::string& id, const auto& row) {
-    auto payload = build_payload(row);
-    auto indexes = build_indexes(row);
-    if (row.destroyed) {
-      queue_set_indexed_current_existing(table, id, row.source_mc_seqno, payload, indexes);
-    } else {
-      queue_set_indexed_current(table, id, row.source_mc_seqno, payload, indexes);
-    }
-  };
-
-  for (const auto& row : batch_.jetton_masters) {
-    queue_indexed_interface_current("jetton_masters", address_key(row.address), row);
-  }
-  for (const auto& row : batch_.jetton_wallets) {
-    queue_indexed_interface_current("jetton_wallets", address_key(row.address), row);
-  }
+  queue_indexed_interface_current_rows(batch_.jetton_masters, "jetton_masters", [](const auto& row) {
+    return address_key(row.address);
+  });
+  queue_indexed_interface_current_rows(batch_.jetton_wallets, "jetton_wallets", [](const auto& row) {
+    return address_key(row.address);
+  });
   for (const auto& row : batch_.mintless_jetton_masters) {
     queue_set_once("mintless_jetton_masters", address_key(row.address), row.source_mc_seqno, build_payload(row));
   }
-  for (const auto& row : batch_.nft_collections) {
-    queue_indexed_interface_current("nft_collections", address_key(row.address), row);
-  }
-  for (const auto& row : batch_.nft_items) {
-    queue_indexed_interface_current("nft_items", address_key(row.address), row);
-  }
-  for (const auto& row : batch_.dns_entries) {
-    queue_indexed_interface_current("dns_entries", address_key(row.nft_item_address), row);
-  }
+  queue_indexed_interface_current_rows(batch_.nft_collections, "nft_collections", [](const auto& row) {
+    return address_key(row.address);
+  });
+  queue_indexed_interface_current_rows(batch_.nft_items, "nft_items", [](const auto& row) {
+    return address_key(row.address);
+  });
+  queue_indexed_interface_current_rows(batch_.dns_entries, "dns_entries", [](const auto& row) {
+    return address_key(row.nft_item_address);
+  });
   for (const auto& row : batch_.getgems_nft_sales) {
     queue_interface_current("getgems_nft_sales", address_key(row.address), row);
   }
   for (const auto& row : batch_.getgems_nft_auctions) {
     queue_interface_current("getgems_nft_auctions", address_key(row.address), row);
   }
-  for (const auto& row : batch_.multisig_contracts) {
-    queue_indexed_interface_current("multisig", address_key(row.address), row);
-  }
-  for (const auto& row : batch_.multisig_orders) {
-    queue_indexed_interface_current("multisig_orders", address_key(row.address), row);
-  }
-  for (const auto& row : batch_.vesting_contracts) {
-    queue_indexed_interface_current("vesting_contracts", address_key(row.address), row);
-  }
+  queue_indexed_interface_current_rows(batch_.multisig_contracts, "multisig", [](const auto& row) {
+    return address_key(row.address);
+  });
+  queue_indexed_interface_current_rows(batch_.multisig_orders, "multisig_orders", [](const auto& row) {
+    return address_key(row.address);
+  });
+  queue_indexed_interface_current_rows(batch_.vesting_contracts, "vesting_contracts", [](const auto& row) {
+    return address_key(row.address);
+  });
   for (const auto& row : batch_.vesting_whitelist) {
     queue_set_indexed_once("vesting_whitelist", address_key(row.vesting_contract_address) + ":" + address_key(row.wallet_address),
                            row.source_mc_seqno, build_payload(row), build_indexes(row));
   }
-  for (const auto& row : batch_.nominator_pools) {
-    queue_indexed_interface_current("nominator_pools", address_key(row.address), row);
-  }
+  queue_indexed_interface_current_rows(batch_.nominator_pools, "nominator_pools", [](const auto& row) {
+    return address_key(row.address);
+  });
   for (const auto& row : batch_.telemint_nft_items) {
     queue_interface_current("telemint_nft_items", address_key(row.address), row);
   }
@@ -2883,20 +2903,6 @@ void KvrocksBatchWriter::queue_set_current_existing(const std::string& table, co
   flush_if_needed();
 }
 
-void KvrocksBatchWriter::queue_set_indexed_current(const std::string& table, const std::string& id,
-                                                   std::uint32_t source_mc_seqno, const std::string& payload,
-                                                   const std::vector<KvrocksIndexEntry>& indexes) {
-  queue_set_indexed(kvrocks_set_indexed_current_script_sha(), table, id, source_mc_seqno, payload, indexes, true);
-}
-
-void KvrocksBatchWriter::queue_set_indexed_current_existing(const std::string& table, const std::string& id,
-                                                            std::uint32_t source_mc_seqno,
-                                                            const std::string& payload,
-                                                            const std::vector<KvrocksIndexEntry>& indexes) {
-  queue_set_indexed(kvrocks_set_indexed_current_existing_script_sha(), table, id, source_mc_seqno, payload, indexes,
-                    true);
-}
-
 void KvrocksBatchWriter::queue_set_indexed_once(const std::string& table, const std::string& id,
                                                 std::uint32_t source_mc_seqno, const std::string& payload,
                                                 const std::vector<KvrocksIndexEntry>& indexes) {
@@ -2909,79 +2915,175 @@ void KvrocksBatchWriter::queue_set_indexed(const std::string& script_sha, const 
                                            const std::vector<KvrocksIndexEntry>& indexes, bool read_old_indexes) {
   const auto key = kvrocks_key(table, id);
   const auto payload_key = kvrocks_payload_key(table, id);
-  if (read_old_indexes && pending_row_keys_.count(key) != 0) {
-    flush();
+  IndexedWrite write{script_sha, key, payload_key, source_mc_seqno, payload, indexes, read_old_indexes};
+  if (read_old_indexes) {
+    std::vector<IndexedWrite> writes;
+    writes.push_back(std::move(write));
+    queue_indexed_writes(writes);
+    return;
   }
-  const auto old_indexes = read_old_indexes ? read_old_index_snapshot(key) : std::vector<KvrocksIndexSnapshotEntry>{};
 
+  queue_indexed_write(write, {});
+}
+
+void KvrocksBatchWriter::queue_indexed_writes(const std::vector<IndexedWrite>& writes) {
+  std::size_t begin = 0;
+  while (begin < writes.size()) {
+    std::unordered_set<std::string> chunk_keys;
+    std::size_t end = begin;
+    for (; end < writes.size() && end - begin < KVROCKS_INDEX_SNAPSHOT_CHUNK_SIZE; ++end) {
+      if (!chunk_keys.insert(writes[end].key).second) {
+        break;
+      }
+    }
+    if (end == begin) {
+      end = begin + 1;
+    }
+
+    bool pending_conflicts_with_snapshot = false;
+    for (std::size_t i = begin; i < end; ++i) {
+      if (writes[i].read_old_indexes && pending_row_keys_.count(writes[i].key) != 0) {
+        pending_conflicts_with_snapshot = true;
+        break;
+      }
+    }
+    if (pending_conflicts_with_snapshot) {
+      flush();
+    }
+
+    const auto old_snapshots = read_old_index_snapshots(writes, begin, end);
+    for (std::size_t i = begin; i < end; ++i) {
+      queue_indexed_write(writes[i], old_snapshots[i - begin]);
+    }
+    flush();
+    begin = end;
+  }
+}
+
+void KvrocksBatchWriter::queue_indexed_write(const IndexedWrite& write,
+                                             const std::vector<KvrocksIndexSnapshotEntry>& old_indexes) {
   std::vector<std::string> keys;
-  keys.reserve(2 + old_indexes.size() + indexes.size());
-  keys.push_back(key);
-  keys.push_back(payload_key);
+  keys.reserve(2 + old_indexes.size() + write.indexes.size());
+  keys.push_back(write.key);
+  keys.push_back(write.payload_key);
   for (const auto& old_index : old_indexes) {
     keys.push_back(old_index.key);
   }
-  for (const auto& index : indexes) {
+  for (const auto& index : write.indexes) {
     keys.push_back(index.key);
   }
 
   std::vector<std::string> args;
-  args.reserve(4 + old_indexes.size() + indexes.size() * 2);
-  args.push_back(std::to_string(source_mc_seqno));
-  args.push_back(payload);
+  args.reserve(4 + old_indexes.size() + write.indexes.size() * 2);
+  args.push_back(std::to_string(write.source_mc_seqno));
+  args.push_back(write.payload);
   args.push_back(std::to_string(old_indexes.size()));
-  args.push_back(std::to_string(indexes.size()));
+  args.push_back(std::to_string(write.indexes.size()));
   for (const auto& old_index : old_indexes) {
     args.push_back(old_index.member);
   }
-  for (const auto& index : indexes) {
+  for (const auto& index : write.indexes) {
     args.push_back(index.member);
     args.push_back(index.score);
   }
-  pipeline_.evalsha(script_sha, keys.begin(), keys.end(), args.begin(), args.end());
+  pipeline_.evalsha(write.script_sha, keys.begin(), keys.end(), args.begin(), args.end());
   ++pending_;
   ++queued_;
-  pending_row_keys_.insert(key);
+  pending_row_keys_.insert(write.key);
   flush_if_needed();
 }
 
-std::vector<KvrocksIndexSnapshotEntry> KvrocksBatchWriter::read_old_index_snapshot(const std::string& key) {
-  td::Timer exec_timer;
-  const auto old_count = parse_kvrocks_index_count(redis_.hget(key, "idx_count"), key);
-  if (old_count == 0) {
-    exec_timer.pause();
-    exec_elapsed_millis_ += exec_timer.elapsed() * 1e3;
-    return {};
-  }
+std::vector<std::vector<KvrocksIndexSnapshotEntry>> KvrocksBatchWriter::read_old_index_snapshots(
+    const std::vector<IndexedWrite>& writes, std::size_t begin, std::size_t end) {
+  std::vector<std::vector<KvrocksIndexSnapshotEntry>> snapshots(end - begin);
+  std::vector<std::size_t> count_offsets;
+  count_offsets.reserve(end - begin);
 
-  std::vector<std::string> fields;
-  fields.reserve(old_count * 2);
-  for (std::size_t i = 1; i <= old_count; ++i) {
-    fields.push_back("idx_key_" + std::to_string(i));
-    fields.push_back("idx_member_" + std::to_string(i));
-  }
-
-  std::vector<sw::redis::OptionalString> values;
-  values.reserve(fields.size());
-  redis_.hmget(key, fields.begin(), fields.end(), std::back_inserter(values));
-  exec_timer.pause();
-  exec_elapsed_millis_ += exec_timer.elapsed() * 1e3;
-
-  if (values.size() != fields.size()) {
-    throw std::runtime_error("Kvrocks HMGET old index snapshot reply count mismatch for " + key);
-  }
-
-  std::vector<KvrocksIndexSnapshotEntry> snapshot;
-  snapshot.reserve(old_count);
-  for (std::size_t i = 0; i < old_count; ++i) {
-    const auto& index_key = values[i * 2];
-    const auto& index_member = values[i * 2 + 1];
-    if (!index_key || !index_member) {
-      throw KvrocksIndexSnapshotConflict();
+  td::Timer count_timer;
+  auto count_pipeline = redis_.pipeline(true);
+  for (std::size_t i = begin; i < end; ++i) {
+    if (!writes[i].read_old_indexes) {
+      continue;
     }
-    snapshot.push_back({*index_key, *index_member});
+    count_pipeline.hget(writes[i].key, "idx_count");
+    count_offsets.push_back(i - begin);
   }
-  return snapshot;
+  if (count_offsets.empty()) {
+    count_timer.pause();
+    return snapshots;
+  }
+
+  auto count_replies = count_pipeline.exec();
+  count_timer.pause();
+  exec_elapsed_millis_ += count_timer.elapsed() * 1e3;
+  if (count_replies.size() != count_offsets.size()) {
+    throw std::runtime_error("Kvrocks HGET old index snapshot reply count mismatch");
+  }
+
+  std::vector<std::size_t> old_counts(snapshots.size(), 0);
+  for (std::size_t i = 0; i < count_replies.size(); ++i) {
+    const auto offset = count_offsets[i];
+    old_counts[offset] = parse_kvrocks_index_count(count_replies.get<sw::redis::OptionalString>(i),
+                                                   writes[begin + offset].key);
+  }
+
+  std::vector<std::size_t> value_offsets;
+  value_offsets.reserve(count_offsets.size());
+  std::vector<std::vector<std::string>> fields_by_offset(snapshots.size());
+  td::Timer values_timer;
+  auto values_pipeline = redis_.pipeline(true);
+  for (std::size_t offset = 0; offset < snapshots.size(); ++offset) {
+    const auto old_count = old_counts[offset];
+    if (old_count == 0) {
+      continue;
+    }
+
+    auto& fields = fields_by_offset[offset];
+    fields.reserve(old_count * 2);
+    for (std::size_t i = 1; i <= old_count; ++i) {
+      fields.push_back("idx_key_" + std::to_string(i));
+      fields.push_back("idx_member_" + std::to_string(i));
+    }
+
+    values_pipeline.hmget(writes[begin + offset].key, fields.begin(), fields.end());
+    value_offsets.push_back(offset);
+  }
+  if (value_offsets.empty()) {
+    values_timer.pause();
+    exec_elapsed_millis_ += values_timer.elapsed() * 1e3;
+    return snapshots;
+  }
+
+  auto value_replies = values_pipeline.exec();
+  values_timer.pause();
+  exec_elapsed_millis_ += values_timer.elapsed() * 1e3;
+  if (value_replies.size() != value_offsets.size()) {
+    throw std::runtime_error("Kvrocks HMGET old index snapshot reply count mismatch");
+  }
+
+  for (std::size_t reply_i = 0; reply_i < value_replies.size(); ++reply_i) {
+    const auto offset = value_offsets[reply_i];
+    const auto& fields = fields_by_offset[offset];
+    std::vector<sw::redis::OptionalString> values;
+    values.reserve(fields.size());
+    value_replies.get(reply_i, std::back_inserter(values));
+    if (values.size() != fields.size()) {
+      throw std::runtime_error("Kvrocks HMGET old index snapshot reply count mismatch for " +
+                               writes[begin + offset].key);
+    }
+
+    auto& snapshot = snapshots[offset];
+    snapshot.reserve(old_counts[offset]);
+    for (std::size_t i = 0; i < old_counts[offset]; ++i) {
+      const auto& index_key = values[i * 2];
+      const auto& index_member = values[i * 2 + 1];
+      if (!index_key || !index_member) {
+        throw KvrocksIndexSnapshotConflict();
+      }
+      snapshot.push_back({*index_key, *index_member});
+    }
+  }
+  return snapshots;
 }
 
 void KvrocksBatchWriter::reset_pipeline() {

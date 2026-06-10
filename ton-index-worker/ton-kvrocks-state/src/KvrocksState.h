@@ -489,6 +489,16 @@ public:
   double exec_elapsed_millis() const;
 
 private:
+  struct IndexedWrite {
+    std::string script_sha;
+    std::string key;
+    std::string payload_key;
+    std::uint32_t source_mc_seqno;
+    std::string payload;
+    std::vector<KvrocksIndexEntry> indexes;
+    bool read_old_indexes{false};
+  };
+
   void write_once();
   void queue_set_once(const std::string& table, const std::string& id, std::uint32_t source_mc_seqno,
                       const std::string& payload);
@@ -496,17 +506,16 @@ private:
                          const std::string& payload);
   void queue_set_current_existing(const std::string& table, const std::string& id, std::uint32_t source_mc_seqno,
                                   const std::string& payload);
-  void queue_set_indexed_current(const std::string& table, const std::string& id, std::uint32_t source_mc_seqno,
-                                 const std::string& payload, const std::vector<KvrocksIndexEntry>& indexes);
-  void queue_set_indexed_current_existing(const std::string& table, const std::string& id,
-                                          std::uint32_t source_mc_seqno, const std::string& payload,
-                                          const std::vector<KvrocksIndexEntry>& indexes);
   void queue_set_indexed_once(const std::string& table, const std::string& id, std::uint32_t source_mc_seqno,
                               const std::string& payload, const std::vector<KvrocksIndexEntry>& indexes);
   void queue_set_indexed(const std::string& script_sha, const std::string& table, const std::string& id,
                          std::uint32_t source_mc_seqno, const std::string& payload,
                          const std::vector<KvrocksIndexEntry>& indexes, bool read_old_indexes);
-  std::vector<KvrocksIndexSnapshotEntry> read_old_index_snapshot(const std::string& key);
+  void queue_indexed_writes(const std::vector<IndexedWrite>& writes);
+  void queue_indexed_write(const IndexedWrite& write, const std::vector<KvrocksIndexSnapshotEntry>& old_indexes);
+  std::vector<std::vector<KvrocksIndexSnapshotEntry>> read_old_index_snapshots(const std::vector<IndexedWrite>& writes,
+                                                                               std::size_t begin,
+                                                                               std::size_t end);
   void reset_pipeline();
   void flush_if_needed();
   void flush();
