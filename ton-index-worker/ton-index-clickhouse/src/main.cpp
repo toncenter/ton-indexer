@@ -236,6 +236,8 @@ int main(int argc, char *argv[]) {
     LOG(ERROR) << "Please specify working directory with -W or --working-dir";
     std::_Exit(2);
   }
+  const bool bounded_archive_range = from_seqno > 0 && to_seqno > 0;
+  const float db_catch_up_interval = bounded_archive_range ? 60.0f : 1.0f;
   td::mkpath(working_dir + "/").ensure();
 
   if (max_queue_size > 0) {
@@ -263,7 +265,11 @@ int main(int argc, char *argv[]) {
   td::actor::Scheduler scheduler({td::actor::Scheduler::NodeInfo{threads, io_workers}});
   scheduler.run_in_context([&] { insert_manager_ = td::actor::create_actor<InsertManagerClickhouse>("insertmanager", credential); });
   scheduler.run_in_context([&] { parse_manager_ = td::actor::create_actor<ParseManager>("parsemanager"); });
-  scheduler.run_in_context([&] { db_scanner_ = td::actor::create_actor<DbScanner>("scanner", db_root, dbs_secondary, working_dir + "/secondary_logs"); });
+  scheduler.run_in_context([&] {
+    db_scanner_ = td::actor::create_actor<DbScanner>("scanner", db_root, dbs_secondary,
+                                                     working_dir + "/secondary_logs", db_catch_up_interval,
+                                                     !bounded_archive_range);
+  });
 
   scheduler.run_in_context([&, watcher = std::move(watcher)] { index_scheduler_ = td::actor::create_actor<IndexScheduler>("indexscheduler", db_scanner_.get(), 
     insert_manager_.get(), parse_manager_.get(), working_dir, from_seqno, to_seqno, force_index, max_active_tasks, max_queue, stats_timeout, watcher);

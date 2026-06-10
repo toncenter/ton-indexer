@@ -16,17 +16,24 @@ private:
   ScannerMode mode_;
   std::optional<std::string> secondary_working_dir_;
   float catch_up_interval_;
+  bool force_catch_up_on_get_max_seqno_;
   bool is_ready_ = false;
   ton::BlockSeqno last_known_seqno_{0};
   bool catch_up_in_progress_{false};
-  std::vector<td::Promise<td::Unit>> catch_up_promises_;
-  std::vector<td::Promise<td::Unit>> pending_catch_up_promises_;
+  struct CatchUpRequest {
+    td::Promise<td::Unit> promise;
+    ton::validator::CatchUpMode mode{ton::validator::CatchUpMode::Force};
+  };
+  std::vector<CatchUpRequest> catch_up_requests_;
+  std::vector<CatchUpRequest> pending_catch_up_requests_;
 
   td::actor::ActorOwn<ton::validator::ValidatorManagerInterface> validator_manager_;
   td::actor::ActorOwn<ton::validator::RootDb> db_;
 public:
-  DbScanner(std::string db_root, ScannerMode mode, std::optional<std::string> secondary_working_dir = std::nullopt, float catch_up_interval = 1.0)
-    : db_root_(db_root), mode_(mode), secondary_working_dir_(secondary_working_dir), catch_up_interval_(catch_up_interval) {}
+  DbScanner(std::string db_root, ScannerMode mode, std::optional<std::string> secondary_working_dir = std::nullopt,
+            float catch_up_interval = 1.0, bool force_catch_up_on_get_max_seqno = true)
+    : db_root_(db_root), mode_(mode), secondary_working_dir_(secondary_working_dir),
+      catch_up_interval_(catch_up_interval), force_catch_up_on_get_max_seqno_(force_catch_up_on_get_max_seqno) {}
 
   void start_up() override;
   void alarm() override;
@@ -41,10 +48,13 @@ public:
   void get_cell_db_reader(td::Promise<std::shared_ptr<vm::CellDbReader>> promise);
   void iterate_temp_block_handles(std::function<void(const ton::validator::BlockHandleInterface&)> f);
   void fetch_block_by_id(ton::BlockIdExt block_id, td::Promise<schema::BlockDataState> promise);
-  void request_catch_up(td::Promise<td::Unit> promise);
+  void request_catch_up(td::Promise<td::Unit> promise,
+                        ton::validator::CatchUpMode mode = ton::validator::CatchUpMode::Force);
 private:
   void start_catch_up_with_primary();
   void catch_up_finished(td::Result<td::Unit> result, double elapsed_ms);
+  static ton::validator::CatchUpMode strongest_catch_up_mode(ton::validator::CatchUpMode left,
+                                                             ton::validator::CatchUpMode right);
 };
 
 struct BlockIdExtHasher {

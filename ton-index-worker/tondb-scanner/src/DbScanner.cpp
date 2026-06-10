@@ -298,15 +298,18 @@ void DbScanner::start_up() {
   if (mode_ == dbs_secondary) {
     CHECK(secondary_working_dir_.has_value());
     opts.write().set_secondary_working_dir(secondary_working_dir_.value());
+    const auto archive_slice_catch_up_interval = catch_up_interval_ > 1.0f ? catch_up_interval_ : 1.0f;
+    opts.write().set_secondary_catch_up_interval(archive_slice_catch_up_interval);
   }
   auto mode = mode_ == dbs_readonly ? td::DbOpenMode::db_readonly : td::DbOpenMode::db_secondary;
   db_ = td::actor::create_actor<ton::validator::RootDb>("db", td::actor::ActorId<ton::validator::ValidatorManager>(), db_root_, std::move(opts), mode);
 
-  alarm_timestamp() = td::Timestamp::in(1.0);
+  alarm_timestamp() = td::Timestamp::in(catch_up_interval_);
 }
 
 void DbScanner::get_last_mc_seqno(td::Promise<ton::BlockSeqno> promise) {
-  td::actor::send_closure(db_, &RootDb::get_max_masterchain_seqno, std::move(promise));
+  td::actor::send_closure(db_, &RootDb::get_max_masterchain_seqno, force_catch_up_on_get_max_seqno_,
+                          std::move(promise));
 }
 
 void DbScanner::get_oldest_mc_seqno(td::Promise<ton::BlockSeqno> promise) {
@@ -339,56 +342,74 @@ void DbScanner::fetch_block_by_id(ton::BlockIdExt block_id, td::Promise<schema::
   td::actor::send_closure(db_, &RootDb::get_block_handle, block_id, std::move(P));
 }
 
-void DbScanner::request_catch_up(td::Promise<td::Unit> promise) {
+void DbScanner::request_catch_up(td::Promise<td::Unit> promise, CatchUpMode mode) {
   if (mode_ == dbs_readonly || db_.empty()) {
     promise.set_error(td::Status::Error("cannot catch up in readonly mode"));
     return;
   }
+  CatchUpRequest request{std::move(promise), mode};
   if (catch_up_in_progress_) {
-    pending_catch_up_promises_.push_back(std::move(promise));
+    pending_catch_up_requests_.push_back(std::move(request));
     return;
   }
-  catch_up_promises_.push_back(std::move(promise));
+  catch_up_requests_.push_back(std::move(request));
   start_catch_up_with_primary();
 }
 
 void DbScanner::start_catch_up_with_primary() {
-  if (catch_up_in_progress_ || catch_up_promises_.empty()) {
+  if (catch_up_in_progress_ || catch_up_requests_.empty()) {
     return;
+  }
+  auto mode = catch_up_requests_.front().mode;
+  for (const auto& request : catch_up_requests_) {
+    auto next_mode = strongest_catch_up_mode(mode, request.mode);
+    if (next_mode != mode) {
+      mode = next_mode;
+    }
   }
   catch_up_in_progress_ = true;
   auto R = td::PromiseCreator::lambda([SelfId = actor_id(this), timer = td::Timer{}](td::Result<td::Unit> R) mutable {
     auto elapsed_ms = timer.elapsed() * 1e3;
     td::actor::send_closure(SelfId, &DbScanner::catch_up_finished, std::move(R), elapsed_ms);
   });
-  td::actor::send_closure(db_, &RootDb::try_catch_up_with_primary, std::move(R));
+  td::actor::send_closure(db_, &RootDb::try_catch_up_with_primary, mode, std::move(R));
 }
 
 void DbScanner::catch_up_finished(td::Result<td::Unit> result, double elapsed_ms) {
   catch_up_in_progress_ = false;
   g_statistics.record_time(CATCH_UP_WITH_PRIMARY, elapsed_ms);
 
-  auto promises = std::move(catch_up_promises_);
-  catch_up_promises_.clear();
+  auto requests = std::move(catch_up_requests_);
+  catch_up_requests_.clear();
 
   if (result.is_error()) {
     auto error = result.move_as_error();
     auto error_message = error.to_string();
-    for (auto& promise : promises) {
-      promise.set_error(td::Status::Error(error_message));
+    for (auto& request : requests) {
+      request.promise.set_error(td::Status::Error(error_message));
     }
   } else {
     is_ready_ = true;
-    for (auto& promise : promises) {
-      promise.set_value(td::Unit());
+    for (auto& request : requests) {
+      request.promise.set_value(td::Unit());
     }
   }
 
-  if (!pending_catch_up_promises_.empty()) {
-    catch_up_promises_ = std::move(pending_catch_up_promises_);
-    pending_catch_up_promises_.clear();
+  if (!pending_catch_up_requests_.empty()) {
+    catch_up_requests_ = std::move(pending_catch_up_requests_);
+    pending_catch_up_requests_.clear();
     start_catch_up_with_primary();
   }
+}
+
+CatchUpMode DbScanner::strongest_catch_up_mode(CatchUpMode left, CatchUpMode right) {
+  if (left == CatchUpMode::Force || right == CatchUpMode::Force) {
+    return CatchUpMode::Force;
+  }
+  if (left == CatchUpMode::Throttled || right == CatchUpMode::Throttled) {
+    return CatchUpMode::Throttled;
+  }
+  return CatchUpMode::None;
 }
 
 void DbScanner::fetch_seqno(std::uint32_t mc_seqno, td::Promise<schema::MasterchainBlockDataState> promise) {
@@ -408,5 +429,5 @@ void DbScanner::alarm() {
     R.ensure();
   });
 
-  request_catch_up(std::move(P));
+  request_catch_up(std::move(P), CatchUpMode::Throttled);
 }

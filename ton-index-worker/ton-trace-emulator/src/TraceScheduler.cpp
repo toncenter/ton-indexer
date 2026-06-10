@@ -88,7 +88,8 @@ void TraceEmulatorScheduler::request_db_catch_up() {
     auto P = td::PromiseCreator::lambda([SelfId = actor_id(this)](td::Result<td::Unit> R) mutable {
         td::actor::send_closure(SelfId, &TraceEmulatorScheduler::db_catch_up_finished, std::move(R));
     });
-    td::actor::send_closure(db_scanner_, &DbScanner::request_catch_up, std::move(P));
+    td::actor::send_closure(db_scanner_, &DbScanner::request_catch_up, std::move(P),
+                            ton::validator::CatchUpMode::Force);
 }
 
 void TraceEmulatorScheduler::requeue_catch_up_batch() {

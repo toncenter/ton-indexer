@@ -318,14 +318,19 @@ void IndexScheduler::got_newest_mc_seqno(std::uint32_t newest_mc_seqno) {
     }
     last_known_seqno_ = static_cast<std::int32_t>(effective_newest_seqno);
 
+    const bool adjust_catch_up_interval = !is_bounded_archive_range();
     if (!is_in_sync_ && (last_known_seqno_ - last_indexed_seqno_ <= IS_IN_SYNC_THRESHOLD)) {
         LOG(INFO) << "Indexer is in sync with TON node";
         is_in_sync_ = true;
-        td::actor::send_closure(db_scanner_, &DbScanner::set_catch_up_interval, 0.1);
+        if (adjust_catch_up_interval) {
+            td::actor::send_closure(db_scanner_, &DbScanner::set_catch_up_interval, 0.1);
+        }
     } else if (is_in_sync_ && (last_known_seqno_ - last_indexed_seqno_ > IS_IN_SYNC_THRESHOLD)) {
         LOG(WARNING) << "Indexing is out of sync with TON node";
         is_in_sync_ = false;
-        td::actor::send_closure(db_scanner_, &DbScanner::set_catch_up_interval, 1.0);
+        if (adjust_catch_up_interval) {
+            td::actor::send_closure(db_scanner_, &DbScanner::set_catch_up_interval, 1.0);
+        }
     }
 }
 
