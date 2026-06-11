@@ -120,6 +120,23 @@ class BlockMatcher:
     async def build_block(self, block: Block, other_blocks: list[Block]) -> list[Block]:
         return [block] + other_blocks
 
+    def bail(self, block: Block, reason: str) -> list:
+        if logger.isEnabledFor(logging.DEBUG):
+            try:
+                trace_id = block.event_nodes[0].message.trace_id
+            except Exception:
+                trace_id = "?"
+            logger.debug("%s bail: %s (trace %s)", type(self).__name__, reason, trace_id)
+        return []
+
+    def bail_none(self, block: Block, reason: str) -> None:
+        self.bail(block, reason)
+        return None
+
+
+def excess_matcher() -> ContractMatcher:
+    return ContractMatcher(opcode=ExcessMessage.opcode, optional=True, include_excess=False)
+
 
 class OrMatcher(BlockMatcher):
     def __init__(self, matchers: list[BlockMatcher], optional=False):

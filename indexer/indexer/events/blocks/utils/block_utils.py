@@ -48,3 +48,7 @@ def get_multiple_labeled(label: str, blocks: list[Block], block_type: Type[T] = 
             if b.label == label:
                 labeled.append(b.block)
     return labeled
+
+
+def get_labeled_sorted(label: str, blocks: list[Block], block_type: Type[T] = Block) -> list[T]:
+    return sorted(get_multiple_labeled(label, blocks, block_type), key=lambda b: b.min_lt)

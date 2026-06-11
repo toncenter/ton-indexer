@@ -14,3 +14,4 @@ from .evaa import *
 from .layerzero import *
 from .coffee import *
 from .cocoon import *
+from .dedust_v2 import *

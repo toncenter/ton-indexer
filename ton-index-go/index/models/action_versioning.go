@@ -51,7 +51,11 @@ var ActionTypeShortcuts = map[string][]string{
 		"cocoon_client_request_refund", "cocoon_grant_refund",
 		"cocoon_client_increase_stake", "cocoon_client_withdraw",
 	},
-	"latest": {"v4"},
+	"v5": {
+		"v4",
+		"dedust_v2_claim_fees", "dedust_v2_claim_reward",
+	},
+	"latest": {"v5"},
 	"staking": {
 		"stake_deposit", "stake_withdrawal", "stake_withdrawal_request",
 	},

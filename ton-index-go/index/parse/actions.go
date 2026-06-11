@@ -301,7 +301,7 @@ func ParseRawAction(raw *models.RawAction) (*models.Action, error) {
 		details.Source = raw.Source
 		details.Dex = raw.DexDepositLiquidityDataDex
 		details.Pool = raw.Destination
-		if raw.DexDepositLiquidityDataDex != nil && *raw.DexDepositLiquidityDataDex == "dedust" {
+		if raw.DexDepositLiquidityDataDex != nil && (*raw.DexDepositLiquidityDataDex == "dedust" || *raw.DexDepositLiquidityDataDex == "dedust_v2") {
 			details.DestinationLiquidity = raw.DestinationSecondary // deposit liquidity contract
 		} else {
 			details.DestinationLiquidity = raw.Destination // liquidity pool
@@ -326,6 +326,32 @@ func ParseRawAction(raw *models.RawAction) (*models.Action, error) {
 			details.VaultExcesses = append(details.VaultExcesses, models.ActionDetailsLiquidityVaultExcess(excess))
 		}
 		act.Details = &details
+	case "dedust_v2_claim_fees":
+		act.Details = models.ActionDetailsDedustV2ClaimFees{
+			Dex:               raw.DexWithdrawLiquidityDataDex,
+			Source:            raw.Source,
+			Pool:              raw.Destination,
+			Position:          raw.DestinationSecondary,
+			Asset1:            raw.DexWithdrawLiquidityDataAsset1Out,
+			Asset2:            raw.DexWithdrawLiquidityDataAsset2Out,
+			Amount1:           raw.DexWithdrawLiquidityDataAmount1,
+			Amount2:           raw.DexWithdrawLiquidityDataAmount2,
+			UserJettonWallet1: raw.DexWithdrawLiquidityDataUserJettonWallet1,
+			UserJettonWallet2: raw.DexWithdrawLiquidityDataUserJettonWallet2,
+			DexJettonWallet1:  raw.DexWithdrawLiquidityDataDexJettonWallet1,
+			DexJettonWallet2:  raw.DexWithdrawLiquidityDataDexJettonWallet2,
+		}
+	case "dedust_v2_claim_reward":
+		act.Details = models.ActionDetailsDedustV2ClaimReward{
+			Dex:              raw.DexWithdrawLiquidityDataDex,
+			Source:           raw.Source,
+			Pool:             raw.Destination,
+			Position:         raw.DestinationSecondary,
+			Asset:            raw.DexWithdrawLiquidityDataAsset1Out,
+			Amount:           raw.DexWithdrawLiquidityDataAmount1,
+			UserJettonWallet: raw.DexWithdrawLiquidityDataUserJettonWallet1,
+			DexJettonWallet:  raw.DexWithdrawLiquidityDataDexJettonWallet1,
+		}
 	case "dex_withdraw_liquidity":
 		var details models.ActionDetailsDexWithdrawLiquidity
 		details.Source = raw.Source
@@ -399,8 +425,8 @@ func ParseRawAction(raw *models.RawAction) (*models.Action, error) {
 		for _, peer := range raw.JettonSwapPeerSwaps {
 			details.PeerSwaps = append(details.PeerSwaps, models.ActionDetailsJettonSwapPeerSwap(peer))
 		}
-		// MinOutAmount common field in swaps but for now supported only in tonco swaps, thats why it should appear only for tonco for now
-		if details.Dex != nil && *details.Dex == "tonco" {
+		// MinOutAmount common field in swaps but for now supported only in tonco and dedust_v2 swaps
+		if details.Dex != nil && (*details.Dex == "tonco" || *details.Dex == "dedust_v2") {
 			act.Details = &models.ActionDetailsToncoJettonSwap{
 				Dex:                 details.Dex,
 				Sender:              details.Sender,

@@ -373,7 +373,7 @@ def _fill_jetton_swap_action(block: JettonSwapBlock, action: Action):
     }
     action.asset = dex_incoming_transfer['asset']
     action.asset2 = dex_outgoing_transfer['asset']
-    if block.data['dex'] in ('stonfi_v2', 'dedust', 'tonco'):
+    if block.data['dex'] in ('stonfi_v2', 'dedust', 'dedust_v2', 'tonco'):
         action.asset = _addr(block.data['source_asset'])
         action.asset2 = _addr(block.data['destination_asset'])
     action.source = dex_incoming_transfer['source']
@@ -396,6 +396,83 @@ def _fill_jetton_swap_action(block: JettonSwapBlock, action: Action):
     }
     if 'peer_swaps' in block.data and block.data['peer_swaps'] is not None:
         action.jetton_swap_data['peer_swaps'] = [_convert_peer_swap(swap) for swap in block.data['peer_swaps']]
+
+def _fill_dedust_v2_deposit_liquidity(block: Block, action: Action):
+    action.type = 'dex_deposit_liquidity'
+    action.source = _addr(block.data['sender'])
+    action.destination = _addr(block.data['pool'])
+    if block.data.get('deposit_contract') is not None:
+        action.destination_secondary = _addr(block.data['deposit_contract'])
+
+    def _amt(key):
+        v = block.data.get(key)
+        return v.value if v is not None else None
+
+    vault_excesses = []
+    for asset, amount in (block.data.get('vault_excesses') or []):
+        vault_excesses.append({'asset': _addr(asset), 'amount': amount.value if amount is not None else None})
+
+    action.dex_deposit_liquidity_data = {
+        'dex': block.data['dex'],
+        'asset1': _addr(block.data.get('asset_1')),
+        'amount1': _amt('amount_1'),
+        'asset2': _addr(block.data.get('asset_2')),
+        'amount2': _amt('amount_2'),
+        'user_jetton_wallet_1': _addr(block.data.get('sender_wallet_1')),
+        'user_jetton_wallet_2': _addr(block.data.get('sender_wallet_2')),
+        'lp_tokens_minted': _amt('lp_tokens_minted'),
+        'target_asset_1': _addr(block.data.get('asset_1')),
+        'target_amount_1': _amt('target_amount_1'),
+        'target_asset_2': _addr(block.data.get('asset_2')),
+        'target_amount_2': _amt('target_amount_2'),
+        'vault_excesses': vault_excesses,
+    }
+
+def _fill_dedust_v2_deposit_liquidity_partial(block: Block, action: Action):
+    action.type = 'dex_deposit_liquidity'
+    _fill_dex_deposit_liquidity(block, action)
+    if block.data.get('deposit_contract') is not None:
+        action.destination_secondary = _addr(block.data['deposit_contract'])
+
+def _fill_dedust_v2_claim_fees(block: Block, action: Action):
+    action.source = _addr(block.data['sender'])
+    action.destination = _addr(block.data['pool'])
+    action.destination_secondary = _addr(block.data['position'])
+    action.dex_withdraw_liquidity_data = {
+        'dex': block.data['dex'],
+        'amount1': block.data['amount_x'].value if block.data['amount_x'] is not None else None,
+        'amount2': block.data['amount_y'].value if block.data['amount_y'] is not None else None,
+        'asset1_out': _addr(block.data['asset_x']),
+        'asset2_out': _addr(block.data['asset_y']),
+        'user_jetton_wallet_1': _addr(block.data['user_wallet_x']),
+        'user_jetton_wallet_2': _addr(block.data['user_wallet_y']),
+        'dex_wallet_1': _addr(block.data['dex_wallet_x']),
+        'dex_wallet_2': _addr(block.data['dex_wallet_y']),
+        'dex_jetton_wallet_1': _addr(block.data['dex_jetton_wallet_x']),
+        'dex_jetton_wallet_2': _addr(block.data['dex_jetton_wallet_y']),
+        'is_refund': False,
+        'lp_tokens_burnt': None,
+    }
+
+def _fill_dedust_v2_claim_reward(block: Block, action: Action):
+    action.source = _addr(block.data['sender'])
+    action.destination = _addr(block.data['pool'])
+    action.destination_secondary = _addr(block.data['position'])
+    action.dex_withdraw_liquidity_data = {
+        'dex': block.data['dex'],
+        'amount1': block.data['amount'].value if block.data['amount'] is not None else None,
+        'amount2': None,
+        'asset1_out': _addr(block.data['asset']),
+        'asset2_out': None,
+        'user_jetton_wallet_1': _addr(block.data['user_wallet']),
+        'user_jetton_wallet_2': None,
+        'dex_wallet_1': _addr(block.data['dex_wallet']),
+        'dex_wallet_2': None,
+        'dex_jetton_wallet_1': _addr(block.data['dex_jetton_wallet']),
+        'dex_jetton_wallet_2': None,
+        'is_refund': False,
+        'lp_tokens_burnt': None,
+    }
 
 def _fill_dex_deposit_liquidity(block: Block, action: Action):
     action.source = _addr(block.data['sender'])
@@ -1347,6 +1424,14 @@ def block_to_action(block: Block, trace_id: str, trace: Trace) -> Action:
             _fill_subscribe_action(block, action)
         case 'dex_deposit_liquidity':
             _fill_dex_deposit_liquidity(block, action)
+        case 'dedust_v2_deposit_liquidity':
+            _fill_dedust_v2_deposit_liquidity(block, action)
+        case 'dedust_v2_deposit_liquidity_partial':
+            _fill_dedust_v2_deposit_liquidity_partial(block, action)
+        case 'dedust_v2_claim_fees':
+            _fill_dedust_v2_claim_fees(block, action)
+        case 'dedust_v2_claim_reward':
+            _fill_dedust_v2_claim_reward(block, action)
         case 'dex_withdraw_liquidity':
             _fill_dex_withdraw_liquidity(block, action)
         case 'unsubscribe':
@@ -1509,6 +1594,8 @@ v1_ops = [
     'nominator_pool_withdraw_request',
     'dedust_deposit_liquidity',
     'dedust_deposit_liquidity_partial',
+    'dedust_v2_deposit_liquidity',
+    'dedust_v2_deposit_liquidity_partial',
     'tonstakers_deposit',
     'tonstakers_withdraw_request',
     'tonstakers_withdraw',

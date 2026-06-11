@@ -463,3 +463,365 @@ cases:
           dex_deposit_liquidity_data.vault_excesses[1]:
             asset: 0:B298B457A75418C5929E9380932277240757B2E539320094293C094D7AD88EE7
             amount: 24334470584513
+
+  "DeDust V2 withdraw jetton/jetton":
+    trace-id: 1Q2c26rRKh2pbjDEqA1yv3M5dGKwP2DdDcXg0_qbtSU=
+    expected-actions:
+      - type: dex_withdraw_liquidity
+        values:
+          destination: 0:2C85CC7D0611E2CF065773A2C7C1BD167BE14D59C5A39DF651CED56A08FFF289
+          dex_withdraw_liquidity_data:
+            dex: dedust_v2
+            amount1: 100461083
+            amount2: 100014445820
+            asset1_out: 0:B113A994B5024A16719F69139328EB759596C38A25F59028B146FECDC3621DFE
+            asset2_out: 0:120068491DE0F88A84DBFE3365C89009A54F7C33C073A87C2C51D887CC7CF557
+            user_jetton_wallet_1: 0:FEB2E580EB9D654A2880CD1F21516DF680DC32B6FFEEABC6F0D9EAA677E21EA8
+            user_jetton_wallet_2: 0:50431A5616CD581FDA33AE71F45EB335E7C7D2C125C33F1C9498A63262CE7B3A
+            dex_jetton_wallet_1: 0:41665D4805375DB2BF45C997D0A49D5DAF5C7C8BFEF3C6F226A3BB3AE59D9A76
+            dex_jetton_wallet_2: 0:17FB025FAB583ABC6124B7F4CACA81973F0413EB484E38D1F42337F0A4BB9C64
+            lp_tokens_burnt: 3169788557
+            is_refund: false
+
+  "DeDust V2 withdraw TON/jetton":
+    trace-id: OShVZJVqIFxR94PEc48lwzt71eue2H7RgrzMi5zs7Hc=
+    expected-actions:
+      - type: dex_withdraw_liquidity
+        values:
+          destination: 0:00BA322D6C069ED0D84529DDF63643C5F31909137B68E7BC692EA2B34286FA7A
+          dex_withdraw_liquidity_data:
+            dex: dedust_v2
+            amount1: 46543920065400
+            amount2: 151756020743
+            asset1_out: 0:EE1A0A9953BFC012088EC047BE69BA3321E7EEA1A8AB4D62CEC9DEDCFDFF0687
+            asset2_out: null
+            user_jetton_wallet_1: 0:FDF41673C4E371BCA254E621BD92BA7EC5089DF1D5D719E31114AB46AA6BFA2C
+            user_jetton_wallet_2: null
+            dex_jetton_wallet_1: 0:9E1F5D31F32AE04F01D7D0B88C6540D8C6CDD6CF5FB2C618AABB91D9B55F9170
+            lp_tokens_burnt: 2657690739975
+            is_refund: false
+
+  "DeDust V2 withdraw failed (slippage)":
+    trace-id: T4FDfsNC46KffpNf_OOD30JqjdzpqfpCqtJHIoO3Lnc=
+    expected-actions:
+      - type: dex_withdraw_liquidity
+        values:
+          success: false
+          dex_withdraw_liquidity_data:
+            dex: dedust_v2
+            is_refund: true
+            lp_tokens_burnt: 31622776601
+            amount1: null
+            amount2: null
+            asset1_out: null
+            asset2_out: null
+
+  # ---- DeDust CPMM V2 deposit (escrow Deposit contract, single trace) ----
+  "DeDust V2 deposit jetton/jetton":
+    trace-id: a792Fwrpfic6hRQknLGJHE2G5Wvt3jSW6vvsql1XYb0=
+    expected-actions:
+      - type: dex_deposit_liquidity
+        values:
+          success: true
+          dex_deposit_liquidity_data:
+            dex: dedust_v2
+            amount1: 17579147047291038
+            amount2: 30428682786
+            asset1: 0:1371473AF6C19208231269DB1550A746C0CD4130A4BE1CA09618F93AD3164683
+            asset2: 0:B8EF4F77A17E5785BD31BA4DA50ABD91852F2B8FEBEE97AD6EE16D941F939198
+            user_jetton_wallet_1: 0:4376B3C5387363FCD05714FF6FDE98D9D2E9C1A1485A127DA74147FBB0B2E10F
+            user_jetton_wallet_2: 0:19F794FBA31E3E05E2966FAC8D1661A74FFE155505AFDB67F8B8BD40DAEE4F40
+            lp_tokens_minted: 23128127662015
+
+  "DeDust V2 deposit TON/jetton":
+    trace-id: kzOC0KQqVHHaNaiKPttuaR92uMct8n4kCDLTfq-CPuw=
+    expected-actions:
+      - type: dex_deposit_liquidity
+        values:
+          success: true
+          dex_deposit_liquidity_data:
+            dex: dedust_v2
+            amount1: 1000000000
+            amount2: 100000000000000
+            asset1: null
+            asset2: 0:60589A20CBA36EDA21AE157A653CF1819970121D94577D5A4625E879717D323A
+            user_jetton_wallet_1: null
+            user_jetton_wallet_2: 0:CC148589709985CB3B34F82CAF67C587B8F068C5B7A21C24471FE3B794027EA4
+            lp_tokens_minted: 316227766016
+
+  # deposit where pool rounds down both sides
+  "DeDust V2 deposit jetton/TON with refund":
+    trace-id: 8ioobbcdHm4jq4mKPqgCBQAiXz-DfiRKz8u6D48Tm2M=
+    expected-actions:
+      - type: dex_deposit_liquidity
+        values:
+          success: true
+          dex_deposit_liquidity_data:
+            dex: dedust_v2
+            asset1: 0:65AAC9B5E380EAE928DB3C8E238D9BC0D61A9320FDC2BC7A2F6C87D6FEDF9208
+            amount1: 2044642517
+            asset2: null
+            amount2: 999999999
+            user_jetton_wallet_1: 0:8E4499C900841D7583D9559A2F1F0BA229330240C156A198B57611D5F1017C02
+            user_jetton_wallet_2: null
+            lp_tokens_minted: 1429909967
+            target_asset_1: 0:65AAC9B5E380EAE928DB3C8E238D9BC0D61A9320FDC2BC7A2F6C87D6FEDF9208
+            target_amount_1: 2044642518
+            target_asset_2: null
+            target_amount_2: 1000000000
+          dex_deposit_liquidity_data.vault_excesses[0]:
+            asset: 0:65AAC9B5E380EAE928DB3C8E238D9BC0D61A9320FDC2BC7A2F6C87D6FEDF9208
+            amount: 1
+          dex_deposit_liquidity_data.vault_excesses[1]:
+            asset: null
+            amount: 1
+
+  "DeDust V2 rejected join jetton/jetton":
+    trace-id: GrBNR_bqjMb-qIhBVPYMy1nVQ5eJTXCuhJH7of4_B2g=
+    expected-actions:
+      - type: dex_deposit_liquidity
+        values:
+          success: false
+          source: 0:52DEEC707CB9759212EC7FB306F7599C6F438DD1159015DE80923AC420B3DF3A
+          dex_deposit_liquidity_data:
+            dex: dedust_v2
+            asset1: 0:91522B63EDE858BD2CD9293CA1AB4DBE1E96E12CD800BE7305E48EC3C77D50C4
+            amount1: 500000000000000
+            asset2: 0:D9BC35BB09FDF7623329795AFBEF53CCAD883298617289B4DD70BE32FAE9EE16
+            amount2: 5730293010751
+            user_jetton_wallet_1: 0:29FCF97B3127493CA34D3A59D9BDAC416ACC6A4D7F0D954C871DB69C679671D4
+            user_jetton_wallet_2: 0:F15101D0A0B0E335A1B72E0E1B086871DD3AFB59367907C91D4A62BE7DEF9250
+            lp_tokens_minted: null
+            target_amount_1: 500000000000000
+            target_amount_2: 5730293010751
+          dex_deposit_liquidity_data.vault_excesses[0]:
+            asset: 0:91522B63EDE858BD2CD9293CA1AB4DBE1E96E12CD800BE7305E48EC3C77D50C4
+            amount: 500000000000000
+          dex_deposit_liquidity_data.vault_excesses[1]:
+            asset: 0:D9BC35BB09FDF7623329795AFBEF53CCAD883298617289B4DD70BE32FAE9EE16
+            amount: 5730293010751
+
+  "DeDust V2 claim position fees":
+    trace-id: 846TnKmLxd4Otdbr4cMnvoqFJmzDT09IFTrGC9bpmes=
+    expected-actions:
+      - type: dedust_v2_claim_fees
+        values:
+          success: true
+          source: 0:B2C1EAE1705695DCC7143F5A12675E0FB082A56340C6AE038BCC9840266F618D
+          destination: 0:1309FE836D986792A1AF59F560E168E02E84B4276191498EFF0C1C78C877A7C5
+          destination_secondary: 0:13ADB153D654DE541615E574149747224E75A445A93E15C07CB476EA798C74C6
+          dex_withdraw_liquidity_data:
+            dex: dedust_v2
+            amount1: 0
+            amount2: 1450955367659
+            asset1_out: null
+            asset2_out: null
+            user_jetton_wallet_1: null
+            user_jetton_wallet_2: null
+            dex_wallet_1: null
+            dex_wallet_2: 0:1309FE836D986792A1AF59F560E168E02E84B4276191498EFF0C1C78C877A7C5
+            is_refund: false
+            lp_tokens_burnt: null
+
+  "DeDust V2 claim position fees TON+jetton":
+    trace-id: t3w52NsDV64FlPrPzP-KiGEZDz5C_4YLG9HaIDM9mpM=
+    expected-actions:
+      - type: dedust_v2_claim_fees
+        values:
+          success: true
+          dex_withdraw_liquidity_data:
+            dex: dedust_v2
+            amount1: 239835908
+            amount2: 1676468566128
+            asset1_out: null
+            asset2_out: 0:BE840C26495809EE20D43DCD38E450771C84AC3E369545E6A413F380ED8C4F9E
+            user_jetton_wallet_1: null
+            user_jetton_wallet_2: 0:2B2AF2174C6812F62018C3573713D3AF29001B878F89EDF5537D9AD35801C60D
+            dex_wallet_1: 0:E12B3184664A7446B935D785FA84BFC9A6C94C17382FEFAE4226C5D993C1B57E
+            dex_wallet_2: 0:E12B3184664A7446B935D785FA84BFC9A6C94C17382FEFAE4226C5D993C1B57E
+            dex_jetton_wallet_2: 0:E028FD140D76ABDE2B4E73ADD9339C0B89225333DE0F34230AAE4B72ECC8F3EC
+            is_refund: false
+            lp_tokens_burnt: null
+
+  "DeDust V2 claim position fees jetton+jetton":
+    trace-id: fjQUb23kT00oQ91fTrD48MAYii2jG9XD_bft1iLtzJc=
+    expected-actions:
+      - type: dedust_v2_claim_fees
+        values:
+          success: true
+          dex_withdraw_liquidity_data:
+            dex: dedust_v2
+            amount1: 205461734260
+            amount2: 25732251
+            asset1_out: 0:91522B63EDE858BD2CD9293CA1AB4DBE1E96E12CD800BE7305E48EC3C77D50C4
+            asset2_out: 0:D9BC35BB09FDF7623329795AFBEF53CCAD883298617289B4DD70BE32FAE9EE16
+            user_jetton_wallet_1: 0:5F745B939A5D7A5624859B5B065F3AB5060306F8615C3A7828AD177D79084818
+            user_jetton_wallet_2: 0:AE3591F11C5F9B70937BF92B6AA5278AC28420082319D13E61C9220F1EE55AD8
+            dex_jetton_wallet_1: 0:1A3BED709B87DBBA810701B73E0F16A4470EF2A92701B9EF4D8CC837A4C119DF
+            dex_jetton_wallet_2: 0:D6DFD4C6453FF2958AA15AB940FA3E697349FB013958C0F552E58EFC566D53DE
+            is_refund: false
+            lp_tokens_burnt: null
+
+  "DeDust V2 claim position fees zero fees":
+    trace-id: tJchcmap3KKyjSw6GJ2YpZ4OkyN-DwvoD2u_KQh164Q=
+    expected-actions:
+      - type: dedust_v2_claim_fees
+        values:
+          success: true
+          dex_withdraw_liquidity_data:
+            dex: dedust_v2
+            amount1: 0
+            amount2: 0
+            asset1_out: null
+            asset2_out: null
+            user_jetton_wallet_1: null
+            user_jetton_wallet_2: null
+            is_refund: false
+            lp_tokens_burnt: null
+
+  "DeDust V2 claim reward jetton":
+    trace-id: 4i76tpq_x8MmmPIwv84usk0l9e1pRcCKR3ydyQfzZuU=
+    expected-actions:
+      - type: dedust_v2_claim_reward
+        values:
+          success: true
+          source: 0:04B548C78D18E71E47B4276CC00FAADD67C7EE0DB8A9A315EF25BD658D545BEA
+          destination: 0:4E50A518CFFDE030B1E124B2DA8E80EA53BFA3115E1CED345913B100AD8ACAB1
+          destination_secondary: 0:4E6344FD8911CB3B602C9DA46B82EB6C17CE1C283B27891FF5C3121EC5C57C10
+          dex_withdraw_liquidity_data:
+            dex: dedust_v2
+            amount1: 80009525306
+            amount2: null
+            asset1_out: 0:105E5589BC66DB15F13C177A12F2CF3B94881DA2F4B8E7922C58569176625EB5
+            asset2_out: null
+            user_jetton_wallet_1: 0:F7FCCC06277D6540E32DB948817416F990C73C4FAAB693841055203E12F8AA62
+            user_jetton_wallet_2: null
+            dex_wallet_1: 0:4E50A518CFFDE030B1E124B2DA8E80EA53BFA3115E1CED345913B100AD8ACAB1
+            dex_jetton_wallet_1: 0:50DC3BABDE6F3D2A91CDC874BA110E2F1D6BDDF781AEB9E2149D7160ACC05026
+            is_refund: false
+            lp_tokens_burnt: null
+
+  "DeDust V2 claim reward TON":
+    trace-id: YoVdDeJnFOQU1hjowGB8td2IEKG12Y7NTSzgqPkrIvU=
+    expected-actions:
+      - type: dedust_v2_claim_reward
+        values:
+          success: true
+          source: 0:15AECD8C0D506652A4D28E7749658DB9A8D2098766E1C62C81470EA27B9393C8
+          destination: 0:687C8F4DA2194FBB651D7F4B9A4B061D3138CD3DB2050D4E6488F72608C25527
+          destination_secondary: 0:68CBD493E5218043275BCED23504B58F084334F37FA98C4A238600B5694D8DAD
+          dex_withdraw_liquidity_data:
+            dex: dedust_v2
+            amount1: 70440319
+            amount2: null
+            asset1_out: null
+            asset2_out: null
+            user_jetton_wallet_1: null
+            user_jetton_wallet_2: null
+            dex_wallet_1: 0:687C8F4DA2194FBB651D7F4B9A4B061D3138CD3DB2050D4E6488F72608C25527
+            dex_jetton_wallet_1: null
+            is_refund: false
+            lp_tokens_burnt: null
+
+  "DeDust V2 failed swap TON-in (slippage refund)":
+    trace-id: 0iATkyOyvTvNjrVp0CbQo4RDIo7wljsohpVizWVHE1A=
+    expected-actions:
+      - type: jetton_swap
+        values:
+          success: false
+          source: 0:3640DCE992FF00D13C35A8F25082C33D4286E2A86773EB4543719BF7374E91B9
+          destination: 0:3640DCE992FF00D13C35A8F25082C33D4286E2A86773EB4543719BF7374E91B9
+          asset: null
+          asset2: 0:0EC9FE27FBBC13B53238E4B190C1F69C11F9E4A4E6BDBFA6E3A7081E0875F959
+          accounts:
+            - 0:3640DCE992FF00D13C35A8F25082C33D4286E2A86773EB4543719BF7374E91B9
+            - 0:FD4AAE2D1404B14BAD64DA5BFA8031C862C178B34A173F1E6E252887AB3B5768
+          jetton_swap_data:
+            dex: dedust_v2
+            sender: 0:3640DCE992FF00D13C35A8F25082C33D4286E2A86773EB4543719BF7374E91B9
+            min_out_amount: 1805965483449843
+            dex_incoming_transfer:
+              amount: 30179064758
+              source: 0:3640DCE992FF00D13C35A8F25082C33D4286E2A86773EB4543719BF7374E91B9
+              destination: 0:FD4AAE2D1404B14BAD64DA5BFA8031C862C178B34A173F1E6E252887AB3B5768
+              source_jetton_wallet: null
+              destination_jetton_wallet: null
+            dex_outgoing_transfer:
+              amount: 0
+              source: 0:FD4AAE2D1404B14BAD64DA5BFA8031C862C178B34A173F1E6E252887AB3B5768
+              destination: 0:3640DCE992FF00D13C35A8F25082C33D4286E2A86773EB4543719BF7374E91B9
+              asset: 0:0EC9FE27FBBC13B53238E4B190C1F69C11F9E4A4E6BDBFA6E3A7081E0875F959
+              source_jetton_wallet: null
+              destination_jetton_wallet: null
+
+  "DeDust V2 failed swap jetton-in (slippage refund)":
+    trace-id: 1fOLTYG-BKmjzSDbL1SIsXYO2lizqWyluPgmgfAm2Wg=
+    expected-actions:
+      - type: jetton_swap
+        selector: "{{ value.success == False }}"
+        values:
+          success: false
+          source: 0:43F9B542479DF460026BA8D2120B82813A031A9C26E6D6A90EF9D44632E69313
+          destination: 0:43F9B542479DF460026BA8D2120B82813A031A9C26E6D6A90EF9D44632E69313
+          asset: 0:0E1793099B5C56CCEEABBA1EEDA2571B62639FD28942B1A1D57E364EB4DAA0C6
+          asset2: null
+          jetton_swap_data:
+            dex: dedust_v2
+            sender: 0:43F9B542479DF460026BA8D2120B82813A031A9C26E6D6A90EF9D44632E69313
+            min_out_amount: 2531202124
+            dex_incoming_transfer:
+              amount: 1207407699879720
+              source: 0:43F9B542479DF460026BA8D2120B82813A031A9C26E6D6A90EF9D44632E69313
+              source_jetton_wallet: 0:430C84C1E79DA71DED5413BC6C90FE888872988111B259F91102A0E666402836
+              destination: 0:3A4FC96C5937A5660E9DBEBD01A8BCF602BCEAB86554D05403B7835746C36826
+              destination_jetton_wallet: 0:3A9E3658179E3ABA850B75CB57DEF183E9C5EEBD6FF8B39FD3472CC7D63C5C05
+              asset: 0:0E1793099B5C56CCEEABBA1EEDA2571B62639FD28942B1A1D57E364EB4DAA0C6
+            dex_outgoing_transfer:
+              amount: 0
+              source: 0:3A4FC96C5937A5660E9DBEBD01A8BCF602BCEAB86554D05403B7835746C36826
+              destination: 0:43F9B542479DF460026BA8D2120B82813A031A9C26E6D6A90EF9D44632E69313
+              asset: null
+              source_jetton_wallet: null
+              destination_jetton_wallet: null
+
+  "DeDust V2 multi-hop swap (3 hops, SwapStep chain)":
+    trace-id: MZQz_qHLV8OiohUw3-mjpA7TihnbDKFGE0i7LUUsuVk=
+    expected-actions:
+      - type: jetton_swap
+        selector: "{{ value.jetton_swap_data.dex == 'dedust_v2' }}"
+        values:
+          success: true
+          jetton_swap_data:
+            dex: dedust_v2
+            sender: 0:F75B0E83D9E2A4DD99A0786505F8170B79AED421B0BBAB0A793189EED4C0A7B7
+            min_out_amount: 0
+            dex_incoming_transfer:
+              asset: 0:403EEB032B45BFA44C92FDD30A851402A5F171D2CCDE0D984B434101A28E2A86
+              amount: 2281662593018104
+              source: 0:F75B0E83D9E2A4DD99A0786505F8170B79AED421B0BBAB0A793189EED4C0A7B7
+              source_jetton_wallet: 0:7A15089E02FD461039CE20E01EEEA4684DC4F97DB765AA897EA7BA65143C3B14
+              destination: 0:AB5FB4EA9EF452F3829AF36FAFBB016557E09A3BFEE0038A259257C8FBCFCD41
+              destination_jetton_wallet: 0:26F402BCD9FC56DA6752C77E4E1F409DD63FAEDF9D2EA19E37375849ECC57F83
+            dex_outgoing_transfer:
+              asset: null
+              amount: 3862006467
+              source: 0:4DABD4269AC1E9E2D755E4024BB9E42F81D605173C34A943A73B3F523989514A
+              source_jetton_wallet: null
+              destination: 0:D9FA76D8BBED36A49C0A758521636FBFB8BFE3DDD13FCFD13A48A6E7EABFC542
+              destination_jetton_wallet: null
+            peer_swaps:
+              -
+                asset_in: 0:403EEB032B45BFA44C92FDD30A851402A5F171D2CCDE0D984B434101A28E2A86
+                amount_in: 2281662593018104
+                asset_out: 0:421705BCB85521F9A99D466358F4DC9E0C469E0D85DDF608091AC89CA6A55C1E
+                amount_out: 6148790953327
+              -
+                asset_in: 0:421705BCB85521F9A99D466358F4DC9E0C469E0D85DDF608091AC89CA6A55C1E
+                amount_in: 6148790953327
+                asset_out: 0:4A31F8D7FDAFDDB0E2E6FA3BB1C95672B453FBFCA2A7CC6BFA274D6419CEF681
+                amount_out: 14906060953
+              -
+                asset_in: 0:4A31F8D7FDAFDDB0E2E6FA3BB1C95672B453FBFCA2A7CC6BFA274D6419CEF681
+                amount_in: 14906060953
+                asset_out: null
+                amount_out: 3862006467
