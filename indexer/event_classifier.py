@@ -16,7 +16,7 @@ from typing import Optional
 
 import msgpack
 from sqlalchemy import Column, Integer, String, Boolean, event, delete, func
-from sqlalchemy import select, and_, literal, tuple_
+from sqlalchemy import select, and_, literal, null, tuple_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.dialects.postgresql import ARRAY as PG_ARRAY
 from sqlalchemy.dialects.postgresql import array as pg_array
@@ -118,11 +118,11 @@ def bind_value(value, type_):
 def composite_field_value(value, type_):
     if isinstance(type_, CompositeType):
         if value is None:
-            return literal(None).cast(type_)
+            return null().cast(type_)
         return composite_value(value, type_)
     if isinstance(type_, PG_ARRAY) and isinstance(type_.item_type, CompositeType):
         if value is None:
-            return literal(None).cast(type_)
+            return null().cast(type_)
         return pg_array([composite_value(item, type_.item_type) for item in value]).cast(type_)
     return literal(value, type_=type_)
 
