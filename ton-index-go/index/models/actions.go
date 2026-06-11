@@ -235,6 +235,8 @@ type RawAction struct {
 	CocoonClientWithdrawQueryId               *string
 	CocoonClientWithdrawWithdrawAmount        *string
 
+	Extra map[string]interface{}
+
 	AncestorType []string
 	Accounts     []AccountAddress
 } // @name RawAction

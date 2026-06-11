@@ -715,7 +715,6 @@ def _fill_evaa_liquidate_action(block: EvaaLiquidateBlock, action: Action):
     action.source = str(block.data.liquidator)
     action.destination = str(block.data.borrower)
     action.destination_secondary = str(block.data.borrower_contract) if block.data.borrower_contract else None
-    action.asset = str(block.data.collateral_asset_id)
     action.amount = block.data.collateral_amount
     action.success = block.data.is_success
     action.evaa_liquidate_data = {
@@ -856,7 +855,7 @@ def _fill_tgbtc_mint_action(block: TgBTCMintBlock, action: Action):
     action.amount = block.data.amount
     action.asset = _addr(block.data.asset)
     action.success = block.data.success
-    action.asset_secondary = block.data.bitcoin_txid
+    action.extra = {"btc_txid": block.data.bitcoin_txid}
     action.source_secondary = _addr(block.data.teleport_contract)
     action.destination_secondary = _addr(block.data.recipient_wallet)
 
@@ -877,7 +876,7 @@ def _fill_tgbtc_new_key_action(block: TgBTCNewKeyBlock, action: Action):
     if block.data.crippled:
         action.type += '_fallback'
     action.source = _addr(block.data.teleport_contract)
-    action.source_secondary = block.data.pubkey
+    action.extra = {"pubkey": block.data.pubkey}
     action.destination = _addr(block.data.coordinator_contract)
     action.destination_secondary = _addr(block.data.pegout_address)
     action.amount = block.data.amount
@@ -886,7 +885,7 @@ def _fill_tgbtc_new_key_action(block: TgBTCNewKeyBlock, action: Action):
 def _fill_tgbtc_dkg_log_action(block: TgBTCDkgLogBlock, action: Action):
     action.type = 'tgbtc_dkg_log_fallback'
     action.source = _addr(block.data.coordinator_contract)
-    action.asset = block.data.internal_pubkey
+    action.extra = {"pubkey": block.data.internal_pubkey}
     action.value = block.data.timestamp
 
 
