@@ -742,7 +742,7 @@ func ParseRawAction(raw *models.RawAction) (*models.Action, error) {
 		details.Destination = raw.Destination
 		details.Amount = raw.Amount
 		details.Asset = raw.Asset
-		details.BitcoinTxId = raw.AssetSecondary.StringPtr()
+		details.BitcoinTxId = extraString(raw.Extra, "btc_txid")
 		details.DestinationWallet = raw.DestinationSecondary
 		act.Details = &details
 	case "tgbtc_burn", "tgbtc_burn_fallback":
@@ -756,7 +756,7 @@ func ParseRawAction(raw *models.RawAction) (*models.Action, error) {
 	case "tgbtc_new_key", "tgbtc_new_key_fallback":
 		var details models.ActionDetailsTgbtcNewKey
 		details.Source = raw.Source
-		details.Pubkey = raw.SourceSecondary.StringPtr()
+		details.Pubkey = extraString(raw.Extra, "pubkey")
 		details.Coordinator = raw.Destination
 		details.Pegout = raw.DestinationSecondary
 		details.Amount = raw.Amount
@@ -765,7 +765,7 @@ func ParseRawAction(raw *models.RawAction) (*models.Action, error) {
 	case "tgbtc_dkg_log_fallback":
 		var details models.ActionDetailsDkgLogFallback
 		details.Coordinator = raw.Source
-		details.Pubkey = raw.Asset.StringPtr()
+		details.Pubkey = extraString(raw.Extra, "pubkey")
 		details.Timestamp = raw.Value
 		act.Details = &details
 	case "tonco_deploy_pool":
@@ -1121,6 +1121,13 @@ func ParseRawAction(raw *models.RawAction) (*models.Action, error) {
 	return &act, nil
 }
 
+func extraString(extra map[string]interface{}, key string) *string {
+	if v, ok := extra[key].(string); ok {
+		return &v
+	}
+	return nil
+}
+
 func ScanRawAction(row pgx.Row) (*models.RawAction, error) {
 	var act models.RawAction
 	err := row.Scan(&act.TraceId, &act.ActionId, &act.StartLt, &act.EndLt, &act.StartUtime, &act.EndUtime,
@@ -1343,6 +1350,7 @@ func ScanRawAction(row pgx.Row) (*models.RawAction, error) {
 		&act.CocoonClientWithdrawQueryId,
 		&act.CocoonClientWithdrawWithdrawAmount,
 
+		&act.Extra,
 		&act.AncestorType,
 		&act.Accounts,
 	)

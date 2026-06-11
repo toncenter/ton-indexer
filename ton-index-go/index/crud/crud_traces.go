@@ -353,6 +353,7 @@ func queryTracesImpl(query string, includeActions bool, supportedActionTypes []s
 				(A.cocoon_client_increase_stake_data).new_stake,
 				(A.cocoon_client_withdraw_data).query_id,
 				(A.cocoon_client_withdraw_data).withdraw_amount,
+				A.extra,
 				A.ancestor_type,
 				ARRAY[]::text[] from actions as A where ` +
 				arrayFilter + typeFilter + `order by trace_id, start_lt, end_lt`

@@ -291,6 +291,7 @@ func buildActionsQueryV2(req models.ActionRequest, settings models.RequestSettin
 		(A.cocoon_client_increase_stake_data).new_stake,
 		(A.cocoon_client_withdraw_data).query_id,
 		(A.cocoon_client_withdraw_data).withdraw_amount,
+		A.extra,
 		A.ancestor_type,
 		ARRAY[]::text[]`
 	clmn_query := clmn_query_default

@@ -597,6 +597,7 @@ type Action struct {
 	CocoonGrantRefundData            *actionCocoonGrantRefundDetails            `msgpack:"cocoon_grant_refund_data"`
 	CocoonClientIncreaseStakeData    *actionCocoonClientIncreaseStakeDetails    `msgpack:"cocoon_client_increase_stake_data"`
 	CocoonClientWithdrawData         *actionCocoonClientWithdrawDetails         `msgpack:"cocoon_client_withdraw_data"`
+	Extra                            map[string]interface{}                     `msgpack:"extra"`
 }
 
 type blockId struct {
@@ -972,6 +973,7 @@ func (a *Action) ToRawAction() (*models.RawAction, error) {
 		TraceExternalHash:     &traceExternalHash,
 		TraceExternalHashNorm: traceExternalHashNorm,
 		ExtraCurrencies:       map[string]string{},
+		Extra:                 a.Extra,
 		AncestorType:          a.AncestorType,
 		Accounts:              accounts,
 	}

@@ -925,6 +925,7 @@ create table if not exists actions
     cocoon_grant_refund_data              cocoon_grant_refund_details,
     cocoon_client_increase_stake_data     cocoon_client_increase_stake_details,
     cocoon_client_withdraw_data           cocoon_client_withdraw_details,
+    extra                                 jsonb,
     primary key (trace_id, action_id, trace_mc_seqno_end)
 ) partition by range (trace_mc_seqno_end);
 create table if not exists actions_default partition of actions default;

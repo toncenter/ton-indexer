@@ -628,6 +628,9 @@ class Action(Base):
     value_extra_currencies: dict = Column(JSONB)
     parent_action_id: str = Column(String)
     ancestor_type: list[str] = Column(ARRAY(String), default=[])
+    # type-specific payloads that don't fit address-typed standard columns
+    # (e.g. tgbtc bitcoin_txid/pubkey)
+    extra: dict = Column(JSONB)
 
     accounts: list[str]
 
