@@ -640,6 +640,32 @@ type ActionDetailsDexWithdrawLiquidity struct {
 	TickUpper            *string         `json:"tick_upper"`
 }
 
+type ActionDetailsDedustV2ClaimFees struct {
+	Dex               *string         `json:"dex"`
+	Source            *AccountAddress `json:"source"`
+	Pool              *AccountAddress `json:"pool"`
+	Position          *AccountAddress `json:"position"`
+	Asset1            *AccountAddress `json:"asset_1"`
+	Asset2            *AccountAddress `json:"asset_2"`
+	Amount1           *string         `json:"amount_1"`
+	Amount2           *string         `json:"amount_2"`
+	UserJettonWallet1 *AccountAddress `json:"user_jetton_wallet_1"`
+	UserJettonWallet2 *AccountAddress `json:"user_jetton_wallet_2"`
+	DexJettonWallet1  *AccountAddress `json:"dex_jetton_wallet_1"`
+	DexJettonWallet2  *AccountAddress `json:"dex_jetton_wallet_2"`
+}
+
+type ActionDetailsDedustV2ClaimReward struct {
+	Dex              *string         `json:"dex"`
+	Source           *AccountAddress `json:"source"`
+	Pool             *AccountAddress `json:"pool"`
+	Position         *AccountAddress `json:"position"`
+	Asset            *AccountAddress `json:"asset"`
+	Amount           *string         `json:"amount"`
+	UserJettonWallet *AccountAddress `json:"user_jetton_wallet"`
+	DexJettonWallet  *AccountAddress `json:"dex_jetton_wallet"`
+}
+
 type ActionDetailsToncoDeployPool struct {
 	Source              *AccountAddress `json:"source"`
 	Pool                *AccountAddress `json:"pool"`

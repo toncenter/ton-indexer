@@ -124,6 +124,8 @@ from indexer.events.blocks.swaps import (
     StonfiV2SwapBlockMatcher,
     ToncoSwapBlockMatcher,
 )
+from indexer.events.blocks import dedust_v2
+from indexer.events.blocks.dedust_v2 import post_process_dedust_v2_liquidity
 from indexer.events.blocks.utils import EventNode, NoMessageBodyException, to_tree
 from indexer.events.blocks.utils.block_tree_serializer import block_to_action, create_unknown_action, serialize_blocks
 from indexer.events.blocks.vesting import (
@@ -226,6 +228,7 @@ matchers = [
     DedustWithdrawBlockMatcher(),
     JettonBurnBlockMatcher(),
     DedustSwapBlockMatcher(),
+    *dedust_v2.matchers(),
     StonfiSwapBlockMatcher(),
     StonfiV2SwapBlockMatcher(),
     ToncoSwapBlockMatcher(),
@@ -303,6 +306,7 @@ matchers = [
 
 trace_post_processors = [
     post_process_dedust_liquidity,
+    post_process_dedust_v2_liquidity,
     unwind_deployments
 ]
 
