@@ -21,7 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.dialects.postgresql import ARRAY as PG_ARRAY
 from sqlalchemy.dialects.postgresql import array as pg_array
 from sqlalchemy.dialects.postgresql import insert as pg_insert
-from sqlalchemy.orm import sessionmaker, selectinload
+from sqlalchemy.orm import sessionmaker, selectinload, noload
 from sqlalchemy.orm.attributes import set_committed_value
 from sqlalchemy.sql import text
 from sqlalchemy_utils import CompositeType
@@ -80,6 +80,8 @@ async def hydrate_message_contents_from_kvrocks(traces: list[Trace]):
                         "message_content",
                         MessageContent(hash=payload.get("hash") or msg.body_hash, body=payload.get("body")),
                     )
+                else:
+                    set_committed_value(msg, "message_content", None)
                 if msg.init_state_hash in payloads:
                     payload = payloads[msg.init_state_hash]
                     set_committed_value(
@@ -87,6 +89,8 @@ async def hydrate_message_contents_from_kvrocks(traces: list[Trace]):
                         "init_state",
                         MessageContent(hash=payload.get("hash") or msg.init_state_hash, body=payload.get("body")),
                     )
+                else:
+                    set_committed_value(msg, "init_state", None)
 
 
 def add_on_conflict_ignore(conn, cursor, statement, parameters, context, executemany):
@@ -363,7 +367,19 @@ class EventClassifierWorker(mp.Process):
                 query = select(Trace).filter(fltr)
                 msg_join = selectinload(Trace.transactions).selectinload(Transaction.messages)
                 if kvrocks.is_enabled():
-                    query = query.options(msg_join)
+                    query = query.options(
+                        selectinload(Trace.transactions).options(
+                            noload(Transaction.account_state_before),
+                            noload(Transaction.account_state_after),
+                            noload(Transaction.account_state_latest),
+                            selectinload(Transaction.messages).options(
+                                noload(Message.message_content),
+                                noload(Message.init_state),
+                                noload(Message.source_account_state),
+                                noload(Message.destination_account_state),
+                            ),
+                        )
+                    )
                 else:
                     tx_join = msg_join.selectinload(Message.message_content)
                     init_state_join = msg_join.selectinload(Message.init_state)

@@ -1225,7 +1225,7 @@ create table if not exists _blocks_classified
 
 create table if not exists _classifier_tasks
 (
-    id          serial,
+    id          serial primary key,
     mc_seqno    integer,
     trace_id    tonhash,
     pending     boolean,
