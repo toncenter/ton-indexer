@@ -28,6 +28,8 @@ def configure_from_settings(source: Settings):
     settings.kvrocks_sentinel_user = source.kvrocks_sentinel_user
     settings.kvrocks_sentinel_password = source.kvrocks_sentinel_password
     settings.kvrocks_db = source.kvrocks_db
+    settings.kvrocks_max_connections = source.kvrocks_max_connections
+    settings.kvrocks_pool_timeout = source.kvrocks_pool_timeout
 
 
 def is_enabled() -> bool:
@@ -69,7 +71,19 @@ def _connection_kwargs(username: str = "", password: str = "") -> dict[str, Any]
     kwargs = _auth_kwargs(username, password)
     kwargs.update({
         "db": settings.kvrocks_db,
-        "max_connections": 800,
+    })
+    return kwargs
+
+
+def _max_connections() -> int:
+    return max(1, int(settings.kvrocks_max_connections or 1))
+
+
+def _blocking_pool_kwargs(username: str = "", password: str = "") -> dict[str, Any]:
+    kwargs = _connection_kwargs(username, password)
+    kwargs.update({
+        "max_connections": _max_connections(),
+        "timeout": max(1, int(settings.kvrocks_pool_timeout or 1)),
     })
     return kwargs
 
@@ -120,19 +134,32 @@ def _create_client() -> aioredis.Redis:
             _parse_sentinels(settings.kvrocks_sentinels),
             sentinel_kwargs=sentinel_kwargs,
         )
-        logger.info("kvrocks: sentinel master %s via %s", settings.kvrocks_sentinel_master,
-                    settings.kvrocks_sentinels)
-        return sentinel.master_for(settings.kvrocks_sentinel_master, **common_kwargs)
+        logger.info("kvrocks: sentinel master %s via %s, max_connections=%s",
+                    settings.kvrocks_sentinel_master, settings.kvrocks_sentinels, _max_connections())
+        return sentinel.master_for(
+            settings.kvrocks_sentinel_master,
+            max_connections=_max_connections(),
+            **common_kwargs,
+        )
 
     if not settings.kvrocks:
         raise RuntimeError("Kvrocks address or sentinels must be configured")
     if "://" in settings.kvrocks:
-        logger.info("kvrocks: %s", _redact_url(settings.kvrocks))
-        return aioredis.from_url(settings.kvrocks, **common_kwargs)
+        logger.info("kvrocks: %s, max_connections=%s", _redact_url(settings.kvrocks), _max_connections())
+        pool = aioredis.BlockingConnectionPool.from_url(
+            settings.kvrocks,
+            **_blocking_pool_kwargs(settings.kvrocks_user, settings.kvrocks_password),
+        )
+        return aioredis.Redis(connection_pool=pool)
 
     host, port = _parse_host_port(settings.kvrocks)
-    logger.info("kvrocks: %s:%s", host, port)
-    return aioredis.Redis(host=host, port=port, **common_kwargs)
+    logger.info("kvrocks: %s:%s, max_connections=%s", host, port, _max_connections())
+    pool = aioredis.BlockingConnectionPool(
+        host=host,
+        port=port,
+        **_blocking_pool_kwargs(settings.kvrocks_user, settings.kvrocks_password),
+    )
+    return aioredis.Redis(connection_pool=pool)
 
 
 def get_client() -> aioredis.Redis:

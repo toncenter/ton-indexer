@@ -685,6 +685,14 @@ if __name__ == '__main__':
                         help='Kvrocks DB index',
                         default=settings.kvrocks_db,
                         type=int)
+    parser.add_argument('--kvrocks-max-connections',
+                        help='Maximum Kvrocks connections per classifier process',
+                        default=settings.kvrocks_max_connections,
+                        type=int)
+    parser.add_argument('--kvrocks-pool-timeout',
+                        help='Seconds to wait for an available Kvrocks connection in a process pool',
+                        default=settings.kvrocks_pool_timeout,
+                        type=int)
     args = parser.parse_args()
 
     settings.emulated_traces_redis_channel = args.emulated_traces_redis_channel
@@ -699,6 +707,8 @@ if __name__ == '__main__':
     settings.kvrocks_user = args.kvrocks_user
     settings.kvrocks_password = args.kvrocks_password
     settings.kvrocks_db = args.kvrocks_db
+    settings.kvrocks_max_connections = args.kvrocks_max_connections
+    settings.kvrocks_pool_timeout = args.kvrocks_pool_timeout
     kvrocks.configure_from_settings(settings)
 
     if redis.client is None:

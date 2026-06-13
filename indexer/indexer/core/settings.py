@@ -25,6 +25,8 @@ class Settings(BaseSettings):
     kvrocks_sentinel_user: str = ''
     kvrocks_sentinel_password: str = ''
     kvrocks_db: int = 0
+    kvrocks_max_connections: int = 16
+    kvrocks_pool_timeout: int = 30
 
     class Config:
         env_prefix = 'ton_indexer_'
