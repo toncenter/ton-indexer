@@ -164,14 +164,19 @@ class ClassifierFailedTrace(Base):
 
 # thread procedures
 class UnclassifiedEventsReader(mp.Process):
-    def __init__(self, task_queue: mp.Queue, result_queue: mp.Queue, stats_queue: Optional[mp.Queue]=None, batch_size: int=4096, prefetch_size: int=100000):
+    def __init__(self, task_queue: mp.Queue, result_queue: mp.Queue, stats_queue: Optional[mp.Queue]=None,
+                 batch_size: int=4096, prefetch_size: int=100000, mc_seqno_batch_size: int=4):
         super().__init__()
         self.task_queue = task_queue
         self.result_queue = result_queue
         self.stats_queue = stats_queue
         self.batch_size = batch_size
         self.prefetch_size = prefetch_size
-        logger.info(f"Reading unclassified tasks with batch size {self.batch_size}")
+        self.mc_seqno_batch_size = max(1, mc_seqno_batch_size)
+        logger.info(
+            f"Reading unclassified tasks with batch size {self.batch_size}, "
+            f"mc_seqno batch size {self.mc_seqno_batch_size}"
+        )
     
     def read_batch(self):
         rows = []
@@ -214,12 +219,16 @@ class UnclassifiedEventsReader(mp.Process):
 
     def _split_tasks_into_batches(self, tasks: List[ClassifierTask]) -> List[List[ClassifierTask]]:
         trace_tasks_batch = []
-        seqno_tasks_batches = []
+        seqno_tasks = []
         for task in tasks:
             if task.trace_id is not None:
                 trace_tasks_batch.append(task)
             else:
-                seqno_tasks_batches.append([task])
+                seqno_tasks.append(task)
+        seqno_tasks_batches = [
+            seqno_tasks[i:i + self.mc_seqno_batch_size]
+            for i in range(0, len(seqno_tasks), self.mc_seqno_batch_size)
+        ]
         if len(trace_tasks_batch) == 0:
             return seqno_tasks_batches
         else:
@@ -295,7 +304,19 @@ class EventClassifierWorker(mp.Process):
         tasks = self.task_queue.get(True)
         # logger.info(f'Worker #{self.id} accepted batch of {len(tasks)} tasks')
         try:
-            ok, total, failed, broken = asyncio.get_event_loop().run_until_complete(self.process_trace_batch_async(tasks))
+            event_loop = asyncio.get_event_loop()
+            ok, total, failed, broken = event_loop.run_until_complete(self.process_trace_batch_async(tasks))
+            if not ok and len(tasks) > 1 and all(task.trace_id is None for task in tasks):
+                logger.warning(f"Failed to process mc_seqno batch of {len(tasks)} tasks, retrying one by one")
+                ok, total, failed, broken = True, 0, 0, 0
+                for task in tasks:
+                    task_ok, task_total, task_failed, task_broken = event_loop.run_until_complete(
+                        self.process_trace_batch_async([task])
+                    )
+                    ok = ok and task_ok
+                    total += task_total
+                    failed += task_failed
+                    broken += task_broken
         except asyncio.CancelledError:
             logger.info("failed to process one batch: coroutine was cancelled")
             ok, total, failed, broken = False, 0, 0, 0
@@ -516,7 +537,14 @@ async def start_processing_events_from_db(args: argparse.Namespace, shared_names
     result_queue = mp.Queue()
     stats_queue = mp.Queue()
     finished_queue = mp.Queue()
-    thread = UnclassifiedEventsReader(task_queue, result_queue, stats_queue, args.batch_size, args.prefetch_size)
+    thread = UnclassifiedEventsReader(
+        task_queue,
+        result_queue,
+        stats_queue,
+        args.batch_size,
+        args.prefetch_size,
+        args.mc_seqno_batch_size,
+    )
     thread.start()
     workers = []
     for id in range(args.pool_size):
@@ -621,6 +649,10 @@ if __name__ == '__main__':
                         help='Number of trace-tasks to process in one batch',
                         type=int,
                         default=1000)
+    parser.add_argument('--mc-seqno-batch-size',
+                        help='Number of mc_seqno tasks to process in one worker batch',
+                        type=int,
+                        default=4)
     parser.add_argument('--pool-size',
                         help='Number of workers to process traces',
                         type=int,
