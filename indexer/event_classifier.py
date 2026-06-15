@@ -5,9 +5,11 @@ import argparse
 import asyncio
 import logging
 import multiprocessing as mp
+import queue
 import sys
 import time
 import traceback
+from collections import deque
 from datetime import datetime
 from datetime import timedelta
 from multiprocessing import Manager
@@ -54,6 +56,33 @@ logging.basicConfig(stream=sys.stdout, level=logging.INFO)
 logger = logging.getLogger(__name__)
 settings = Settings()
 interface_cache: LRUCache | None = None
+STATS_RATE_WINDOW_SECONDS = 30.0
+
+
+class RollingTraceRate:
+    def __init__(self, window_seconds: float):
+        self.window_seconds = window_seconds
+        self._samples = deque()
+        self._traces_in_window = 0
+
+    def add(self, timestamp: float, traces: int):
+        if traces > 0:
+            self._samples.append((timestamp, traces))
+            self._traces_in_window += traces
+        self.prune(timestamp)
+
+    def prune(self, timestamp: float):
+        cutoff = timestamp - self.window_seconds
+        while self._samples and self._samples[0][0] < cutoff:
+            _, traces = self._samples.popleft()
+            self._traces_in_window -= traces
+
+    def rate(self, timestamp: float, start_time: float) -> float:
+        self.prune(timestamp)
+        elapsed = timestamp - start_time
+        if elapsed <= 0:
+            return 0.0
+        return self._traces_in_window / min(self.window_seconds, elapsed)
 
 
 async def hydrate_message_contents_from_kvrocks(traces: list[Trace]):
@@ -514,22 +543,26 @@ async def start_processing_events_from_db(args: argparse.Namespace, shared_names
     processed_traces = 0
     start_time = time.time()
     last_time = start_time
+    trace_rate = RollingTraceRate(STATS_RATE_WINDOW_SECONDS)
     try:
         while True:
+            cur_time = time.time()
             try:
                 ok, total, failed, broken = result_queue.get(False)
                 processed_traces += total
                 failed_traces += failed
                 broken_traces += broken
+                trace_rate.add(cur_time, total)
 
                 failed_tasks += not ok
                 processed_tasks += 1
-            except:
+            except queue.Empty:
                 await asyncio.sleep(0.5)
-            cur_time = time.time()
+                cur_time = time.time()
+                trace_rate.prune(cur_time)
             if (cur_time - last_time) > 2:
                 elapsed = cur_time - start_time
-                tps = processed_traces / elapsed
+                tps = trace_rate.rate(cur_time, start_time)
                 eta_part = ""
                 if total_traces is not None:
                     eta_sec = min(999999999, max(0, int((total_traces - processed_traces) / max(tps, 1e-9))))
