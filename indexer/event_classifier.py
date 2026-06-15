@@ -194,7 +194,8 @@ class ClassifierFailedTrace(Base):
 # thread procedures
 class UnclassifiedEventsReader(mp.Process):
     def __init__(self, task_queue: mp.Queue, result_queue: mp.Queue, stats_queue: Optional[mp.Queue]=None,
-                 batch_size: int=4096, prefetch_size: int=100000, mc_seqno_batch_size: int=4):
+                 batch_size: int=4096, prefetch_size: int=100000, mc_seqno_batch_size: int=4,
+                 mc_seqno_order: str='desc'):
         super().__init__()
         self.task_queue = task_queue
         self.result_queue = result_queue
@@ -202,9 +203,13 @@ class UnclassifiedEventsReader(mp.Process):
         self.batch_size = batch_size
         self.prefetch_size = prefetch_size
         self.mc_seqno_batch_size = max(1, mc_seqno_batch_size)
+        if mc_seqno_order not in ('asc', 'desc'):
+            raise ValueError(f"Unsupported mc_seqno order: {mc_seqno_order}")
+        self.mc_seqno_order = mc_seqno_order
         logger.info(
             f"Reading unclassified tasks with batch size {self.batch_size}, "
-            f"mc_seqno batch size {self.mc_seqno_batch_size}"
+            f"mc_seqno batch size {self.mc_seqno_batch_size}, "
+            f"mc_seqno order {self.mc_seqno_order}"
         )
     
     def read_batch(self):
@@ -215,13 +220,15 @@ class UnclassifiedEventsReader(mp.Process):
                     text("SELECT drain_classifier_progress(:max_count)"),
                     {"max_count": max(self.batch_size, 1000)},
                 )
+                mc_seqno_order = self.mc_seqno_order.upper()
+                mc_seqno_nulls_order = 'FIRST' if self.mc_seqno_order == 'desc' else 'LAST'
                 query = f'''
                                WITH A AS (
                                    SELECT id 
                                    FROM _classifier_tasks 
                                    WHERE (claimed_at IS NULL OR claimed_at < NOW() - INTERVAL '5 minutes') 
                                     AND (start_after IS NULL OR start_after <= NOW())
-                                   ORDER BY mc_seqno DESC NULLS FIRST 
+                                   ORDER BY mc_seqno {mc_seqno_order} NULLS {mc_seqno_nulls_order} 
                                    LIMIT {self.batch_size} 
                                    FOR UPDATE SKIP LOCKED
                                )
@@ -527,6 +534,7 @@ async def start_processing_events_from_db(args: argparse.Namespace, shared_names
         args.batch_size,
         args.prefetch_size,
         args.mc_seqno_batch_size,
+        args.mc_seqno_order,
     )
     thread.start()
     workers = []
@@ -619,10 +627,6 @@ async def process_trace(trace: Trace) -> tuple[str, str, list[Action], Exception
     return result.trace_id, result.state, result.actions, result.exception
 
 if __name__ == '__main__':
-    # Create a shared namespace for cross-process data sharing
-    manager = Manager()
-    shared_namespace = manager.Namespace()
-
     parser = argparse.ArgumentParser()
     parser.add_argument('--prefetch-size',
                         help='Number of prefetched tasks',
@@ -636,6 +640,10 @@ if __name__ == '__main__':
                         help='Number of mc_seqno tasks to process in one worker batch',
                         type=int,
                         default=4)
+    parser.add_argument('--mc-seqno-order',
+                        help='Order for reading mc_seqno classifier tasks from the shared DB queue',
+                        choices=['desc', 'asc'],
+                        default='desc')
     parser.add_argument('--pool-size',
                         help='Number of workers to process traces',
                         type=int,
@@ -709,6 +717,10 @@ if __name__ == '__main__':
                         default=settings.kvrocks_pool_timeout,
                         type=int)
     args = parser.parse_args()
+
+    # Create a shared namespace for cross-process data sharing
+    manager = Manager()
+    shared_namespace = manager.Namespace()
 
     settings.emulated_traces_redis_channel = args.emulated_traces_redis_channel
     settings.emulated_traces_redis_response_channel = args.emulated_traces_redis_response_channel
