@@ -280,7 +280,7 @@ class KvRocksRepository(InterfaceRepository):
         if address is None:
             return {}
         result = {**self.interfaces.get(address, {})}
-        if kvrocks.is_enabled():
+        if kvrocks.is_enabled() and address not in self.interfaces:
             missing_result = await gather_interfaces_from_kvrocks({address})
             result.update(missing_result.get(address, {}))
             for item_address, item_interfaces in missing_result.items():
