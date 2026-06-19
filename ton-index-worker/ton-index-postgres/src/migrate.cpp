@@ -1308,6 +1308,15 @@ create table if not exists _ton_indexer_progress
     updated_at         timestamptz not null default now()
 );
 
+create table if not exists _ton_hot_cold_split
+(
+    id    smallint primary key check (id = 1),
+    lt    bigint not null,
+    seqno bigint not null,
+    utime bigint not null
+);
+
+
 -- triggers
 do $$
 begin

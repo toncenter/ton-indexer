@@ -134,21 +134,25 @@ func buildNFTItemsQuery(req models.NFTItemRequest, settings models.RequestSettin
 	return query, args, nil
 }
 
-func buildNFTTransfersQuery(req models.NFTTransferRequest, settings models.RequestSettings) (string, error) {
+const nftTransfersColumns = ` T.tx_hash, T.tx_lt, T.tx_now, T.tx_aborted, T.query_id,
+	T.nft_item_address, T.nft_item_index, T.nft_collection_address, T.old_owner, T.new_owner, T.response_destination, T.custom_payload,
+	T.forward_amount, T.forward_payload, T.trace_id`
+
+// nftTransfersParts holds the shared pieces of an nft transfers listing query.
+// orderByNow selects the time axis (T.tx_now) over the lt axis (T.tx_lt) for boundary + ordering.
+type nftTransfersParts struct {
+	fromQuery  string
+	filterList []string
+	orderBy    string
+	orderByNow bool
+}
+
+func nftTransfersQueryParts(req models.NFTTransferRequest, sortOrder string) nftTransfersParts {
 	utime_req := req.GetUtimeParams()
 	lt_req := req.GetLtParams()
-	lim_req := req.GetLimitParams()
-	clmn_query := ` T.tx_hash, T.tx_lt, T.tx_now, T.tx_aborted, T.query_id,
-		T.nft_item_address, T.nft_item_index, T.nft_collection_address, T.old_owner, T.new_owner, T.response_destination, T.custom_payload,
-		T.forward_amount, T.forward_payload, T.trace_id`
+
 	from_query := ` nft_transfers as T`
 	filter_list := []string{}
-	filter_query := ``
-	orderby_query := ``
-	limit_query, err := limitQuery(lim_req, settings)
-	if err != nil {
-		return "", err
-	}
 
 	if v := req.OwnerAddress; v != nil {
 		if v1 := req.Direction; v1 != nil {
@@ -179,14 +183,14 @@ func buildNFTTransfersQuery(req models.NFTTransferRequest, settings models.Reque
 		filter_list = append(filter_list, fmt.Sprintf("T.nft_collection_address = '%s'", v.FilterString()))
 	}
 
-	order_col := "T.tx_lt"
+	orderByNow := false
 	if v := utime_req.StartUtime; v != nil {
 		filter_list = append(filter_list, fmt.Sprintf("T.tx_now >= %d", *v))
-		order_col = "T.tx_now"
+		orderByNow = true
 	}
 	if v := utime_req.EndUtime; v != nil {
 		filter_list = append(filter_list, fmt.Sprintf("T.tx_now <= %d", *v))
-		order_col = "T.tx_now"
+		orderByNow = true
 	}
 	if v := lt_req.StartLt; v != nil {
 		filter_list = append(filter_list, fmt.Sprintf("T.tx_lt >= %d", *v))
@@ -194,29 +198,48 @@ func buildNFTTransfersQuery(req models.NFTTransferRequest, settings models.Reque
 	if v := lt_req.EndLt; v != nil {
 		filter_list = append(filter_list, fmt.Sprintf("T.tx_lt <= %d", *v))
 	}
-	if lim_req.Sort == nil {
-		lim_req.Sort = new(models.SortType)
-		*lim_req.Sort = "desc"
-	}
-	if lim_req.Sort != nil {
-		sort_order, err := getSortOrder(*lim_req.Sort)
-		if err != nil {
-			return "", err
-		}
-		orderby_query = fmt.Sprintf(" order by %s %s", order_col, sort_order)
-	}
 
-	// build query
-	if len(filter_list) > 0 {
-		filter_query = ` where ` + strings.Join(filter_list, " and ")
+	order_col := "T.tx_lt"
+	if orderByNow {
+		order_col = "T.tx_now"
 	}
-	query := `select` + clmn_query
-	query += ` from ` + from_query
-	query += filter_query
-	query += orderby_query
-	query += limit_query
-	// log.Println(query)
-	return query, nil
+	orderby_query := fmt.Sprintf(" order by %s %s", order_col, sortOrder)
+
+	return nftTransfersParts{fromQuery: from_query, filterList: filter_list, orderBy: orderby_query, orderByNow: orderByNow}
+}
+
+// nftTransfersBoundaryFilters appends this leg's [floor, ceil) boundary on the
+// sort axis (T.tx_lt or T.tx_now). lt/now are never null, so no null handling is needed.
+func nftTransfersBoundaryFilters(p nftTransfersParts, floor, ceil *uint64) []string {
+	col := "T.tx_lt"
+	if p.orderByNow {
+		col = "T.tx_now"
+	}
+	filters := append([]string{}, p.filterList...)
+	if floor != nil {
+		filters = append(filters, fmt.Sprintf("%s >= %d", col, *floor))
+	}
+	if ceil != nil {
+		filters = append(filters, fmt.Sprintf("%s < %d", col, *ceil))
+	}
+	return filters
+}
+
+func buildNFTTransfersOffsetQuery(p nftTransfersParts, floor, ceil *uint64, offset, limit int) string {
+	filter_query := ``
+	if filters := nftTransfersBoundaryFilters(p, floor, ceil); len(filters) > 0 {
+		filter_query = ` where ` + strings.Join(filters, " and ")
+	}
+	limit_query := fmt.Sprintf(" limit %d offset %d", max(1, limit), max(0, offset))
+	return `select` + nftTransfersColumns + ` from` + p.fromQuery + filter_query + p.orderBy + limit_query
+}
+
+func buildNFTTransfersCountQuery(p nftTransfersParts, floor, ceil *uint64) string {
+	filter_query := ``
+	if filters := nftTransfersBoundaryFilters(p, floor, ceil); len(filters) > 0 {
+		filter_query = ` where ` + strings.Join(filters, " and ")
+	}
+	return `select count(*) from` + p.fromQuery + filter_query
 }
 
 func queryNFTCollectionsImpl(query string, conn *pgxpool.Conn, settings models.RequestSettings) ([]models.NFTCollection, error) {
@@ -480,22 +503,55 @@ func (db *DbClient) QueryNFTTransfers(
 	req models.NFTTransferRequest,
 	settings models.RequestSettings,
 ) ([]models.NFTTransfer, models.AddressBook, models.Metadata, error) {
-	query, err := buildNFTTransfersQuery(req, settings)
-	if settings.DebugRequest {
-		log.Println("Debug query:", query)
+	lim_req := req.GetLimitParams()
+	sortOrder := "desc"
+	if v := lim_req.Sort; v != nil {
+		var serr error
+		sortOrder, serr = getSortOrder(*v)
+		if serr != nil {
+			return nil, nil, nil, serr
+		}
 	}
+	limit := int32(settings.DefaultLimit)
+	if lim_req.Limit != nil {
+		limit = max(1, *lim_req.Limit)
+		if limit > int32(settings.MaxLimit) {
+			return nil, nil, nil, models.IndexError{Code: 422, Message: fmt.Sprintf("limit is not allowed: %d > %d", limit, settings.MaxLimit)}
+		}
+	}
+
+	fc, release, err := db.acquireFed(context.Background())
 	if err != nil {
 		return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
+	defer release()
 
-	// read data
-	conn, err := db.Pool.Acquire(context.Background())
-	if err != nil {
-		return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
+	parts := nftTransfersQueryParts(req, sortOrder)
+	orderKey := "lt"
+	if parts.orderByNow {
+		orderKey = "utime"
 	}
-	defer conn.Release()
-
-	res, err := queryNFTTransfersImpl(query, conn, settings)
+	offset := 0
+	if lim_req.Offset != nil {
+		offset = int(max(0, *lim_req.Offset))
+	}
+	// nft transfers are offset-paged (no lt cursor); offset 0 is just the first page.
+	res, err := cascadePageOffset(fc, sortOrder, offset, int(limit),
+		func(floor, ceil *uint64, off, lim int) (string, error) {
+			return buildNFTTransfersOffsetQuery(parts, floor, ceil, off, lim), nil
+		},
+		func(floor, ceil *uint64) string { return buildNFTTransfersCountQuery(parts, floor, ceil) },
+		func(query string, conn *pgxpool.Conn) ([]models.NFTTransfer, error) {
+			if settings.DebugRequest {
+				log.Println("Debug query:", query)
+			}
+			return queryNFTTransfersImpl(query, conn, settings)
+		},
+		func(query string, conn *pgxpool.Conn) (int, error) {
+			return queryCount(query, conn, settings)
+		},
+		orderKey,
+	)
 	if err != nil {
 		return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
@@ -514,19 +570,23 @@ func (db *DbClient) QueryNFTTransfers(
 	}
 	if len(addr_list) > 0 {
 		if db.Kvrocks != nil {
-			book, metadata, err = db.queryKvrocksEnrichment(addr_list, settings, conn)
+			book, metadata, err = db.queryKvrocksEnrichment(addr_list, settings)
 			if err != nil {
 				return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 			}
 		} else {
+			coldConn, cerr := fc.cold()
+			if cerr != nil {
+				return nil, nil, nil, models.IndexError{Code: 500, Message: cerr.Error()}
+			}
 			if !settings.NoAddressBook {
-				book, err = QueryAddressBookImpl(addr_list, conn, settings)
+				book, err = QueryAddressBookImpl(addr_list, coldConn, settings)
 				if err != nil {
 					return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 				}
 			}
 			if !settings.NoMetadata {
-				metadata, err = QueryMetadataImpl(addr_list, conn, settings)
+				metadata, err = QueryMetadataImpl(addr_list, coldConn, settings)
 				if err != nil {
 					return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 				}

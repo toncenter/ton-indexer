@@ -1500,6 +1500,10 @@ func (s *KvrocksStore) orderedDNSRecords(ctx context.Context, ids []string) ([]m
 	if err != nil {
 		return nil, err
 	}
+	return s.decodeDNSRecords(ids, payloads)
+}
+
+func (s *KvrocksStore) decodeDNSRecords(ids []string, payloads map[string]string) ([]models.DNSRecord, error) {
 	res := make([]models.DNSRecord, 0, len(ids))
 	for _, id := range ids {
 		payload, ok := payloads[id]
@@ -2381,6 +2385,61 @@ func (s *KvrocksStore) QueryVestingContracts(ctx context.Context, req models.Ves
 	return s.orderedVestingContracts(ctx, ids)
 }
 
+// batchPrimaryDomains resolves each address's primary domain in two round-trips
+func (s *KvrocksStore) batchPrimaryDomains(ctx context.Context, addrList []models.AccountAddress) (map[models.AccountAddress]*string, error) {
+	domains := map[models.AccountAddress]*string{}
+	if s == nil || s.client == nil || len(addrList) == 0 {
+		return domains, nil
+	}
+
+	// primary-domain ZRANGEBYLEX per address.
+	pipe := s.client.Pipeline()
+	cmds := make([]*redis.StringSliceCmd, len(addrList))
+	for i, raw := range addrList {
+		key := s.indexKey("dns_entries", "owner_wallet:"+raw.String()+":by_domain")
+		cmds[i] = pipe.ZRangeByLex(ctx, key, &redis.ZRangeBy{Min: "-", Max: "+", Offset: 0, Count: 1})
+	}
+	if _, err := pipe.Exec(ctx); err != nil && err != redis.Nil {
+		return nil, err
+	}
+
+	// collect ids, fetch all payloads in one MGET.
+	addrIDs := make([][]string, len(addrList))
+	allIDs := []string{}
+	for i := range addrList {
+		members, err := cmds[i].Result()
+		if err != nil {
+			if err == redis.Nil {
+				continue
+			}
+			return nil, err
+		}
+		ids := addressIDsFromLexMembers(members)
+		addrIDs[i] = ids
+		allIDs = append(allIDs, ids...)
+	}
+	payloads, err := s.getPayloads(ctx, "dns_entries", allIDs)
+	if err != nil {
+		return nil, err
+	}
+
+	// decode per address, keep the primary (first) domain.
+	for i, raw := range addrList {
+		if len(addrIDs[i]) == 0 {
+			continue
+		}
+		records, err := s.decodeDNSRecords(addrIDs[i], payloads)
+		if err != nil {
+			return nil, err
+		}
+		if len(records) > 0 {
+			domain := records[0].Domain
+			domains[raw] = &domain
+		}
+	}
+	return domains, nil
+}
+
 func QueryAddressBookImplKvrocks(addrList []models.AccountAddress, store *KvrocksStore, settings models.RequestSettings) (models.AddressBook, error) {
 	if settings.UseCache {
 		book, err := services.AddressInfoCacheClient.GetAddressBook(addrList)
@@ -2401,21 +2460,9 @@ func QueryAddressBookImplKvrocks(addrList []models.AccountAddress, store *Kvrock
 	if err != nil {
 		return nil, err
 	}
-	domains := map[models.AccountAddress]*string{}
-	for _, raw := range addrList {
-		members, err := store.rangeByLex(ctx, "dns_entries", "owner_wallet:"+raw.String()+":by_domain", 1, 0, false)
-		if err != nil {
-			return nil, err
-		}
-		ids := addressIDsFromLexMembers(members)
-		records, err := store.orderedDNSRecords(ctx, ids)
-		if err != nil {
-			return nil, err
-		}
-		if len(records) > 0 {
-			domain := records[0].Domain
-			domains[raw] = &domain
-		}
+	domains, err := store.batchPrimaryDomains(ctx, addrList)
+	if err != nil {
+		return nil, err
 	}
 
 	for _, raw := range addrList {

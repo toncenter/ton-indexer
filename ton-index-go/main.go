@@ -33,6 +33,7 @@ import (
 
 type Settings struct {
 	PgDsn           string
+	PgHotDsn        string
 	PgMasterDsn     string
 	TaskChannelSize int
 	MaxConns        int
@@ -2566,11 +2567,16 @@ func main() {
 	var kvrocks_user string
 	var kvrocks_password string
 	var kvrocks_db int
+	var hotcold_split_ttl_ms int64
+
 	flag.StringVar(&settings.PgDsn, "pg", "postgresql://localhost:5432", "PostgreSQL connection string")
+	flag.StringVar(&settings.PgHotDsn, "pg-hot", "",
+		"PostgreSQL hot cluster connection string (optional; empty = standalone, serve everything from -pg)")
 	flag.StringVar(&settings.PgMasterDsn, "pg-master", "", "PostgreSQL connection string with write access")
 	flag.StringVar(&settings.Request.V2Endpoint, "v2", "", "TON HTTP API endpoint for proxied methods")
 	flag.StringVar(&settings.Request.V2ApiKey, "v2-apikey", "", "API key for TON HTTP API endpoint")
 	flag.StringVar(&settings.ImgProxyBaseUrl, "imgproxy-baseurl", "", "Imgproxy base URL")
+	flag.Int64Var(&hotcold_split_ttl_ms, "hot-cold-split-ttl", 2000, "Hot/cold split-point cache TTL in milliseconds")
 	flag.IntVar(&settings.MaxConns, "maxconns", 100, "PostgreSQL max connections")
 	flag.IntVar(&settings.MinConns, "minconns", 0, "PostgreSQL min connections")
 	flag.IntVar(&settings.MasterMaxConns, "master-maxconns", 4, "PostgreSQL master max connections")
@@ -2636,6 +2642,15 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 		os.Exit(63)
+	}
+
+	if len(settings.PgHotDsn) > 0 {
+		err := pool.AttachHotPool(settings.PgHotDsn, settings.MaxConns, settings.MinConns,
+			time.Millisecond*time.Duration(hotcold_split_ttl_ms))
+		if err != nil {
+			log.Fatal(err)
+			os.Exit(63)
+		}
 	}
 
 	// get database version

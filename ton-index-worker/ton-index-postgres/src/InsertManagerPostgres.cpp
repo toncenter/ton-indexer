@@ -187,6 +187,7 @@ private:
   void ensure_batch_partitions(pqxx::connection& c);
   void advance_progress_after_commit(pqxx::connection& c);
   void drop_old_partitions_after_commit(pqxx::connection& c);
+  void publish_split_after_commit(pqxx::connection &c);
 };
 
 std::string content_to_json_string(const std::map<std::string, std::string> &content) {
@@ -2828,6 +2829,21 @@ void InsertBatchPostgres::drop_old_partitions_after_commit(pqxx::connection& c) 
   }
 }
 
+
+void InsertBatchPostgres::publish_split_after_commit(pqxx::connection& c) {
+  if (!partition_config_.enabled || partition_config_.retention_mc_seqnos == 0) {
+    return;
+  }
+
+  try {
+    PartitionManagerPostgres partition_manager(partition_config_);
+    partition_manager.publish_split(c);
+  } catch (const std::exception& e) {
+    LOG(WARNING) << "Failed to publish split: " << e.what();
+  }
+}
+
+
 void InsertBatchPostgres::advance_progress_after_commit(pqxx::connection& c) {
   if (disable_progress_advance_) {
     return;
@@ -3074,6 +3090,7 @@ void InsertBatchPostgres::commit_prepared_batch() {
   commit_timer.pause();
 
   advance_progress_after_commit(c);
+  publish_split_after_commit(c);
   drop_old_partitions_after_commit(c);
 
   for (auto& task : insert_tasks_) {

@@ -20,56 +20,94 @@ func (db *DbClient) QueryActionsV2(
 		req.SupportedActionTypes = []string{"latest"}
 	}
 	req.SupportedActionTypes = models.ExpandActionTypeShortcuts(req.SupportedActionTypes)
-	query, args, err := buildActionsQueryV2(req, settings)
-	if settings.DebugRequest {
-		log.Println("Debug query:", query, "Args:", args)
+
+	lim_req := req.GetLimitParams()
+	sortOrder := "desc"
+	if v := lim_req.Sort; v != nil {
+		var serr error
+		sortOrder, serr = getSortOrder(*v)
+		if serr != nil {
+			return nil, nil, nil, serr
+		}
 	}
+	offset := 0
+	if lim_req.Offset != nil {
+		offset = int(max(0, *lim_req.Offset))
+	}
+	limit := int32(settings.DefaultLimit)
+	if lim_req.Limit != nil {
+		limit = max(1, *lim_req.Limit)
+		if limit > int32(settings.MaxLimit) {
+			return nil, nil, nil, models.IndexError{Code: 422, Message: fmt.Sprintf("limit is not allowed: %d > %d", limit, settings.MaxLimit)}
+		}
+	}
+
+	parts := actionsQueryPartsV2(req, sortOrder)
+
+	fc, release, err := db.acquireFed(context.Background())
 	if err != nil {
 		return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
+	defer release()
 
-	// read data
-	conn, err := db.Pool.Acquire(context.Background())
-	if err != nil {
-		return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
+	fetch := func(query string, conn *pgxpool.Conn) ([]models.RawAction, error) {
+		if settings.DebugRequest {
+			log.Println("Debug query:", query, "Args:", parts.args)
+		}
+		return queryRawActionsImplV2(query, parts.args, conn, settings)
 	}
-	defer conn.Release()
 
-	// check block
-	if seqno := req.McSeqno; seqno != nil {
-		exists, err := queryBlockExists(*seqno, conn, settings)
-		if err != nil {
-			return nil, nil, nil, err
+	var raw_actions []models.RawAction
+	if req.McSeqno != nil {
+		// a masterchain round's actions live wholly in one partition
+		conn, cerr := fc.connForSeqno(uint64(*req.McSeqno))
+		if cerr != nil {
+			return nil, nil, nil, models.IndexError{Code: 500, Message: cerr.Error()}
+		}
+		exists, eerr := queryBlockExists(*req.McSeqno, conn, settings)
+		if eerr != nil {
+			return nil, nil, nil, eerr
 		}
 		if !exists {
-			return nil, nil, nil, models.IndexError{Code: 404, Message: fmt.Sprintf("masterchain block %d not found", *seqno)}
+			return nil, nil, nil, models.IndexError{Code: 404, Message: fmt.Sprintf("masterchain block %d not found", *req.McSeqno)}
 		}
+		raw_actions, err = fetch(buildActionsOffsetQueryV2(parts, nil, nil, offset, int(limit)), conn)
+	} else {
+		raw_actions, err = cascadePageOffset(fc, sortOrder, offset, int(limit),
+			func(floor, ceil *uint64, off, lim int) (string, error) {
+				return buildActionsOffsetQueryV2(parts, floor, ceil, off, lim), nil
+			},
+			func(floor, ceil *uint64) string { return buildActionsCountQueryV2(parts, floor, ceil) },
+			fetch,
+			func(query string, conn *pgxpool.Conn) (int, error) {
+				return queryCount(query, conn, settings, parts.args...)
+			},
+			parts.orderKey,
+		)
 	}
-
-	raw_actions, err := queryRawActionsImplV2(query, args, conn, settings)
 	if err != nil {
 		return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
+
 	actions := []models.Action{}
 	book := models.AddressBook{}
 	metadata := models.Metadata{}
 	addr_map := map[models.AccountAddress]bool{}
 	for idx := range raw_actions {
 		parse.CollectAddressesFromAction(&addr_map, &raw_actions[idx])
-		action, err := parse.ParseRawAction(&raw_actions[idx])
-		if err != nil {
-			return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
+		action, perr := parse.ParseRawAction(&raw_actions[idx])
+		if perr != nil {
+			return nil, nil, nil, models.IndexError{Code: 500, Message: perr.Error()}
 		}
 		actions = append(actions, *action)
 	}
 	if req.IncludeAccounts != nil && *req.IncludeAccounts {
-		actions, err = queryActionsAccountsImpl(actions, conn)
-		if err != nil {
+		if err := enrichActionsAccounts(fc, actions); err != nil {
 			return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 		}
 	}
 	if req.IncludeTransactions != nil && *req.IncludeTransactions {
-		actions, err = queryActionsTransactionsImpl(actions, conn, settings, db.Kvrocks)
+		actions, err = queryActionsTransactionsImpl(fc, actions, settings, db.Kvrocks)
 		if err != nil {
 			return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 		}
@@ -79,20 +117,24 @@ func (db *DbClient) QueryActionsV2(
 		for k := range addr_map {
 			addr_list = append(addr_list, k)
 		}
+		coldConn, cerr := fc.cold()
+		if cerr != nil {
+			return nil, nil, nil, models.IndexError{Code: 500, Message: cerr.Error()}
+		}
 		if db.Kvrocks != nil {
-			book, metadata, err = db.queryKvrocksEnrichment(addr_list, settings, conn)
+			book, metadata, err = db.queryKvrocksEnrichment(addr_list, settings, coldConn)
 			if err != nil {
 				return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 			}
 		} else {
 			if !settings.NoAddressBook {
-				book, err = QueryAddressBookImpl(addr_list, conn, settings)
+				book, err = QueryAddressBookImpl(addr_list, coldConn, settings)
 				if err != nil {
 					return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 				}
 			}
 			if !settings.NoMetadata {
-				metadata, err = QueryMetadataImpl(addr_list, conn, settings)
+				metadata, err = QueryMetadataImpl(addr_list, coldConn, settings)
 				if err != nil {
 					return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 				}
@@ -102,10 +144,44 @@ func (db *DbClient) QueryActionsV2(
 	return actions, book, metadata, nil
 }
 
-func buildActionsQueryV2(req models.ActionRequest, settings models.RequestSettings) (string, []any, error) {
+// enrichActionsAccounts attaches each action's account list, routed to the DB that
+// owns the action's partition (trace_mc_seqno_end), batched per side.
+func enrichActionsAccounts(fc *fedConns, actions []models.Action) error {
+	if len(actions) == 0 {
+		return nil
+	}
+	hotIdx, coldIdx := []int{}, []int{}
+	for i := range actions {
+		if fc.coldForSeqno(uint64(actions[i].TraceMcSeqnoEnd)) {
+			coldIdx = append(coldIdx, i)
+		} else {
+			hotIdx = append(hotIdx, i)
+		}
+	}
+	if len(hotIdx) > 0 {
+		conn, err := fc.hot()
+		if err != nil {
+			return err
+		}
+		if err := queryActionsAccountsImpl(actions, hotIdx, conn); err != nil {
+			return err
+		}
+	}
+	if len(coldIdx) > 0 {
+		conn, err := fc.cold()
+		if err != nil {
+			return err
+		}
+		if err := queryActionsAccountsImpl(actions, coldIdx, conn); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func actionsQueryPartsV2(req models.ActionRequest, sort_order string) actionsQueryParts {
 	utime_req := req.GetUtimeParams()
 	lt_req := req.GetLtParams()
-	lim_req := req.GetLimitParams()
 
 	clmn_query_default := `A.trace_id, A.action_id, A.start_lt, A.end_lt, A.start_utime, A.end_utime, 
 		A.trace_end_lt, A.trace_end_utime, A.trace_mc_seqno_end, A.source, A.source_secondary,
@@ -297,21 +373,8 @@ func buildActionsQueryV2(req models.ActionRequest, settings models.RequestSettin
 	clmn_query := clmn_query_default
 	from_query := `actions as A`
 	filter_list := []string{}
-	filter_query := ``
 	orderby_query := ``
 	args := []any{req.SupportedActionTypes}
-	limit_query, err := limitQuery(lim_req, settings)
-	if err != nil {
-		return "", nil, err
-	}
-
-	sort_order := "desc"
-	if v := lim_req.Sort; v != nil {
-		sort_order, err = getSortOrder(*v)
-		if err != nil {
-			return "", nil, err
-		}
-	}
 	// time
 	order_by_now := false
 	join_accounts := false
@@ -446,18 +509,69 @@ func buildActionsQueryV2(req models.ActionRequest, settings models.RequestSettin
 	}
 	filter_list = append(filter_list, "NOT(A.ancestor_type && $1::varchar[])")
 
-	// build query
-	if len(filter_list) > 0 {
-		filter_query = ` where ` + strings.Join(filter_list, " and ")
+	// trace_end_lt/utime is the sort axis; boundary on it with the alias the ORDER BY uses.
+	boundaryPrefix := "A"
+	if strings.Contains(from_query, "action_accounts") {
+		boundaryPrefix = "AA"
 	}
-	query := `select ` + clmn_query
-	query += ` from ` + from_query
-	query += filter_query
-	query += orderby_query
-	query += limit_query
+	boundaryCol := boundaryPrefix + ".trace_end_lt"
+	orderKey := "lt"
+	if order_by_now {
+		boundaryCol = boundaryPrefix + ".trace_end_utime"
+		orderKey = "utime"
+	}
 
-	//log.Println(query)
-	return query, args, nil
+	return actionsQueryParts{
+		clmnQuery:   clmn_query,
+		fromQuery:   from_query,
+		filterList:  filter_list,
+		args:        args,
+		orderBy:     orderby_query,
+		boundaryCol: boundaryCol,
+		orderKey:    orderKey,
+	}
+}
+
+// actionsQueryParts holds the shared pieces of an actions listing; boundaryCol is the
+// prefixed sort-axis column (A. or AA., trace_end_lt or trace_end_utime).
+type actionsQueryParts struct {
+	clmnQuery   string
+	fromQuery   string
+	filterList  []string
+	args        []any
+	orderBy     string
+	boundaryCol string
+	orderKey    string
+}
+
+func actionsBoundaryFilters(p actionsQueryParts, floor, ceil *uint64) []string {
+	filters := append([]string{}, p.filterList...)
+	if floor != nil {
+		filters = append(filters, fmt.Sprintf("%s >= %d", p.boundaryCol, *floor))
+	}
+	if ceil != nil {
+		filters = append(filters, fmt.Sprintf("%s < %d", p.boundaryCol, *ceil))
+	}
+	return filters
+}
+
+func buildActionsOffsetQueryV2(p actionsQueryParts, floor, ceil *uint64, offset, limit int) string {
+	filter_query := ``
+	if filters := actionsBoundaryFilters(p, floor, ceil); len(filters) > 0 {
+		filter_query = ` where ` + strings.Join(filters, " and ")
+	}
+	limit_query := fmt.Sprintf(" limit %d offset %d", max(1, limit), max(0, offset))
+	return `select ` + p.clmnQuery + ` from ` + p.fromQuery + filter_query + p.orderBy + limit_query
+}
+
+// buildActionsCountQueryV2 wraps the distinct-on page shape: the join modes fan rows
+// out and distinct-on collapses them, so count(*) over the page == its row count.
+func buildActionsCountQueryV2(p actionsQueryParts, floor, ceil *uint64) string {
+	filter_query := ``
+	if filters := actionsBoundaryFilters(p, floor, ceil); len(filters) > 0 {
+		filter_query = ` where ` + strings.Join(filters, " and ")
+	}
+	return `select count(*) from (select ` + p.clmnQuery + ` from ` + p.fromQuery + filter_query + `) as sub`
 }
 
 func queryRawActionsImplV2(query string, args []any, conn *pgxpool.Conn, settings models.RequestSettings) ([]models.RawAction, error) {
@@ -488,7 +602,7 @@ func queryRawActionsImplV2(query string, args []any, conn *pgxpool.Conn, setting
 	return res, nil
 }
 
-func queryActionsTransactionsImpl(actions []models.Action, conn *pgxpool.Conn, settings models.RequestSettings, store *KvrocksStore) ([]models.Action, error) {
+func queryActionsTransactionsImpl(fc *fedConns, actions []models.Action, settings models.RequestSettings, store *KvrocksStore) ([]models.Action, error) {
 	if len(actions) == 0 {
 		return actions, nil
 	}
@@ -519,7 +633,12 @@ func queryActionsTransactionsImpl(actions []models.Action, conn *pgxpool.Conn, s
 		return nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
 
-	txs, err := queryTransactionsImpl(query, conn, settings, store, queryArgs...)
+	// tx hashes across a page of actions can be hot- or cold-only -> consult both
+	txs, err := hotThenCold(fc, len(txHashes),
+		func(conn *pgxpool.Conn) ([]models.Transaction, error) {
+			return queryTransactionsImpl(query, conn, settings, store, queryArgs...)
+		},
+		func(t *models.Transaction) models.HashType { return t.Hash })
 	if err != nil {
 		return nil, models.IndexError{Code: 500, Message: err.Error()}
 	}

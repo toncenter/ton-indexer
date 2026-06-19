@@ -118,24 +118,27 @@ func buildJettonWalletsQuery(req models.JettonWalletRequest, settings models.Req
 	return query, nil
 }
 
-func buildJettonTransfersQuery(req models.JettonTransferRequest, settings models.RequestSettings) (string, error) {
+// txLtListParts holds the shared pieces of a jetton transfers/burns listing query.
+// Both are flat listings on a `T`-aliased table whose sort axis is T.tx_lt, or
+// T.tx_now when a start/end utime filter is present (orderByNow). The boundary, offset
+// and count builders below are shared across both endpoints.
+type txLtListParts struct {
+	clmnQuery  string
+	fromQuery  string
+	filterList []string
+	orderBy    string
+	orderByNow bool
+}
+
+func jettonTransfersQueryParts(req models.JettonTransferRequest, sortOrder string) txLtListParts {
 	utime_req := req.GetUtimeParams()
 	lt_req := req.GetLtParams()
-	lim_req := req.GetLimitParams()
 
 	clmn_query := `T.tx_hash, T.tx_lt, T.tx_now, T.tx_aborted, T.query_id,
 		T.amount, T.source, T.destination, T.jetton_wallet_address, T.jetton_master_address, T.response_destination, T.custom_payload,
 		T.forward_ton_amount, T.forward_payload, T.trace_id`
 	from_query := `jetton_transfers as T`
-	filter_list := []string{}
-	filter_query := ``
-	orderby_query := ``
-	limit_query, err := limitQuery(lim_req, settings)
-	if err != nil {
-		return "", err
-	}
-
-	filter_list = append(filter_list, "T.tx_aborted is false")
+	filter_list := []string{"T.tx_aborted is false"}
 
 	if v := req.OwnerAddress; v != nil {
 		if v1 := req.Direction; v1 != nil {
@@ -166,14 +169,14 @@ func buildJettonTransfersQuery(req models.JettonTransferRequest, settings models
 		filter_list = append(filter_list, fmt.Sprintf("T.jetton_master_address = '%s'", v.FilterString()))
 	}
 
-	order_col := "T.tx_lt"
+	orderByNow := false
 	if v := utime_req.StartUtime; v != nil {
 		filter_list = append(filter_list, fmt.Sprintf("T.tx_now >= %d", *v))
-		order_col = "T.tx_now"
+		orderByNow = true
 	}
 	if v := utime_req.EndUtime; v != nil {
 		filter_list = append(filter_list, fmt.Sprintf("T.tx_now <= %d", *v))
-		order_col = "T.tx_now"
+		orderByNow = true
 	}
 	if v := lt_req.StartLt; v != nil {
 		filter_list = append(filter_list, fmt.Sprintf("T.tx_lt >= %d", *v))
@@ -181,50 +184,61 @@ func buildJettonTransfersQuery(req models.JettonTransferRequest, settings models
 	if v := lt_req.EndLt; v != nil {
 		filter_list = append(filter_list, fmt.Sprintf("T.tx_lt <= %d", *v))
 	}
-	if lim_req.Sort == nil {
-		lim_req.Sort = new(models.SortType)
-		*lim_req.Sort = "desc"
-	}
-	if lim_req.Sort != nil {
-		sort_order, err := getSortOrder(*lim_req.Sort)
-		if err != nil {
-			return "", err
-		}
-		orderby_query = fmt.Sprintf(" order by %s %s", order_col, sort_order)
-	}
 
-	// build query
-	if len(filter_list) > 0 {
-		filter_query = ` where ` + strings.Join(filter_list, " and ")
+	order_col := "T.tx_lt"
+	if orderByNow {
+		order_col = "T.tx_now"
 	}
-	query := `select ` + clmn_query
-	query += ` from ` + from_query
-	query += filter_query
-	query += orderby_query
-	query += limit_query
-	// log.Println(query)
-	return query, nil
+	orderby_query := fmt.Sprintf(" order by %s %s", order_col, sortOrder)
+
+	return txLtListParts{clmnQuery: clmn_query, fromQuery: from_query, filterList: filter_list, orderBy: orderby_query, orderByNow: orderByNow}
 }
 
-func buildJettonBurnsQuery(req models.JettonBurnRequest, settings models.RequestSettings) (string, error) {
+// txLtListBoundaryFilters appends this leg's [floor, ceil) boundary on the sort
+// axis (T.tx_lt or T.tx_now). lt/now are never null, so no null handling is needed.
+func txLtListBoundaryFilters(p txLtListParts, floor, ceil *uint64) []string {
+	col := "T.tx_lt"
+	if p.orderByNow {
+		col = "T.tx_now"
+	}
+	filters := append([]string{}, p.filterList...)
+	if floor != nil {
+		filters = append(filters, fmt.Sprintf("%s >= %d", col, *floor))
+	}
+	if ceil != nil {
+		filters = append(filters, fmt.Sprintf("%s < %d", col, *ceil))
+	}
+	return filters
+}
+
+func buildTxLtListOffset(p txLtListParts, floor, ceil *uint64, offset, limit int) string {
+	filter_query := ``
+	if filters := txLtListBoundaryFilters(p, floor, ceil); len(filters) > 0 {
+		filter_query = ` where ` + strings.Join(filters, " and ")
+	}
+	limit_query := fmt.Sprintf(" limit %d offset %d", max(1, limit), max(0, offset))
+	return `select ` + p.clmnQuery + ` from ` + p.fromQuery + filter_query + p.orderBy + limit_query
+}
+
+func buildTxLtListCount(p txLtListParts, floor, ceil *uint64) string {
+	filter_query := ``
+	if filters := txLtListBoundaryFilters(p, floor, ceil); len(filters) > 0 {
+		filter_query = ` where ` + strings.Join(filters, " and ")
+	}
+	return `select count(*) from ` + p.fromQuery + filter_query
+}
+
+func jettonBurnsQueryParts(req models.JettonBurnRequest, sortOrder string) txLtListParts {
 	utime_req := req.GetUtimeParams()
 	lt_req := req.GetLtParams()
-	lim_req := req.GetLimitParams()
 
 	clmn_query := `T.tx_hash, T.tx_lt, T.tx_now, T.tx_aborted, T.query_id,
 		T.owner, T.jetton_wallet_address, T.jetton_master_address, T.amount, T.response_destination, T.custom_payload, T.trace_id`
 	from_query := `jetton_burns as T`
 	filter_list := []string{}
-	filter_query := ``
-	orderby_query := ``
-	limit_query, err := limitQuery(lim_req, settings)
-	if err != nil {
-		return "", err
-	}
 
 	if v := req.OwnerAddress; v != nil {
-		f_str := ``
-		f_str = filterByArray("T.owner", v)
+		f_str := filterByArray("T.owner", v)
 		if len(f_str) > 0 {
 			filter_list = append(filter_list, f_str)
 		}
@@ -239,14 +253,14 @@ func buildJettonBurnsQuery(req models.JettonBurnRequest, settings models.Request
 		filter_list = append(filter_list, fmt.Sprintf("T.jetton_master_address = '%s'", v.FilterString()))
 	}
 
-	order_col := "T.tx_lt"
+	orderByNow := false
 	if v := utime_req.StartUtime; v != nil {
 		filter_list = append(filter_list, fmt.Sprintf("T.tx_now >= %d", *v))
-		order_col = "T.tx_now"
+		orderByNow = true
 	}
 	if v := utime_req.EndUtime; v != nil {
 		filter_list = append(filter_list, fmt.Sprintf("T.tx_now <= %d", *v))
-		order_col = "T.tx_now"
+		orderByNow = true
 	}
 	if v := lt_req.StartLt; v != nil {
 		filter_list = append(filter_list, fmt.Sprintf("T.tx_lt >= %d", *v))
@@ -254,29 +268,14 @@ func buildJettonBurnsQuery(req models.JettonBurnRequest, settings models.Request
 	if v := lt_req.EndLt; v != nil {
 		filter_list = append(filter_list, fmt.Sprintf("T.tx_lt <= %d", *v))
 	}
-	if lim_req.Sort == nil {
-		lim_req.Sort = new(models.SortType)
-		*lim_req.Sort = "desc"
-	}
-	if lim_req.Sort != nil {
-		sort_order, err := getSortOrder(*lim_req.Sort)
-		if err != nil {
-			return "", err
-		}
-		orderby_query = fmt.Sprintf(" order by %s %s", order_col, sort_order)
-	}
 
-	// build query
-	if len(filter_list) > 0 {
-		filter_query = ` where ` + strings.Join(filter_list, " and ")
+	order_col := "T.tx_lt"
+	if orderByNow {
+		order_col = "T.tx_now"
 	}
-	query := `select ` + clmn_query
-	query += ` from ` + from_query
-	query += filter_query
-	query += orderby_query
-	query += limit_query
-	// log.Println(query)
-	return query, nil
+	orderby_query := fmt.Sprintf(" order by %s %s", order_col, sortOrder)
+
+	return txLtListParts{clmnQuery: clmn_query, fromQuery: from_query, filterList: filter_list, orderBy: orderby_query, orderByNow: orderByNow}
 }
 
 func queryJettonWalletsTokenInfo(addr_list []models.AccountAddress, conn *pgxpool.Conn, ctx context.Context) (map[models.AccountAddress]models.TokenInfo, []models.AccountAddress, error) {
@@ -635,22 +634,55 @@ func (db *DbClient) QueryJettonTransfers(
 	req models.JettonTransferRequest,
 	settings models.RequestSettings,
 ) ([]models.JettonTransfer, models.AddressBook, models.Metadata, error) {
-	query, err := buildJettonTransfersQuery(req, settings)
-	if settings.DebugRequest {
-		log.Println("Debug query:", query)
+	lim_req := req.GetLimitParams()
+	sortOrder := "desc"
+	if v := lim_req.Sort; v != nil {
+		var serr error
+		sortOrder, serr = getSortOrder(*v)
+		if serr != nil {
+			return nil, nil, nil, serr
+		}
 	}
+	offset := 0
+	if lim_req.Offset != nil {
+		offset = int(max(0, *lim_req.Offset))
+	}
+	limit := int32(settings.DefaultLimit)
+	if lim_req.Limit != nil {
+		limit = max(1, *lim_req.Limit)
+		if limit > int32(settings.MaxLimit) {
+			return nil, nil, nil, models.IndexError{Code: 422, Message: fmt.Sprintf("limit is not allowed: %d > %d", limit, settings.MaxLimit)}
+		}
+	}
+
+	parts := jettonTransfersQueryParts(req, sortOrder)
+	orderKey := "lt"
+	if parts.orderByNow {
+		orderKey = "utime"
+	}
+
+	fc, release, err := db.acquireFed(context.Background())
 	if err != nil {
 		return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
+	defer release()
 
-	// read data
-	conn, err := db.Pool.Acquire(context.Background())
-	if err != nil {
-		return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
-	}
-	defer conn.Release()
-
-	res, err := queryJettonTransfersImpl(query, conn, settings)
+	res, err := cascadePageOffset(fc, sortOrder, offset, int(limit),
+		func(floor, ceil *uint64, off, lim int) (string, error) {
+			return buildTxLtListOffset(parts, floor, ceil, off, lim), nil
+		},
+		func(floor, ceil *uint64) string { return buildTxLtListCount(parts, floor, ceil) },
+		func(query string, conn *pgxpool.Conn) ([]models.JettonTransfer, error) {
+			if settings.DebugRequest {
+				log.Println("Debug query:", query)
+			}
+			return queryJettonTransfersImpl(query, conn, settings)
+		},
+		func(query string, conn *pgxpool.Conn) (int, error) {
+			return queryCount(query, conn, settings)
+		},
+		orderKey,
+	)
 	if err != nil {
 		return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
@@ -668,20 +700,24 @@ func (db *DbClient) QueryJettonTransfers(
 		}
 	}
 	if len(addr_list) > 0 {
+		coldConn, cerr := fc.cold()
+		if cerr != nil {
+			return nil, nil, nil, models.IndexError{Code: 500, Message: cerr.Error()}
+		}
 		if db.Kvrocks != nil {
-			book, metadata, err = db.queryKvrocksEnrichment(addr_list, settings, conn)
+			book, metadata, err = db.queryKvrocksEnrichment(addr_list, settings, coldConn)
 			if err != nil {
 				return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 			}
 		} else {
 			if !settings.NoAddressBook {
-				book, err = QueryAddressBookImpl(addr_list, conn, settings)
+				book, err = QueryAddressBookImpl(addr_list, coldConn, settings)
 				if err != nil {
 					return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 				}
 			}
 			if !settings.NoMetadata {
-				metadata, err = QueryMetadataImpl(addr_list, conn, settings)
+				metadata, err = QueryMetadataImpl(addr_list, coldConn, settings)
 				if err != nil {
 					return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 				}
@@ -695,22 +731,55 @@ func (db *DbClient) QueryJettonBurns(
 	req models.JettonBurnRequest,
 	settings models.RequestSettings,
 ) ([]models.JettonBurn, models.AddressBook, models.Metadata, error) {
-	query, err := buildJettonBurnsQuery(req, settings)
-	if settings.DebugRequest {
-		log.Println("Debug query:", query)
+	lim_req := req.GetLimitParams()
+	sortOrder := "desc"
+	if v := lim_req.Sort; v != nil {
+		var serr error
+		sortOrder, serr = getSortOrder(*v)
+		if serr != nil {
+			return nil, nil, nil, serr
+		}
 	}
+	offset := 0
+	if lim_req.Offset != nil {
+		offset = int(max(0, *lim_req.Offset))
+	}
+	limit := int32(settings.DefaultLimit)
+	if lim_req.Limit != nil {
+		limit = max(1, *lim_req.Limit)
+		if limit > int32(settings.MaxLimit) {
+			return nil, nil, nil, models.IndexError{Code: 422, Message: fmt.Sprintf("limit is not allowed: %d > %d", limit, settings.MaxLimit)}
+		}
+	}
+
+	parts := jettonBurnsQueryParts(req, sortOrder)
+	orderKey := "lt"
+	if parts.orderByNow {
+		orderKey = "utime"
+	}
+
+	fc, release, err := db.acquireFed(context.Background())
 	if err != nil {
 		return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
+	defer release()
 
-	// read data
-	conn, err := db.Pool.Acquire(context.Background())
-	if err != nil {
-		return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
-	}
-	defer conn.Release()
-
-	res, err := queryJettonBurnsImpl(query, conn, settings)
+	res, err := cascadePageOffset(fc, sortOrder, offset, int(limit),
+		func(floor, ceil *uint64, off, lim int) (string, error) {
+			return buildTxLtListOffset(parts, floor, ceil, off, lim), nil
+		},
+		func(floor, ceil *uint64) string { return buildTxLtListCount(parts, floor, ceil) },
+		func(query string, conn *pgxpool.Conn) ([]models.JettonBurn, error) {
+			if settings.DebugRequest {
+				log.Println("Debug query:", query)
+			}
+			return queryJettonBurnsImpl(query, conn, settings)
+		},
+		func(query string, conn *pgxpool.Conn) (int, error) {
+			return queryCount(query, conn, settings)
+		},
+		orderKey,
+	)
 	if err != nil {
 		return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
@@ -727,20 +796,24 @@ func (db *DbClient) QueryJettonBurns(
 		}
 	}
 	if len(addr_list) > 0 {
+		coldConn, cerr := fc.cold()
+		if cerr != nil {
+			return nil, nil, nil, models.IndexError{Code: 500, Message: cerr.Error()}
+		}
 		if db.Kvrocks != nil {
-			book, metadata, err = db.queryKvrocksEnrichment(addr_list, settings, conn)
+			book, metadata, err = db.queryKvrocksEnrichment(addr_list, settings, coldConn)
 			if err != nil {
 				return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 			}
 		} else {
 			if !settings.NoAddressBook {
-				book, err = QueryAddressBookImpl(addr_list, conn, settings)
+				book, err = QueryAddressBookImpl(addr_list, coldConn, settings)
 				if err != nil {
 					return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 				}
 			}
 			if !settings.NoMetadata {
-				metadata, err = QueryMetadataImpl(addr_list, conn, settings)
+				metadata, err = QueryMetadataImpl(addr_list, coldConn, settings)
 				if err != nil {
 					return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 				}

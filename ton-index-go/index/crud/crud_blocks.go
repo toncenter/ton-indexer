@@ -11,24 +11,17 @@ import (
 	"github.com/toncenter/ton-indexer/ton-index-go/index/parse"
 )
 
-func buildBlocksQuery(
-	req models.BlocksRequest,
-	settings models.RequestSettings,
-) (string, error) {
+// blocksQueryParts holds the shared pieces of a blocks listing query
+type blocksQueryParts struct {
+	filterList []string
+	orderBy    string
+}
+
+func buildBlocksParts(req models.BlocksRequest, sortOrder string) blocksQueryParts {
 	utime_req := req.GetUtimeParams()
 	lt_req := req.GetLtParams()
-	lim_req := req.GetLimitParams()
-
-	query := `select blocks.* from blocks`
 	filter_list := []string{}
-	filter_query := ``
-	orderby_query := ``
-	limit_query, err := limitQuery(lim_req, settings)
-	if err != nil {
-		return "", err
-	}
 
-	// filters
 	if v := req.Workchain; v != nil {
 		filter_list = append(filter_list, fmt.Sprintf("workchain = %d", *v))
 	}
@@ -47,8 +40,6 @@ func buildBlocksQuery(
 	if v := req.McSeqno; v != nil {
 		filter_list = append(filter_list, fmt.Sprintf("mc_block_seqno = %d", *v))
 	}
-
-	order_col := "gen_utime"
 	if v := utime_req.StartUtime; v != nil {
 		filter_list = append(filter_list, fmt.Sprintf("gen_utime >= %d", *v))
 	}
@@ -61,24 +52,43 @@ func buildBlocksQuery(
 	if v := lt_req.EndLt; v != nil {
 		filter_list = append(filter_list, fmt.Sprintf("start_lt <= %d", *v))
 	}
-	if v := lim_req.Sort; v != nil {
-		sort_order, err := getSortOrder(*v)
-		if err != nil {
-			return "", err
-		}
-		orderby_query = fmt.Sprintf(" order by %s %s, -workchain %s, shard %s, seqno %s",
-			order_col, sort_order, sort_order, sort_order, sort_order)
-	}
 
-	// build query
-	if len(filter_list) > 0 {
-		filter_query = ` where ` + strings.Join(filter_list, " and ")
+	orderBy := ""
+	if sortOrder != "" {
+		orderBy = fmt.Sprintf(" order by gen_utime %s, -workchain %s, shard %s, seqno %s",
+			sortOrder, sortOrder, sortOrder, sortOrder)
 	}
+	return blocksQueryParts{filterList: filter_list, orderBy: orderBy}
+}
 
-	query += filter_query
-	query += orderby_query
-	query += limit_query
-	return query, nil
+// blocksBoundaryFilters appends this leg's [floor, ceil) boundary on the sort
+// axis (gen_utime, never null).
+func blocksBoundaryFilters(p blocksQueryParts, floor, ceil *uint64) []string {
+	filters := append([]string{}, p.filterList...)
+	if floor != nil {
+		filters = append(filters, fmt.Sprintf("gen_utime >= %d", *floor))
+	}
+	if ceil != nil {
+		filters = append(filters, fmt.Sprintf("gen_utime < %d", *ceil))
+	}
+	return filters
+}
+
+func buildBlocksOffsetQuery(p blocksQueryParts, floor, ceil *uint64, offset, limit int) string {
+	filter_query := ``
+	if filters := blocksBoundaryFilters(p, floor, ceil); len(filters) > 0 {
+		filter_query = ` where ` + strings.Join(filters, " and ")
+	}
+	limit_query := fmt.Sprintf(" limit %d offset %d", max(1, limit), max(0, offset))
+	return `select blocks.* from blocks` + filter_query + p.orderBy + limit_query
+}
+
+func buildBlocksCountQuery(p blocksQueryParts, floor, ceil *uint64) string {
+	filter_query := ``
+	if filters := blocksBoundaryFilters(p, floor, ceil); len(filters) > 0 {
+		filter_query = ` where ` + strings.Join(filters, " and ")
+	}
+	return `select count(*) from blocks` + filter_query
 }
 
 // query implementation functions
@@ -135,22 +145,33 @@ func queryBlockExists(seqno int32, conn *pgxpool.Conn, settings models.RequestSe
 
 // Exported methods
 func (db *DbClient) QueryMasterchainInfo(settings models.RequestSettings) (*models.MasterchainInfo, error) {
-	conn, err := db.Pool.Acquire(context.Background())
+	fc, release, err := db.acquireFed(context.Background())
 	if err != nil {
 		return nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
-	defer conn.Release()
+	defer release()
 
 	ctx, cancel_ctx := context.WithTimeout(context.Background(), settings.Timeout)
 	defer cancel_ctx()
-	res := conn.QueryRow(ctx, "select * from blocks where workchain = -1 order by seqno desc limit 1")
-	last, err := parse.ScanBlock(res)
+
+	const lastQuery = "select * from blocks where workchain = -1 order by seqno desc limit 1"
+	const firstQuery = "select * from blocks where workchain = -1 order by seqno asc limit 1"
+
+	// newest masterchain block lives on hot, oldest on cold (standalone: same pool)
+	hotConn, err := fc.hot()
+	if err != nil {
+		return nil, models.IndexError{Code: 500, Message: err.Error()}
+	}
+	last, err := parse.ScanBlock(hotConn.QueryRow(ctx, lastQuery))
 	if err != nil {
 		return nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
 
-	res = conn.QueryRow(ctx, "select * from blocks where workchain = -1 order by seqno asc limit 1")
-	first, err := parse.ScanBlock(res)
+	coldConn, err := fc.cold()
+	if err != nil {
+		return nil, models.IndexError{Code: 500, Message: err.Error()}
+	}
+	first, err := parse.ScanBlock(coldConn.QueryRow(ctx, firstQuery))
 	if err != nil {
 		return nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
@@ -163,36 +184,84 @@ func (db *DbClient) QueryBlocks(
 	req models.BlocksRequest,
 	settings models.RequestSettings,
 ) ([]models.Block, error) {
-	query, err := buildBlocksQuery(req, settings)
-	if settings.DebugRequest {
-		log.Println("Debug query:", query)
+	lim_req := req.GetLimitParams()
+	sortOrder := "" // "" => no ORDER BY (preserves the original arbitrary order for unsorted listings)
+	if v := lim_req.Sort; v != nil {
+		var serr error
+		sortOrder, serr = getSortOrder(*v)
+		if serr != nil {
+			return nil, serr
+		}
 	}
-	if err != nil {
-		return nil, models.IndexError{Code: 500, Message: err.Error()}
+	offset := 0
+	if lim_req.Offset != nil {
+		offset = int(max(0, *lim_req.Offset))
+	}
+	limit := int32(settings.DefaultLimit)
+	if lim_req.Limit != nil {
+		limit = max(1, *lim_req.Limit)
+		if limit > int32(settings.MaxLimit) {
+			return nil, models.IndexError{Code: 422, Message: fmt.Sprintf("limit is not allowed: %d > %d", limit, settings.MaxLimit)}
+		}
 	}
 
-	// read data
-	conn, err := db.Pool.Acquire(context.Background())
+	fc, release, err := db.acquireFed(context.Background())
 	if err != nil {
 		return nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
-	defer conn.Release()
-	return queryBlocksImpl(query, conn, settings)
+	defer release()
+
+	// A federated listing must be ordered to merge hot+cold
+	effSort := sortOrder
+	if fc.federated && effSort == "" {
+		effSort = "desc"
+	}
+	parts := buildBlocksParts(req, effSort)
+	fetch := func(query string, conn *pgxpool.Conn) ([]models.Block, error) {
+		if settings.DebugRequest {
+			log.Println("Debug query:", query)
+		}
+		return queryBlocksImpl(query, conn, settings)
+	}
+
+	// A specific masterchain round lives wholly in one partition.
+	if req.McSeqno != nil {
+		conn, cerr := fc.connForSeqno(uint64(*req.McSeqno))
+		if cerr != nil {
+			return nil, models.IndexError{Code: 500, Message: cerr.Error()}
+		}
+		return fetch(buildBlocksOffsetQuery(parts, nil, nil, offset, int(limit)), conn)
+	}
+
+	return cascadePageOffset(fc, effSort, offset, int(limit),
+		func(floor, ceil *uint64, off, lim int) (string, error) {
+			return buildBlocksOffsetQuery(parts, floor, ceil, off, lim), nil
+		},
+		func(floor, ceil *uint64) string { return buildBlocksCountQuery(parts, floor, ceil) },
+		fetch,
+		func(query string, conn *pgxpool.Conn) (int, error) { return queryCount(query, conn, settings) },
+		"utime",
+	)
 }
 
 func (db *DbClient) QueryShards(
 	req models.ShardsRequest,
 	settings models.RequestSettings,
 ) ([]models.Block, error) {
-	query := fmt.Sprintf(`select B.* from shard_state as S join blocks as B 
-		on S.workchain = B.workchain and S.shard = B.shard and S.seqno = B.seqno 
-		where mc_seqno = %d 
+	query := fmt.Sprintf(`select B.* from shard_state as S join blocks as B
+		on S.workchain = B.workchain and S.shard = B.shard and S.seqno = B.seqno
+		where mc_seqno = %d
 		order by S.mc_seqno, S.workchain, S.shard, S.seqno`, req.Seqno)
-	// read data
-	conn, err := db.Pool.Acquire(context.Background())
+
+	// a masterchain round and its shards live wholly in one partition
+	fc, release, err := db.acquireFed(context.Background())
 	if err != nil {
 		return nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
-	defer conn.Release()
+	defer release()
+	conn, err := fc.connForSeqno(uint64(req.Seqno))
+	if err != nil {
+		return nil, models.IndexError{Code: 500, Message: err.Error()}
+	}
 	return queryBlocksImpl(query, conn, settings)
 }

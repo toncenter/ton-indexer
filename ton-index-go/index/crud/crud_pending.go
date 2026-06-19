@@ -15,7 +15,12 @@ import (
 )
 
 func (db *DbClient) QueryPendingActions(settings models.RequestSettings, emulatedContext *EmulatedTracesContext, request models.PendingActionsRequest) ([]models.Action, models.AddressBook, models.Metadata, error) {
-	conn, err := db.Pool.Acquire(context.Background())
+	// pending completions are recent -> prefer hot; fall back to the single pool standalone
+	pool := db.Pool
+	if db.HotPool != nil {
+		pool = db.HotPool
+	}
+	conn, err := pool.Acquire(context.Background())
 	if err != nil {
 		return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
@@ -91,7 +96,12 @@ func (db *DbClient) QueryPendingActions(settings models.RequestSettings, emulate
 }
 
 func (db *DbClient) QueryPendingTraces(settings models.RequestSettings, emulatedContext *EmulatedTracesContext, request models.PendingTracesRequest) ([]models.Trace, models.AddressBook, models.Metadata, error) {
-	conn, err := db.Pool.Acquire(context.Background())
+	// pending completions are recent -> prefer hot; fall back to the single pool standalone
+	pool := db.Pool
+	if db.HotPool != nil {
+		pool = db.HotPool
+	}
+	conn, err := pool.Acquire(context.Background())
 	if err != nil {
 		return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
@@ -140,7 +150,12 @@ func (db *DbClient) QueryPendingTransactions(
 	}
 
 	// read data
-	conn, err := db.Pool.Acquire(context.Background())
+	// pending completions are recent -> prefer hot; fall back to the single pool standalone
+	pool := db.Pool
+	if db.HotPool != nil {
+		pool = db.HotPool
+	}
+	conn, err := pool.Acquire(context.Background())
 	if err != nil {
 		return nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
