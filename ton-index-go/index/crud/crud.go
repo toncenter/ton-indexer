@@ -3,13 +3,14 @@ package crud
 import (
 	"context"
 	"fmt"
-	"github.com/toncenter/ton-indexer/ton-index-go/index/detect"
-	"github.com/toncenter/ton-indexer/ton-index-go/index/models"
-	"github.com/toncenter/ton-indexer/ton-index-go/index/services"
 	"log"
 	"net/url"
 	"reflect"
 	"strings"
+
+	"github.com/toncenter/ton-indexer/ton-index-go/index/detect"
+	"github.com/toncenter/ton-indexer/ton-index-go/index/models"
+	"github.com/toncenter/ton-indexer/ton-index-go/index/services"
 
 	"github.com/lib/pq"
 
@@ -103,7 +104,10 @@ func QueryMetadataImpl(addr_list []string, conn *pgxpool.Conn, settings models.R
 		" union all " +
 		"select j.address, m.valid, 'jetton_masters' as type, m.name, m.symbol, m.description, m.image, m.extra, null as index from jetton_masters j left join address_metadata m on j.address = m.address and m.type = 'jetton_masters'  where j.address = ANY($1)"
 
-	rows, err := conn.Query(ctx, query, pq.Array(addr_list))
+	query_ext := `select m.*, f.is_nsfw, f.is_scam from (%s) as m left join address_metadata_flags as f on m.address = f.address`
+	query_ext = fmt.Sprintf(query_ext, query)
+
+	rows, err := conn.Query(ctx, query_ext, pq.Array(addr_list))
 	if err != nil {
 		return nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
@@ -114,7 +118,15 @@ func QueryMetadataImpl(addr_list []string, conn *pgxpool.Conn, settings models.R
 
 	for rows.Next() {
 		var row models.TokenInfo
-		err := rows.Scan(&row.Address, &row.Valid, &row.Type, &row.Name, &row.Symbol, &row.Description, &row.Image, &row.Extra, &row.NftIndex)
+		err := rows.Scan(&row.Address, &row.Valid, &row.Type, &row.Name, &row.Symbol, &row.Description,
+			&row.Image, &row.Extra, &row.NftIndex, &row.IsNsfw, &row.IsScam)
+		if row.IsNsfw == nil {
+			row.IsNsfw = new(bool)
+		}
+		if row.IsScam == nil {
+			row.IsScam = new(bool)
+		}
+
 		if err != nil {
 			return nil, models.IndexError{Code: 500, Message: err.Error()}
 		}
@@ -132,6 +144,7 @@ func QueryMetadataImpl(addr_list []string, conn *pgxpool.Conn, settings models.R
 			})
 		} else {
 			row.Indexed = true
+			row := applyNsfwTransform(row)
 
 			if _, ok := token_info_map[*row.Type]; !ok {
 				token_info_map[row.Address] = []models.TokenInfo{}
@@ -167,6 +180,25 @@ func QueryMetadataImpl(addr_list []string, conn *pgxpool.Conn, settings models.R
 		backgroundTaskManager.EnqueueTasksIfPossible(tasks)
 	}
 	return metadata, nil
+}
+
+func applyNsfwTransform(row models.TokenInfo) models.TokenInfo {
+	if row.IsNsfw != nil && *row.IsNsfw {
+		fields := []string{"_image_small", "_image_medium", "_image_big"}
+		for _, field := range fields {
+			if val, exists := row.Extra[field]; exists {
+				if img_url, ok := val.(string); ok && img_url != "" {
+					if val_blur, exists_blur := row.Extra[field+"_blur"]; exists_blur {
+						row.Extra[field] = val_blur
+					} else {
+						row.Extra[field] = ""
+					}
+					delete(row.Extra, field+"_blur")
+				}
+			}
+		}
+	}
+	return row
 }
 
 func SubstituteImgproxyBaseUrl(metadata *models.Metadata, base_url string) {

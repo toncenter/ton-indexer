@@ -18,14 +18,18 @@ func NewImgProxyUrlBuilder(key, salt []byte, ipfs_resolve_base_url string) *ImgP
 	return &ImgProxyUrlBuilder{key: key, salt: salt, ipfs_resolve_base_url: ipfs_resolve_base_url}
 }
 
-func (b *ImgProxyUrlBuilder) BuildUrl(src string, preset string) string {
+func (b *ImgProxyUrlBuilder) BuildUrl(src string, preset string, blur bool) string {
 	var path string
 	if isIpfs(src) {
 		src = strings.TrimPrefix(src, "ipfs://")
 		src = fmt.Sprintf("%s/%s", b.ipfs_resolve_base_url, src)
 	}
 	encoded_url := base64.RawURLEncoding.EncodeToString([]byte(src))
-	path = fmt.Sprintf("/pr:%s/%s", preset, encoded_url)
+	opts := fmt.Sprintf("pr:%s", preset)
+	if blur {
+		opts += "/bl:256"
+	}
+	path = fmt.Sprintf("/%s/%s", opts, encoded_url)
 	mac := hmac.New(sha256.New, b.key)
 	mac.Write(b.salt)
 	mac.Write([]byte(path))

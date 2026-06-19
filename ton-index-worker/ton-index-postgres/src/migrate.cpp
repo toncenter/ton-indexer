@@ -1313,6 +1313,14 @@ void run_1_2_10_migrations(const std::string& connection_string, bool dry_run) {
       "for each row execute function notify_dex_pools_change();\n"
     );
 
+    query += (
+      "create table if not exists address_metadata_flags("
+      "address varchar not null, "
+      "is_nsfw boolean default false, "
+      "is_scam boolean default false, "
+      "primary key (address));\n"
+    );
+
     query += set_version_query({1, 2, 10});
 
     if (dry_run) {
