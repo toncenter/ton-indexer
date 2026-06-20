@@ -217,20 +217,22 @@ func buildActionsQuery(req models.ActionRequest, settings models.RequestSettings
 	return query, args, nil
 }
 
-func queryActionsAccountsImpl(actions []models.Action, conn *pgxpool.Conn) ([]models.Action, error) {
-	if len(actions) == 0 {
-		return actions, nil
+// queryActionsAccountsImpl attaches account lists to actions[idxs], querying conn
+// (the DB that owns those actions' partitions). Assigns in place.
+func queryActionsAccountsImpl(actions []models.Action, idxs []int, conn *pgxpool.Conn) error {
+	if len(idxs) == 0 {
+		return nil
 	}
 
-	args := make([]any, 0, len(actions)*2)
-	placeholders := make([]string, len(actions))
-	for i, a := range actions {
+	args := make([]any, 0, len(idxs)*2)
+	placeholders := make([]string, len(idxs))
+	for j, i := range idxs {
 		// pgx uses 1-based parameter numbers.
 		// Every action consumes two params: trace_id then action_id.
-		p1, p2 := i*2+1, i*2+2
-		placeholders[i] = fmt.Sprintf("($%d,$%d)", p1, p2)
+		p1, p2 := j*2+1, j*2+2
+		placeholders[j] = fmt.Sprintf("($%d,$%d)", p1, p2)
 
-		args = append(args, a.TraceId, a.ActionId)
+		args = append(args, actions[i].TraceId, actions[i].ActionId)
 	}
 
 	query := fmt.Sprintf(
@@ -242,13 +244,13 @@ func queryActionsAccountsImpl(actions []models.Action, conn *pgxpool.Conn) ([]mo
 
 	rows, err := conn.Query(context.Background(), query, args...)
 	if err != nil {
-		return nil, models.IndexError{Code: 500, Message: err.Error()}
+		return models.IndexError{Code: 500, Message: err.Error()}
 	}
 	defer rows.Close()
 
 	type key struct{ trace, action string }
-	idx := make(map[key]*models.Action, len(actions))
-	for i := range actions {
+	idx := make(map[key]*models.Action, len(idxs))
+	for _, i := range idxs {
 		k := key{string(*actions[i].TraceId), string(actions[i].ActionId)}
 		idx[k] = &actions[i]
 	}
@@ -258,17 +260,17 @@ func queryActionsAccountsImpl(actions []models.Action, conn *pgxpool.Conn) ([]mo
 		var account models.AccountAddress
 
 		if err := rows.Scan(&traceID, &actionID, &account); err != nil {
-			return nil, models.IndexError{Code: 500, Message: err.Error()}
+			return models.IndexError{Code: 500, Message: err.Error()}
 		}
 		if a := idx[key{traceID, actionID}]; a != nil {
 			a.Accounts = append(a.Accounts, account)
 		}
 	}
 	if rows.Err() != nil {
-		return nil, models.IndexError{Code: 500, Message: rows.Err().Error()}
+		return models.IndexError{Code: 500, Message: rows.Err().Error()}
 	}
 
-	return actions, nil
+	return nil
 }
 
 func queryRawActionsImpl(query string, conn *pgxpool.Conn, settings models.RequestSettings, args ...any) ([]models.RawAction, error) {

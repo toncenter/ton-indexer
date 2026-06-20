@@ -482,30 +482,57 @@ func (db *DbClient) QueryBalanceChanges(
 		return models.BalanceChangesResult{}, models.IndexError{Code: 400, Message: "trace_id or action_id is required"}
 	}
 
-	conn, err := db.Pool.Acquire(context.Background())
+	fc, release, err := db.acquireFed(context.Background())
 	if err != nil {
 		return models.BalanceChangesResult{}, models.IndexError{Code: 500, Message: err.Error()}
 	}
-	defer conn.Release()
+	defer release()
 
 	ctx, cancel_ctx := context.WithTimeout(context.Background(), settings.Timeout)
 	defer cancel_ctx()
 
-	if trace_id == nil && req.ActionId != nil {
-		query := "SELECT trace_id FROM actions WHERE action_id = $1"
-		err := conn.QueryRow(ctx, query, *req.ActionId).Scan(&trace_id)
-		if err != nil {
-			return models.BalanceChangesResult{}, models.IndexError{Code: 404, Message: "action_id not found"}
+	// A trace (and its actions) lives wholly in one partition family -> on hot or
+	// cold. Resolve + compute on hot first, fall back to cold if absent there.
+	attempt := func(conn *pgxpool.Conn) (*BalanceChanges, map[models.HashType]*BalanceChanges, bool, error) {
+		trace_id := req.TraceId
+		if trace_id == nil && req.ActionId != nil {
+			if e := conn.QueryRow(ctx, "SELECT trace_id FROM actions WHERE action_id = $1", *req.ActionId).Scan(&trace_id); e != nil {
+				return nil, nil, false, nil // action not on this side
+			}
 		}
+		if trace_id == nil {
+			return nil, nil, false, models.IndexError{Code: 400, Message: "trace_id is required"}
+		}
+		tc, ac, e := CalculateBalanceChanges(models.HashType(*trace_id), conn, db.Kvrocks)
+		if e != nil {
+			if e.Error() == "trace not found" {
+				return nil, nil, false, nil // trace not on this side
+			}
+			return nil, nil, false, e
+		}
+		return tc, ac, true, nil
 	}
 
-	if trace_id == nil {
-		return models.BalanceChangesResult{}, models.IndexError{Code: 400, Message: "trace_id is required"}
-	}
-
-	trace_changes, actions_changes, err := CalculateBalanceChanges(models.HashType(*trace_id), conn, db.Kvrocks)
+	hotConn, err := fc.hot()
 	if err != nil {
 		return models.BalanceChangesResult{}, models.IndexError{Code: 500, Message: err.Error()}
+	}
+	trace_changes, actions_changes, found, err := attempt(hotConn)
+	if err != nil {
+		return models.BalanceChangesResult{}, models.IndexError{Code: 500, Message: err.Error()}
+	}
+	if !found && fc.federated {
+		coldConn, cerr := fc.cold()
+		if cerr != nil {
+			return models.BalanceChangesResult{}, models.IndexError{Code: 500, Message: cerr.Error()}
+		}
+		trace_changes, actions_changes, found, err = attempt(coldConn)
+		if err != nil {
+			return models.BalanceChangesResult{}, models.IndexError{Code: 500, Message: err.Error()}
+		}
+	}
+	if !found {
+		return models.BalanceChangesResult{}, models.IndexError{Code: 404, Message: "trace or action not found"}
 	}
 	var targetChanges *BalanceChanges = trace_changes
 	if req.ActionId != nil {

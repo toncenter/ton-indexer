@@ -12,6 +12,19 @@ import (
 	"github.com/toncenter/ton-indexer/ton-index-go/index/parse"
 )
 
+const transactionsColumns = `T.account, T.hash, T.lt, T.block_workchain, T.block_shard, T.block_seqno, T.mc_block_seqno, T.trace_id,
+	T.prev_trans_hash, T.prev_trans_lt, T.now, T.orig_status, T.end_status, T.total_fees, T.total_fees_extra_currencies,
+	T.account_state_hash_before, T.account_state_hash_after, T.descr, T.aborted, T.destroyed, T.credit_first, T.is_tock,
+	T.installed, T.storage_fees_collected, T.storage_fees_due, T.storage_status_change, T.credit_due_fees_collected, T.credit,
+	T.credit_extra_currencies, T.compute_skipped, T.skipped_reason, T.compute_success, T.compute_msg_state_used, T.compute_account_activated,
+	T.compute_gas_fees, T.compute_gas_used, T.compute_gas_limit, T.compute_gas_credit, T.compute_mode, T.compute_exit_code, T.compute_exit_arg,
+	T.compute_vm_steps, T.compute_vm_init_state_hash, T.compute_vm_final_state_hash, T.action_success, T.action_valid, T.action_no_funds,
+	T.action_status_change, T.action_total_fwd_fees, T.action_total_action_fees, T.action_result_code, T.action_result_arg,
+	T.action_tot_actions, T.action_spec_actions, T.action_skipped_actions, T.action_msgs_created, T.action_action_list_hash,
+	T.action_tot_msg_size_cells, T.action_tot_msg_size_bits, T.bounce, T.bounce_msg_size_cells, T.bounce_msg_size_bits,
+	T.bounce_req_fwd_fees, T.bounce_msg_fees, T.bounce_fwd_fees, T.split_info_cur_shard_pfx_len, T.split_info_acc_split_depth,
+	T.split_info_this_addr, T.split_info_sibling_addr, false as emulated, 3 as finality`
+
 func buildTransactionsQuery(
 	req models.TransactionsRequest,
 	settings models.RequestSettings,
@@ -347,39 +360,430 @@ func collectAddressesFromTransactions(addr_list *map[models.AccountAddress]bool,
 	return success
 }
 
+// scanTransactionsImpl runs a transactions query and scans the bare rows.
+// Account states and messages are attached separately, per owning DB.
+func scanTransactionsImpl(query string, conn *pgxpool.Conn, settings models.RequestSettings, args ...any) ([]models.Transaction, error) {
+	txs := []models.Transaction{}
+	ctx, cancel_ctx := context.WithTimeout(context.Background(), settings.Timeout)
+	defer cancel_ctx()
+	rows, err := conn.Query(ctx, query, args...)
+	if err != nil {
+		return nil, models.IndexError{Code: 500, Message: err.Error()}
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		if tx, err := parse.ScanTransaction(rows); err == nil {
+			txs = append(txs, *tx)
+		} else {
+			return nil, models.IndexError{Code: 500, Message: err.Error()}
+		}
+	}
+	if rows.Err() != nil {
+		return nil, models.IndexError{Code: 500, Message: rows.Err().Error()}
+	}
+	return txs, nil
+}
+
+// enrichTransactionsImpl attaches account states and messages to the
+// transactions at idxs, querying conn (the DB that owns those rows).
+func enrichTransactionsImpl(txs []models.Transaction, idxs []int, conn *pgxpool.Conn, settings models.RequestSettings, store *KvrocksStore) error {
+	if len(idxs) == 0 {
+		return nil
+	}
+	txs_map := map[models.HashType]int{}
+	acst_list := []string{}
+	hash_list := []string{}
+	for _, i := range idxs {
+		txs_map[txs[i].Hash] = i
+		hash_list = append(hash_list, fmt.Sprintf("'%s'", txs[i].Hash.FilterString()))
+		acst_list = append(acst_list, fmt.Sprintf("'%s'", txs[i].AccountStateHashBefore.FilterString()))
+		acst_list = append(acst_list, fmt.Sprintf("'%s'", txs[i].AccountStateHashAfter.FilterString()))
+	}
+
+	// account states
+	if store != nil {
+		hashes := make([]models.HashType, 0, len(idxs)*2)
+		for _, i := range idxs {
+			hashes = append(hashes, txs[i].AccountStateHashBefore, txs[i].AccountStateHashAfter)
+		}
+		ctx, cancel_ctx := context.WithTimeout(context.Background(), settings.Timeout)
+		defer cancel_ctx()
+		acsts_map, err := store.GetAccountStates(ctx, hashes)
+		if err != nil {
+			return models.IndexError{Code: 500, Message: err.Error()}
+		}
+		for _, i := range idxs {
+			if v, ok := acsts_map[txs[i].AccountStateHashBefore]; ok {
+				txs[i].AccountStateBefore = v
+			}
+			if v, ok := acsts_map[txs[i].AccountStateHashAfter]; ok {
+				txs[i].AccountStateAfter = v
+			}
+		}
+	} else {
+		acst_list_str := strings.Join(acst_list, ",")
+		query := fmt.Sprintf(`select S.hash, S.account, S.balance,
+	S.balance_extra_currencies, S.account_status, S.frozen_hash,
+	S.data_hash, S.code_hash from account_states S where hash in (%s)`, acst_list_str)
+
+		acsts, err := queryAccountStatesImpl(query, conn, settings)
+		if err != nil {
+			return models.IndexError{Code: 500, Message: err.Error()}
+		}
+		acsts_map := make(map[models.HashType]*models.AccountState)
+		for _, a := range acsts {
+			acst := a
+			acsts_map[acst.Hash] = &acst
+		}
+		for _, i := range idxs {
+			if v, ok := acsts_map[txs[i].AccountStateHashBefore]; ok {
+				txs[i].AccountStateBefore = v
+			}
+			if v, ok := acsts_map[txs[i].AccountStateHashAfter]; ok {
+				txs[i].AccountStateAfter = v
+			}
+		}
+	}
+
+	// messages
+	hash_list_str := strings.Join(hash_list, ",")
+	var query string
+	if store != nil {
+		query = fmt.Sprintf(`select M.tx_hash, M.tx_lt, M.msg_hash, M.direction, M.trace_id, M.source, M.destination, M.value,
+		M.value_extra_currencies, M.fwd_fee, M.ihr_fee, M.extra_flags, M.created_lt, M.created_at, M.opcode, M.ihr_disabled, M.bounce,
+		M.bounced, M.import_fee, M.body_hash, M.init_state_hash, M.msg_hash_norm, NULL, NULL, NULL::tonhash, NULL::text, NULL::tonhash, NULL::text
+		from messages as M
+		where M.tx_hash in (%s)`, hash_list_str)
+	} else {
+		query = fmt.Sprintf(`select M.tx_hash, M.tx_lt, M.msg_hash, M.direction, M.trace_id, M.source, M.destination, M.value,
+		M.value_extra_currencies, M.fwd_fee, M.ihr_fee, M.extra_flags, M.created_lt, M.created_at, M.opcode, M.ihr_disabled, M.bounce,
+		M.bounced, M.import_fee, M.body_hash, M.init_state_hash, M.msg_hash_norm, NULL, NULL, B.*, I.* from messages as M
+		left join message_contents as B on M.body_hash = B.hash
+		left join message_contents as I on M.init_state_hash = I.hash
+		where M.tx_hash in (%s)`, hash_list_str)
+	}
+
+	msgs, err := queryMessagesImpl(query, conn, settings, store)
+	if err != nil {
+		return models.IndexError{Code: 500, Message: err.Error()}
+	}
+	for _, msg := range msgs {
+		if msg.Direction == "in" {
+			txs[txs_map[msg.TxHash]].InMsg = &msg
+		} else {
+			txs[txs_map[msg.TxHash]].OutMsgs = append(txs[txs_map[msg.TxHash]].OutMsgs, &msg)
+		}
+	}
+
+	// sort messages
+	for _, i := range idxs {
+		sort.SliceStable(txs[i].OutMsgs, func(a, b int) bool {
+			if txs[i].OutMsgs[a].CreatedLt == nil {
+				return true
+			}
+			if txs[i].OutMsgs[b].CreatedLt == nil {
+				return false
+			}
+			return *txs[i].OutMsgs[a].CreatedLt < *txs[i].OutMsgs[b].CreatedLt
+		})
+	}
+	return nil
+}
+
+// txQueryParts holds the shared pieces of a transactions listing query. orderByNow
+// selects the time axis (T.now) over the lt axis (T.lt) for band + ordering.
+type txQueryParts struct {
+	fromQuery  string
+	filterList []string
+	args       []any
+	orderBy    string
+	orderByNow bool
+}
+
+func transactionsQueryParts(req models.TransactionsRequest, sortOrder string) txQueryParts {
+	utime_req := req.GetUtimeParams()
+	lt_req := req.GetLtParams()
+
+	from_query := ` transactions as T`
+	filter_list := []string{}
+	args := []any{}
+
+	orderByNow := false
+	if v := utime_req.StartUtime; v != nil {
+		filter_list = append(filter_list, fmt.Sprintf("T.now >= %d", *v))
+		orderByNow = true
+	}
+	if v := utime_req.EndUtime; v != nil {
+		filter_list = append(filter_list, fmt.Sprintf("T.now <= %d", *v))
+		orderByNow = true
+	}
+	if v := lt_req.StartLt; v != nil {
+		filter_list = append(filter_list, fmt.Sprintf("T.lt >= %d", *v))
+	}
+	if v := lt_req.EndLt; v != nil {
+		filter_list = append(filter_list, fmt.Sprintf("T.lt <= %d", *v))
+	}
+
+	if v := req.Workchain; v != nil {
+		filter_list = append(filter_list, fmt.Sprintf("T.block_workchain = %d", *v))
+	}
+	if v := req.Shard; v != nil {
+		filter_list = append(filter_list, fmt.Sprintf("T.block_shard = %d", *v))
+	}
+	if v := req.Seqno; v != nil {
+		filter_list = append(filter_list, fmt.Sprintf("T.block_seqno = %d", *v))
+	}
+	if v := req.McSeqno; v != nil {
+		filter_list = append(filter_list, fmt.Sprintf("T.mc_block_seqno = %d", *v))
+	}
+
+	accountFirst := false
+	if v := req.Account; len(v) > 0 {
+		if len(v) == 1 {
+			filter_list = append(filter_list, fmt.Sprintf("T.account = '%s'", v[0].FilterString()))
+			accountFirst = true
+		} else {
+			filter_list = append(filter_list, filterByArray("T.account", v))
+		}
+	}
+	if v := req.Lt; v != nil {
+		filter_list = append(filter_list, fmt.Sprintf("T.lt = %d", *v))
+	}
+
+	by_msg := false
+	if v := req.Direction; v != nil {
+		by_msg = true
+		args = append(args, *v)
+		filter_list = append(filter_list, fmt.Sprintf("M.direction = $%d", len(args)))
+	}
+	if v := req.MessageHash; len(v) > 0 {
+		by_msg = true
+		filter_list = append(filter_list, fmt.Sprintf("(%s or %s)", filterByArray("M.msg_hash", v), filterByArray("M.msg_hash_norm", v)))
+	}
+	if v := req.Source; v != nil {
+		by_msg = true
+		filter_list = append(filter_list, fmt.Sprintf("M.source = '%s'", v.FilterString()))
+	}
+	if v := req.Destination; v != nil {
+		by_msg = true
+		filter_list = append(filter_list, fmt.Sprintf("M.destination = '%s'", v.FilterString()))
+	}
+	if v := req.BodyHash; v != nil {
+		by_msg = true
+		filter_list = append(filter_list, fmt.Sprintf("M.body_hash = '%s'", v.FilterString()))
+	}
+	if v := req.Opcode; v != nil {
+		by_msg = true
+		filter_list = append(filter_list, fmt.Sprintf("M.opcode = %d and M.direction = 'in'", *v))
+	}
+	if by_msg {
+		from_query = " messages as M join transactions as T on M.tx_hash = T.hash and M.tx_lt = T.lt"
+	}
+
+	var orderby_query string
+	switch {
+	case accountFirst && orderByNow:
+		orderby_query = fmt.Sprintf(" order by account asc, T.now %s, T.lt %s", sortOrder, sortOrder)
+	case accountFirst:
+		orderby_query = fmt.Sprintf(" order by account asc, T.lt %s", sortOrder)
+	case orderByNow:
+		orderby_query = fmt.Sprintf(" order by T.now %s, T.lt %s, account asc", sortOrder, sortOrder)
+	default:
+		orderby_query = fmt.Sprintf(" order by T.lt %s, account asc", sortOrder)
+	}
+
+	return txQueryParts{fromQuery: from_query, filterList: filter_list, args: args, orderBy: orderby_query, orderByNow: orderByNow}
+}
+
+// transactionsBoundaryFilters appends this leg's [floor, ceil) boundary on the
+// sort axis (T.lt or T.now). lt/now are never null, so no null handling is needed.
+func transactionsBoundaryFilters(p txQueryParts, floor, ceil *uint64) []string {
+	col := "T.lt"
+	if p.orderByNow {
+		col = "T.now"
+	}
+	filters := append([]string{}, p.filterList...)
+	if floor != nil {
+		filters = append(filters, fmt.Sprintf("%s >= %d", col, *floor))
+	}
+	if ceil != nil {
+		filters = append(filters, fmt.Sprintf("%s < %d", col, *ceil))
+	}
+	return filters
+}
+
+func buildTransactionsPageQuery(p txQueryParts, floor, ceil *uint64, limit int32, settings models.RequestSettings) (string, error) {
+	limit_query, err := limitOnlyQuery(&limit, settings)
+	if err != nil {
+		return "", err
+	}
+	filter_query := ``
+	if filters := transactionsBoundaryFilters(p, floor, ceil); len(filters) > 0 {
+		filter_query = ` where ` + strings.Join(filters, " and ")
+	}
+	return `select ` + transactionsColumns + ` from` + p.fromQuery + filter_query + p.orderBy + limit_query, nil
+}
+
+func buildTransactionsOffsetQuery(p txQueryParts, floor, ceil *uint64, offset, limit int) string {
+	filter_query := ``
+	if filters := transactionsBoundaryFilters(p, floor, ceil); len(filters) > 0 {
+		filter_query = ` where ` + strings.Join(filters, " and ")
+	}
+	limit_query := fmt.Sprintf(" limit %d offset %d", max(1, limit), max(0, offset))
+	return `select ` + transactionsColumns + ` from` + p.fromQuery + filter_query + p.orderBy + limit_query
+}
+
+// buildTransactionsCountQuery counts a leg's band; the page has no DISTINCT, so
+// any by_msg join dups count identically on both sides → consistent offset math.
+func buildTransactionsCountQuery(p txQueryParts, floor, ceil *uint64) string {
+	filter_query := ``
+	if filters := transactionsBoundaryFilters(p, floor, ceil); len(filters) > 0 {
+		filter_query = ` where ` + strings.Join(filters, " and ")
+	}
+	return `select count(*) from` + p.fromQuery + filter_query
+}
+
 func (db *DbClient) QueryTransactions(
 	req models.TransactionsRequest,
 	settings models.RequestSettings,
 ) ([]models.Transaction, models.AddressBook, error) {
-	query, args, err := buildTransactionsQuery(req, settings)
-	if settings.DebugRequest {
-		log.Println("Debug query:", query)
+	lim_req := req.GetLimitParams()
+	sortOrder := "desc"
+	if v := lim_req.Sort; v != nil {
+		var serr error
+		sortOrder, serr = getSortOrder(*v)
+		if serr != nil {
+			return nil, nil, serr
+		}
 	}
+	limit := int32(settings.DefaultLimit)
+	if lim_req.Limit != nil {
+		limit = max(1, *lim_req.Limit)
+		if limit > int32(settings.MaxLimit) {
+			return nil, nil, models.IndexError{Code: 422, Message: fmt.Sprintf("limit is not allowed: %d > %d", limit, settings.MaxLimit)}
+		}
+	}
+
+	fc, release, err := db.acquireFed(context.Background())
 	if err != nil {
 		return nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
+	defer release()
 
-	// read data
-	conn, err := db.Pool.Acquire(context.Background())
-	if err != nil {
-		return nil, nil, models.IndexError{Code: 500, Message: err.Error()}
-	}
-	defer conn.Release()
-
-	// check block
-	if seqno := req.McSeqno; seqno != nil {
-		exists, err := queryBlockExists(*seqno, conn, settings)
+	var txs []models.Transaction
+	switch {
+	case len(req.Hash) > 0:
+		// point lookup by tx hash: a tx may be hot or cold-only, consult both
+		query, args, qerr := buildTransactionsQuery(req, settings)
+		if qerr != nil {
+			return nil, nil, models.IndexError{Code: 500, Message: qerr.Error()}
+		}
+		if settings.DebugRequest {
+			log.Println("Debug query:", query)
+		}
+		txs, err = hotThenCold(fc, len(req.Hash),
+			func(conn *pgxpool.Conn) ([]models.Transaction, error) {
+				return scanTransactionsImpl(query, conn, settings, args...)
+			},
+			func(t *models.Transaction) models.HashType { return t.Hash })
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, models.IndexError{Code: 500, Message: err.Error()}
+		}
+		sort.Slice(txs, func(i, j int) bool {
+			if sortOrder == "desc" {
+				return txs[i].Hash > txs[j].Hash
+			}
+			return txs[i].Hash < txs[j].Hash
+		})
+		if len(txs) > int(limit) {
+			txs = txs[:limit]
+		}
+
+	case req.McSeqno != nil:
+		// a block's transactions live wholly on one side
+		conn, cerr := fc.connForSeqno(uint64(*req.McSeqno))
+		if cerr != nil {
+			return nil, nil, models.IndexError{Code: 500, Message: cerr.Error()}
+		}
+		exists, eerr := queryBlockExists(*req.McSeqno, conn, settings)
+		if eerr != nil {
+			return nil, nil, eerr
 		}
 		if !exists {
-			return nil, nil, models.IndexError{Code: 404, Message: fmt.Sprintf("masterchain block %d not found", *seqno)}
+			return nil, nil, models.IndexError{Code: 404, Message: fmt.Sprintf("masterchain block %d not found", *req.McSeqno)}
+		}
+		parts := transactionsQueryParts(req, sortOrder)
+		query, qerr := buildTransactionsPageQuery(parts, nil, nil, limit, settings)
+		if qerr != nil {
+			return nil, nil, models.IndexError{Code: 500, Message: qerr.Error()}
+		}
+		if settings.DebugRequest {
+			log.Println("Debug query:", query)
+		}
+		txs, err = scanTransactionsImpl(query, conn, settings, parts.args...)
+		if err != nil {
+			return nil, nil, models.IndexError{Code: 500, Message: err.Error()}
+		}
+
+	default:
+		parts := transactionsQueryParts(req, sortOrder)
+		orderKey := "lt"
+		if parts.orderByNow {
+			orderKey = "utime"
+		}
+		offset := 0
+		if lim_req.Offset != nil {
+			offset = int(max(0, *lim_req.Offset))
+		}
+		// transactions are offset-paged (no lt cursor); offset 0 is just the first page.
+		txs, err = cascadePageOffset(fc, sortOrder, offset, int(limit),
+			func(floor, ceil *uint64, off, lim int) (string, error) {
+				return buildTransactionsOffsetQuery(parts, floor, ceil, off, lim), nil
+			},
+			func(floor, ceil *uint64) string { return buildTransactionsCountQuery(parts, floor, ceil) },
+			func(query string, conn *pgxpool.Conn) ([]models.Transaction, error) {
+				if settings.DebugRequest {
+					log.Println("Debug query:", query)
+				}
+				return scanTransactionsImpl(query, conn, settings, parts.args...)
+			},
+			func(query string, conn *pgxpool.Conn) (int, error) {
+				return queryCount(query, conn, settings, parts.args...)
+			},
+			orderKey,
+		)
+		if err != nil {
+			return nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 		}
 	}
 
-	txs, err := queryTransactionsImpl(query, conn, settings, db.Kvrocks, args...)
-	if err != nil {
-		return nil, nil, models.IndexError{Code: 500, Message: err.Error()}
+	// account states + messages come from each transaction's owning DB (routed by lt)
+	hotIdx, coldIdx := []int{}, []int{}
+	for i := range txs {
+		if fc.federated && uint64(txs[i].Lt) < fc.split.Lt {
+			coldIdx = append(coldIdx, i)
+		} else {
+			hotIdx = append(hotIdx, i)
+		}
+	}
+	if len(hotIdx) > 0 {
+		hotConn, herr := fc.hot()
+		if herr != nil {
+			return nil, nil, models.IndexError{Code: 500, Message: herr.Error()}
+		}
+		if eerr := enrichTransactionsImpl(txs, hotIdx, hotConn, settings, db.Kvrocks); eerr != nil {
+			return nil, nil, models.IndexError{Code: 500, Message: eerr.Error()}
+		}
+	}
+	if len(coldIdx) > 0 {
+		coldConn, cerr := fc.cold()
+		if cerr != nil {
+			return nil, nil, models.IndexError{Code: 500, Message: cerr.Error()}
+		}
+		if eerr := enrichTransactionsImpl(txs, coldIdx, coldConn, settings, db.Kvrocks); eerr != nil {
+			return nil, nil, models.IndexError{Code: 500, Message: eerr.Error()}
+		}
 	}
 
 	book := models.AddressBook{}
@@ -402,7 +806,11 @@ func (db *DbClient) QueryTransactions(
 			if db.Kvrocks != nil {
 				book, err = QueryAddressBookImplKvrocks(addr_list, db.Kvrocks, settings)
 			} else {
-				book, err = QueryAddressBookImpl(addr_list, conn, settings)
+				coldConn, cerr := fc.cold()
+				if cerr != nil {
+					return nil, nil, models.IndexError{Code: 500, Message: cerr.Error()}
+				}
+				book, err = QueryAddressBookImpl(addr_list, coldConn, settings)
 			}
 			if err != nil {
 				return nil, nil, models.IndexError{Code: 500, Message: err.Error()}
@@ -416,14 +824,17 @@ func (db *DbClient) QueryAdjacentTransactions(
 	req models.AdjacentTransactionRequest,
 	settings models.RequestSettings,
 ) ([]models.Transaction, models.AddressBook, error) {
-	// read data
-	conn, err := db.Pool.Acquire(context.Background())
+	fc, release, err := db.acquireFed(context.Background())
 	if err != nil {
 		return nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
-	defer conn.Release()
+	defer release()
 
-	tx_hash_list, err := queryAdjacentTransactionsImpl(req, conn, settings)
+	tx_hash_list, err := hotThenCold(fc, -1,
+		func(conn *pgxpool.Conn) ([]models.HashType, error) {
+			return queryAdjacentTransactionsImpl(req, conn, settings)
+		},
+		func(h *models.HashType) models.HashType { return *h })
 	if err != nil {
 		return nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
@@ -448,10 +859,15 @@ func (db *DbClient) QueryAdjacentTransactions(
 		T.action_tot_msg_size_cells, T.action_tot_msg_size_bits, T.bounce, T.bounce_msg_size_cells, T.bounce_msg_size_bits, 
 		T.bounce_req_fwd_fees, T.bounce_msg_fees, T.bounce_fwd_fees, T.split_info_cur_shard_pfx_len, T.split_info_acc_split_depth, 
 		T.split_info_this_addr, T.split_info_sibling_addr, false as emulated, 2 as finality from transactions as T where hash in (%s) order by lt asc`, tx_hash_str)
-	txs, err := queryTransactionsImpl(query, conn, settings, db.Kvrocks)
+	txs, err := hotThenCold(fc, len(tx_hash_list),
+		func(conn *pgxpool.Conn) ([]models.Transaction, error) {
+			return queryTransactionsImpl(query, conn, settings, db.Kvrocks)
+		},
+		func(t *models.Transaction) models.HashType { return t.Hash })
 	if err != nil {
 		return nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
+	sort.Slice(txs, func(i, j int) bool { return txs[i].Lt < txs[j].Lt })
 
 	book := models.AddressBook{}
 	if !settings.NoAddressBook {
@@ -473,7 +889,11 @@ func (db *DbClient) QueryAdjacentTransactions(
 			if db.Kvrocks != nil {
 				book, err = QueryAddressBookImplKvrocks(addr_list, db.Kvrocks, settings)
 			} else {
-				book, err = QueryAddressBookImpl(addr_list, conn, settings)
+				coldConn, cerr := fc.cold()
+				if cerr != nil {
+					return nil, nil, models.IndexError{Code: 500, Message: cerr.Error()}
+				}
+				book, err = QueryAddressBookImpl(addr_list, coldConn, settings)
 			}
 			if err != nil {
 				return nil, nil, models.IndexError{Code: 500, Message: err.Error()}
@@ -490,14 +910,11 @@ func (db *DbClient) QueryTransactionsExternalHashes(ctx context.Context, txIDs [
 		return nil, nil
 	}
 
-	conn, err := db.Pool.Acquire(context.Background())
+	fc, release, err := db.acquireFed(context.Background())
 	if err != nil {
 		return nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
-	defer conn.Release()
-
-	ctx, cancel_ctx := context.WithTimeout(context.Background(), settings.Timeout)
-	defer cancel_ctx()
+	defer release()
 
 	stringTxIDs := make([]string, len(txIDs))
 	for i, hash := range txIDs {
@@ -511,24 +928,28 @@ func (db *DbClient) QueryTransactionsExternalHashes(ctx context.Context, txIDs [
 	        WHERE tx.hash = ANY($1::tonhash[])
 	        AND tr.external_hash IS NOT NULL`
 
-	rows, err := conn.Query(ctx, query, stringTxIDs)
-	if err != nil {
-		return nil, models.IndexError{Code: 500, Message: err.Error()}
-	}
-	defer rows.Close()
-
-	var externalHashes []models.HashType
-	for rows.Next() {
-		var hash string
-		if err := rows.Scan(&hash); err != nil {
+	// point lookup by tx id: a tx may be hot or cold-only, consult both and dedupe
+	fetch := func(conn *pgxpool.Conn) ([]models.HashType, error) {
+		qctx, cancel := context.WithTimeout(context.Background(), settings.Timeout)
+		defer cancel()
+		rows, err := conn.Query(qctx, query, stringTxIDs)
+		if err != nil {
 			return nil, models.IndexError{Code: 500, Message: err.Error()}
 		}
-		externalHashes = append(externalHashes, models.HashType(hash))
+		defer rows.Close()
+		var out []models.HashType
+		for rows.Next() {
+			var hash string
+			if err := rows.Scan(&hash); err != nil {
+				return nil, models.IndexError{Code: 500, Message: err.Error()}
+			}
+			out = append(out, models.HashType(hash))
+		}
+		if err := rows.Err(); err != nil {
+			return nil, models.IndexError{Code: 500, Message: err.Error()}
+		}
+		return out, nil
 	}
-
-	if err = rows.Err(); err != nil {
-		return nil, models.IndexError{Code: 500, Message: err.Error()}
-	}
-
-	return externalHashes, nil
+	return hotThenCold(fc, -1, fetch,
+		func(h *models.HashType) models.HashType { return *h })
 }

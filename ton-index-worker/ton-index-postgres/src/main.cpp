@@ -216,6 +216,48 @@ int main(int argc, char *argv[]) {
     partition_config.precreate_count = static_cast<std::uint32_t>(v);
     return td::Status::OK();
   });
+  p.add_checked_option('\0', "pg-partition-before-drop-split-guard-mc-seqnos", "Publish the conservative hot/cold split boundary this many masterchain seqnos before the oldest partition becomes drop-eligible", [&](td::Slice value) {
+    std::uint64_t v;
+    std::size_t parsed = 0;
+    auto raw = value.str();
+    if (raw.empty() || raw[0] == '-') {
+      return td::Status::Error(ton::ErrorCode::error, "bad value for --pg-partition-before-drop-split-guard-mc-seqnos: must be non-negative");
+    }
+    try {
+      v = std::stoull(raw, &parsed);
+    } catch (...) {
+      return td::Status::Error(ton::ErrorCode::error, "bad value for --pg-partition-before-drop-split-guard-mc-seqnos: not a number");
+    }
+    if (parsed != raw.size()) {
+      return td::Status::Error(ton::ErrorCode::error, "bad value for --pg-partition-before-drop-split-guard-mc-seqnos: not a number");
+    }
+    if (v > std::numeric_limits<std::uint32_t>::max()) {
+      return td::Status::Error(ton::ErrorCode::error, "bad value for --pg-partition-before-drop-split-guard-mc-seqnos: must fit uint32");
+    }
+    partition_config.before_drop_split_guard = static_cast<std::uint32_t>(v);
+    return td::Status::OK();
+  });
+  p.add_checked_option('\0', "pg-partition-trace-split-safe-guard-mc-seqnos", "Shift the hot/cold split boundary up by this many masterchain seqnos so a hot-served trace keeps its earlier-seqno referenced transactions in present partitions", [&](td::Slice value) {
+    std::uint64_t v;
+    std::size_t parsed = 0;
+    auto raw = value.str();
+    if (raw.empty() || raw[0] == '-') {
+      return td::Status::Error(ton::ErrorCode::error, "bad value for --pg-partition-trace-split-safe-guard-mc-seqnos: must be non-negative");
+    }
+    try {
+      v = std::stoull(raw, &parsed);
+    } catch (...) {
+      return td::Status::Error(ton::ErrorCode::error, "bad value for --pg-partition-trace-split-safe-guard-mc-seqnos: not a number");
+    }
+    if (parsed != raw.size()) {
+      return td::Status::Error(ton::ErrorCode::error, "bad value for --pg-partition-trace-split-safe-guard-mc-seqnos: not a number");
+    }
+    if (v > std::numeric_limits<std::uint32_t>::max()) {
+      return td::Status::Error(ton::ErrorCode::error, "bad value for --pg-partition-trace-split-safe-guard-mc-seqnos: must fit uint32");
+    }
+    partition_config.trace_split_safe_guard = static_cast<std::uint32_t>(v);
+    return td::Status::OK();
+  });
 
   p.add_option('\0', "testnet", "Use for testnet. It is used for correct indexing of .ton DNS entries (in testnet .ton collection has a different address)", [&]() {
     testnet = true;

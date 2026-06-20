@@ -345,3 +345,87 @@ void PartitionManagerPostgres::drop_old_partitions(pqxx::connection& c) const {
   }
   txn.commit();
 }
+
+// Oldest live traces partition
+std::optional<PartitionRange> oldest_traces_partition(pqxx::work& txn) {
+  auto existing = get_existing_partitions(txn, "traces");
+  auto ranges = get_existing_partition_ranges(existing, "traces");
+  if (ranges.empty()) {
+    return std::nullopt;
+  }
+  const auto& oldest = ranges.front();
+  if (oldest.end <= oldest.start) {
+    return std::nullopt;
+  }
+  return oldest;
+}
+
+void PartitionManagerPostgres::publish_split(pqxx::connection &c) const {
+  if (!config_.enabled || config_.retention_mc_seqnos == 0) {
+    return;
+  }
+
+  pqxx::work txn(c);
+  if (!try_acquire_partition_manager_lock(txn)) {
+    txn.commit();
+    return;
+  }
+
+  auto progress = txn.exec("SELECT finalized_mc_seqno FROM _ton_indexer_progress WHERE id = 1");
+  if (progress.empty()) {
+    txn.commit();
+    return;
+  }
+
+  const auto finalized_signed = progress[0][0].as<std::int32_t>();
+  if (finalized_signed <= 0 || static_cast<std::uint64_t>(finalized_signed) <= config_.retention_mc_seqnos) {
+    txn.commit();
+    return;
+  }
+
+  auto oldest = oldest_traces_partition(txn);
+  if (!oldest.has_value()) {
+    txn.commit();
+    return;
+  }
+
+  // Calculate split boundary
+  // If oldest partition is about to drop (configured via before_drop_split guard) then switch to conservative mode
+  // Base seqno split point defined by oldest partition start in non-conservative mode.
+  // If conservative then oldest partition end used.
+  // trace_split_safe_guard ensures that long trace's transactions will be in hot db
+  bool conservative_split = false;
+  const auto finalized_seqno = static_cast<std::uint64_t>(finalized_signed);
+  const auto cursor = finalized_seqno > config_.retention_mc_seqnos
+    ? finalized_seqno - config_.retention_mc_seqnos : 0;
+
+  if (cursor + config_.before_drop_split_guard >= oldest->end) {
+    conservative_split = true;
+  }
+
+  const auto base = conservative_split ? oldest->end : oldest -> start;
+  const auto seqno_split = base + config_.trace_split_safe_guard;
+
+  // Calculate LT split point
+  auto lt_rows = txn.exec("SELECT end_lt, gen_utime FROM blocks WHERE workchain = -1 AND seqno >= $1 ORDER BY seqno LIMIT 1",
+    pqxx::params{seqno_split});
+
+  if (lt_rows.empty() || lt_rows[0][0].is_null() || lt_rows[0][1].is_null()) {
+    txn.commit();
+    return;
+  }
+  const auto lt_split = lt_rows[0][0].as<std::int64_t>();
+  const auto utime_split = lt_rows[0][1].as<std::int64_t>();
+
+  txn.exec(R"SQL(
+    INSERT INTO _ton_hot_cold_split
+      (id, lt, seqno, utime)
+    VALUES (1, $1, $2, $3)
+    ON CONFLICT (id) DO UPDATE SET
+      lt           = EXCLUDED.lt,
+      seqno        = EXCLUDED.seqno,
+      utime        = EXCLUDED.utime
+  )SQL", pqxx::params{lt_split, seqno_split, utime_split});
+
+  txn.commit();
+}

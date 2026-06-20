@@ -13,6 +13,8 @@ import (
 
 type DbClient struct {
 	Pool    *pgxpool.Pool
+	HotPool *pgxpool.Pool
+	Split   *SplitProvider
 	Kvrocks *KvrocksStore
 }
 
@@ -68,7 +70,7 @@ func LoadVersion(pool *pgxpool.Pool) ServiceVersion {
 	return version
 }
 
-func NewDbClient(dsn string, maxconns int, minconns int, kvrocks *KvrocksStore) (*DbClient, error) {
+func makePool(dsn string, maxconns int, minconns int) (*pgxpool.Pool, error) {
 	config, err := pgxpool.ParseConfig(dsn)
 	if err != nil {
 		return nil, err
@@ -81,8 +83,11 @@ func NewDbClient(dsn string, maxconns int, minconns int, kvrocks *KvrocksStore) 
 	}
 	config.HealthCheckPeriod = 60 * time.Second
 	config.AfterConnect = afterConnectRegisterTypes
+	return pgxpool.NewWithConfig(context.Background(), config)
+}
 
-	pool, err := pgxpool.NewWithConfig(context.Background(), config)
+func NewDbClient(dsn string, maxconns int, minconns int, kvrocks *KvrocksStore) (*DbClient, error) {
+	pool, err := makePool(dsn, maxconns, minconns)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create connection pool: %v", err)
 	}
@@ -90,4 +95,14 @@ func NewDbClient(dsn string, maxconns int, minconns int, kvrocks *KvrocksStore) 
 		return nil, fmt.Errorf("failed to ping database: %v", err)
 	}
 	return &DbClient{Pool: pool, Kvrocks: kvrocks}, nil
+}
+
+func (d *DbClient) AttachHotPool(dsn string, maxconns int, minconns int, splitTtl time.Duration) error {
+	pool, err := makePool(dsn, maxconns, minconns)
+	if err != nil {
+		return err
+	}
+	d.HotPool = pool
+	d.Split = newSplitProvider(d.HotPool, splitTtl)
+	return nil
 }
