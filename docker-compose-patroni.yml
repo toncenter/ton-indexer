@@ -449,10 +449,10 @@ services:
         PUBLICATION=ton_hot_to_cold_pub
         SUBSCRIPTION=ton_hot_to_cold_sub
         SUBSCRIPTION_SLOT=ton_hot_to_cold
-        TABLES="blocks shard_state transactions messages jetton_transfers jetton_burns nft_transfers traces actions action_accounts"
-        TABLES_CSV="blocks, shard_state, transactions, messages, jetton_transfers, jetton_burns, nft_transfers, traces, actions, action_accounts"
-        TABLES_VALUES="('blocks'),('shard_state'),('transactions'),('messages'),('jetton_transfers'),('jetton_burns'),('nft_transfers'),('traces'),('actions'),('action_accounts')"
-        REQUIRED_TABLES=10
+        TABLES="blocks shard_state transactions messages jetton_transfers jetton_burns nft_transfers traces actions action_accounts nominator_pool_events nominator_pool_validator_events validator_events"
+        TABLES_CSV="blocks, shard_state, transactions, messages, jetton_transfers, jetton_burns, nft_transfers, traces, actions, action_accounts, nominator_pool_events, nominator_pool_validator_events, validator_events"
+        TABLES_VALUES="('blocks'),('shard_state'),('transactions'),('messages'),('jetton_transfers'),('jetton_burns'),('nft_transfers'),('traces'),('actions'),('action_accounts'),('nominator_pool_events'),('nominator_pool_validator_events'),('validator_events')"
+        REQUIRED_TABLES=13
 
         psql_hot() {
           PGPASSWORD="$${POSTGRES_SUPERUSER_PASSWORD}" psql -v ON_ERROR_STOP=1 \
