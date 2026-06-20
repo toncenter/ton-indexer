@@ -381,8 +381,11 @@ async def try_classify_unknown_trace(trace):
         if len(actions) == 0:
             unknown_action = create_unknown_action(trace)
             actions.append(unknown_action)
-    except Exception as e:
-        logging.error(f"Failed to classify trace {trace.trace_id}. Falling back to unknown action")
+    except Exception:
+        logging.exception(
+            "Failed to classify trace %s. Falling back to unknown action",
+            trace.trace_id,
+        )
         unknown_action = create_unknown_action(trace)
         actions.append(unknown_action)
     return actions
