@@ -115,52 +115,53 @@
             state: absent
 
 # Handlers are shared by the deploy plays below
-- name: Deploy metadata_fetcher service on master nodes
-  hosts: "{{ stack_name }}__master_nodes"
-  become: true
-  serial: 1
-  tags: [deploy]
-  vars:
-    service: "{{ services.metadata_fetcher }}"
-    service_name: "{{ stack_name }}__metadata_fetcher"
-  tasks:
-    - name: Ensure binary directory
-      ansible.builtin.file:
-        path: "{{ deploy_path }}"
-        state: directory
-        mode: "0755"
+# commented for now since metadata_fetcher exposes ip. 
+# - name: Deploy metadata_fetcher service on master nodes
+#   hosts: "{{ stack_name }}__master_nodes"
+#   become: true
+#   serial: 1
+#   tags: [deploy]
+#   vars:
+#     service: "{{ services.metadata_fetcher }}"
+#     service_name: "{{ stack_name }}__metadata_fetcher"
+#   tasks:
+#     - name: Ensure binary directory
+#       ansible.builtin.file:
+#         path: "{{ deploy_path }}"
+#         state: directory
+#         mode: "0755"
 
-    - name: Copy service binary
-      ansible.builtin.copy:
-        src: "artifacts/ton-metadata-fetcher"
-        dest: "{{ deploy_path }}/{{ service_name }}"
-        mode: "0755"
-        owner: root
-        group: root
+#     - name: Copy service binary
+#       ansible.builtin.copy:
+#         src: "artifacts/ton-metadata-fetcher"
+#         dest: "{{ deploy_path }}/{{ service_name }}"
+#         mode: "0755"
+#         owner: root
+#         group: root
 
-    - name: Create systemd service from template
-      ansible.builtin.template:
-        src: "ansible/systemd.service.j2"
-        dest: "{{ systemd_service_path }}/{{ service_name }}.service"
-        mode: "0644"
-        owner: root
-        group: root
-        force: true
-      vars:
-        start_cmd: "{{ deploy_path }}/{{ service_name }} {{ service.additional_args }}"
-      no_log: true
+#     - name: Create systemd service from template
+#       ansible.builtin.template:
+#         src: "ansible/systemd.service.j2"
+#         dest: "{{ systemd_service_path }}/{{ service_name }}.service"
+#         mode: "0644"
+#         owner: root
+#         group: root
+#         force: true
+#       vars:
+#         start_cmd: "{{ deploy_path }}/{{ service_name }} {{ service.additional_args }}"
+#       no_log: true
 
-    - name: Restart and enable service
-      ansible.builtin.systemd:
-        name: "{{ service_name }}"
-        state: restarted
-        enabled: true
-        force: true
-        daemon_reload: true
-      throttle: 1
+#     - name: Restart and enable service
+#       ansible.builtin.systemd:
+#         name: "{{ service_name }}"
+#         state: restarted
+#         enabled: true
+#         force: true
+#         daemon_reload: true
+#       throttle: 1
 
 - name: Deploy api service on replica nodes
-  hosts: "{{ stack_name }}__{{ 'replica_nodes' }}"
+  hosts: "{{ stack_name }}__api_nodes"
   become: true
   serial: 1
   tags: [deploy]
