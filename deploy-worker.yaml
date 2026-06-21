@@ -145,21 +145,22 @@
             owner: root
             group: root
 
-        - name: Run migration (fails the block if rc != 0)
-          run_once: true
-          ansible.builtin.command:
-            argv:
-              - "{{ deploy_path }}/{{ service_name }}_migrate"
-              - "--pg"
-              - "postgresql://{{ pg_master_user }}:{{ pg_master_password }}@{{ pg_master_host }}:5432/{{ pg_database }}"
-              - "--no-create-indexes"
-              - "--rerun-last-migration"
-          register: migrate_result
+        # Migration commented for v1.3
+        # - name: Run migration (fails the block if rc != 0)
+        #   run_once: true
+        #   ansible.builtin.command:
+        #     argv:
+        #       - "{{ deploy_path }}/{{ service_name }}_migrate"
+        #       - "--pg"
+        #       - "postgresql://{{ pg_master_user }}:{{ pg_master_password }}@{{ pg_master_host }}:5432/{{ pg_database }}"
+        #       - "--no-create-indexes"
+        #       - "--rerun-last-migration"
+        #   register: migrate_result
 
-        - name: Assert migration succeeded
-          ansible.builtin.assert:
-            that: migrate_result.rc == 0
-            fail_msg: "DB migration failed. Rolling back to previously running service."
+        # - name: Assert migration succeeded
+        #   ansible.builtin.assert:
+        #     that: migrate_result.rc == 0
+        #     fail_msg: "DB migration failed. Rolling back to previously running service."
 
         - name: Copy ton-index-postgres binary
           ansible.builtin.copy:
@@ -178,8 +179,7 @@
             group: root
             force: true
           vars:
-            pg_dsn: "postgresql://{{ pg_master_user }}:{{ pg_master_password }}@{{ pg_master_host }}:5432/{{ pg_database }}?application_name={{ service_name }}"
-            start_cmd: "{{ deploy_path }}/{{ service_name }} --pg {{ pg_dsn }} {{ service.additional_args }}"
+            start_cmd: "{{ deploy_path }}/{{ service_name }} {{ service.additional_args }}"
 
         - name: Restart and enable service
           ansible.builtin.systemd:
