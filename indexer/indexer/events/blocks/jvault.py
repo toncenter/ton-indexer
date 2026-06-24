@@ -30,6 +30,7 @@ from indexer.events.blocks.messages.jvault import (
 )
 from indexer.events.blocks.utils import AccountId, Asset
 from indexer.events.blocks.utils.block_utils import get_labeled
+from indexer.events.retryable_errors import raise_if_retryable_data_access_error
 
 
 async def extract_jvault_assets(stake_wallet: str) -> tuple[AccountId | None, Asset | None, Asset | None]:
@@ -63,7 +64,8 @@ async def extract_jvault_assets(stake_wallet: str) -> tuple[AccountId | None, As
         jvault_asset = Asset(jetton_address=minter_address, is_ton=False)
         
         return AccountId(staking_pool), asset, jvault_asset
-    except Exception:
+    except Exception as e:
+        raise_if_retryable_data_access_error(e)
         return None, None, None
 
 

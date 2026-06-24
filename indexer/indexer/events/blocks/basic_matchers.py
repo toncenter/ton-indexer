@@ -5,6 +5,7 @@ import logging
 from indexer.events.blocks.basic_blocks import CallContractBlock
 from indexer.events.blocks.core import Block
 from indexer.events.blocks.messages import ExcessMessage
+from indexer.events.retryable_errors import RetryableDataAccessError, is_retryable_data_access_error
 
 logger = logging.getLogger(__name__)
 
@@ -56,6 +57,11 @@ class BlockMatcher:
                             r.append(next_block)
                 return r
             except Exception as e:
+                if is_retryable_data_access_error(e):
+                    raise RetryableDataAccessError(
+                        f"Retryable data access error while building block {block} "
+                        f"with matcher {self.__class__.__name__}: {e}"
+                    ) from e
                 logger.error(f"Error while building block {block} with matcher {self.__class__.__name__}: {e}. Trace id: {block.event_nodes[0].message.trace_id}")
                 return None
         else:
