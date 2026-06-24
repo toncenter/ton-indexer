@@ -5,6 +5,7 @@ from typing import Optional, List
 from indexer.core.database import Action, Trace
 from indexer.events.blocks.utils.block_tree_serializer import serialize_blocks
 from indexer.events.blocks.utils.partial_trace_observer import observe_classification_result
+from indexer.events.retryable_errors import RetryableDataAccessError
 from indexer.events.event_processing import (
     process_event_async_with_postprocessing,
     try_classify_unknown_trace,
@@ -52,6 +53,10 @@ class TraceProcessor:
                 actions=actions
             )
 
+        except RetryableDataAccessError:
+            logger.warning("Retryable data access error while processing trace %s", trace.trace_id)
+            raise
+
         except Exception as e:
             logger.error("Marking trace as failed " + trace.trace_id + " - " + str(e))
             logger.exception(e, exc_info=True)
@@ -59,6 +64,8 @@ class TraceProcessor:
             # Try to create unknown action as fallback
             try:
                 fallback_actions = await try_classify_basic_actions(trace)
+            except RetryableDataAccessError:
+                raise
             except Exception as ex:
                 logger.error(f"Failed to classify basic actions for trace {trace.trace_id}: {ex}")
                 logger.exception(ex)

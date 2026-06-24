@@ -128,6 +128,7 @@ from indexer.events.blocks import dedust_v2
 from indexer.events.blocks.dedust_v2 import post_process_dedust_v2_liquidity
 from indexer.events.blocks.utils import EventNode, NoMessageBodyException, to_tree
 from indexer.events.blocks.utils.block_tree_serializer import block_to_action, create_unknown_action, serialize_blocks
+from indexer.events.retryable_errors import RetryableDataAccessError
 from indexer.events.blocks.vesting import (
     VestingAddWhiteListBlockMatcher,
     VestingSendMessageBlockMatcher,
@@ -385,6 +386,8 @@ async def try_classify_unknown_trace(trace):
         if len(actions) == 0:
             unknown_action = create_unknown_action(trace)
             actions.append(unknown_action)
+    except RetryableDataAccessError:
+        raise
     except Exception as e:
         logging.error(f"Failed to classify trace {trace.trace_id}. Falling back to unknown action")
         unknown_action = create_unknown_action(trace)
@@ -407,6 +410,8 @@ async def try_classify_basic_actions(trace: Trace) -> list[Action]:
             blocks = await post_processor(blocks)
         actions, _ = serialize_blocks(blocks, trace_id=trace.trace_id, trace=trace)
         return actions
+    except RetryableDataAccessError:
+        raise
     except Exception as e:
         logging.error(f"Failed trace classification fallback for {trace.trace_id}:", e)
         return []
