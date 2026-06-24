@@ -35,13 +35,14 @@ private:
   bool no_leader_{false};
   bool disable_progress_advance_{false};
   bool kvrocks_skip_current_tables_{false};
+  bool pg_no_copy_{false};
 public:
   InsertManagerPostgres(Credential credential, KvrocksConfig kvrocks_config = {}, PartitionManagerConfig partition_config = {},
                         bool no_leader = false, bool disable_progress_advance = false,
-                        bool kvrocks_skip_current_tables = false) :
+                        bool kvrocks_skip_current_tables = false, bool pg_no_copy = false) :
     credential_(credential), kvrocks_config_(std::move(kvrocks_config)), partition_config_(partition_config),
     no_leader_(no_leader), disable_progress_advance_(disable_progress_advance),
-    kvrocks_skip_current_tables_(kvrocks_skip_current_tables) {}
+    kvrocks_skip_current_tables_(kvrocks_skip_current_tables), pg_no_copy_(pg_no_copy) {}
 
   void start_up() override;
 

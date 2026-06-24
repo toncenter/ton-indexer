@@ -63,6 +63,6 @@ Do the following steps to build and run index worker from source.
 * `--max-batch-txs <size>` - maximum transactions in batch.
 * `--max-batch-msgs <size>` - maximum messages in batch.
 * `--max-data-depth <depth>` - maximum depth of data boc to index (use 0 to index all accounts).
+* `--pg-no-copy` - use `INSERT ... ON CONFLICT` instead of `COPY` for PostgreSQL historical table writes.
 * `--threads <threads>` - number of CPU threads.
 * `--stats-freq <seconds>` - frequency of printing a statistics.
-

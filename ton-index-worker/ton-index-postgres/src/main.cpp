@@ -43,6 +43,7 @@ int main(int argc, char *argv[]) {
   bool create_indexes = true;
   bool run_migrations = true;
   bool kvrocks_skip_current_tables = false;
+  bool pg_no_copy = false;
   InsertManagerPostgres::Credential credential;
   KvrocksConfig kvrocks_config;
   PartitionManagerConfig partition_config;
@@ -74,6 +75,9 @@ int main(int argc, char *argv[]) {
   });
   p.add_option('\0', "pg", "PostgreSQL connection string", [&](td::Slice value) { 
     credential.conn_str = value.str();
+  });
+  p.add_option('\0', "pg-no-copy", "Use INSERT ... ON CONFLICT instead of COPY for PostgreSQL historical table writes", [&]() {
+    pg_no_copy = true;
   });
   p.add_option('h', "host", "PostgreSQL host address", [&](td::Slice value) { 
     LOG(WARNING) << "Using --host option is deprecated, use --pg with connection string instead";
@@ -539,7 +543,7 @@ int main(int argc, char *argv[]) {
   scheduler.run_in_context([&] {
     insert_manager_ = td::actor::create_actor<InsertManagerPostgres>(
         "insertmanager", credential, kvrocks_config, partition_config, no_leader, bounded_archive_range,
-        kvrocks_skip_current_tables);
+        kvrocks_skip_current_tables, pg_no_copy);
   });
   scheduler.run_in_context([&] { parse_manager_ = td::actor::create_actor<ParseManager>("parsemanager"); });
   scheduler.run_in_context([&] {

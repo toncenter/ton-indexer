@@ -96,7 +96,8 @@ public:
                       PartitionManagerConfig partition_config = {},
                       bool no_leader = false,
                       bool disable_progress_advance = false,
-                      bool kvrocks_skip_current_tables = false) :
+                      bool kvrocks_skip_current_tables = false,
+                      bool pg_no_copy = false) :
     credential_(std::move(credential)), kvrocks_(std::move(kvrocks)), leader_heartbeat_(leader_heartbeat), worker_id_(std::move(worker_id)),
     insert_tasks_(std::move(insert_tasks)), promise_(std::move(promise)), max_data_depth_(max_data_depth),
     latest_states_prepare_parallelism_(latest_states_prepare_parallelism),
@@ -104,7 +105,8 @@ public:
     partition_config_(partition_config),
     no_leader_(no_leader),
     disable_progress_advance_(disable_progress_advance),
-    kvrocks_skip_current_tables_(kvrocks_skip_current_tables) {
+    kvrocks_skip_current_tables_(kvrocks_skip_current_tables),
+    with_copy_(!pg_no_copy) {
       // sorting in descending seqno order for easier processing of interfaces
       std::sort(insert_tasks_.begin(), insert_tasks_.end(), [](const auto& a, const auto& b) {
         return a.mc_seqno_ > b.mc_seqno_;
@@ -4334,6 +4336,9 @@ void InsertManagerPostgres::start_up() {
   if (kvrocks_skip_current_tables_) {
     LOG(INFO) << "Kvrocks current/upsert table writes are disabled for this writer";
   }
+  if (pg_no_copy_) {
+    LOG(INFO) << "Postgres COPY is disabled; historical tables will use INSERT ... ON CONFLICT";
+  }
   
   worker_id_ = get_worker_id();
   if (no_leader_) {
@@ -4384,7 +4389,8 @@ void InsertManagerPostgres::create_insert_actor(std::vector<InsertTaskStruct> in
       partition_config_,
       no_leader_,
       disable_progress_advance_,
-      kvrocks_skip_current_tables_).release();
+      kvrocks_skip_current_tables_,
+      pg_no_copy_).release();
 }
 
 void InsertManagerPostgres::get_existing_seqnos(td::Promise<std::vector<std::uint32_t>> promise, std::int32_t from_seqno, std::int32_t to_seqno) {
