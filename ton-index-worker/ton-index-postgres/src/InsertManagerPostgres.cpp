@@ -19,6 +19,12 @@
 #include <unordered_set>
 #include <vector>
 
+namespace {
+
+constexpr const char KVROCKS_INDEXED_MC_SEQNOS_KEY[] = "ton-index:v1:progress:indexed_mc_seqnos";
+
+}  // namespace
+
 
 class PostgresLeaderHeartbeat: public td::actor::Actor {
 public:
@@ -171,6 +177,7 @@ private:
   void insert_contract_methods(pqxx::work &txn);
   void insert_traces(pqxx::work &txn, bool with_copy);
   void insert_kvrocks();
+  void mark_kvrocks_indexed_seqnos();
 
   bool try_acquire_leader_lock(pqxx::connection& c, const std::string& worker_id);
   InsertManagerInterface::InsertResult get_insert_result() const;
@@ -3137,6 +3144,10 @@ void InsertBatchPostgres::insert_kvrocks() {
     writer.write();
     exec_elapsed_millis = script_load_timer.elapsed() * 1e3 + writer.exec_elapsed_millis();
   }
+  td::Timer marker_timer;
+  mark_kvrocks_indexed_seqnos();
+  marker_timer.pause();
+  exec_elapsed_millis += marker_timer.elapsed() * 1e3;
   kvrocks_timer.pause();
 
   auto total_ms = static_cast<std::uint64_t>(kvrocks_timer.elapsed() * 1e3);
@@ -3145,6 +3156,30 @@ void InsertBatchPostgres::insert_kvrocks() {
   g_statistics.record_time(INSERT_BATCH_KVROCKS, total_ms);
   g_statistics.record_time(INSERT_BATCH_KVROCKS_PREPARE, prepare_ms);
   g_statistics.record_time(INSERT_BATCH_KVROCKS_EXEC, exec_ms);
+}
+
+void InsertBatchPostgres::mark_kvrocks_indexed_seqnos() {
+  if (!kvrocks_ || insert_tasks_.empty()) {
+    return;
+  }
+  if (kvrocks_skip_current_tables_) {
+    LOG(DEBUG) << "Skipping Kvrocks indexed mc_seqno marker because current/upsert table writes are disabled";
+    return;
+  }
+
+  auto pipeline = kvrocks_->pipeline(true);
+  for (const auto& task : insert_tasks_) {
+    pipeline.command("SETBIT", KVROCKS_INDEXED_MC_SEQNOS_KEY, static_cast<long long>(task.mc_seqno_), 1);
+  }
+
+  auto replies = pipeline.exec();
+  if (replies.size() != insert_tasks_.size()) {
+    throw std::runtime_error("Kvrocks indexed mc_seqno marker reply count mismatch");
+  }
+  for (std::size_t i = 0; i < replies.size(); ++i) {
+    replies.get<long long>(i);
+  }
+  LOG(DEBUG) << "Marked " << insert_tasks_.size() << " mc seqnos as indexed in Kvrocks bitmap";
 }
 
 void InsertBatchPostgres::reset_prepare_state(bool keep_prepared_batch) {
