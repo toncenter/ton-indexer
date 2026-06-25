@@ -516,6 +516,7 @@ private:
   std::vector<std::vector<KvrocksIndexSnapshotEntry>> read_old_index_snapshots(const std::vector<IndexedWrite>& writes,
                                                                                std::size_t begin,
                                                                                std::size_t end);
+  void record_pending_command(const std::string& op, const std::string& key, std::uint32_t source_mc_seqno);
   void reset_pipeline();
   void flush_if_needed();
   void flush();
@@ -526,6 +527,7 @@ private:
   std::size_t pending_{0};
   std::size_t queued_{0};
   std::unordered_set<std::string> pending_row_keys_;
+  std::vector<std::string> pending_debug_;
   double exec_elapsed_millis_{0.0};
 };
 
