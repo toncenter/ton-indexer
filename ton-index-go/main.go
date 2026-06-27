@@ -2676,18 +2676,18 @@ func main() {
 	app.Use(recover.New())
 
 	// converters
-	//fiber.SetParserDecoder(fiber.ParserConfig{
-	//	IgnoreUnknownKeys: true,
-	//	ParserType: []fiber.ParserType{
-	//		{Customtype: models.HashType(""), Converter: models.HashConverter},
-	//		{Customtype: models.AccountAddress(""), Converter: models.AccountAddressConverter},
-	//		{Customtype: models.AccountAddressNullable(""), Converter: models.AccountAddressNullableConverter},
-	//		{Customtype: models.ShardId(0), Converter: models.ShardIdConverter},
-	//		{Customtype: models.OpcodeType(0), Converter: models.OpcodeTypeConverter},
-	//		{Customtype: models.UtimeType(0), Converter: models.UtimeTypeConverter},
-	//	},
-	//	ZeroEmpty: true,
-	//})
+	fiber.SetParserDecoder(fiber.ParserConfig{
+		IgnoreUnknownKeys: true,
+		ParserType: []fiber.ParserType{
+			{Customtype: models.HashType(""), Converter: models.HashConverter},
+			{Customtype: models.AccountAddress(""), Converter: models.AccountAddressConverter},
+			{Customtype: models.AccountAddressNullable(""), Converter: models.AccountAddressNullableConverter},
+			{Customtype: models.ShardId(0), Converter: models.ShardIdConverter},
+			{Customtype: models.OpcodeType(0), Converter: models.OpcodeTypeConverter},
+			{Customtype: models.UtimeType(0), Converter: models.UtimeTypeConverter},
+		},
+		ZeroEmpty: true,
+	})
 
 	// endpoints
 	app.Use("/api/v3/", func(c *fiber.Ctx) error {

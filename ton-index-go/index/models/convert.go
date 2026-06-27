@@ -262,82 +262,6 @@ func (v *BytesType) MarshalJSON() ([]byte, error) {
 	return []byte(fmt.Sprintf("\"%s\"", v.String())), nil
 }
 
-// unmarshal
-func (a *AccountAddress) UnmarshalText(text []byte) error {
-	parsed, err := ParseAccountAddress(string(text))
-	if err != nil {
-		return err
-	}
-	*a = *parsed
-	return nil
-}
-
-func (a *HashType) UnmarshalText(text []byte) error {
-	value := string(text)
-	if len(value) == 64 || len(value) == 66 && strings.HasPrefix(value, "0x") {
-		value = strings.TrimPrefix(value, "0x")
-		if res, err := hex.DecodeString(value); err != nil {
-			return err
-		} else {
-			*a = HashType(base64.StdEncoding.EncodeToString(res))
-			return nil
-		}
-	}
-	if len(value) == 44 {
-		if res, err := base64.StdEncoding.DecodeString(value); err == nil {
-			*a = HashType(base64.StdEncoding.EncodeToString(res))
-			return nil
-		} else if res, err := base64.URLEncoding.DecodeString(value); err == nil {
-			*a = HashType(base64.StdEncoding.EncodeToString(res))
-			return nil
-		} else {
-			return err
-		}
-	}
-	return fmt.Errorf("invalid hash type: %s", value)
-}
-
-func (a *ShardId) UnmarshalText(text []byte) error {
-	value := string(text)
-	value = strings.TrimPrefix(value, "0x")
-	if shard, err := strconv.ParseUint(value, 16, 64); err == nil {
-		*a = ShardId(shard)
-		return nil
-	}
-	if shard, err := strconv.ParseInt(value, 10, 64); err == nil {
-		*a = ShardId(shard)
-		return nil
-	}
-	return fmt.Errorf("invalid shard id: %s", value)
-}
-
-func (a *UtimeType) UnmarshalText(text []byte) error {
-	value := string(text)
-	if utime, err := strconv.ParseUint(value, 10, 32); err == nil {
-		*a = UtimeType(utime)
-		return nil
-	}
-	if utime, err := strconv.ParseFloat(value, 64); err == nil {
-		*a = UtimeType(uint64(utime))
-		return nil
-	}
-	return fmt.Errorf("invalid utime type: %s", value)
-}
-
-func (a *OpcodeType) UnmarshalText(text []byte) error {
-	value := string(text)
-	value = strings.TrimPrefix(value, "0x")
-	if res, err := strconv.ParseUint(value, 16, 32); err == nil {
-		*a = OpcodeType(res)
-		return nil
-	}
-	if res, err := strconv.ParseInt(value, 10, 32); err == nil {
-		*a = OpcodeType(res)
-		return nil
-	}
-	return fmt.Errorf("invalid opcode type: %s", value)
-}
-
 // converters
 func AddressInformationFromV3(state AccountStateFull) (*V2AddressInformation, error) {
 	var info V2AddressInformation
@@ -428,20 +352,11 @@ func HashConverter(value string) reflect.Value {
 }
 
 func AccountAddressConverter(value string) reflect.Value {
-	addr, err := address.ParseAddr(value)
-	if err != nil {
-		value_url := strings.Replace(value, "+", "-", -1)
-		value_url = strings.Replace(value_url, "/", "_", -1)
-		addr, err = address.ParseAddr(value_url)
-	}
-	if err != nil {
-		addr, err = address.ParseRawAddr(value)
-	}
+	parsed, err := ParseAccountAddress(value)
 	if err != nil {
 		return reflect.Value{}
 	}
-	addr_str := fmt.Sprintf("%d:%s", addr.Workchain(), strings.ToUpper(hex.EncodeToString(addr.Data())))
-	return reflect.ValueOf(AccountAddress(addr_str))
+	return reflect.ValueOf(*parsed)
 }
 
 func AccountAddressNullableConverter(value string) reflect.Value {
