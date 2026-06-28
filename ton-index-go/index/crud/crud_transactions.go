@@ -103,9 +103,9 @@ func buildTransactionsQuery(
 		if len(v) == 1 {
 			filter_list = append(filter_list, fmt.Sprintf("T.account = '%s'", v[0].FilterString()))
 			if order_by_now {
-				orderby_query = fmt.Sprintf(" order by account asc, T.now %s, T.lt %s", sort_order, sort_order)
+				orderby_query = fmt.Sprintf(" order by account %s, T.now %s, T.lt %s", sort_order, sort_order, sort_order)
 			} else {
-				orderby_query = fmt.Sprintf(" order by account asc, T.lt %s", sort_order)
+				orderby_query = fmt.Sprintf(" order by account %s, T.lt %s", sort_order, sort_order)
 			}
 		} else if len(v) > 1 {
 			filter_str := filterByArray("T.account", v)
@@ -584,13 +584,13 @@ func transactionsQueryParts(req models.TransactionsRequest, sortOrder string) tx
 	var orderby_query string
 	switch {
 	case accountFirst && orderByNow:
-		orderby_query = fmt.Sprintf(" order by account asc, T.now %s, T.lt %s", sortOrder, sortOrder)
+		orderby_query = fmt.Sprintf(" order by account %s, T.now %s, T.lt %s", sortOrder, sortOrder, sortOrder)
 	case accountFirst:
-		orderby_query = fmt.Sprintf(" order by account asc, T.lt %s", sortOrder)
+		orderby_query = fmt.Sprintf(" order by account %s, T.lt %s", sortOrder, sortOrder)
 	case orderByNow:
-		orderby_query = fmt.Sprintf(" order by T.now %s, T.lt %s, account asc", sortOrder, sortOrder)
+		orderby_query = fmt.Sprintf(" order by T.now %s, T.lt %s, account %s", sortOrder, sortOrder, sortOrder)
 	default:
-		orderby_query = fmt.Sprintf(" order by T.lt %s, account asc", sortOrder)
+		orderby_query = fmt.Sprintf(" order by T.lt %s, account %s", sortOrder, sortOrder)
 	}
 
 	return txQueryParts{fromQuery: from_query, filterList: filter_list, args: args, orderBy: orderby_query, orderByNow: orderByNow}
