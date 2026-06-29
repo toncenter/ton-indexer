@@ -81,6 +81,10 @@ func makePool(dsn string, maxconns int, minconns int) (*pgxpool.Pool, error) {
 	if minconns > 0 {
 		config.MinConns = int32(minconns)
 	}
+	if config.ConnConfig.RuntimeParams == nil {
+		config.ConnConfig.RuntimeParams = map[string]string{}
+	}
+	config.ConnConfig.RuntimeParams["jit"] = "off"
 	config.HealthCheckPeriod = 60 * time.Second
 	config.AfterConnect = afterConnectRegisterTypes
 	return pgxpool.NewWithConfig(context.Background(), config)
