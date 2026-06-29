@@ -416,7 +416,7 @@ func actionsQueryPartsV2(req models.ActionRequest, sort_order string) actionsQue
 		filter_str := fmt.Sprintf("AA.account = '%s'::tonaddr", v.FilterString())
 		filter_list = append(filter_list, filter_str)
 
-		from_query = `action_accounts as AA join actions as A on A.trace_id = AA.trace_id and A.action_id = AA.action_id`
+		from_query = `action_accounts as AA join actions as A on A.trace_id = AA.trace_id and A.action_id = AA.action_id and A.trace_mc_seqno_end = AA.trace_mc_seqno_end`
 		if order_by_now {
 			clmn_query = `distinct on (AA.trace_end_utime, AA.trace_id, AA.action_end_utime, AA.action_id) ` + clmn_query_default
 		} else {
@@ -473,7 +473,7 @@ func actionsQueryPartsV2(req models.ActionRequest, sort_order string) actionsQue
 			joined_accounts := strings.Contains(from_query, "action_accounts")
 			if join_accounts && joined_accounts {
 				// Limit action_accounts before join to keep account+trace_id requests fast.
-				from_query = fmt.Sprintf("(select * from action_accounts where %s) as AA join actions as A on A.trace_id = AA.trace_id and A.action_id = AA.action_id", trace_filter)
+				from_query = fmt.Sprintf("(select * from action_accounts where %s) as AA join actions as A on A.trace_id = AA.trace_id and A.action_id = AA.action_id and A.trace_mc_seqno_end = AA.trace_mc_seqno_end", trace_filter)
 			} else {
 				filter_str := filterByArray("A.trace_id", v)
 				if len(filter_str) > 0 {
