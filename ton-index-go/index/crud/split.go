@@ -49,13 +49,6 @@ func newSplitProvider(hot *pgxpool.Pool, ttl time.Duration) *SplitProvider {
 	return &SplitProvider{hot: hot, ttl: ttl}
 }
 
-func splitRefreshBackoff(ttl time.Duration) time.Duration {
-	if ttl > 30*time.Second {
-		return ttl
-	}
-	return 30 * time.Second
-}
-
 // Split returns the shared routing boundary
 func (s *SplitProvider) Split(ctx context.Context) (hotColdSplit, error) {
 
@@ -66,33 +59,11 @@ func (s *SplitProvider) Split(ctx context.Context) (hotColdSplit, error) {
 	}
 
 	if entry != nil {
-		// Serve stale split immediately and refresh in the background. The split
-		// changes slowly, while API requests should not inherit a slow split read.
-		if s.refreshMu.TryLock() {
-			go func() {
-				defer s.refreshMu.Unlock()
-				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-				defer cancel()
-
-				val, err := querySplit(ctx, s.hot)
-				if err != nil {
-					log.Printf(
-						"hot/cold: split refresh failed, serving stale boundary: %v",
-						err,
-					)
-					s.entry.Store(&splitEntry{
-						val:       entry.val,
-						expiresAt: time.Now().Add(splitRefreshBackoff(s.ttl)),
-					})
-					return
-				}
-				s.entry.Store(&splitEntry{
-					val:       val,
-					expiresAt: time.Now().Add(s.ttl),
-				})
-			}()
+		// Another goroutine is refreshing, leave update to it, return current values
+		if !s.refreshMu.TryLock() {
+			// Reload in case the refresh completed
+			return s.entry.Load().val, nil
 		}
-		return entry.val, nil
 	} else {
 		s.refreshMu.Lock()
 	}
@@ -112,10 +83,6 @@ func (s *SplitProvider) Split(ctx context.Context) (hotColdSplit, error) {
 				"hot/cold: split refresh failed, serving stale boundary: %v",
 				err,
 			)
-			s.entry.Store(&splitEntry{
-				val:       old.val,
-				expiresAt: time.Now().Add(splitRefreshBackoff(s.ttl)),
-			})
 			return old.val, nil
 		}
 		return hotColdSplit{}, err
