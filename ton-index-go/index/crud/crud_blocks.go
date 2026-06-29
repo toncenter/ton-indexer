@@ -121,31 +121,24 @@ func queryBlocksImpl(query string, conn *pgxpool.Conn, settings models.RequestSe
 }
 
 func queryBlockExists(seqno int32, conn *pgxpool.Conn, settings models.RequestSettings) (bool, error) {
-	query := fmt.Sprintf(`select seqno from blocks where workchain = -1 and shard = -9223372036854775808 and seqno = %d`, seqno)
 	ctx, cancel_ctx := context.WithTimeout(context.Background(), settings.Timeout)
 	defer cancel_ctx()
-	rows, err := conn.Query(ctx, query)
-	if err != nil {
+	query := `select exists (
+		select 1 from blocks
+		where workchain = -1
+		  and shard = -9223372036854775808
+		  and seqno = $1
+	)`
+	var exists bool
+	if err := conn.QueryRow(ctx, query, seqno).Scan(&exists); err != nil {
 		return false, models.IndexError{Code: 500, Message: err.Error()}
 	}
-
-	seqnos := []int32{}
-	for rows.Next() {
-		var s int32
-		if err := rows.Scan(&s); err != nil {
-			return false, err
-		}
-		seqnos = append(seqnos, s)
-	}
-	if rows.Err() != nil {
-		return false, models.IndexError{Code: 500, Message: rows.Err().Error()}
-	}
-	return len(seqnos) > 0, nil
+	return exists, nil
 }
 
 // Exported methods
 func (db *DbClient) QueryMasterchainInfo(settings models.RequestSettings) (*models.MasterchainInfo, error) {
-	fc, release, err := db.acquireFed(context.Background())
+	fc, release, err := db.acquireFedForRequest(settings)
 	if err != nil {
 		return nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
@@ -205,7 +198,7 @@ func (db *DbClient) QueryBlocks(
 		}
 	}
 
-	fc, release, err := db.acquireFed(context.Background())
+	fc, release, err := db.acquireFedForRequest(settings)
 	if err != nil {
 		return nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
@@ -254,7 +247,7 @@ func (db *DbClient) QueryShards(
 		order by S.mc_seqno, S.workchain, S.shard, S.seqno`, req.Seqno)
 
 	// a masterchain round and its shards live wholly in one partition
-	fc, release, err := db.acquireFed(context.Background())
+	fc, release, err := db.acquireFedForRequest(settings)
 	if err != nil {
 		return nil, models.IndexError{Code: 500, Message: err.Error()}
 	}

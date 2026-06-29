@@ -369,11 +369,11 @@ func (db *DbClient) QueryNFTCollections(
 	}
 
 	// read data
-	conn, err := db.Pool.Acquire(context.Background())
+	conn, releaseConn, err := acquireConnForRequest(db.Pool, settings)
 	if err != nil {
 		return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
-	defer conn.Release()
+	defer releaseConn()
 
 	res, err := queryNFTCollectionsImpl(query, conn, settings)
 	if err != nil {
@@ -391,7 +391,8 @@ func (db *DbClient) QueryNFTCollections(
 	}
 	if len(addr_list) > 0 {
 		if db.Kvrocks != nil {
-			book, metadata, err = db.queryKvrocksEnrichment(addr_list, settings, conn)
+			releaseConn()
+			book, metadata, err = db.queryKvrocksEnrichment(addr_list, settings)
 			if err != nil {
 				return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 			}
@@ -459,11 +460,11 @@ func (db *DbClient) QueryNFTItems(
 	}
 
 	// read data
-	conn, err := db.Pool.Acquire(context.Background())
+	conn, releaseConn, err := acquireConnForRequest(db.Pool, settings)
 	if err != nil {
 		return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
-	defer conn.Release()
+	defer releaseConn()
 
 	res, err := queryNFTItemsWithCollectionsImpl(query, conn, settings, args...)
 	if err != nil {
@@ -520,7 +521,7 @@ func (db *DbClient) QueryNFTTransfers(
 		}
 	}
 
-	fc, release, err := db.acquireFed(context.Background())
+	fc, release, err := db.acquireFedForRequest(settings)
 	if err != nil {
 		return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
@@ -570,6 +571,7 @@ func (db *DbClient) QueryNFTTransfers(
 	}
 	if len(addr_list) > 0 {
 		if db.Kvrocks != nil {
+			release()
 			book, metadata, err = db.queryKvrocksEnrichment(addr_list, settings)
 			if err != nil {
 				return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}

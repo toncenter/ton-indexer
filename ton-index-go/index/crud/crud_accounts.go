@@ -180,11 +180,11 @@ func (db *DbClient) QueryAccountStates(
 	}
 
 	// read data
-	conn, err := db.Pool.Acquire(context.Background())
+	conn, releaseConn, err := acquireConnForRequest(db.Pool, settings)
 	if err != nil {
 		return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
-	defer conn.Release()
+	defer releaseConn()
 
 	res, err := queryAccountStateFullImpl(query, conn, settings)
 	if err != nil {
@@ -255,11 +255,11 @@ func (db *DbClient) QueryTopAccountBalances(req models.TopAccountsByBalanceReque
 	query := `select account, balance from latest_account_states order by balance desc` + limit_query
 
 	// read data
-	conn, err := db.Pool.Acquire(context.Background())
+	conn, releaseConn, err := acquireConnForRequest(db.Pool, settings)
 	if err != nil {
 		return nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
-	defer conn.Release()
+	defer releaseConn()
 
 	res, err := queryTopAccountBalancesImpl(query, conn, settings)
 	if err != nil {

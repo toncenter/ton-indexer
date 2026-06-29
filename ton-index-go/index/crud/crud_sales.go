@@ -376,11 +376,16 @@ func (db *DbClient) QueryNFTSales(
 		return nil, nil, nil, models.IndexError{Code: 422, Message: "maximum 1000 addresses allowed"}
 	}
 
-	conn, err := db.Pool.Acquire(context.Background())
-	if err != nil {
-		return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
+	var conn *pgxpool.Conn
+	releaseConn := func() {}
+	var err error
+	if db.Kvrocks == nil {
+		conn, releaseConn, err = acquireConnForRequest(db.Pool, settings)
+		if err != nil {
+			return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
+		}
 	}
-	defer conn.Release()
+	defer releaseConn()
 
 	res, err := queryNFTSalesImpl(sales_req.Address, conn, settings, db.Kvrocks)
 	if err != nil {
@@ -455,7 +460,8 @@ func (db *DbClient) QueryNFTSales(
 
 	if len(addr_list) > 0 {
 		if db.Kvrocks != nil {
-			book, metadata, err = db.queryKvrocksEnrichment(addr_list, settings, conn)
+			releaseConn()
+			book, metadata, err = db.queryKvrocksEnrichment(addr_list, settings)
 			if err != nil {
 				return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 			}

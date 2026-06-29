@@ -1,7 +1,6 @@
 package crud
 
 import (
-	"context"
 	"encoding/base64"
 	"fmt"
 	"math"
@@ -146,8 +145,8 @@ func compare(t1 *ShortTransaction, t2 *ShortTransaction) int {
 	return 0
 }
 
-func CalculateBalanceChanges(traceId models.HashType, conn *pgxpool.Conn, store *KvrocksStore) (*BalanceChanges, map[models.HashType]*BalanceChanges, error) {
-	tx_map, err := fetchTrace(traceId, conn, store)
+func CalculateBalanceChanges(traceId models.HashType, conn *pgxpool.Conn, store *KvrocksStore, settings models.RequestSettings) (*BalanceChanges, map[models.HashType]*BalanceChanges, error) {
+	tx_map, err := fetchTrace(traceId, conn, store, settings)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -252,7 +251,7 @@ func CalculateBalanceChanges(traceId models.HashType, conn *pgxpool.Conn, store 
 		}
 	}
 
-	wallet_infos, err := checkJettonWallets(jetton_wallet_candidates, conn, store)
+	wallet_infos, err := checkJettonWallets(jetton_wallet_candidates, conn, store, settings)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -357,9 +356,11 @@ func (v *walletInfo) Equals(other *walletInfo) bool {
 	return v.address == other.address && v.owner == other.owner && v.jettonMaster == other.jettonMaster
 }
 
-func checkJettonWallets(jetton_wallet_candidates mapset.Set[models.AccountAddress], conn *pgxpool.Conn, store *KvrocksStore) (mapset.Set[walletInfo], error) {
+func checkJettonWallets(jetton_wallet_candidates mapset.Set[models.AccountAddress], conn *pgxpool.Conn, store *KvrocksStore, settings models.RequestSettings) (mapset.Set[walletInfo], error) {
 	if store != nil {
-		wallets, err := store.GetJettonWallets(context.Background(), jetton_wallet_candidates.ToSlice())
+		ctx, cancel := requestContext(settings)
+		defer cancel()
+		wallets, err := store.GetJettonWallets(ctx, jetton_wallet_candidates.ToSlice())
 		if err != nil {
 			return nil, err
 		}
@@ -378,7 +379,9 @@ func checkJettonWallets(jetton_wallet_candidates mapset.Set[models.AccountAddres
 		SELECT address, owner, jetton
 		FROM jetton_wallets
 		WHERE address = ANY($1) AND NOT destroyed`
-	rows, err := conn.Query(context.Background(), query, jetton_wallet_candidates.ToSlice())
+	ctx, cancel := requestContext(settings)
+	defer cancel()
+	rows, err := conn.Query(ctx, query, jetton_wallet_candidates.ToSlice())
 	if err != nil {
 		return nil, err
 	}
@@ -401,7 +404,7 @@ func checkJettonWallets(jetton_wallet_candidates mapset.Set[models.AccountAddres
 	return jetton_wallets, nil
 }
 
-func fetchTrace(trace_id models.HashType, conn *pgxpool.Conn, store *KvrocksStore) (map[models.HashType]*ShortTransaction, error) {
+func fetchTrace(trace_id models.HashType, conn *pgxpool.Conn, store *KvrocksStore, settings models.RequestSettings) (map[models.HashType]*ShortTransaction, error) {
 	var query string
 	if store != nil {
 		query = `
@@ -421,7 +424,9 @@ func fetchTrace(trace_id models.HashType, conn *pgxpool.Conn, store *KvrocksStor
 		LEFT JOIN message_contents MC ON M.body_hash = MC.hash
 		WHERE T.trace_id = $1`
 	}
-	rows, err := conn.Query(context.Background(), query, trace_id)
+	ctx, cancel := requestContext(settings)
+	defer cancel()
+	rows, err := conn.Query(ctx, query, trace_id)
 	if err != nil {
 		return nil, err
 	}
@@ -469,7 +474,9 @@ func fetchTrace(trace_id models.HashType, conn *pgxpool.Conn, store *KvrocksStor
 				hashes = append(hashes, *msg.BodyHash)
 			}
 		}
-		contents, err := store.GetMessageContents(context.Background(), hashes)
+		ctx, cancel := requestContext(settings)
+		defer cancel()
+		contents, err := store.GetMessageContents(ctx, hashes)
 		if err != nil {
 			return nil, err
 		}

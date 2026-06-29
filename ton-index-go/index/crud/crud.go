@@ -51,6 +51,43 @@ func limitOnlyQuery(limit *int32, settings models.RequestSettings) (string, erro
 	return limitQuery(models.LimitParams{Limit: limit}, settings)
 }
 
+func requestContext(settings models.RequestSettings) (context.Context, context.CancelFunc) {
+	if settings.Timeout <= 0 {
+		return context.WithCancel(context.Background())
+	}
+	return context.WithTimeout(context.Background(), settings.Timeout)
+}
+
+func acquireConnForRequest(pool *pgxpool.Pool, settings models.RequestSettings) (*pgxpool.Conn, func(), error) {
+	ctx, cancel := requestContext(settings)
+	conn, err := pool.Acquire(ctx)
+	cancel()
+	if err != nil {
+		return nil, nil, err
+	}
+	released := false
+	release := func() {
+		if released {
+			return
+		}
+		released = true
+		conn.Release()
+	}
+	return conn, release, nil
+}
+
+func (db *DbClient) acquireFedForRequest(settings models.RequestSettings) (*fedConns, func(), error) {
+	ctx, cancel := requestContext(settings)
+	fc, release, err := db.acquireFed(ctx)
+	cancel()
+	if err != nil {
+		return nil, nil, err
+	}
+	fc.ctx = context.Background()
+	fc.acquireTimeout = settings.Timeout
+	return fc, release, nil
+}
+
 func filterByArray[T any](clmn string, values []T) string {
 	filter_list := []string{}
 	filterStringIfaceType := reflect.TypeOf((*models.FilterStringInterface)(nil)).Elem()
@@ -189,7 +226,7 @@ func QueryMetadataImpl(addr_list []models.AccountAddress, conn *pgxpool.Conn, se
 	return metadata, nil
 }
 
-func (db *DbClient) queryKvrocksEnrichment(addrList []models.AccountAddress, settings models.RequestSettings, existingConn ...*pgxpool.Conn) (models.AddressBook, models.Metadata, error) {
+func (db *DbClient) queryKvrocksEnrichment(addrList []models.AccountAddress, settings models.RequestSettings) (models.AddressBook, models.Metadata, error) {
 	book := models.AddressBook{}
 	metadata := models.Metadata{}
 	var err error
@@ -242,11 +279,11 @@ func (db *DbClient) QueryAddressBookByAddresses(addrList []models.AccountAddress
 	if db.Kvrocks != nil {
 		return QueryAddressBookImplKvrocks(uniqueAddrList, db.Kvrocks, settings)
 	}
-	conn, err := db.Pool.Acquire(context.Background())
+	conn, releaseConn, err := acquireConnForRequest(db.Pool, settings)
 	if err != nil {
 		return nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
-	defer conn.Release()
+	defer releaseConn()
 	return QueryAddressBookImpl(uniqueAddrList, conn, settings)
 }
 
@@ -403,11 +440,11 @@ func (db *DbClient) QueryMetadata(
 	if db.Kvrocks != nil {
 		return QueryMetadataImplKvrocks(addr_list, settings, db.Kvrocks)
 	}
-	conn, err := db.Pool.Acquire(context.Background())
+	conn, releaseConn, err := acquireConnForRequest(db.Pool, settings)
 	if err != nil {
 		return nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
-	defer conn.Release()
+	defer releaseConn()
 	return QueryMetadataImpl(addr_list, conn, settings)
 }
 
@@ -447,11 +484,11 @@ func (db *DbClient) QueryAddressBook(
 		}
 		return new_addr_book, nil
 	}
-	conn, err := db.Pool.Acquire(context.Background())
+	conn, releaseConn, err := acquireConnForRequest(db.Pool, settings)
 	if err != nil {
 		return nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
-	defer conn.Release()
+	defer releaseConn()
 	book, err := QueryAddressBookImpl(addr_list, conn, settings)
 	if err != nil {
 		return nil, models.IndexError{Code: 500, Message: err.Error()}
@@ -482,7 +519,7 @@ func (db *DbClient) QueryBalanceChanges(
 		return models.BalanceChangesResult{}, models.IndexError{Code: 400, Message: "trace_id or action_id is required"}
 	}
 
-	fc, release, err := db.acquireFed(context.Background())
+	fc, release, err := db.acquireFedForRequest(settings)
 	if err != nil {
 		return models.BalanceChangesResult{}, models.IndexError{Code: 500, Message: err.Error()}
 	}
@@ -503,7 +540,7 @@ func (db *DbClient) QueryBalanceChanges(
 		if trace_id == nil {
 			return nil, nil, false, models.IndexError{Code: 400, Message: "trace_id is required"}
 		}
-		tc, ac, e := CalculateBalanceChanges(models.HashType(*trace_id), conn, db.Kvrocks)
+		tc, ac, e := CalculateBalanceChanges(models.HashType(*trace_id), conn, db.Kvrocks, settings)
 		if e != nil {
 			if e.Error() == "trace not found" {
 				return nil, nil, false, nil // trace not on this side

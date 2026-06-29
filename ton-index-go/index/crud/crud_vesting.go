@@ -51,11 +51,11 @@ func (db *DbClient) QueryVestingContracts(
 		return vestings, book, nil
 	}
 
-	conn, err := db.Pool.Acquire(context.Background())
+	conn, releaseConn, err := acquireConnForRequest(db.Pool, settings)
 	if err != nil {
 		return nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
-	defer conn.Release()
+	defer releaseConn()
 
 	query, err := buildVestingContractsQuery(req, settings)
 	if err != nil {

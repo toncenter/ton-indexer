@@ -2,23 +2,42 @@ package crud
 
 import (
 	"context"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type fedConns struct {
-	db        *DbClient
-	ctx       context.Context // acquisition context for this request's lifetime
-	split     hotColdSplit
-	federated bool
+	db             *DbClient
+	ctx            context.Context
+	acquireTimeout time.Duration
+	split          hotColdSplit
+	federated      bool
 
 	hotConn, coldConn *pgxpool.Conn // nil until first use
+}
+
+func (fc *fedConns) acquireContext() (context.Context, context.CancelFunc) {
+	base := fc.ctx
+	if base == nil {
+		base = context.Background()
+	}
+	if fc.acquireTimeout > 0 {
+		return context.WithTimeout(base, fc.acquireTimeout)
+	}
+	return context.WithCancel(base)
+}
+
+func (fc *fedConns) acquire(pool *pgxpool.Pool) (*pgxpool.Conn, error) {
+	ctx, cancel := fc.acquireContext()
+	defer cancel()
+	return pool.Acquire(ctx)
 }
 
 // cold returns the default-pool connection, acquiring it on first use.
 func (fc *fedConns) cold() (*pgxpool.Conn, error) {
 	if fc.coldConn == nil {
-		c, err := fc.db.Pool.Acquire(fc.ctx)
+		c, err := fc.acquire(fc.db.Pool)
 		if err != nil {
 			return nil, err
 		}
@@ -34,7 +53,7 @@ func (fc *fedConns) hot() (*pgxpool.Conn, error) {
 		return fc.cold()
 	}
 	if fc.hotConn == nil {
-		c, err := fc.db.HotPool.Acquire(fc.ctx)
+		c, err := fc.acquire(fc.db.HotPool)
 		if err != nil {
 			return nil, err
 		}
@@ -68,11 +87,15 @@ func (db *DbClient) acquireFed(ctx context.Context) (*fedConns, func(), error) {
 		fc.split = split
 	}
 	release := func() {
-		if fc.coldConn != nil {
-			fc.coldConn.Release()
+		coldConn := fc.coldConn
+		hotConn := fc.hotConn
+		fc.coldConn = nil
+		fc.hotConn = nil
+		if coldConn != nil {
+			coldConn.Release()
 		}
-		if fc.hotConn != nil && fc.hotConn != fc.coldConn {
-			fc.hotConn.Release()
+		if hotConn != nil && hotConn != coldConn {
+			hotConn.Release()
 		}
 	}
 	return fc, release, nil

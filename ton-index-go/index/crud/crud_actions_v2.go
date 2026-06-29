@@ -44,7 +44,7 @@ func (db *DbClient) QueryActionsV2(
 
 	parts := actionsQueryPartsV2(req, sortOrder)
 
-	fc, release, err := db.acquireFed(context.Background())
+	fc, release, err := db.acquireFedForRequest(settings)
 	if err != nil {
 		return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
@@ -102,12 +102,12 @@ func (db *DbClient) QueryActionsV2(
 		actions = append(actions, *action)
 	}
 	if req.IncludeAccounts != nil && *req.IncludeAccounts {
-		if err := enrichActionsAccounts(fc, actions); err != nil {
+		if err := enrichActionsAccounts(fc, actions, settings); err != nil {
 			return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 		}
 	}
 	if req.IncludeTransactions != nil && *req.IncludeTransactions {
-		actions, err = queryActionsTransactionsImpl(fc, actions, settings, db.Kvrocks)
+		actions, err = queryActionsTransactionsImpl(fc, release, actions, settings, db.Kvrocks)
 		if err != nil {
 			return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 		}
@@ -117,16 +117,17 @@ func (db *DbClient) QueryActionsV2(
 		for k := range addr_map {
 			addr_list = append(addr_list, k)
 		}
-		coldConn, cerr := fc.cold()
-		if cerr != nil {
-			return nil, nil, nil, models.IndexError{Code: 500, Message: cerr.Error()}
-		}
 		if db.Kvrocks != nil {
-			book, metadata, err = db.queryKvrocksEnrichment(addr_list, settings, coldConn)
+			release()
+			book, metadata, err = db.queryKvrocksEnrichment(addr_list, settings)
 			if err != nil {
 				return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 			}
 		} else {
+			coldConn, cerr := fc.cold()
+			if cerr != nil {
+				return nil, nil, nil, models.IndexError{Code: 500, Message: cerr.Error()}
+			}
 			if !settings.NoAddressBook {
 				book, err = QueryAddressBookImpl(addr_list, coldConn, settings)
 				if err != nil {
@@ -146,7 +147,7 @@ func (db *DbClient) QueryActionsV2(
 
 // enrichActionsAccounts attaches each action's account list, routed to the DB that
 // owns the action's partition (trace_mc_seqno_end), batched per side.
-func enrichActionsAccounts(fc *fedConns, actions []models.Action) error {
+func enrichActionsAccounts(fc *fedConns, actions []models.Action, settings models.RequestSettings) error {
 	if len(actions) == 0 {
 		return nil
 	}
@@ -163,7 +164,7 @@ func enrichActionsAccounts(fc *fedConns, actions []models.Action) error {
 		if err != nil {
 			return err
 		}
-		if err := queryActionsAccountsImpl(actions, hotIdx, conn); err != nil {
+		if err := queryActionsAccountsImpl(actions, hotIdx, conn, settings); err != nil {
 			return err
 		}
 	}
@@ -172,7 +173,7 @@ func enrichActionsAccounts(fc *fedConns, actions []models.Action) error {
 		if err != nil {
 			return err
 		}
-		if err := queryActionsAccountsImpl(actions, coldIdx, conn); err != nil {
+		if err := queryActionsAccountsImpl(actions, coldIdx, conn, settings); err != nil {
 			return err
 		}
 	}
@@ -602,7 +603,7 @@ func queryRawActionsImplV2(query string, args []any, conn *pgxpool.Conn, setting
 	return res, nil
 }
 
-func queryActionsTransactionsImpl(fc *fedConns, actions []models.Action, settings models.RequestSettings, store *KvrocksStore) ([]models.Action, error) {
+func queryActionsTransactionsImpl(fc *fedConns, release func(), actions []models.Action, settings models.RequestSettings, store *KvrocksStore) ([]models.Action, error) {
 	if len(actions) == 0 {
 		return actions, nil
 	}
@@ -641,6 +642,12 @@ func queryActionsTransactionsImpl(fc *fedConns, actions []models.Action, setting
 		func(t *models.Transaction) models.HashType { return t.Hash })
 	if err != nil {
 		return nil, models.IndexError{Code: 500, Message: err.Error()}
+	}
+	if store != nil {
+		release()
+		if err := finalizeTransactionSliceFromKvrocks(txs, nil, store, settings); err != nil {
+			return nil, models.IndexError{Code: 500, Message: err.Error()}
+		}
 	}
 
 	// Create a map of transactions by hash
