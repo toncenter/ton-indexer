@@ -70,6 +70,16 @@ func validateDirection(direction *string) error {
 	return nil
 }
 
+func validateTransactionsDirection(req models.TransactionsRequest) error {
+	if err := validateDirection(req.Direction); err != nil {
+		return err
+	}
+	if req.Direction != nil && len(req.MessageHash) == 0 {
+		return models.IndexError{Code: 422, Message: "direction can be specified only with msg_hash"}
+	}
+	return nil
+}
+
 var actionTypeFilterRegexp = regexp.MustCompile(`^[A-Za-z0-9_.]+$`)
 var nftIndexRegexp = regexp.MustCompile(`^[0-9]+$`)
 
@@ -282,6 +292,9 @@ func GetTransactions(c *fiber.Ctx) error {
 	if err := c.QueryParser(&req); err != nil {
 		return models.IndexError{Code: 422, Message: err.Error()}
 	}
+	if err := validateTransactionsDirection(req); err != nil {
+		return err
+	}
 	txs, book, err := pool.QueryTransactions(req, request_settings)
 	if err != nil {
 		return err
@@ -443,6 +456,9 @@ func GetTransactionsByMessage(c *fiber.Ctx) error {
 
 	if err := c.QueryParser(&req); err != nil {
 		return models.IndexError{Code: 422, Message: err.Error()}
+	}
+	if err := validateDirection(req.Direction); err != nil {
+		return err
 	}
 	if req.BodyHash == nil && req.MessageHash == nil && req.Opcode == nil {
 		return models.IndexError{Code: 422, Message: "at least one of msg_hash, body_hash, opcode should be specified"}
