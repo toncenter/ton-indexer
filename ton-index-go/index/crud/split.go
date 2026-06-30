@@ -51,7 +51,6 @@ func newSplitProvider(hot *pgxpool.Pool, ttl time.Duration) *SplitProvider {
 
 // Split returns the shared routing boundary
 func (s *SplitProvider) Split(ctx context.Context) (hotColdSplit, error) {
-
 	now := time.Now()
 	entry := s.entry.Load()
 	if entry != nil && now.Before(entry.expiresAt) {
@@ -59,41 +58,59 @@ func (s *SplitProvider) Split(ctx context.Context) (hotColdSplit, error) {
 	}
 
 	if entry != nil {
-		// Another goroutine is refreshing, leave update to it, return current values
-		if !s.refreshMu.TryLock() {
-			// Reload in case the refresh completed
-			return s.entry.Load().val, nil
+		if s.refreshMu.TryLock() {
+			go s.refresh(entry.val)
 		}
-	} else {
-		s.refreshMu.Lock()
+		return entry.val, nil
 	}
+
+	s.refreshMu.Lock()
 	defer s.refreshMu.Unlock()
 
 	// Another goroutine may have refreshed while we waited for refreshMu.
-	now = time.Now()
 	old := s.entry.Load()
-	if old != nil && now.Before(old.expiresAt) {
+	if old != nil {
 		return old.val, nil
 	}
 
 	val, err := querySplit(ctx, s.hot)
 	if err != nil {
-		if old != nil {
-			log.Printf(
-				"hot/cold: split refresh failed, serving stale boundary: %v",
-				err,
-			)
-			return old.val, nil
-		}
 		return hotColdSplit{}, err
 	}
 
+	s.store(val)
+	return val, nil
+}
+
+func (s *SplitProvider) store(val hotColdSplit) {
 	s.entry.Store(&splitEntry{
 		val:       val,
 		expiresAt: time.Now().Add(s.ttl),
 	})
+}
 
-	return val, nil
+func (s *SplitProvider) refresh(stale hotColdSplit) {
+	defer s.refreshMu.Unlock()
+
+	time.Sleep(time.Second)
+
+	timeout := s.ttl
+	if timeout < 3*time.Second {
+		timeout = 3 * time.Second
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	val, err := querySplit(ctx, s.hot)
+	if err != nil {
+		log.Printf(
+			"hot/cold: split refresh failed, serving stale boundary: %v",
+			err,
+		)
+		s.store(stale)
+		return
+	}
+	s.store(val)
 }
 
 func querySplit(ctx context.Context, hot *pgxpool.Pool) (hotColdSplit, error) {
