@@ -16,6 +16,43 @@ import (
 )
 
 const kvrocksKeyPrefix = "ton-index:v1"
+const kvrocksAddressBookStateScriptBatchSize = 200
+
+// Address book only needs code_hash and contract methods; keep BOC-heavy account state payloads inside Kvrocks.
+var kvrocksAddressBookStateScript = redis.NewScript(`
+local prefix = ARGV[1]
+local out = {}
+
+for i = 2, #ARGV do
+  local address = ARGV[i]
+  local payload = redis.call('GET', prefix .. ':latest_account_states:' .. address .. ':payload')
+  if payload then
+    local row = cjson.decode(payload)
+    local code_hash = row['code_hash']
+    if type(code_hash) ~= 'string' then
+      code_hash = ''
+    end
+
+    local methods = ''
+    if code_hash ~= '' then
+      local methods_payload = redis.call('GET', prefix .. ':contract_methods:' .. code_hash .. ':payload')
+      if methods_payload then
+        local methods_row = cjson.decode(methods_payload)
+        local methods_value = methods_row['methods']
+        if type(methods_value) == 'string' then
+          methods = methods_value
+        end
+      end
+    end
+
+    table.insert(out, address)
+    table.insert(out, code_hash)
+    table.insert(out, methods)
+  end
+end
+
+return out
+`)
 
 type KvrocksConfig struct {
 	Addr               string
@@ -394,6 +431,22 @@ func addressesToIDs(addresses []models.AccountAddress) []string {
 	return ids
 }
 
+func uniqueAccountAddresses(addresses []models.AccountAddress) []models.AccountAddress {
+	seen := make(map[models.AccountAddress]struct{}, len(addresses))
+	unique := make([]models.AccountAddress, 0, len(addresses))
+	for _, address := range addresses {
+		if (&address).IsAddressNone() {
+			continue
+		}
+		if _, ok := seen[address]; ok {
+			continue
+		}
+		seen[address] = struct{}{}
+		unique = append(unique, address)
+	}
+	return unique
+}
+
 func stringsToAddresses(ids []string) []models.AccountAddress {
 	addresses := make([]models.AccountAddress, 0, len(ids))
 	for _, id := range ids {
@@ -699,6 +752,101 @@ func (s *KvrocksStore) GetContractMethods(ctx context.Context, codeHashes []mode
 		res[row.CodeHash] = methods
 	}
 	return res, nil
+}
+
+type kvrocksAddressBookState struct {
+	CodeHash        *models.HashType
+	ContractMethods *[]uint32
+}
+
+func redisString(value any) (string, error) {
+	switch v := value.(type) {
+	case string:
+		return v, nil
+	case []byte:
+		return string(v), nil
+	case nil:
+		return "", nil
+	default:
+		return "", fmt.Errorf("unexpected redis string value type %T", value)
+	}
+}
+
+func parseAddressBookStateScriptResult(raw any) (map[models.AccountAddress]*kvrocksAddressBookState, error) {
+	rows, ok := raw.([]any)
+	if !ok {
+		return nil, fmt.Errorf("unexpected address book script result type %T", raw)
+	}
+	if len(rows)%3 != 0 {
+		return nil, fmt.Errorf("unexpected address book script result length %d", len(rows))
+	}
+
+	res := make(map[models.AccountAddress]*kvrocksAddressBookState, len(rows)/3)
+	for i := 0; i < len(rows); i += 3 {
+		address, err := redisString(rows[i])
+		if err != nil {
+			return nil, err
+		}
+		codeHash, err := redisString(rows[i+1])
+		if err != nil {
+			return nil, err
+		}
+		methodsValue, err := redisString(rows[i+2])
+		if err != nil {
+			return nil, err
+		}
+		if address == "" {
+			continue
+		}
+
+		state := kvrocksAddressBookState{}
+		if codeHash != "" {
+			loc := models.HashType(codeHash)
+			state.CodeHash = &loc
+		}
+		if methodsValue != "" {
+			methods, err := parseContractMethods(methodsValue)
+			if err != nil {
+				return nil, fmt.Errorf("decode contract_methods %s: %w", codeHash, err)
+			}
+			state.ContractMethods = &methods
+		}
+		addr := models.AccountAddress(address)
+		res[addr] = &state
+	}
+	return res, nil
+}
+
+func (s *KvrocksStore) getAddressBookStates(ctx context.Context, addresses []models.AccountAddress) (map[models.AccountAddress]*kvrocksAddressBookState, error) {
+	states := make(map[models.AccountAddress]*kvrocksAddressBookState)
+	if s == nil || s.client == nil || len(addresses) == 0 {
+		return states, nil
+	}
+
+	for start := 0; start < len(addresses); start += kvrocksAddressBookStateScriptBatchSize {
+		end := start + kvrocksAddressBookStateScriptBatchSize
+		if end > len(addresses) {
+			end = len(addresses)
+		}
+		args := make([]any, 0, end-start+1)
+		args = append(args, kvrocksKeyPrefix)
+		for _, address := range addresses[start:end] {
+			args = append(args, address.String())
+		}
+
+		raw, err := kvrocksAddressBookStateScript.Run(ctx, s.client, nil, args...).Result()
+		if err != nil {
+			return nil, err
+		}
+		batchStates, err := parseAddressBookStateScriptResult(raw)
+		if err != nil {
+			return nil, err
+		}
+		for address, state := range batchStates {
+			states[address] = state
+		}
+	}
+	return states, nil
 }
 
 func (s *KvrocksStore) getLatestAccountStatesByIDs(ctx context.Context, ids []string, includeBOC bool) ([]models.AccountStateFull, error) {
@@ -2456,11 +2604,12 @@ func QueryAddressBookImplKvrocks(addrList []models.AccountAddress, store *Kvrock
 
 	ctx, cancel := context.WithTimeout(context.Background(), settings.Timeout)
 	defer cancel()
-	states, err := store.GetLatestAccountStates(ctx, addrList, false)
+	uniqueAddrList := uniqueAccountAddresses(addrList)
+	states, err := store.getAddressBookStates(ctx, uniqueAddrList)
 	if err != nil {
 		return nil, err
 	}
-	domains, err := store.batchPrimaryDomains(ctx, addrList)
+	domains, err := store.batchPrimaryDomains(ctx, uniqueAddrList)
 	if err != nil {
 		return nil, err
 	}
@@ -2474,19 +2623,15 @@ func QueryAddressBookImplKvrocks(addrList []models.AccountAddress, store *Kvrock
 				codeHashValue := *state.CodeHash
 				codeHash = &codeHashValue
 			}
-			if state.Interfaces != nil {
-				interfaces = *state.Interfaces
-			} else {
-				methods := []uint32{}
-				if state.ContractMethods != nil {
-					methods = *state.ContractMethods
-				}
-				codeHashStr := ""
-				if state.CodeHash != nil {
-					codeHashStr = state.CodeHash.String()
-				}
-				interfaces = detect.DetectInterface(codeHashStr, methods)
+			methods := []uint32{}
+			if state.ContractMethods != nil {
+				methods = *state.ContractMethods
 			}
+			codeHashStr := ""
+			if state.CodeHash != nil {
+				codeHashStr = state.CodeHash.String()
+			}
+			interfaces = detect.DetectInterface(codeHashStr, methods)
 		}
 		friendly := models.GetAccountAddressFriendly(raw, codeHash, settings.IsTestnet)
 		book[raw] = models.AddressBookRow{
