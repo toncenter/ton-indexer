@@ -441,6 +441,11 @@ func queryTracesImpl(query string, includeActions bool, supportedActionTypes []s
 			if err != nil {
 				return nil, nil, models.IndexError{Code: 500, Message: fmt.Sprintf("failed query transactions: %s", err.Error())}
 			}
+			if store != nil {
+				if err := finalizeTransactionSliceFromKvrocks(txs, nil, store, settings); err != nil {
+					return nil, nil, models.IndexError{Code: 500, Message: fmt.Sprintf("failed enrich transactions: %s", err.Error())}
+				}
+			}
 			for idx := range txs {
 				tx := &txs[idx]
 
@@ -844,8 +849,6 @@ func (db *DbClient) QueryTraces(
 	req models.TracesRequest,
 	settings models.RequestSettings,
 ) ([]models.Trace, models.AddressBook, models.Metadata, error) {
-	ctx := context.Background()
-
 	lim_req := req.GetLimitParams()
 
 	sortOrder := "desc"
@@ -865,7 +868,7 @@ func (db *DbClient) QueryTraces(
 		}
 	}
 
-	fc, release, err := db.acquireFed(ctx)
+	fc, release, err := db.acquireFedForRequest(settings)
 	if err != nil {
 		return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
@@ -933,20 +936,30 @@ func (db *DbClient) QueryTraces(
 		}
 		return nil
 	}
-	hot, err := fc.hot()
-	if err != nil {
-		return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
-	}
-	if err := collect(hot, hotIdx); err != nil {
-		return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
+	if len(hotIdx) > 0 {
+		hot, err := fc.hot()
+		if err != nil {
+			return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
+		}
+		if err := collect(hot, hotIdx); err != nil {
+			return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
+		}
 	}
 
-	cold, err := fc.cold()
-	if err != nil {
-		return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
+	if len(coldIdx) > 0 {
+		cold, err := fc.cold()
+		if err != nil {
+			return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
+		}
+		if err := collect(cold, coldIdx); err != nil {
+			return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
+		}
 	}
-	if err := collect(cold, coldIdx); err != nil {
-		return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
+	if db.Kvrocks != nil {
+		release()
+		if err := finalizeTraceTransactionsFromKvrocks(traces, db.Kvrocks, settings); err != nil {
+			return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
+		}
 	}
 
 	addr_list := make([]models.AccountAddress, 0, len(addr_set))
@@ -959,11 +972,16 @@ func (db *DbClient) QueryTraces(
 	metadata := models.Metadata{}
 	if len(addr_list) > 0 {
 		if db.Kvrocks != nil {
-			book, metadata, err = db.queryKvrocksEnrichment(addr_list, settings, cold)
+			release()
+			book, metadata, err = db.queryKvrocksEnrichment(addr_list, settings)
 			if err != nil {
 				return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 			}
 		} else {
+			cold, err := fc.cold()
+			if err != nil {
+				return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
+			}
 			if !settings.NoAddressBook {
 				book, err = QueryAddressBookImpl(addr_list, cold, settings)
 				if err != nil {

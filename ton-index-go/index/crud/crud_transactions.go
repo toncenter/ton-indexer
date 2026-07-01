@@ -211,48 +211,27 @@ func queryTransactionsImpl(query string, conn *pgxpool.Conn, settings models.Req
 	if len(txs) == 0 {
 		return txs, nil
 	}
-	if len(acst_list) > 0 {
-		if store != nil {
-			hashes := make([]models.HashType, 0, len(txs)*2)
-			for _, tx := range txs {
-				hashes = append(hashes, tx.AccountStateHashBefore, tx.AccountStateHashAfter)
-			}
-			ctx, cancel_ctx := context.WithTimeout(context.Background(), settings.Timeout)
-			defer cancel_ctx()
-			acsts_map, err := store.GetAccountStates(ctx, hashes)
-			if err != nil {
-				return nil, models.IndexError{Code: 500, Message: err.Error()}
-			}
-			for idx := range txs {
-				if v, ok := acsts_map[txs[idx].AccountStateHashBefore]; ok {
-					txs[idx].AccountStateBefore = v
-				}
-				if v, ok := acsts_map[txs[idx].AccountStateHashAfter]; ok {
-					txs[idx].AccountStateAfter = v
-				}
-			}
-		} else {
-			acst_list_str := strings.Join(acst_list, ",")
-			query = fmt.Sprintf(`select S.hash, S.account, S.balance, 
+	if len(acst_list) > 0 && store == nil {
+		acst_list_str := strings.Join(acst_list, ",")
+		query = fmt.Sprintf(`select S.hash, S.account, S.balance,
 		S.balance_extra_currencies, S.account_status, S.frozen_hash, 
 		S.data_hash, S.code_hash from account_states S where hash in (%s)`, acst_list_str)
 
-			acsts, err := queryAccountStatesImpl(query, conn, settings)
-			if err != nil {
-				return nil, models.IndexError{Code: 500, Message: err.Error()}
+		acsts, err := queryAccountStatesImpl(query, conn, settings)
+		if err != nil {
+			return nil, models.IndexError{Code: 500, Message: err.Error()}
+		}
+		acsts_map := make(map[models.HashType]*models.AccountState)
+		for _, a := range acsts {
+			acst := a
+			acsts_map[acst.Hash] = &acst
+		}
+		for idx := range txs {
+			if v, ok := acsts_map[txs[idx].AccountStateHashBefore]; ok {
+				txs[idx].AccountStateBefore = v
 			}
-			acsts_map := make(map[models.HashType]*models.AccountState)
-			for _, a := range acsts {
-				acst := a
-				acsts_map[acst.Hash] = &acst
-			}
-			for idx := range txs {
-				if v, ok := acsts_map[txs[idx].AccountStateHashBefore]; ok {
-					txs[idx].AccountStateBefore = v
-				}
-				if v, ok := acsts_map[txs[idx].AccountStateHashAfter]; ok {
-					txs[idx].AccountStateAfter = v
-				}
+			if v, ok := acsts_map[txs[idx].AccountStateHashAfter]; ok {
+				txs[idx].AccountStateAfter = v
 			}
 		}
 	}
@@ -275,9 +254,14 @@ func queryTransactionsImpl(query string, conn *pgxpool.Conn, settings models.Req
 			where M.tx_hash in (%s)`, hash_list_str)
 		}
 
-		msgs, err := queryMessagesImpl(query, conn, settings, store)
+		msgs, err := queryMessagesImpl(query, conn, settings)
 		if err != nil {
 			return nil, models.IndexError{Code: 500, Message: err.Error()}
+		}
+		if store == nil {
+			if err := finalizeMessages(msgs, nil, settings); err != nil {
+				return nil, models.IndexError{Code: 500, Message: err.Error()}
+			}
 		}
 
 		for _, msg := range msgs {
@@ -303,6 +287,98 @@ func queryTransactionsImpl(query string, conn *pgxpool.Conn, settings models.Req
 	}
 
 	return txs, nil
+}
+
+func transactionPtrs(txs []models.Transaction, idxs []int) []*models.Transaction {
+	if len(txs) == 0 {
+		return nil
+	}
+	if idxs == nil {
+		ptrs := make([]*models.Transaction, 0, len(txs))
+		for i := range txs {
+			ptrs = append(ptrs, &txs[i])
+		}
+		return ptrs
+	}
+
+	ptrs := make([]*models.Transaction, 0, len(idxs))
+	for _, i := range idxs {
+		if i >= 0 && i < len(txs) {
+			ptrs = append(ptrs, &txs[i])
+		}
+	}
+	return ptrs
+}
+
+func transactionMessagePtrs(txs []*models.Transaction) []*models.Message {
+	msgs := make([]*models.Message, 0)
+	for _, tx := range txs {
+		if tx == nil {
+			continue
+		}
+		if tx.InMsg != nil {
+			msgs = append(msgs, tx.InMsg)
+		}
+		msgs = append(msgs, tx.OutMsgs...)
+	}
+	return msgs
+}
+
+func finalizeTransactionSliceFromKvrocks(txs []models.Transaction, idxs []int, store *KvrocksStore, settings models.RequestSettings) error {
+	return finalizeTransactionPtrsFromKvrocks(transactionPtrs(txs, idxs), store, settings)
+}
+
+func finalizeTransactionPtrsFromKvrocks(txs []*models.Transaction, store *KvrocksStore, settings models.RequestSettings) error {
+	if store == nil || len(txs) == 0 {
+		return nil
+	}
+
+	hashes := make([]models.HashType, 0, len(txs)*2)
+	for _, tx := range txs {
+		if tx == nil {
+			continue
+		}
+		hashes = append(hashes, tx.AccountStateHashBefore, tx.AccountStateHashAfter)
+	}
+	if len(hashes) > 0 {
+		ctx, cancel_ctx := context.WithTimeout(context.Background(), settings.Timeout)
+		defer cancel_ctx()
+		acsts_map, err := store.GetAccountStates(ctx, hashes)
+		if err != nil {
+			return models.IndexError{Code: 500, Message: err.Error()}
+		}
+		for _, tx := range txs {
+			if tx == nil {
+				continue
+			}
+			if v, ok := acsts_map[tx.AccountStateHashBefore]; ok {
+				tx.AccountStateBefore = v
+			}
+			if v, ok := acsts_map[tx.AccountStateHashAfter]; ok {
+				tx.AccountStateAfter = v
+			}
+		}
+	}
+
+	return finalizeMessagePtrs(transactionMessagePtrs(txs), store, settings)
+}
+
+func finalizeTraceTransactionsFromKvrocks(traces []models.Trace, store *KvrocksStore, settings models.RequestSettings) error {
+	if store == nil || len(traces) == 0 {
+		return nil
+	}
+	seen := make(map[models.HashType]bool)
+	txs := make([]*models.Transaction, 0)
+	for i := range traces {
+		for _, tx := range traces[i].Transactions {
+			if tx == nil || seen[tx.Hash] {
+				continue
+			}
+			seen[tx.Hash] = true
+			txs = append(txs, tx)
+		}
+	}
+	return finalizeTransactionPtrsFromKvrocks(txs, store, settings)
 }
 
 func queryAdjacentTransactionsImpl(req models.AdjacentTransactionRequest, conn *pgxpool.Conn, settings models.RequestSettings) ([]models.HashType, error) {
@@ -402,26 +478,7 @@ func enrichTransactionsImpl(txs []models.Transaction, idxs []int, conn *pgxpool.
 	}
 
 	// account states
-	if store != nil {
-		hashes := make([]models.HashType, 0, len(idxs)*2)
-		for _, i := range idxs {
-			hashes = append(hashes, txs[i].AccountStateHashBefore, txs[i].AccountStateHashAfter)
-		}
-		ctx, cancel_ctx := context.WithTimeout(context.Background(), settings.Timeout)
-		defer cancel_ctx()
-		acsts_map, err := store.GetAccountStates(ctx, hashes)
-		if err != nil {
-			return models.IndexError{Code: 500, Message: err.Error()}
-		}
-		for _, i := range idxs {
-			if v, ok := acsts_map[txs[i].AccountStateHashBefore]; ok {
-				txs[i].AccountStateBefore = v
-			}
-			if v, ok := acsts_map[txs[i].AccountStateHashAfter]; ok {
-				txs[i].AccountStateAfter = v
-			}
-		}
-	} else {
+	if store == nil {
 		acst_list_str := strings.Join(acst_list, ",")
 		query := fmt.Sprintf(`select S.hash, S.account, S.balance,
 	S.balance_extra_currencies, S.account_status, S.frozen_hash,
@@ -464,9 +521,14 @@ func enrichTransactionsImpl(txs []models.Transaction, idxs []int, conn *pgxpool.
 		where M.tx_hash in (%s)`, hash_list_str)
 	}
 
-	msgs, err := queryMessagesImpl(query, conn, settings, store)
+	msgs, err := queryMessagesImpl(query, conn, settings)
 	if err != nil {
 		return models.IndexError{Code: 500, Message: err.Error()}
+	}
+	if store == nil {
+		if err := finalizeMessages(msgs, nil, settings); err != nil {
+			return models.IndexError{Code: 500, Message: err.Error()}
+		}
 	}
 	for _, msg := range msgs {
 		if msg.Direction == "in" {
@@ -665,7 +727,7 @@ func (db *DbClient) QueryTransactions(
 		}
 	}
 
-	fc, release, err := db.acquireFed(context.Background())
+	fc, release, err := db.acquireFedForRequest(settings)
 	if err != nil {
 		return nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
@@ -785,6 +847,12 @@ func (db *DbClient) QueryTransactions(
 			return nil, nil, models.IndexError{Code: 500, Message: eerr.Error()}
 		}
 	}
+	if db.Kvrocks != nil {
+		release()
+		if eerr := finalizeTransactionSliceFromKvrocks(txs, nil, db.Kvrocks, settings); eerr != nil {
+			return nil, nil, models.IndexError{Code: 500, Message: eerr.Error()}
+		}
+	}
 
 	book := models.AddressBook{}
 	if !settings.NoAddressBook {
@@ -804,6 +872,7 @@ func (db *DbClient) QueryTransactions(
 		}
 		if len(addr_list) > 0 {
 			if db.Kvrocks != nil {
+				release()
 				book, err = QueryAddressBookImplKvrocks(addr_list, db.Kvrocks, settings)
 			} else {
 				coldConn, cerr := fc.cold()
@@ -824,7 +893,7 @@ func (db *DbClient) QueryAdjacentTransactions(
 	req models.AdjacentTransactionRequest,
 	settings models.RequestSettings,
 ) ([]models.Transaction, models.AddressBook, error) {
-	fc, release, err := db.acquireFed(context.Background())
+	fc, release, err := db.acquireFedForRequest(settings)
 	if err != nil {
 		return nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
@@ -868,6 +937,12 @@ func (db *DbClient) QueryAdjacentTransactions(
 		return nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
 	sort.Slice(txs, func(i, j int) bool { return txs[i].Lt < txs[j].Lt })
+	if db.Kvrocks != nil {
+		release()
+		if eerr := finalizeTransactionSliceFromKvrocks(txs, nil, db.Kvrocks, settings); eerr != nil {
+			return nil, nil, models.IndexError{Code: 500, Message: eerr.Error()}
+		}
+	}
 
 	book := models.AddressBook{}
 	if !settings.NoAddressBook {
@@ -887,6 +962,7 @@ func (db *DbClient) QueryAdjacentTransactions(
 		}
 		if len(addr_list) > 0 {
 			if db.Kvrocks != nil {
+				release()
 				book, err = QueryAddressBookImplKvrocks(addr_list, db.Kvrocks, settings)
 			} else {
 				coldConn, cerr := fc.cold()
@@ -910,7 +986,7 @@ func (db *DbClient) QueryTransactionsExternalHashes(ctx context.Context, txIDs [
 		return nil, nil
 	}
 
-	fc, release, err := db.acquireFed(context.Background())
+	fc, release, err := db.acquireFedForRequest(settings)
 	if err != nil {
 		return nil, models.IndexError{Code: 500, Message: err.Error()}
 	}

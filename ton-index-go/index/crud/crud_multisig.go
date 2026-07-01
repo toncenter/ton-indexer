@@ -198,11 +198,11 @@ func (db *DbClient) QueryMultisigs(
 		return nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
 
-	conn, err := db.Pool.Acquire(context.Background())
+	conn, releaseConn, err := acquireConnForRequest(db.Pool, settings)
 	if err != nil {
 		return nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
-	defer conn.Release()
+	defer releaseConn()
 
 	multisigs, err := queryMultisigImpl(query, conn, settings)
 	if err != nil {
@@ -308,11 +308,11 @@ func (db *DbClient) QueryMultisigOrders(
 		return nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
 
-	conn, err := db.Pool.Acquire(context.Background())
+	conn, releaseConn, err := acquireConnForRequest(db.Pool, settings)
 	if err != nil {
 		return nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
-	defer conn.Release()
+	defer releaseConn()
 
 	orders, err := queryMultisigOrderImpl(query, conn, settings)
 	if err != nil {

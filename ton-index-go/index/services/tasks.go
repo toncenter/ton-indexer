@@ -59,42 +59,56 @@ func (manager *TaskManager) Start(ctx context.Context) {
 	go manager.run(ctx)
 }
 
+func (manager *TaskManager) requeueIfPossible(tasks []BackgroundTask) {
+	select {
+	case manager.taskChannel <- tasks:
+	default:
+		log.Printf("Task channel is full, dropping %d background tasks", len(tasks))
+	}
+}
+
 func (manager *TaskManager) loop(ctx context.Context) {
-	tasks := <-manager.taskChannel
+	var tasks []BackgroundTask
+	select {
+	case tasks = <-manager.taskChannel:
+	case <-ctx.Done():
+		return
+	}
 	conn, err := manager.pool.Acquire(ctx)
 	if err != nil {
 		log.Printf("Error acquiring connection to create tasks: %v", err)
-		manager.taskChannel <- tasks
+		manager.requeueIfPossible(tasks)
+		return
 	}
 	defer conn.Release()
 	tx, err := conn.Begin(ctx)
 	if err != nil {
 		log.Printf("Error beginning transaction to create tasks: %v", err)
-		manager.taskChannel <- tasks
+		manager.requeueIfPossible(tasks)
+		return
 	}
-	tx_failed := false
+	defer func() {
+		_ = tx.Rollback(context.Background())
+	}()
 	for _, task := range tasks {
 		_, err := tx.Exec(ctx, "INSERT INTO _background_tasks (type, data, status) "+
 			"VALUES ($1, $2, 'ready') ON CONFLICT DO NOTHING", task.Type, task.Data)
 		if err != nil {
 			log.Printf("Error inserting task: %v", err)
-			tx.Rollback(ctx)
-			manager.taskChannel <- tasks
-			tx_failed = true
-			break
+			manager.requeueIfPossible(tasks)
+			return
 		}
 	}
-	if !tx_failed {
-		err = tx.Commit(ctx)
-		if err != nil {
-			log.Printf("Error committing transaction to create tasks: %v", err)
-			manager.taskChannel <- tasks
-		}
+	err = tx.Commit(ctx)
+	if err != nil {
+		log.Printf("Error committing transaction to create tasks: %v", err)
+		manager.requeueIfPossible(tasks)
+		return
 	}
 }
 
 func (manager *TaskManager) run(ctx context.Context) {
-	for {
+	for ctx.Err() == nil {
 		manager.loop(ctx)
 	}
 }

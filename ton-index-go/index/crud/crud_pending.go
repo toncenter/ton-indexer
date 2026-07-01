@@ -20,11 +20,11 @@ func (db *DbClient) QueryPendingActions(settings models.RequestSettings, emulate
 	if db.HotPool != nil {
 		pool = db.HotPool
 	}
-	conn, err := pool.Acquire(context.Background())
+	conn, releaseConn, err := acquireConnForRequest(pool, settings)
 	if err != nil {
 		return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
-	defer conn.Release()
+	defer releaseConn()
 
 	raw_actions, err := queryPendingActionsImpl(emulatedContext, conn, settings, request)
 	if err != nil {
@@ -43,32 +43,6 @@ func (db *DbClient) QueryPendingActions(settings models.RequestSettings, emulate
 			return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 		}
 		actions = append(actions, *action)
-	}
-
-	if len(addr_map) > 0 {
-		var addr_list []models.AccountAddress
-		for k := range addr_map {
-			addr_list = append(addr_list, k)
-		}
-		if db.Kvrocks != nil {
-			book, metadata, err = db.queryKvrocksEnrichment(addr_list, settings, conn)
-			if err != nil {
-				return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
-			}
-		} else {
-			if !settings.NoAddressBook {
-				book, err = QueryAddressBookImpl(addr_list, conn, settings)
-				if err != nil {
-					return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
-				}
-			}
-			if !settings.NoMetadata {
-				metadata, err = QueryMetadataImpl(addr_list, conn, settings)
-				if err != nil {
-					return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
-				}
-			}
-		}
 	}
 
 	if request.IncludeTransactions != nil && *request.IncludeTransactions {
@@ -92,6 +66,33 @@ func (db *DbClient) QueryPendingActions(settings models.RequestSettings, emulate
 		}
 	}
 
+	if len(addr_map) > 0 {
+		var addr_list []models.AccountAddress
+		for k := range addr_map {
+			addr_list = append(addr_list, k)
+		}
+		if db.Kvrocks != nil {
+			releaseConn()
+			book, metadata, err = db.queryKvrocksEnrichment(addr_list, settings)
+			if err != nil {
+				return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
+			}
+		} else {
+			if !settings.NoAddressBook {
+				book, err = QueryAddressBookImpl(addr_list, conn, settings)
+				if err != nil {
+					return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
+				}
+			}
+			if !settings.NoMetadata {
+				metadata, err = QueryMetadataImpl(addr_list, conn, settings)
+				if err != nil {
+					return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
+				}
+			}
+		}
+	}
+
 	return actions, book, metadata, nil
 }
 
@@ -101,11 +102,11 @@ func (db *DbClient) QueryPendingTraces(settings models.RequestSettings, emulated
 	if db.HotPool != nil {
 		pool = db.HotPool
 	}
-	conn, err := pool.Acquire(context.Background())
+	conn, releaseConn, err := acquireConnForRequest(pool, settings)
 	if err != nil {
 		return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
-	defer conn.Release()
+	defer releaseConn()
 
 	res, addr_list, err := queryPendingTracesImpl(emulatedContext, conn, settings, request)
 	if err != nil {
@@ -118,7 +119,8 @@ func (db *DbClient) QueryPendingTraces(settings models.RequestSettings, emulated
 
 	if len(addr_list) > 0 {
 		if db.Kvrocks != nil {
-			book, metadata, err = db.queryKvrocksEnrichment(addr_list, settings, conn)
+			releaseConn()
+			book, metadata, err = db.queryKvrocksEnrichment(addr_list, settings)
 			if err != nil {
 				return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 			}
@@ -155,11 +157,11 @@ func (db *DbClient) QueryPendingTransactions(
 	if db.HotPool != nil {
 		pool = db.HotPool
 	}
-	conn, err := pool.Acquire(context.Background())
+	conn, releaseConn, err := acquireConnForRequest(pool, settings)
 	if err != nil {
 		return nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
-	defer conn.Release()
+	defer releaseConn()
 
 	txs, err := QueryPendingTransactionsImpl(emulatedContext, conn, settings, true)
 	if err != nil {
@@ -183,6 +185,7 @@ func (db *DbClient) QueryPendingTransactions(
 	book := models.AddressBook{}
 	if len(addr_list) > 0 {
 		if db.Kvrocks != nil {
+			releaseConn()
 			book, err = QueryAddressBookImplKvrocks(addr_list, db.Kvrocks, settings)
 		} else {
 			book, err = QueryAddressBookImpl(addr_list, conn, settings)
@@ -218,6 +221,7 @@ func queryCompletedEmulatedTraces(emulatedContext *EmulatedTracesContext,
 		if err != nil {
 			return nil, models.IndexError{Code: 500, Message: err.Error()}
 		}
+		defer rows.Close()
 		completed_trace_ids_in_db := make([]string, 0)
 		for rows.Next() {
 			var external_hash string
@@ -225,6 +229,9 @@ func queryCompletedEmulatedTraces(emulatedContext *EmulatedTracesContext,
 				return nil, models.IndexError{Code: 500, Message: err.Error()}
 			}
 			completed_trace_ids_in_db = append(completed_trace_ids_in_db, external_hash_map[external_hash])
+		}
+		if err := rows.Err(); err != nil {
+			return nil, models.IndexError{Code: 500, Message: err.Error()}
 		}
 		return completed_trace_ids_in_db, nil
 	}

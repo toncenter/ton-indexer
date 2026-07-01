@@ -156,13 +156,24 @@ func buildMessagesCountQuery(p msgQueryParts, floor, ceil, ltSeam *uint64) strin
 	return `select count(*) from (` + messagesPageInner(p, floor, ceil, ltSeam, ``) + `) as sub`
 }
 
-func attachMessageContentsFromKvrocks(msgs []models.Message, store *KvrocksStore, settings models.RequestSettings) error {
+func messagePtrs(msgs []models.Message) []*models.Message {
+	ptrs := make([]*models.Message, 0, len(msgs))
+	for i := range msgs {
+		ptrs = append(ptrs, &msgs[i])
+	}
+	return ptrs
+}
+
+func attachMessageContentsFromKvrocks(msgs []*models.Message, store *KvrocksStore, settings models.RequestSettings) error {
 	if store == nil || len(msgs) == 0 {
 		return nil
 	}
 
 	hashes := make([]models.HashType, 0, len(msgs)*2)
 	for _, msg := range msgs {
+		if msg == nil {
+			continue
+		}
 		if msg.BodyHash != nil {
 			hashes = append(hashes, *msg.BodyHash)
 		}
@@ -182,23 +193,48 @@ func attachMessageContentsFromKvrocks(msgs []models.Message, store *KvrocksStore
 	}
 
 	for idx := range msgs {
-		if msgs[idx].BodyHash != nil {
-			if content, ok := contents[*msgs[idx].BodyHash]; ok {
+		msg := msgs[idx]
+		if msg == nil {
+			continue
+		}
+		if msg.BodyHash != nil {
+			if content, ok := contents[*msg.BodyHash]; ok {
 				loc := *content
-				msgs[idx].MessageContent = &loc
+				msg.MessageContent = &loc
 			}
 		}
-		if msgs[idx].InitStateHash != nil {
-			if content, ok := contents[*msgs[idx].InitStateHash]; ok {
+		if msg.InitStateHash != nil {
+			if content, ok := contents[*msg.InitStateHash]; ok {
 				loc := *content
-				msgs[idx].InitState = &loc
+				msg.InitState = &loc
 			}
 		}
 	}
 	return nil
 }
 
-func queryMessagesImpl(query string, conn *pgxpool.Conn, settings models.RequestSettings, store *KvrocksStore, args ...any) ([]models.Message, error) {
+func finalizeMessagePtrs(msgs []*models.Message, store *KvrocksStore, settings models.RequestSettings) error {
+	if err := attachMessageContentsFromKvrocks(msgs, store, settings); err != nil {
+		return models.IndexError{Code: 500, Message: err.Error()}
+	}
+
+	if err := detect.MarkMessagesByPtr(msgs); err != nil {
+		hashes := make([]string, 0, len(msgs))
+		for _, msg := range msgs {
+			if msg != nil {
+				hashes = append(hashes, msg.MsgHash.String())
+			}
+		}
+		log.Printf("Error marking messages with hashes %v: %v", hashes, err)
+	}
+	return nil
+}
+
+func finalizeMessages(msgs []models.Message, store *KvrocksStore, settings models.RequestSettings) error {
+	return finalizeMessagePtrs(messagePtrs(msgs), store, settings)
+}
+
+func queryMessagesImpl(query string, conn *pgxpool.Conn, settings models.RequestSettings, args ...any) ([]models.Message, error) {
 	msgs := []models.Message{}
 	{
 		ctx, cancel_ctx := context.WithTimeout(context.Background(), settings.Timeout)
@@ -224,19 +260,6 @@ func queryMessagesImpl(query string, conn *pgxpool.Conn, settings models.Request
 		if rows.Err() != nil {
 			return nil, models.IndexError{Code: 500, Message: rows.Err().Error()}
 		}
-	}
-
-	if err := attachMessageContentsFromKvrocks(msgs, store, settings); err != nil {
-		return nil, models.IndexError{Code: 500, Message: err.Error()}
-	}
-
-	// decode opcodes and bodies
-	if err := detect.MarkMessages(msgs); err != nil {
-		hashes := make([]string, len(msgs))
-		for i, msg := range msgs {
-			hashes[i] = msg.MsgHash.String()
-		}
-		log.Printf("Error marking messages with hashes %v: %v", hashes, err)
 	}
 
 	return msgs, nil
@@ -273,7 +296,7 @@ func (db *DbClient) QueryMessages(
 		orderKey = "utime"
 	}
 
-	fc, release, err := db.acquireFed(context.Background())
+	fc, release, err := db.acquireFedForRequest(settings)
 	if err != nil {
 		return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
@@ -283,7 +306,7 @@ func (db *DbClient) QueryMessages(
 		if settings.DebugRequest {
 			log.Println("Debug query:", query)
 		}
-		return queryMessagesImpl(query, conn, settings, db.Kvrocks, parts.args...)
+		return queryMessagesImpl(query, conn, settings, parts.args...)
 	}
 
 	// externals have a null sort axis (created_lt/created_at); band them by tx_lt at
@@ -312,6 +335,12 @@ func (db *DbClient) QueryMessages(
 	if err != nil {
 		return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
+	if db.Kvrocks != nil {
+		release()
+	}
+	if err := finalizeMessages(msgs, db.Kvrocks, settings); err != nil {
+		return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
+	}
 
 	book := models.AddressBook{}
 	metadata := models.Metadata{}
@@ -325,16 +354,17 @@ func (db *DbClient) QueryMessages(
 		}
 	}
 	if len(addr_list) > 0 {
-		coldConn, cerr := fc.cold()
-		if cerr != nil {
-			return nil, nil, nil, models.IndexError{Code: 500, Message: cerr.Error()}
-		}
 		if db.Kvrocks != nil {
-			book, metadata, err = db.queryKvrocksEnrichment(addr_list, settings, coldConn)
+			release()
+			book, metadata, err = db.queryKvrocksEnrichment(addr_list, settings)
 			if err != nil {
 				return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 			}
 		} else {
+			coldConn, cerr := fc.cold()
+			if cerr != nil {
+				return nil, nil, nil, models.IndexError{Code: 500, Message: cerr.Error()}
+			}
 			if !settings.NoAddressBook {
 				book, err = QueryAddressBookImpl(addr_list, coldConn, settings)
 				if err != nil {

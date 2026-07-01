@@ -509,11 +509,11 @@ func (db *DbClient) QueryJettonMasters(
 	}
 
 	// read data
-	conn, err := db.Pool.Acquire(context.Background())
+	conn, releaseConn, err := acquireConnForRequest(db.Pool, settings)
 	if err != nil {
 		return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
-	defer conn.Release()
+	defer releaseConn()
 
 	res, err := queryJettonMastersImpl(query, conn, settings)
 	if err != nil {
@@ -531,7 +531,8 @@ func (db *DbClient) QueryJettonMasters(
 	}
 	if len(addr_list) > 0 {
 		if db.Kvrocks != nil {
-			book, metadata, err = db.queryKvrocksEnrichment(addr_list, settings, conn)
+			releaseConn()
+			book, metadata, err = db.queryKvrocksEnrichment(addr_list, settings)
 			if err != nil {
 				return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 			}
@@ -586,11 +587,11 @@ func (db *DbClient) QueryJettonWallets(
 	}
 
 	// read data
-	conn, err := db.Pool.Acquire(context.Background())
+	conn, releaseConn, err := acquireConnForRequest(db.Pool, settings)
 	if err != nil {
 		return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
-	defer conn.Release()
+	defer releaseConn()
 
 	res, err := queryJettonWalletsImpl(query, conn, settings)
 	if err != nil {
@@ -608,7 +609,8 @@ func (db *DbClient) QueryJettonWallets(
 	}
 	if len(addr_list) > 0 {
 		if db.Kvrocks != nil {
-			book, metadata, err = db.queryKvrocksEnrichment(addr_list, settings, conn)
+			releaseConn()
+			book, metadata, err = db.queryKvrocksEnrichment(addr_list, settings)
 			if err != nil {
 				return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 			}
@@ -661,7 +663,7 @@ func (db *DbClient) QueryJettonTransfers(
 		orderKey = "utime"
 	}
 
-	fc, release, err := db.acquireFed(context.Background())
+	fc, release, err := db.acquireFedForRequest(settings)
 	if err != nil {
 		return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
@@ -700,16 +702,17 @@ func (db *DbClient) QueryJettonTransfers(
 		}
 	}
 	if len(addr_list) > 0 {
-		coldConn, cerr := fc.cold()
-		if cerr != nil {
-			return nil, nil, nil, models.IndexError{Code: 500, Message: cerr.Error()}
-		}
 		if db.Kvrocks != nil {
-			book, metadata, err = db.queryKvrocksEnrichment(addr_list, settings, coldConn)
+			release()
+			book, metadata, err = db.queryKvrocksEnrichment(addr_list, settings)
 			if err != nil {
 				return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 			}
 		} else {
+			coldConn, cerr := fc.cold()
+			if cerr != nil {
+				return nil, nil, nil, models.IndexError{Code: 500, Message: cerr.Error()}
+			}
 			if !settings.NoAddressBook {
 				book, err = QueryAddressBookImpl(addr_list, coldConn, settings)
 				if err != nil {
@@ -758,7 +761,7 @@ func (db *DbClient) QueryJettonBurns(
 		orderKey = "utime"
 	}
 
-	fc, release, err := db.acquireFed(context.Background())
+	fc, release, err := db.acquireFedForRequest(settings)
 	if err != nil {
 		return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
@@ -796,16 +799,17 @@ func (db *DbClient) QueryJettonBurns(
 		}
 	}
 	if len(addr_list) > 0 {
-		coldConn, cerr := fc.cold()
-		if cerr != nil {
-			return nil, nil, nil, models.IndexError{Code: 500, Message: cerr.Error()}
-		}
 		if db.Kvrocks != nil {
-			book, metadata, err = db.queryKvrocksEnrichment(addr_list, settings, coldConn)
+			release()
+			book, metadata, err = db.queryKvrocksEnrichment(addr_list, settings)
 			if err != nil {
 				return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 			}
 		} else {
+			coldConn, cerr := fc.cold()
+			if cerr != nil {
+				return nil, nil, nil, models.IndexError{Code: 500, Message: cerr.Error()}
+			}
 			if !settings.NoAddressBook {
 				book, err = QueryAddressBookImpl(addr_list, coldConn, settings)
 				if err != nil {

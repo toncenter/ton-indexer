@@ -127,7 +127,7 @@ func buildActionsQuery(req models.ActionRequest, settings models.RequestSettings
 		filter_str := fmt.Sprintf("AA.account = '%s'::tonaddr", v.FilterString())
 		filter_list = append(filter_list, filter_str)
 
-		from_query = `action_accounts as AA join actions as A on A.trace_id = AA.trace_id and A.action_id = AA.action_id`
+		from_query = `action_accounts as AA join actions as A on A.trace_id = AA.trace_id and A.action_id = AA.action_id and A.trace_mc_seqno_end = AA.trace_mc_seqno_end`
 		if order_by_now {
 			clmn_query = `distinct on (AA.trace_end_utime, AA.trace_id, AA.action_end_utime, AA.action_id) ` + clmn_query_default
 		} else {
@@ -219,7 +219,7 @@ func buildActionsQuery(req models.ActionRequest, settings models.RequestSettings
 
 // queryActionsAccountsImpl attaches account lists to actions[idxs], querying conn
 // (the DB that owns those actions' partitions). Assigns in place.
-func queryActionsAccountsImpl(actions []models.Action, idxs []int, conn *pgxpool.Conn) error {
+func queryActionsAccountsImpl(actions []models.Action, idxs []int, conn *pgxpool.Conn, settings models.RequestSettings) error {
 	if len(idxs) == 0 {
 		return nil
 	}
@@ -242,7 +242,9 @@ func queryActionsAccountsImpl(actions []models.Action, idxs []int, conn *pgxpool
 		strings.Join(placeholders, ","),
 	)
 
-	rows, err := conn.Query(context.Background(), query, args...)
+	ctx, cancel := requestContext(settings)
+	defer cancel()
+	rows, err := conn.Query(ctx, query, args...)
 	if err != nil {
 		return models.IndexError{Code: 500, Message: err.Error()}
 	}
@@ -314,11 +316,11 @@ func (db *DbClient) QueryActions(
 	}
 
 	// read data
-	conn, err := db.Pool.Acquire(context.Background())
+	conn, releaseConn, err := acquireConnForRequest(db.Pool, settings)
 	if err != nil {
 		return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
-	defer conn.Release()
+	defer releaseConn()
 
 	// check block
 	if seqno := req.McSeqno; seqno != nil {
@@ -353,7 +355,8 @@ func (db *DbClient) QueryActions(
 			addr_list = append(addr_list, k)
 		}
 		if db.Kvrocks != nil {
-			book, metadata, err = db.queryKvrocksEnrichment(addr_list, settings, conn)
+			releaseConn()
+			book, metadata, err = db.queryKvrocksEnrichment(addr_list, settings)
 			if err != nil {
 				return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 			}
