@@ -11,6 +11,7 @@ import (
 	"math"
 	"net"
 	"net/http"
+	neturl "net/url"
 	"os"
 	"strings"
 	"time"
@@ -76,6 +77,105 @@ func isBlockedIP(ip net.IP) bool {
 		}
 	}
 	return false
+}
+
+func lookupAllowedIPs(ctx context.Context, host string) ([]net.IPAddr, error) {
+	ips, err := net.DefaultResolver.LookupIPAddr(ctx, host)
+	if err != nil {
+		return nil, err
+	}
+	if len(ips) == 0 {
+		return nil, fmt.Errorf("no addresses resolved for host: %s", host)
+	}
+	for _, ip := range ips {
+		if isBlockedIP(ip.IP) {
+			return nil, fmt.Errorf("blocked request to private IP: %s", ip.IP)
+		}
+	}
+	return ips, nil
+}
+
+func validateHTTPMetadataURL(ctx context.Context, metadataURL *neturl.URL) error {
+	if metadataURL == nil {
+		return fmt.Errorf("invalid URL")
+	}
+	if metadataURL.Scheme != "http" && metadataURL.Scheme != "https" {
+		return fmt.Errorf("unsupported protocol: %s", metadataURL.Scheme)
+	}
+	host := metadataURL.Hostname()
+	if host == "" {
+		return fmt.Errorf("invalid URL: missing host")
+	}
+	_, err := lookupAllowedIPs(ctx, host)
+	return err
+}
+
+func parseProxyURL(rawURL string) (*neturl.URL, error) {
+	proxyURL, err := neturl.Parse(rawURL)
+	if err != nil {
+		return nil, err
+	}
+	switch proxyURL.Scheme {
+	case "http", "https", "socks5", "socks5h":
+	default:
+		return nil, fmt.Errorf("unsupported proxy scheme: %s", proxyURL.Scheme)
+	}
+	if proxyURL.Hostname() == "" {
+		return nil, fmt.Errorf("proxy URL is missing host")
+	}
+	if proxyURL.Path != "" && proxyURL.Path != "/" {
+		return nil, fmt.Errorf("proxy URL must not contain a path")
+	}
+	if proxyURL.RawQuery != "" || proxyURL.Fragment != "" {
+		return nil, fmt.Errorf("proxy URL must not contain query or fragment")
+	}
+	return proxyURL, nil
+}
+
+func proxyPort(proxyURL *neturl.URL) string {
+	if port := proxyURL.Port(); port != "" {
+		return port
+	}
+	switch proxyURL.Scheme {
+	case "http":
+		return "80"
+	case "https":
+		return "443"
+	case "socks5", "socks5h":
+		return "1080"
+	default:
+		return ""
+	}
+}
+
+func isProxyDialAddress(addr string, proxyURL *neturl.URL) bool {
+	if proxyURL == nil {
+		return false
+	}
+	host, port, err := net.SplitHostPort(addr)
+	if err != nil {
+		return false
+	}
+	return strings.EqualFold(host, proxyURL.Hostname()) && port == proxyPort(proxyURL)
+}
+
+func newMetadataDialContext(proxyURL *neturl.URL) func(context.Context, string, string) (net.Conn, error) {
+	dialer := &net.Dialer{Timeout: 10 * time.Second}
+	return func(ctx context.Context, network, addr string) (net.Conn, error) {
+		if isProxyDialAddress(addr, proxyURL) {
+			return dialer.DialContext(ctx, network, addr)
+		}
+
+		host, port, err := net.SplitHostPort(addr)
+		if err != nil {
+			return nil, fmt.Errorf("invalid address: %v", err)
+		}
+		ips, err := lookupAllowedIPs(ctx, host)
+		if err != nil {
+			return nil, err
+		}
+		return dialer.DialContext(ctx, network, net.JoinHostPort(ips[0].IP.String(), port))
+	}
 }
 
 type BackgroundTask struct {
@@ -331,8 +431,18 @@ func getMetadataFromJson(metadata map[string]interface{}) AddressMetadata {
 	return result
 }
 
-func fetchHttpMetadata(url string) (map[string]interface{}, error) {
-	resp, err := client.Get(url)
+func fetchHttpMetadata(rawURL string) (map[string]interface{}, error) {
+	metadataURL, err := neturl.Parse(rawURL)
+	if err != nil {
+		return nil, fmt.Errorf("invalid URL: %v", err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := validateHTTPMetadataURL(ctx, metadataURL); err != nil {
+		return nil, err
+	}
+
+	resp, err := client.Get(rawURL)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch content from URL: %v", err)
 	}
@@ -672,6 +782,7 @@ func main() {
 	var imgproxy_salt string
 	var ipfs_api_url string
 	var ipfs_server_url string
+	var proxy_url string
 	var overridesFilePath string
 	var blockedNetworksFile string
 	var kvrocks_addr string
@@ -693,6 +804,7 @@ func main() {
 	flag.StringVar(&imgproxy_key, "imgproxy-key", "", "ImgProxy key")
 	flag.StringVar(&ipfs_api_url, "ipfs-api-url", "", "Ipfs api url (http://127.0.0.1:5001)")
 	flag.StringVar(&ipfs_server_url, "ipfs-server-url", "https://ipfs.io/ipfs", "Ipfs gateway server url")
+	flag.StringVar(&proxy_url, "proxy-url", "", "Proxy URL for HTTP(S) metadata fetches (http, https, socks5, socks5h)")
 	flag.StringVar(&overridesFilePath, "overrides-file", "metadata_overrides.json", "Path to metadata overrides JSON file")
 	flag.StringVar(&blockedNetworksFile, "blocked-networks-file", "", "Path to JSON file with blocked CIDR ranges")
 	flag.StringVar(&kvrocks_addr, "kvrocks", "", "Kvrocks address or Redis URL for metadata/source reads and metadata writes")
@@ -702,6 +814,18 @@ func main() {
 	flag.StringVar(&kvrocks_password, "kvrocks-password", "", "Kvrocks password")
 	flag.IntVar(&kvrocks_db, "kvrocks-db", 0, "Kvrocks database number")
 	flag.Parse()
+
+	var err error
+	var metadataProxyURL *neturl.URL
+	if proxy_url != "" {
+		metadataProxyURL, err = parseProxyURL(proxy_url)
+		if err != nil {
+			log.Fatal("failed to parse proxy url: ", err)
+		}
+		safeProxyURL := *metadataProxyURL
+		safeProxyURL.User = nil
+		log.Printf("HTTP metadata proxy enabled: %s", safeProxyURL.String())
+	}
 
 	key, err := hex.DecodeString(imgproxy_key)
 	if err != nil {
@@ -740,33 +864,22 @@ func main() {
 	}
 	log.Printf("Loaded %d blocked network ranges", len(blockedNetworks))
 
-	dialer := &net.Dialer{Timeout: 10 * time.Second}
+	transport := &http.Transport{
+		DialContext: newMetadataDialContext(metadataProxyURL),
+	}
+	if metadataProxyURL != nil {
+		transport.Proxy = http.ProxyURL(metadataProxyURL)
+	}
+
 	client = &http.Client{
-		Timeout: 30 * time.Second,
-		Transport: &http.Transport{
-			DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
-				host, port, err := net.SplitHostPort(addr)
-				if err != nil {
-					return nil, fmt.Errorf("invalid address: %v", err)
-				}
-				ips, err := net.DefaultResolver.LookupIPAddr(ctx, host)
-				if err != nil {
-					return nil, err
-				}
-				if len(ips) == 0 {
-					return nil, fmt.Errorf("no addresses resolved for host: %s", host)
-				}
-				for _, ip := range ips {
-					if isBlockedIP(ip.IP) {
-						return nil, fmt.Errorf("blocked request to private IP: %s", ip.IP)
-					}
-				}
-				return dialer.DialContext(ctx, network, net.JoinHostPort(ips[0].IP.String(), port))
-			},
-		},
+		Timeout:   30 * time.Second,
+		Transport: transport,
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			if len(via) >= 3 {
 				return fmt.Errorf("too many redirects")
+			}
+			if err := validateHTTPMetadataURL(req.Context(), req.URL); err != nil {
+				return fmt.Errorf("blocked redirect: %v", err)
 			}
 			return nil
 		},

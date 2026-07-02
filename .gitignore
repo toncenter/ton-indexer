@@ -313,8 +313,7 @@ _deps
 # custom
 [Bb][Uu][Ii][Ll][Dd]*
 sandbox/
+/artifacts
 indexer/dedust_pools.json
-.vscode/
-.DS_Store
 ton-index-worker/tondb-scanner/src/tokens-tlb.cpp
 ton-index-worker/tondb-scanner/src/tokens-tlb.h
