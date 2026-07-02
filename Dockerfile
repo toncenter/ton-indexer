@@ -214,6 +214,9 @@ FROM postgres:18-bookworm AS postgres-pgton
 COPY --from=pgton-builder /app/build/pgton.so /usr/lib/postgresql/18/lib/
 COPY --from=pgton-builder /app/build/pgton.control /usr/share/postgresql/18/extension/
 COPY ton-index-worker/pgton/pgton--0.1.sql /usr/share/postgresql/18/extension/
+RUN chmod 0755 /usr/lib/postgresql/18/lib/pgton.so \
+    && chmod 0644 /usr/share/postgresql/18/extension/pgton.control \
+                   /usr/share/postgresql/18/extension/pgton--0.1.sql
 
 
 ## patroni postgresql service image
