@@ -64,6 +64,7 @@ Do the following steps to build and run index worker from source.
 * `--max-batch-msgs <size>` - maximum messages in batch.
 * `--max-data-depth <depth>` - maximum depth of data boc to index (use 0 to index all accounts).
 * `--pg-no-copy` - use `INSERT ... ON CONFLICT` instead of `COPY` for PostgreSQL historical table writes.
+* `--db-event-fifo <path>` - path to the FIFO pipe created by `validator-engine --db-event-fifo`. New blocks are then indexed as soon as the node applies them instead of being discovered by polling; polling remains as a fallback if events stop. The FIFO supports a single reader, so use a dedicated pipe per consumer.
 * `--threads <threads>` - number of CPU threads.
 * `--stats-freq <seconds>` - frequency of printing a statistics.
 * `--failover-check-interval <seconds>` - frequency of failover watchdog checks; `0` disables the watchdog. Default: `10`.

@@ -85,6 +85,135 @@ TEST(TonDbScanner, ActionDetector_parse_jetton_burn) {
 
 
 
+#if TD_PORT_POSIX
+
+#include "DbEventListener.h"
+#include "ton/ton-tl.hpp"
+#include "tl-utils/tl-utils.hpp"
+
+#include <atomic>
+#include <mutex>
+#include <thread>
+
+#include <fcntl.h>
+#include <sys/file.h>
+#include <sys/stat.h>
+#include <unistd.h>
+
+namespace {
+
+td::BufferSlice make_applied_event(ton::BlockSeqno seqno) {
+  ton::BlockIdExt block_id{ton::BlockId{ton::masterchainId, ton::shardIdAll, seqno}, ton::RootHash::zero(),
+                           ton::FileHash::zero()};
+  return ton::serialize_tl_object(
+      ton::create_tl_object<ton::ton_api::db_event_blockApplied>(ton::create_tl_block_id(block_id)), true);
+}
+
+int open_fifo_writer(const std::string& path, double timeout_sec) {
+  auto deadline = td::Timestamp::in(timeout_sec);
+  while (!deadline.is_in_past()) {
+    int fd = ::open(path.c_str(), O_WRONLY | O_NONBLOCK);
+    if (fd >= 0) {
+      return fd;
+    }
+    usleep(50'000);
+  }
+  return -1;
+}
+
+}  // namespace
+
+TEST(db_event_listener, delivers_events_and_survives_fifo_recreation) {
+  char tmp_dir[] = "/tmp/tondb-scanner-test-XXXXXX";
+  CHECK(mkdtemp(tmp_dir) != nullptr);
+  const std::string fifo_path = std::string(tmp_dir) + "/db-events.fifo";
+
+  std::mutex mutex;
+  std::vector<ton::BlockSeqno> received;
+  auto received_count = [&] {
+    std::lock_guard<std::mutex> guard(mutex);
+    return received.size();
+  };
+
+  td::actor::Scheduler scheduler({td::actor::Scheduler::NodeInfo{1, 1}});
+  td::actor::ActorOwn<DbEventListener> listener;
+  scheduler.run_in_context([&] {
+    listener = td::actor::create_actor<DbEventListener>("listener", fifo_path,
+        [&](ton::tl_object_ptr<ton::ton_api::db_Event> event) {
+          ton::ton_api::downcast_call(*event, td::overloaded(
+              [&](ton::ton_api::db_event_blockApplied &ev) {
+                std::lock_guard<std::mutex> guard(mutex);
+                received.push_back(ton::create_block_id(ev.block_id_).seqno());
+              },
+              [](auto &) {}));
+        });
+  });
+  auto run_until = [&](std::size_t expected_count) {
+    auto deadline = td::Timestamp::in(10.0);
+    while (received_count() < expected_count && !deadline.is_in_past()) {
+      scheduler.run(0.05);
+    }
+    ASSERT_EQ(expected_count, received_count());
+  };
+
+  std::thread writer([&] {
+    int fd = open_fifo_writer(fifo_path, 8.0);
+    CHECK(fd >= 0);
+    // two whole frames in one write, then one frame split in two writes
+    auto ev1 = make_applied_event(101);
+    auto ev2 = make_applied_event(102);
+    std::string data(ev1.data(), ev1.size());
+    data.append(ev2.data(), ev2.size());
+    CHECK(::write(fd, data.data(), data.size()) == static_cast<ssize_t>(data.size()));
+    auto ev3 = make_applied_event(103);
+    CHECK(::write(fd, ev3.data(), 5) == 5);
+    usleep(100'000);
+    CHECK(::write(fd, ev3.data() + 5, ev3.size() - 5) == static_cast<ssize_t>(ev3.size() - 5));
+    ::close(fd);
+  });
+  run_until(3);
+  writer.join();
+  {
+    std::lock_guard<std::mutex> guard(mutex);
+    ASSERT_EQ(101u, received[0]);
+    ASSERT_EQ(102u, received[1]);
+    ASSERT_EQ(103u, received[2]);
+  }
+
+  // the listener must hold an exclusive lock so a second reader backs off
+  int second_reader = ::open(fifo_path.c_str(), O_RDONLY | O_NONBLOCK);
+  CHECK(second_reader >= 0);
+  ASSERT_TRUE(flock(second_reader, LOCK_EX | LOCK_NB) != 0 && errno == EWOULDBLOCK);
+  ::close(second_reader);
+
+  // recreated FIFO must be picked up
+  CHECK(::unlink(fifo_path.c_str()) == 0);
+  CHECK(::mkfifo(fifo_path.c_str(), 0660) == 0);
+  std::thread writer2([&] {
+    int fd = open_fifo_writer(fifo_path, 8.0);
+    CHECK(fd >= 0);
+    auto ev = make_applied_event(104);
+    CHECK(::write(fd, ev.data(), ev.size()) == static_cast<ssize_t>(ev.size()));
+    ::close(fd);
+  });
+  run_until(4);
+  writer2.join();
+  {
+    std::lock_guard<std::mutex> guard(mutex);
+    ASSERT_EQ(104u, received[3]);
+  }
+
+  scheduler.run_in_context([&] {
+    listener.reset();
+    td::actor::SchedulerContext::get().stop();
+  });
+  scheduler.run();
+  ::unlink(fifo_path.c_str());
+  ::rmdir(tmp_dir);
+}
+
+#endif
+
 int main(int argc, char **argv) {
   td::set_default_failure_signal_handler().ensure();
     auto &runner = td::TestsRunner::get_default();

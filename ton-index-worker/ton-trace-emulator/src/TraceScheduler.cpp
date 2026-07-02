@@ -152,7 +152,10 @@ void TraceEmulatorScheduler::start_up() {
     if (db_event_fifo_path_.empty()) {
         LOG(WARNING) << "DB events FIFO path is empty. Falling back to polling (pending/finalized only).";
     } else {
-        db_event_listener_ = td::actor::create_actor<DbEventListener>("DbEventListener", db_event_fifo_path_, actor_id(this));
+        db_event_listener_ = td::actor::create_actor<DbEventListener>("DbEventListener", db_event_fifo_path_,
+            [SelfId = actor_id(this)](ton::tl_object_ptr<ton::ton_api::db_Event> event) {
+                td::actor::send_closure(SelfId, &TraceEmulatorScheduler::handle_db_event, std::move(event));
+            });
     }
     next_health_update_ = td::Timestamp::in(0.1);
 }
