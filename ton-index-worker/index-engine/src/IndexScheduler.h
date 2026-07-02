@@ -1,5 +1,6 @@
 #pragma once
 #include <memory>
+#include <optional>
 #include <queue>
 #include <unordered_map>
 #include <unordered_set>
@@ -7,6 +8,7 @@
 
 #include "IndexData.h"
 #include "DbScanner.h"
+#include "DbEventListener.h"
 #include "ActionDetector.h"
 #include "TraceAssembler.h"
 #include "InsertManager.h"
@@ -50,6 +52,13 @@ private:
   bool force_index_{false};
   std::uint32_t prewarm_count_{50};
   bool is_in_sync_{false};
+  std::uint32_t last_indexed_block_utime_{0};
+
+  std::string db_event_fifo_path_;
+  td::actor::ActorOwn<DbEventListener> db_event_listener_;
+  std::optional<ton::BlockSeqno> pending_event_seqno_;
+  bool event_catch_up_active_{false};
+  td::Timestamp last_mc_applied_event_at_;
 
   td::Timestamp last_alarm_timestamp_;
   std::double_t avg_tps_{0};
@@ -75,10 +84,11 @@ public:
   IndexScheduler(td::actor::ActorId<DbScanner> db_scanner, td::actor::ActorId<InsertManagerInterface> insert_manager,
       td::actor::ActorId<ParseManager> parse_manager, std::string working_dir, std::int32_t from_seqno = 0, std::int32_t to_seqno = 0, bool force_index = false,
       std::uint32_t max_active_tasks = 32, QueueState max_queue = QueueState{30000, 30000, 500000, 500000}, std::int32_t stats_timeout = 10,
-      std::shared_ptr<td::Destructor> watcher = nullptr, std::uint32_t prewarm_count = 50)
+      std::shared_ptr<td::Destructor> watcher = nullptr, std::uint32_t prewarm_count = 50, std::string db_event_fifo_path = {})
     : db_scanner_(db_scanner), insert_manager_(insert_manager), parse_manager_(parse_manager), working_dir_(std::move(working_dir)),
       from_seqno_(from_seqno), to_seqno_(to_seqno), force_index_(force_index), max_active_tasks_(max_active_tasks),
-      prewarm_count_(prewarm_count), max_queue_(std::move(max_queue)), stats_timeout_(stats_timeout), watcher_(watcher) {};
+      prewarm_count_(prewarm_count), max_queue_(std::move(max_queue)), stats_timeout_(stats_timeout), watcher_(watcher),
+      db_event_fifo_path_(std::move(db_event_fifo_path)) {};
 
   void start_up() override;
   void alarm() override;
@@ -98,8 +108,16 @@ private:
   void seqno_queued_to_insert(std::uint32_t mc_seqno, QueueState status);
   void set_seqno_otel_attribute(std::uint32_t mc_seqno, const std::string& key,
                                 const OtelStageSpan::AttributeValue& value, bool include_stage = true);
-  void seqno_inserted(std::uint32_t mc_seqno);
+  void seqno_inserted(std::uint32_t mc_seqno, std::int32_t block_gen_utime);
   void handle_seqno_failure(std::uint32_t mc_seqno, std::string error_type, td::Status error, bool silent);
+
+  void got_db_event(ton::tl_object_ptr<ton::ton_api::db_Event> event);
+  void try_event_catch_up();
+  void event_catch_up_finished(ton::BlockSeqno mc_seqno, td::Result<td::Unit> result);
+  bool mc_applied_events_fresh() const;
+  void note_indexed_block_utime(std::int32_t block_gen_utime);
+  void update_sync_state();
+  void request_insert_queue_state();
 
   void process_force_resume_state_initialized(td::Result<bool> R, ton::BlockSeqno start_seqno);
   void process_resume_seqno(td::Result<InsertManagerInterface::ResumeState> R);
@@ -109,7 +127,7 @@ private:
   bool is_bounded_archive_range() const;
   bool should_insert_seqno(std::uint32_t mc_seqno) const;
   ton::BlockSeqno prewarm_start_seqno(ton::BlockSeqno seqno) const;
-  void seqno_processed_without_insert(std::uint32_t mc_seqno, const char* reason);
+  void seqno_processed_without_insert(std::uint32_t mc_seqno, const char* reason, std::int32_t block_gen_utime);
   void maybe_finish_bounded_range();
 
   void got_insert_queue_state(QueueState status);

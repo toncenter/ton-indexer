@@ -5,6 +5,7 @@
 #include "td/utils/StringBuilder.h"
 #include "td/utils/Time.h"
 #include "td/utils/filesystem.h"
+#include "ton/ton-tl.hpp"
 #include <chrono>
 
 namespace {
@@ -57,7 +58,9 @@ std::string get_time_string(double seconds) {
 }
 
 void IndexScheduler::alarm() {
-    alarm_timestamp() = td::Timestamp::in(is_in_sync_ ? 0.1 : 1.0);
+    update_sync_state();
+    const bool event_driven = is_in_sync_ && mc_applied_events_fresh();
+    alarm_timestamp() = td::Timestamp::in(is_in_sync_ && !event_driven ? 0.1 : 1.0);
 
     td::Timestamp now = td::Timestamp::now();
     double dt = 0.0;
@@ -100,20 +103,27 @@ void IndexScheduler::alarm() {
         next_statistics_flush_ = td::Timestamp::in(60.0);
     }
 
-    auto Q = td::PromiseCreator::lambda([SelfId = actor_id(this)](td::Result<QueueState> R){
+    request_insert_queue_state();
+
+    if (!event_driven) {
+        auto P = td::PromiseCreator::lambda([SelfId = actor_id(this)](td::Result<ton::BlockSeqno> R){
+            if (R.is_error()) {
+                LOG(ERROR) << "Failed to update last seqno: " << R.move_as_error();
+                return;
+            }
+            td::actor::send_closure(SelfId, &IndexScheduler::got_newest_mc_seqno, R.move_as_ok());
+        });
+        td::actor::send_closure(db_scanner_, &DbScanner::get_last_mc_seqno, std::move(P));
+    }
+    try_event_catch_up();
+}
+
+void IndexScheduler::request_insert_queue_state() {
+    auto P = td::PromiseCreator::lambda([SelfId = actor_id(this)](td::Result<QueueState> R){
         R.ensure();
         td::actor::send_closure(SelfId, &IndexScheduler::got_insert_queue_state, R.move_as_ok());
     });
-    td::actor::send_closure(insert_manager_, &InsertManagerInterface::get_insert_queue_state, std::move(Q));
-
-    auto P = td::PromiseCreator::lambda([SelfId = actor_id(this)](td::Result<ton::BlockSeqno> R){
-        if (R.is_error()) {
-            LOG(ERROR) << "Failed to update last seqno: " << R.move_as_error();
-            return;
-        }
-        td::actor::send_closure(SelfId, &IndexScheduler::got_newest_mc_seqno, R.move_as_ok());
-    });
-    td::actor::send_closure(db_scanner_, &DbScanner::get_last_mc_seqno, std::move(P));
+    td::actor::send_closure(insert_manager_, &InsertManagerInterface::get_insert_queue_state, std::move(P));
 }
 
 const ton::BlockSeqno FIRST_INDEXABLE_MC_SEQNO = 1;
@@ -285,10 +295,97 @@ void IndexScheduler::start_from_seqno(ton::BlockSeqno seqno, bool reset_trace_as
     LOG(INFO) << "Starting indexing from seqno: " << read_from_seqno_;
 
     td::actor::send_closure(trace_assembler_, &TraceAssembler::set_expected_seqno, seqno);
+    if (!db_event_fifo_path_.empty() && db_event_listener_.empty()) {
+        LOG(INFO) << "Starting DB events listener on " << db_event_fifo_path_;
+        db_event_listener_ = td::actor::create_actor<DbEventListener>("DbEventListener", db_event_fifo_path_,
+            [SelfId = actor_id(this)](ton::tl_object_ptr<ton::ton_api::db_Event> event) {
+                td::actor::send_closure(SelfId, &IndexScheduler::got_db_event, std::move(event));
+            });
+    }
     alarm_timestamp() = td::Timestamp::now();
 }
 
-const int IS_IN_SYNC_THRESHOLD = 3;
+const double IN_SYNC_MAX_TIME_LAG = 20.0;
+const double OUT_OF_SYNC_TIME_LAG = 60.0;
+const double DB_EVENTS_FRESHNESS_WINDOW = 10.0;
+
+bool IndexScheduler::mc_applied_events_fresh() const {
+    return bool(last_mc_applied_event_at_) &&
+           td::Timestamp::now().at() - last_mc_applied_event_at_.at() < DB_EVENTS_FRESHNESS_WINDOW;
+}
+
+void IndexScheduler::note_indexed_block_utime(std::int32_t block_gen_utime) {
+    if (block_gen_utime > 0 && static_cast<std::uint32_t>(block_gen_utime) > last_indexed_block_utime_) {
+        last_indexed_block_utime_ = static_cast<std::uint32_t>(block_gen_utime);
+        update_sync_state();
+    }
+}
+
+void IndexScheduler::update_sync_state() {
+    if (last_indexed_block_utime_ == 0) {
+        return;
+    }
+    const double lag = td::Clocks::system() - static_cast<double>(last_indexed_block_utime_);
+    if (!is_in_sync_ && lag <= IN_SYNC_MAX_TIME_LAG) {
+        is_in_sync_ = true;
+        LOG(INFO) << "Indexer is in sync with TON node: block lag is " << td::StringBuilder::FixedDouble(lag, 1) << "s";
+    } else if (is_in_sync_ && lag > OUT_OF_SYNC_TIME_LAG) {
+        is_in_sync_ = false;
+        LOG(WARNING) << "Indexing is out of sync with TON node: block lag is " << td::StringBuilder::FixedDouble(lag, 1) << "s";
+    }
+}
+
+void IndexScheduler::got_db_event(ton::tl_object_ptr<ton::ton_api::db_Event> event) {
+    ton::ton_api::downcast_call(*event, td::overloaded(
+        [&](ton::ton_api::db_event_blockApplied &ev) {
+            auto block_id = ton::create_block_id(ev.block_id_);
+            if (!block_id.is_masterchain()) {
+                return;
+            }
+            // Only masterchain-applied events may suppress polling fallback.
+            last_mc_applied_event_at_ = td::Timestamp::now();
+            g_statistics.record_count(DB_EVENT_MC_BLOCK_APPLIED);
+            if (!is_in_sync_ || static_cast<std::int32_t>(block_id.seqno()) <= last_known_seqno_) {
+                return;
+            }
+            if (!pending_event_seqno_ || *pending_event_seqno_ < block_id.seqno()) {
+                pending_event_seqno_ = block_id.seqno();
+            }
+            try_event_catch_up();
+        },
+        [](auto &) {}));
+}
+
+void IndexScheduler::try_event_catch_up() {
+    if (event_catch_up_active_ || !pending_event_seqno_ || !is_in_sync_) {
+        return;
+    }
+    const auto seqno = *pending_event_seqno_;
+    pending_event_seqno_.reset();
+    if (static_cast<std::int32_t>(seqno) <= last_known_seqno_) {
+        return;
+    }
+    event_catch_up_active_ = true;
+    g_statistics.record_count(DB_EVENT_CATCH_UP);
+    auto P = td::PromiseCreator::lambda([SelfId = actor_id(this), seqno](td::Result<td::Unit> R) {
+        td::actor::send_closure(SelfId, &IndexScheduler::event_catch_up_finished, seqno, std::move(R));
+    });
+    td::actor::send_closure(db_scanner_, &DbScanner::request_catch_up, std::move(P), ton::validator::CatchUpMode::Force);
+}
+
+void IndexScheduler::event_catch_up_finished(ton::BlockSeqno mc_seqno, td::Result<td::Unit> result) {
+    event_catch_up_active_ = false;
+    if (result.is_error()) {
+        LOG(WARNING) << "Failed to catch up DB for event seqno " << mc_seqno << ": " << result.move_as_error();
+        if (!pending_event_seqno_ || *pending_event_seqno_ < mc_seqno) {
+            pending_event_seqno_ = mc_seqno;
+        }
+        return;
+    }
+    got_newest_mc_seqno(mc_seqno);
+    request_insert_queue_state();
+    try_event_catch_up();
+}
 
 void IndexScheduler::got_newest_mc_seqno(std::uint32_t newest_mc_seqno) {
     auto effective_newest_seqno = newest_mc_seqno;
@@ -318,21 +415,6 @@ void IndexScheduler::got_newest_mc_seqno(std::uint32_t newest_mc_seqno) {
         LOG(INFO) << "Skipped " << skipped_count << " existing seqnos";
     }
     last_known_seqno_ = static_cast<std::int32_t>(effective_newest_seqno);
-
-    const bool adjust_catch_up_interval = !is_bounded_archive_range();
-    if (!is_in_sync_ && (last_known_seqno_ - last_indexed_seqno_ <= IS_IN_SYNC_THRESHOLD)) {
-        LOG(INFO) << "Indexer is in sync with TON node";
-        is_in_sync_ = true;
-        if (adjust_catch_up_interval) {
-            td::actor::send_closure(db_scanner_, &DbScanner::set_catch_up_interval, 0.1);
-        }
-    } else if (is_in_sync_ && (last_known_seqno_ - last_indexed_seqno_ > IS_IN_SYNC_THRESHOLD)) {
-        LOG(WARNING) << "Indexing is out of sync with TON node";
-        is_in_sync_ = false;
-        if (adjust_catch_up_interval) {
-            td::actor::send_closure(db_scanner_, &DbScanner::set_catch_up_interval, 1.0);
-        }
-    }
 }
 
 void IndexScheduler::schedule_seqno(std::uint32_t mc_seqno) {
@@ -453,15 +535,17 @@ void IndexScheduler::seqno_interfaces_processed(std::uint32_t mc_seqno, ParsedBl
 void IndexScheduler::seqno_actions_processed(std::uint32_t mc_seqno, ParsedBlockPtr parsed_block) {
     LOG(DEBUG) << "Actions processed for seqno " << mc_seqno;
     finish_seqno_otel_stage(mc_seqno);
+    const auto* mc_block = find_masterchain_block(*parsed_block);
+    const std::int32_t block_gen_utime = mc_block ? mc_block->gen_utime : 0;
     if (!should_insert_seqno(mc_seqno)) {
-        seqno_processed_without_insert(mc_seqno, mc_seqno < static_cast<std::uint32_t>(from_seqno_) ? "prewarm" : "already_present");
+        seqno_processed_without_insert(mc_seqno, mc_seqno < static_cast<std::uint32_t>(from_seqno_) ? "prewarm" : "already_present", block_gen_utime);
         return;
     }
 
     start_seqno_otel_stage(mc_seqno, "insert_seqno");
     set_seqno_otel_attribute(mc_seqno, "ton.indexer.insert.force", is_in_sync_);
 
-    auto P = td::PromiseCreator::lambda([SelfId = actor_id(this), mc_seqno, timer = td::Timer{}](td::Result<InsertManagerInterface::InsertResult> R) {
+    auto P = td::PromiseCreator::lambda([SelfId = actor_id(this), mc_seqno, block_gen_utime, timer = td::Timer{}](td::Result<InsertManagerInterface::InsertResult> R) {
         if (R.is_error()) {
             auto error = R.move_as_error();
             LOG(ERROR) << "Failed to insert seqno " << mc_seqno << ": " << error;
@@ -476,7 +560,7 @@ void IndexScheduler::seqno_actions_processed(std::uint32_t mc_seqno, ParsedBlock
                                     OtelStageSpan::AttributeValue(*result.is_leader), true);
         }
         g_statistics.record_time(INSERT_SEQNO, timer.elapsed() * 1e3);
-        td::actor::send_closure(SelfId, &IndexScheduler::seqno_inserted, mc_seqno);
+        td::actor::send_closure(SelfId, &IndexScheduler::seqno_inserted, mc_seqno, block_gen_utime);
     });
     inserting_seqnos_.insert(mc_seqno);
     auto Q = td::PromiseCreator::lambda([SelfId = actor_id(this), mc_seqno](td::Result<QueueState> R){
@@ -487,11 +571,12 @@ void IndexScheduler::seqno_actions_processed(std::uint32_t mc_seqno, ParsedBlock
                                 is_in_sync_, std::move(Q), std::move(P));
 }
 
-void IndexScheduler::seqno_processed_without_insert(std::uint32_t mc_seqno, const char* reason) {
+void IndexScheduler::seqno_processed_without_insert(std::uint32_t mc_seqno, const char* reason, std::int32_t block_gen_utime) {
     LOG(DEBUG) << "Processed seqno " << mc_seqno << " without insert: " << reason;
     set_seqno_otel_attribute(mc_seqno, "ton.indexer.insert.skipped", true, true);
     set_seqno_otel_attribute(mc_seqno, "ton.indexer.insert.skip_reason", std::string(reason), true);
     finish_seqno_otel_trace(mc_seqno);
+    note_indexed_block_utime(block_gen_utime);
     processing_seqnos_.erase(mc_seqno);
     indexed_seqnos_.insert(mc_seqno);
     if (mc_seqno > static_cast<std::uint32_t>(last_indexed_seqno_)) {
@@ -551,11 +636,17 @@ void IndexScheduler::print_stats() {
 
     sb << end_seqno;
     sb << "\t" << td::StringBuilder::FixedDouble(avg_tps_, 2) << " mb/s (" << get_time_string(eta) << ")"
-       << "\tQ[" << cur_queue_state_.mc_blocks_ << "M, " 
-       << cur_queue_state_.blocks_ << "b, " 
-       << cur_queue_state_.txs_ << "t, " 
+       << "\tQ[" << cur_queue_state_.mc_blocks_ << "M, "
+       << cur_queue_state_.blocks_ << "b, "
+       << cur_queue_state_.txs_ << "t, "
        << cur_queue_state_.msgs_ << "m, "
        << cur_queue_state_.traces_ << "T]";
+    if (last_indexed_block_utime_ > 0) {
+        sb << "\tlag " << td::StringBuilder::FixedDouble(td::Clocks::system() - last_indexed_block_utime_, 1) << "s";
+    }
+    if (!db_event_fifo_path_.empty()) {
+        sb << (mc_applied_events_fresh() ? "\tev[ok]" : "\tev[stale]");
+    }
     LOG(INFO) << sb.as_cslice().str();
 }
 
@@ -589,9 +680,10 @@ void IndexScheduler::set_seqno_otel_attribute(std::uint32_t mc_seqno, const std:
     }
 }
 
-void IndexScheduler::seqno_inserted(std::uint32_t mc_seqno) {
+void IndexScheduler::seqno_inserted(std::uint32_t mc_seqno, std::int32_t block_gen_utime) {
     finish_seqno_otel_stage(mc_seqno);
     finish_seqno_otel_trace(mc_seqno);
+    note_indexed_block_utime(block_gen_utime);
     inserting_seqnos_.erase(mc_seqno);
     indexed_seqnos_.insert(mc_seqno);
     if (mc_seqno > last_indexed_seqno_) {

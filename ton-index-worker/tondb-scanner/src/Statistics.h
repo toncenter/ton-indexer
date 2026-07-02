@@ -91,6 +91,9 @@ enum Ticker : uint32_t {
   INSERT_CONFLICT,
   EMULATE_TRACE_ERROR,
 
+  DB_EVENT_MC_BLOCK_APPLIED,
+  DB_EVENT_CATCH_UP,
+
   EMULATE_SRC_REDIS,
   EMULATE_SRC_OVERLAY,
   EMULATE_SRC_BLOCKS,
@@ -135,6 +138,8 @@ const std::unordered_map<uint32_t, std::string_view> ticker_names = {
     {SEQNO_FETCH_ERROR, "indexer.seqno.fetch.error"},
     {INSERT_CONFLICT, "indexer.insert.conflict"},
     {EMULATE_TRACE_ERROR, "emulator.emulate.trace.error"},
+    {DB_EVENT_MC_BLOCK_APPLIED, "indexer.db_event.mc_block_applied"},
+    {DB_EVENT_CATCH_UP, "indexer.db_event.catch_up"},
     {EMULATE_SRC_REDIS, "emulator.source.redis"},
     {EMULATE_SRC_OVERLAY, "emulator.source.overlay"},
     {EMULATE_SRC_BLOCKS, "emulator.source.blocks"}

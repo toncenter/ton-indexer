@@ -4,6 +4,7 @@ add_library(tondb-scanner STATIC
     src/InsertManager.cpp
     src/InsertManagerBase.cpp
     src/DbScanner.cpp
+    src/DbEventListener.cpp
     src/DataParser.cpp
     src/TraceAssembler.cpp
     src/queue_state.cpp

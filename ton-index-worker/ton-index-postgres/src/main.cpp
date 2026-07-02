@@ -36,6 +36,7 @@ int main(int argc, char *argv[]) {
   td::int32 stats_timeout = 1;
   std::string db_root;
   std::string working_dir;
+  std::string db_event_fifo_path;
   td::uint32 last_known_seqno = 0;
   td::uint32 from_seqno = 0;
   td::uint32 to_seqno = 0;
@@ -75,8 +76,11 @@ int main(int argc, char *argv[]) {
   p.add_option('D', "db", "Path to TON DB folder", [&](td::Slice fname) { 
     db_root = fname.str();
   });
-  p.add_option('W', "working-dir", "Path to index working dir for secondary rocksdb logs", [&](td::Slice fname) { 
+  p.add_option('W', "working-dir", "Path to index working dir for secondary rocksdb logs", [&](td::Slice fname) {
     working_dir = fname.str();
+  });
+  p.add_option('\0', "db-event-fifo", "Path to TON node DB events FIFO (validator-engine --db-event-fifo) for low-latency event-driven indexing; polling remains as a fallback", [&](td::Slice fname) {
+    db_event_fifo_path = fname.str();
   });
   p.add_option('\0', "pg", "PostgreSQL connection string", [&](td::Slice value) { 
     credential.conn_str = value.str();
@@ -545,6 +549,10 @@ int main(int argc, char *argv[]) {
     LOG(ERROR) << "--pg-manage-partitions cannot be used with bounded archive indexing (--from and --to)";
     std::_Exit(2);
   }
+  if (bounded_archive_range && !db_event_fifo_path.empty()) {
+    LOG(WARNING) << "--db-event-fifo is ignored with bounded archive indexing (--from and --to)";
+    db_event_fifo_path.clear();
+  }
   const float db_catch_up_interval = bounded_archive_range ? 60.0f : 1.0f;
   td::mkpath(working_dir + "/").ensure();
 
@@ -587,7 +595,8 @@ int main(int argc, char *argv[]) {
   });
 
   scheduler.run_in_context([&, watcher = std::move(watcher)] { index_scheduler_ = td::actor::create_actor<IndexScheduler>("indexscheduler", db_scanner_.get(),
-    insert_manager_.get(), parse_manager_.get(), working_dir, from_seqno, to_seqno, force_index, max_active_tasks, max_queue, stats_timeout, watcher, prewarm_count);
+    insert_manager_.get(), parse_manager_.get(), working_dir, from_seqno, to_seqno, force_index, max_active_tasks, max_queue, stats_timeout, watcher, prewarm_count,
+    db_event_fifo_path);
   });
   if (!bounded_archive_range && failover_check_interval > 0) {
     scheduler.run_in_context([&] {
