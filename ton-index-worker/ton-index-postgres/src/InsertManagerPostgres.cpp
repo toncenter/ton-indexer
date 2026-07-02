@@ -7,6 +7,7 @@
 #include "version.h"
 #include "postgresql_tools.h"
 #include "KvrocksState.h"
+#include "KvrocksProgress.h"
 
 #include <algorithm>
 #include <limits>
@@ -18,12 +19,6 @@
 #include <tuple>
 #include <unordered_set>
 #include <vector>
-
-namespace {
-
-constexpr const char KVROCKS_INDEXED_MC_SEQNOS_KEY[] = "ton-index:v1:progress:indexed_mc_seqnos";
-
-}  // namespace
 
 
 class PostgresLeaderHeartbeat: public td::actor::Actor {
@@ -177,7 +172,7 @@ private:
   void insert_contract_methods(pqxx::work &txn);
   void insert_traces(pqxx::work &txn, bool with_copy);
   void insert_kvrocks();
-  void mark_kvrocks_indexed_seqnos();
+  void claim_kvrocks_written_ranges();
 
   bool try_acquire_leader_lock(pqxx::connection& c, const std::string& worker_id);
   InsertManagerInterface::InsertResult get_insert_result() const;
@@ -3144,10 +3139,7 @@ void InsertBatchPostgres::insert_kvrocks() {
     writer.write();
     exec_elapsed_millis = script_load_timer.elapsed() * 1e3 + writer.exec_elapsed_millis();
   }
-  td::Timer marker_timer;
-  mark_kvrocks_indexed_seqnos();
-  marker_timer.pause();
-  exec_elapsed_millis += marker_timer.elapsed() * 1e3;
+  claim_kvrocks_written_ranges();
   kvrocks_timer.pause();
 
   auto total_ms = static_cast<std::uint64_t>(kvrocks_timer.elapsed() * 1e3);
@@ -3158,28 +3150,41 @@ void InsertBatchPostgres::insert_kvrocks() {
   g_statistics.record_time(INSERT_BATCH_KVROCKS_EXEC, exec_ms);
 }
 
-void InsertBatchPostgres::mark_kvrocks_indexed_seqnos() {
-  if (!kvrocks_ || insert_tasks_.empty()) {
-    return;
-  }
-  if (kvrocks_skip_current_tables_) {
-    LOG(DEBUG) << "Skipping Kvrocks indexed mc_seqno marker because current/upsert table writes are disabled";
+// Reports the batch's seqnos to the Kvrocks progress watermark right after
+// the batch's Kvrocks writes were acknowledged, so the claim follows the data
+// in the replication stream. Called before the Postgres commit on purpose:
+// the claim states a fact about Kvrocks only, and a claim without a Postgres
+// commit merely makes the watermark run slightly ahead of Postgres progress,
+// which the resume min() handles. Failures propagate and retry the batch
+// together with the Kvrocks writes (both are idempotent).
+void InsertBatchPostgres::claim_kvrocks_written_ranges() {
+  if (!kvrocks_ || kvrocks_skip_current_tables_ || insert_tasks_.empty()) {
     return;
   }
 
-  auto pipeline = kvrocks_->pipeline(true);
+  std::vector<std::uint32_t> seqnos;
+  seqnos.reserve(insert_tasks_.size());
   for (const auto& task : insert_tasks_) {
-    pipeline.command("SETBIT", KVROCKS_INDEXED_MC_SEQNOS_KEY, static_cast<long long>(task.mc_seqno_), 1);
+    seqnos.push_back(task.mc_seqno_);
   }
+  std::sort(seqnos.begin(), seqnos.end());
+  seqnos.erase(std::unique(seqnos.begin(), seqnos.end()), seqnos.end());
 
-  auto replies = pipeline.exec();
-  if (replies.size() != insert_tasks_.size()) {
-    throw std::runtime_error("Kvrocks indexed mc_seqno marker reply count mismatch");
+  // Batches are not guaranteed to hold a contiguous seqno range (retries are
+  // re-enqueued to the front of the queue), so claim each contiguous run
+  // separately.
+  std::int64_t range_first = seqnos.front();
+  std::int64_t range_last = range_first;
+  for (std::size_t i = 1; i < seqnos.size(); ++i) {
+    if (seqnos[i] == range_last + 1) {
+      range_last = seqnos[i];
+      continue;
+    }
+    kvrocks_progress::claim_written_range(*kvrocks_, range_first, range_last);
+    range_first = seqnos[i];
+    range_last = seqnos[i];
   }
-  for (std::size_t i = 0; i < replies.size(); ++i) {
-    replies.get<long long>(i);
-  }
-  LOG(DEBUG) << "Marked " << insert_tasks_.size() << " mc seqnos as indexed in Kvrocks bitmap";
+  kvrocks_progress::claim_written_range(*kvrocks_, range_first, range_last);
 }
 
 void InsertBatchPostgres::reset_prepare_state(bool keep_prepared_batch) {
@@ -4451,6 +4456,28 @@ void InsertManagerPostgres::get_existing_seqnos(td::Promise<std::vector<std::uin
   }
 }
 
+std::optional<std::int64_t> InsertManagerPostgres::ensure_kvrocks_progress_initialized(
+    std::int64_t pg_finalized_seqno) {
+  if (!kvrocks_ || kvrocks_skip_current_tables_) {
+    return std::nullopt;
+  }
+
+  auto watermark = kvrocks_progress::get_watermark(*kvrocks_);
+  if (!watermark.has_value()) {
+    LOG(ERROR) << "Kvrocks progress watermark is missing while Postgres progress is at " << pg_finalized_seqno
+               << ". If this is the first run with the watermark feature or Kvrocks was rebuilt on purpose, "
+               << "ignore this message; otherwise Kvrocks has lost its data and must be rebuilt manually. "
+               << "Initializing the watermark at " << pg_finalized_seqno;
+    kvrocks_progress::initialize_watermark_if_missing(*kvrocks_, pg_finalized_seqno);
+    watermark = pg_finalized_seqno;
+  }
+
+  if (failover_baseline_) {
+    failover_baseline_->kvrocks_watermark.store(*watermark, std::memory_order_relaxed);
+  }
+  return watermark;
+}
+
 void InsertManagerPostgres::ensure_resume_state_initialized(td::Promise<bool> promise, std::int32_t from_seqno) {
   LOG(INFO) << "Ensuring Postgres resume state is initialized";
   try {
@@ -4463,13 +4490,28 @@ void InsertManagerPostgres::ensure_resume_state_initialized(td::Promise<bool> pr
         "INSERT INTO _ton_indexer_progress(id, finalized_mc_seqno, updated_at) "
         "VALUES (1, $1, NOW()) "
         "ON CONFLICT (id) DO NOTHING "
-        "RETURNING id",
+        "RETURNING finalized_mc_seqno",
         pqxx::params{initial_finalized_seqno});
-    txn.commit();
 
+    std::int32_t finalized_seqno = initial_finalized_seqno;
     const auto initialized = !inserted.empty();
     if (initialized) {
+      finalized_seqno = inserted[0][0].as<std::int32_t>();
+    } else {
+      auto rows = txn.exec("SELECT finalized_mc_seqno FROM _ton_indexer_progress WHERE id = 1");
+      if (rows.empty()) {
+        throw std::runtime_error("_ton_indexer_progress row is missing");
+      }
+      finalized_seqno = rows[0][0].as<std::int32_t>();
+    }
+    txn.commit();
+
+    if (initialized) {
       LOG(INFO) << "Initialized Postgres resume state with finalized_mc_seqno " << initial_finalized_seqno;
+    }
+    ensure_kvrocks_progress_initialized(finalized_seqno);
+    if (failover_baseline_) {
+      failover_baseline_->finalized_mc_seqno.store(finalized_seqno, std::memory_order_relaxed);
     }
     promise.set_result(initialized);
   } catch (const std::exception &e) {
@@ -4517,25 +4559,54 @@ void InsertManagerPostgres::get_resume_seqno(td::Promise<InsertManagerInterface:
     finalized_seqno = advanced[0][0].as<std::int32_t>();
     txn.commit();
 
-    const auto resume_seqno = finalized_seqno < first_indexable_mc_seqno
+    const auto pg_resume_seqno = finalized_seqno < first_indexable_mc_seqno
         ? static_cast<std::uint32_t>(first_indexable_mc_seqno)
         : static_cast<std::uint32_t>(finalized_seqno + 1);
-    if (to_seqno > 0 && resume_seqno > static_cast<std::uint32_t>(to_seqno)) {
-      LOG(INFO) << "Postgres resume seqno " << resume_seqno << " is above --to " << to_seqno;
+    if (to_seqno > 0 && pg_resume_seqno > static_cast<std::uint32_t>(to_seqno)) {
+      LOG(INFO) << "Postgres resume seqno " << pg_resume_seqno << " is above --to " << to_seqno;
     } else if (initialized_from_cli && finalized_seqno > finalized_before_fast_forward) {
       LOG(INFO) << "Initialized Postgres resume seqno from --from " << from_seqno
-                << " and fast-forwarded through existing blocks to " << resume_seqno;
+                << " and fast-forwarded through existing blocks to " << pg_resume_seqno;
     } else if (initialized_from_cli) {
       LOG(INFO) << "Initialized Postgres resume seqno from --from " << from_seqno;
     } else if (finalized_seqno > finalized_before_fast_forward) {
       LOG(INFO) << "Fast-forwarded Postgres resume seqno through existing blocks from "
-                << (finalized_before_fast_forward + 1) << " to " << resume_seqno;
-    } else if (from_seqno > 0 && resume_seqno != static_cast<std::uint32_t>(from_seqno)) {
-      LOG(INFO) << "Using Postgres resume seqno " << resume_seqno << " instead of --from " << from_seqno;
+                << (finalized_before_fast_forward + 1) << " to " << pg_resume_seqno;
+    } else if (from_seqno > 0 && pg_resume_seqno != static_cast<std::uint32_t>(from_seqno)) {
+      LOG(INFO) << "Using Postgres resume seqno " << pg_resume_seqno << " instead of --from " << from_seqno;
     }
-    const auto starts_exactly_from_cli = initialized_from_cli && finalized_seqno == finalized_before_fast_forward;
+
+    // Resume from the lower durable frontier: Postgres truth or surviving
+    // Kvrocks projection. Replayed blocks are idempotent on both sides.
+    auto resume_seqno = pg_resume_seqno;
+    bool kvrocks_rewind = false;
+    auto watermark = ensure_kvrocks_progress_initialized(finalized_seqno);
+    if (watermark.has_value()) {
+      const auto floor_seqno = static_cast<std::int64_t>(initialized_from_cli ? initial_from_seqno
+                                                                              : first_indexable_mc_seqno);
+      auto kvrocks_resume_seqno = *watermark + 1;
+      if (kvrocks_resume_seqno < floor_seqno) {
+        kvrocks_resume_seqno = floor_seqno;
+      }
+      if (kvrocks_resume_seqno < static_cast<std::int64_t>(pg_resume_seqno)) {
+        resume_seqno = static_cast<std::uint32_t>(kvrocks_resume_seqno);
+        kvrocks_rewind = true;
+        LOG(WARNING) << "Kvrocks progress watermark " << *watermark << " is below Postgres resume seqno "
+                     << pg_resume_seqno << "; rewinding by " << (pg_resume_seqno - resume_seqno)
+                     << " blocks to re-index data missing from Kvrocks";
+      } else {
+        LOG(INFO) << "Kvrocks progress watermark " << *watermark << " covers Postgres resume seqno "
+                  << pg_resume_seqno;
+      }
+    }
+    if (failover_baseline_) {
+      failover_baseline_->finalized_mc_seqno.store(finalized_seqno, std::memory_order_relaxed);
+    }
+
+    const auto starts_exactly_from_cli =
+        initialized_from_cli && finalized_seqno == finalized_before_fast_forward && !kvrocks_rewind;
     promise.set_result(InsertManagerInterface::ResumeState{resume_seqno, starts_exactly_from_cli});
   } catch (const std::exception &e) {
-    promise.set_error(td::Status::Error(ErrorCode::DB_ERROR, PSLICE() << "Error reading Postgres resume seqno: " << e.what()));
+    promise.set_error(td::Status::Error(ErrorCode::DB_ERROR, PSLICE() << "Error reading resume state: " << e.what()));
   }
 }

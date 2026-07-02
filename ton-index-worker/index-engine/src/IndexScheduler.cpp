@@ -281,6 +281,7 @@ void IndexScheduler::start_from_seqno(ton::BlockSeqno seqno, bool reset_trace_as
     }
     read_from_seqno_ = static_cast<std::int32_t>(seqno);
     last_known_seqno_ = read_from_seqno_ - 1;
+    contiguous_indexed_seqno_ = read_from_seqno_ - 1;
     LOG(INFO) << "Starting indexing from seqno: " << read_from_seqno_;
 
     td::actor::send_closure(trace_assembler_, &TraceAssembler::set_expected_seqno, seqno);
@@ -496,6 +497,7 @@ void IndexScheduler::seqno_processed_without_insert(std::uint32_t mc_seqno, cons
     if (mc_seqno > static_cast<std::uint32_t>(last_indexed_seqno_)) {
         last_indexed_seqno_ = static_cast<std::int32_t>(mc_seqno);
     }
+    advance_contiguous_indexed_seqno();
     g_statistics.record_time(PROCESS_SEQNO, timers_[mc_seqno].elapsed() * 1e3);
     timers_.erase(mc_seqno);
     schedule_next_seqnos();
@@ -595,9 +597,20 @@ void IndexScheduler::seqno_inserted(std::uint32_t mc_seqno) {
     if (mc_seqno > last_indexed_seqno_) {
         last_indexed_seqno_ = mc_seqno;
     }
+    advance_contiguous_indexed_seqno();
     g_statistics.record_time(PROCESS_SEQNO, timers_[mc_seqno].elapsed() * 1e3);
     timers_.erase(mc_seqno);
     maybe_finish_bounded_range();
+}
+
+void IndexScheduler::advance_contiguous_indexed_seqno() {
+    while (indexed_seqnos_.count(static_cast<std::uint32_t>(contiguous_indexed_seqno_ + 1)) > 0) {
+        ++contiguous_indexed_seqno_;
+    }
+}
+
+void IndexScheduler::get_contiguous_indexed_seqno(td::Promise<std::int32_t> promise) {
+    promise.set_result(std::int32_t{contiguous_indexed_seqno_});
 }
 
 void IndexScheduler::handle_seqno_failure(std::uint32_t mc_seqno, std::string error_type, td::Status error, bool silent) {
