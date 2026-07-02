@@ -10,7 +10,9 @@
 #include "../../index-engine/src/IndexScheduler.h"
 #include "DataParser.h"
 #include "DbScanner.h"
+#include "FailoverWatchdog.h"
 #include "InsertManagerPostgres.h"
+#include "KvrocksClient.h"
 #include "TraceAssembler.h"
 
 #include <atomic>
@@ -26,6 +28,7 @@ int main(int argc, char *argv[]) {
   td::actor::ActorOwn<ParseManager> parse_manager_;
   td::actor::ActorOwn<InsertManagerPostgres> insert_manager_;
   td::actor::ActorOwn<IndexScheduler> index_scheduler_;
+  td::actor::ActorOwn<FailoverWatchdog> failover_watchdog_;
 
   // options
   td::uint32 threads = 7;
@@ -44,6 +47,8 @@ int main(int argc, char *argv[]) {
   bool run_migrations = true;
   bool kvrocks_skip_current_tables = false;
   bool pg_no_copy = false;
+  double failover_check_interval = 10.0;
+  std::uint32_t failover_strikes = 3;
   InsertManagerPostgres::Credential credential;
   KvrocksConfig kvrocks_config;
   PartitionManagerConfig partition_config;
@@ -322,7 +327,34 @@ int main(int argc, char *argv[]) {
     return td::Status::OK();
   });
 
-  p.add_checked_option('\0', "max-data-depth", "Max data cell depth to store in latest account states", [&](td::Slice value) { 
+  p.add_checked_option('\0', "failover-check-interval", "Seconds between failover watchdog checks for Postgres/Kvrocks progress regression; 0 disables the watchdog (default: 10)", [&](td::Slice value) {
+    double v;
+    try {
+      v = std::stod(value.str());
+    } catch (...) {
+      return td::Status::Error(ton::ErrorCode::error, "bad value for --failover-check-interval: not a number");
+    }
+    if (v < 0) {
+      return td::Status::Error(ton::ErrorCode::error, "bad value for --failover-check-interval: must be non-negative");
+    }
+    failover_check_interval = v;
+    return td::Status::OK();
+  });
+  p.add_checked_option('\0', "failover-strikes", "Consecutive watchdog checks a probed inconsistency (acknowledged block missing from Postgres) must persist before the worker restarts (default: 3)", [&](td::Slice value) {
+    int v;
+    try {
+      v = std::stoi(value.str());
+    } catch (...) {
+      return td::Status::Error(ton::ErrorCode::error, "bad value for --failover-strikes: not a number");
+    }
+    if (v <= 0) {
+      return td::Status::Error(ton::ErrorCode::error, "bad value for --failover-strikes: must be positive");
+    }
+    failover_strikes = static_cast<std::uint32_t>(v);
+    return td::Status::OK();
+  });
+
+  p.add_checked_option('\0', "max-data-depth", "Max data cell depth to store in latest account states", [&](td::Slice value) {
     int v;
     try {
       v = std::stoi(value.str());
@@ -539,11 +571,13 @@ int main(int argc, char *argv[]) {
     finish_requested->store(true);
   });
 
+  auto failover_baseline = std::make_shared<FailoverBaseline>();
+
   td::actor::Scheduler scheduler({td::actor::Scheduler::NodeInfo{threads, io_workers}});
   scheduler.run_in_context([&] {
     insert_manager_ = td::actor::create_actor<InsertManagerPostgres>(
         "insertmanager", credential, kvrocks_config, partition_config, no_leader, bounded_archive_range,
-        kvrocks_skip_current_tables, pg_no_copy);
+        kvrocks_skip_current_tables, pg_no_copy, failover_baseline);
   });
   scheduler.run_in_context([&] { parse_manager_ = td::actor::create_actor<ParseManager>("parsemanager"); });
   scheduler.run_in_context([&] {
@@ -552,9 +586,26 @@ int main(int argc, char *argv[]) {
                                                      !bounded_archive_range);
   });
 
-  scheduler.run_in_context([&, watcher = std::move(watcher)] { index_scheduler_ = td::actor::create_actor<IndexScheduler>("indexscheduler", db_scanner_.get(), 
+  scheduler.run_in_context([&, watcher = std::move(watcher)] { index_scheduler_ = td::actor::create_actor<IndexScheduler>("indexscheduler", db_scanner_.get(),
     insert_manager_.get(), parse_manager_.get(), working_dir, from_seqno, to_seqno, force_index, max_active_tasks, max_queue, stats_timeout, watcher, prewarm_count);
   });
+  if (!bounded_archive_range && failover_check_interval > 0) {
+    scheduler.run_in_context([&] {
+      std::shared_ptr<sw::redis::Redis> watchdog_kvrocks;
+      if (kvrocks_config.enabled && !kvrocks_skip_current_tables) {
+        auto watchdog_kvrocks_config = kvrocks_config;
+        watchdog_kvrocks_config.pool_size = 2;
+        watchdog_kvrocks = KvrocksClient(watchdog_kvrocks_config).make_redis();
+      }
+      auto scheduler_actor = index_scheduler_.get();
+      FailoverWatchdog::ContiguousIndexedSeqnoGetter getter = [scheduler_actor](td::Promise<std::int32_t> promise) {
+        td::actor::send_closure(scheduler_actor, &IndexScheduler::get_contiguous_indexed_seqno, std::move(promise));
+      };
+      failover_watchdog_ = td::actor::create_actor<FailoverWatchdog>(
+          "failoverwatchdog", credential.get_connection_string(), std::move(watchdog_kvrocks), std::move(getter),
+          failover_baseline, FailoverWatchdog::Options{failover_check_interval, failover_strikes});
+    });
+  }
   scheduler.run_in_context([&] { 
     td::actor::send_closure(insert_manager_, &InsertManagerPostgres::set_parallel_inserts_actors, max_insert_actors);
     td::actor::send_closure(insert_manager_, &InsertManagerPostgres::set_insert_batch_size, batch_size);
@@ -568,6 +619,7 @@ int main(int argc, char *argv[]) {
   }
   if (finish_requested->load()) {
     scheduler.run_in_context([&] {
+      failover_watchdog_.reset();
       index_scheduler_.reset();
       insert_manager_.reset();
       parse_manager_.reset();

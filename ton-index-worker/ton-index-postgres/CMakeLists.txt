@@ -2,8 +2,10 @@ cmake_minimum_required(VERSION 3.16)
 
 add_executable(ton-index-postgres
     src/main.cpp
+    src/FailoverWatchdog.cpp
     src/InsertManagerPostgres.cpp
     src/KvrocksClient.cpp
+    src/KvrocksProgress.cpp
     src/PartitionManagerPostgres.cpp
 )
 

@@ -39,6 +39,11 @@ private:
   std::uint32_t max_active_tasks_{32};
   std::int32_t last_known_seqno_{0};
   std::int32_t last_indexed_seqno_{0};
+  // Highest seqno such that all seqnos from the current start point up to it
+  // are acknowledged (inserted or intentionally skipped). Unlike
+  // last_indexed_seqno_ it never runs ahead across in-flight gaps, so it is a
+  // safe upper bound for the failover watchdog checks.
+  std::int32_t contiguous_indexed_seqno_{0};
   std::int32_t from_seqno_{0};
   std::int32_t read_from_seqno_{0};
   std::int32_t to_seqno_{0};
@@ -78,7 +83,9 @@ public:
   void start_up() override;
   void alarm() override;
   void run();
+  void get_contiguous_indexed_seqno(td::Promise<std::int32_t> promise);
 private:
+  void advance_contiguous_indexed_seqno();
   void schedule_next_seqnos();
 
   void schedule_seqno(std::uint32_t mc_seqno);
