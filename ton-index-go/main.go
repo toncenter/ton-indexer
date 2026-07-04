@@ -2583,6 +2583,9 @@ func main() {
 	var kvrocks_user string
 	var kvrocks_password string
 	var kvrocks_db int
+	var kvrocks_replica_reads bool
+	var kvrocks_staleness_blocks int64
+	var kvrocks_replica_refresh_ms int64
 	var hotcold_split_ttl_ms int64
 
 	flag.StringVar(&settings.PgDsn, "pg", "postgresql://localhost:5432", "PostgreSQL connection string")
@@ -2615,6 +2618,9 @@ func main() {
 	flag.StringVar(&kvrocks_user, "kvrocks-user", "", "Kvrocks username")
 	flag.StringVar(&kvrocks_password, "kvrocks-password", "", "Kvrocks password")
 	flag.IntVar(&kvrocks_db, "kvrocks-db", 0, "Kvrocks database number")
+	flag.BoolVar(&kvrocks_replica_reads, "kvrocks-replica-reads", false, "Read from Kvrocks replicas discovered via Sentinel")
+	flag.Int64Var(&kvrocks_staleness_blocks, "kvrocks-staleness-blocks", 5, "Max watermark lag in masterchain blocks for a Kvrocks replica to serve reads")
+	flag.Int64Var(&kvrocks_replica_refresh_ms, "kvrocks-replica-refresh-ms", 300, "Kvrocks replica discovery and freshness poll interval in milliseconds")
 	flag.Parse()
 	settings.Request.Timeout = time.Duration(timeout_ms) * time.Millisecond
 	if settings.CacheServiceUrl == "" {
@@ -2645,6 +2651,9 @@ func main() {
 			Username:           kvrocks_user,
 			Password:           kvrocks_password,
 			DB:                 kvrocks_db,
+			ReplicaReads:       kvrocks_replica_reads,
+			StalenessBlocks:    kvrocks_staleness_blocks,
+			ReplicaRefresh:     time.Duration(kvrocks_replica_refresh_ms) * time.Millisecond,
 		})
 		if err != nil {
 			log.Fatal(err)

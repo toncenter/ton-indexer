@@ -164,7 +164,7 @@ func messagePtrs(msgs []models.Message) []*models.Message {
 	return ptrs
 }
 
-func attachMessageContentsFromKvrocks(msgs []*models.Message, store *KvrocksStore, settings models.RequestSettings) error {
+func attachMessageContentsFromKvrocks(parentCtx context.Context, msgs []*models.Message, store *KvrocksStore, settings models.RequestSettings) error {
 	if store == nil || len(msgs) == 0 {
 		return nil
 	}
@@ -185,7 +185,7 @@ func attachMessageContentsFromKvrocks(msgs []*models.Message, store *KvrocksStor
 		return nil
 	}
 
-	ctx, cancel_ctx := context.WithTimeout(context.Background(), settings.Timeout)
+	ctx, cancel_ctx := context.WithTimeout(parentCtx, settings.Timeout)
 	defer cancel_ctx()
 	contents, err := store.GetMessageContents(ctx, hashes)
 	if err != nil {
@@ -213,8 +213,8 @@ func attachMessageContentsFromKvrocks(msgs []*models.Message, store *KvrocksStor
 	return nil
 }
 
-func finalizeMessagePtrs(msgs []*models.Message, store *KvrocksStore, settings models.RequestSettings) error {
-	if err := attachMessageContentsFromKvrocks(msgs, store, settings); err != nil {
+func finalizeMessagePtrs(parentCtx context.Context, msgs []*models.Message, store *KvrocksStore, settings models.RequestSettings) error {
+	if err := attachMessageContentsFromKvrocks(parentCtx, msgs, store, settings); err != nil {
 		return models.IndexError{Code: 500, Message: err.Error()}
 	}
 
@@ -231,7 +231,7 @@ func finalizeMessagePtrs(msgs []*models.Message, store *KvrocksStore, settings m
 }
 
 func finalizeMessages(msgs []models.Message, store *KvrocksStore, settings models.RequestSettings) error {
-	return finalizeMessagePtrs(messagePtrs(msgs), store, settings)
+	return finalizeMessagePtrs(store.pinReadSnapshot(context.Background()), messagePtrs(msgs), store, settings)
 }
 
 func queryMessagesImpl(query string, conn *pgxpool.Conn, settings models.RequestSettings, args ...any) ([]models.Message, error) {
