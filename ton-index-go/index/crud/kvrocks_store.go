@@ -2528,7 +2528,6 @@ func (s *KvrocksStore) GetNominatorPool(ctx context.Context, poolAddr string) (*
 }
 
 func (s *KvrocksStore) QueryNominatorPoolsByNominator(ctx context.Context, nominatorAddr string) ([]models.NominatorPoolPosition, error) {
-	ctx = s.pinReadSnapshot(ctx)
 	ids := make([]string, 0)
 	seen := make(map[string]struct{})
 	for offset := int64(0); ; {
