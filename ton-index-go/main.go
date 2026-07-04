@@ -2472,6 +2472,7 @@ func GetValidatorElections(c *fiber.Ctx) error {
 
 // GetValidatorCycles godoc
 // @summary Get validator cycles
+// @description When return_validators=true, each validator's `max_factor` is the participant's raw declared factor (65536 = 1.0); the effective factor used to derive `stake` is min(max_factor, cycle `max_stake_factor`).
 // @tags staking
 // @id getValidatorCycles
 // @param cycle_start query integer false "Validator cycle start time"
@@ -2510,6 +2511,16 @@ func GetValidatorCycles(c *fiber.Ctx) error {
 	addrList := []models.AccountAddress{}
 	if req.StakeHolderAddress != nil {
 		addrList = append(addrList, *req.StakeHolderAddress)
+	}
+	for _, cycle := range cycles {
+		for _, validator := range cycle.Validators {
+			if validator.StakeHolderAddress != nil {
+				addrList = append(addrList, *validator.StakeHolderAddress)
+			}
+			for _, complaint := range validator.Complaints {
+				addrList = append(addrList, complaint.RewardAddress)
+			}
+		}
 	}
 	book, err := pool.QueryAddressBookByAddresses(addrList, requestSettings)
 	if err != nil {

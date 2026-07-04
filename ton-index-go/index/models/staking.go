@@ -159,11 +159,18 @@ type ValidatorElectionsResponse struct {
 } // @name ValidatorElectionsResponse
 
 type ValidatorCycleValidator struct {
-	CycleStart      int32  `json:"cycle_start"`
-	ValidatorIndex  int32  `json:"validator_index"`
-	ValidatorPubkey string `json:"validator_pubkey"`
-	AdnlAddr        string `json:"adnl_addr"`
-	Weight          string `json:"weight"`
+	CycleStart         int32           `json:"cycle_start"`
+	ValidatorIndex     int32           `json:"validator_index"`
+	ValidatorPubkey    string          `json:"validator_pubkey"`
+	AdnlAddr           string          `json:"adnl_addr"`
+	Weight             string          `json:"weight"`
+	StakeHolderAddress *AccountAddress `json:"stake_holder_address,omitempty"`
+	Stake              *string         `json:"stake,omitempty"`
+	// MaxFactor is the participant's raw declared max stake factor (65536 = 1.0), not the effective one.
+	// The elector caps it at the cycle's max_stake_factor when computing Stake, so the effective factor a
+	// consumer should use to relate Stake and MaxFactor is min(MaxFactor, ValidatorCycle.MaxStakeFactor).
+	MaxFactor  *int32               `json:"max_factor,omitempty"`
+	Complaints []ValidatorComplaint `json:"complaints"`
 } // @name ValidatorCycleValidator
 
 type ValidatorCycle struct {

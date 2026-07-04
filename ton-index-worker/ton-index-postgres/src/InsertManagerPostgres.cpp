@@ -4069,6 +4069,15 @@ void InsertBatchPostgres::insert_validator_snapshots(pqxx::work &txn) {
   auto should_replace_snapshot = [](uint32_t existing_seqno, uint32_t incoming_seqno) {
     return existing_seqno <= incoming_seqno;
   };
+  // Merge two nullable RefInt256 snapshots by keeping the larger value (nullopt = "no value").
+  // Used for columns that only ever decrease on-chain (member stake, cycle total_stake via elector
+  // punish()/fines), so the maximum ever observed is the original pre-fine value.
+  auto refint_max = [](const std::optional<td::RefInt256>& a,
+                       const std::optional<td::RefInt256>& b) -> std::optional<td::RefInt256> {
+    if (!a.has_value()) return b;
+    if (!b.has_value()) return a;
+    return td::cmp(a.value(), b.value()) >= 0 ? a : b;
+  };
 
   {
     std::initializer_list<std::string_view> columns = {
@@ -4150,17 +4159,41 @@ void InsertBatchPostgres::insert_validator_snapshots(pqxx::work &txn) {
       "min_validators", "min_stake", "max_stake", "min_total_stake", "max_stake_factor"
     };
     PopulateTableStream stream(txn, "validator_cycles", columns, 1000, false);
+    // election_id and total_stake are enriched from the elector's past_elections(), which only holds
+    // elections still frozen (until stake_held_for after cycle end). A cycle is re-emitted on every key
+    // block of its life; once its election unfreezes, later emissions carry NULL for these two fields, so a
+    // plain `= EXCLUDED` overwrites the previously-enriched values back to NULL -- which is why only the
+    // last couple of cycles ever kept election_id. Keep both sticky:
+    //   - election_id is immutable -> COALESCE (keep the first non-NULL);
+    //   - total_stake is the elector's best_stake and only decreases via fines -> GREATEST (original,
+    //     NULL-safe), consistent with the members' original true_stake.
+    // source_mc_seqno keeps the latest; other columns come from config (present in every block). The WHERE
+    // fires only when something would actually change, which stays order-independent and skips no-op writes.
     stream.setConflictDoUpdate(
         {"utime_since"},
-        "validator_cycles.source_mc_seqno <= EXCLUDED.source_mc_seqno");
+        "EXCLUDED.source_mc_seqno > validator_cycles.source_mc_seqno"
+        " OR GREATEST(validator_cycles.total_stake, EXCLUDED.total_stake) IS DISTINCT FROM validator_cycles.total_stake"
+        " OR COALESCE(validator_cycles.election_id, EXCLUDED.election_id) IS DISTINCT FROM validator_cycles.election_id",
+        {
+          {"election_id", "COALESCE(validator_cycles.election_id, EXCLUDED.election_id)"},
+          {"total_stake", "GREATEST(validator_cycles.total_stake, EXCLUDED.total_stake)"},
+          {"source_mc_seqno", "GREATEST(validator_cycles.source_mc_seqno, EXCLUDED.source_mc_seqno)"},
+        });
 
     std::map<uint32_t, schema::ValidatorCycle> latest_cycles;
     for (const auto& task : insert_tasks_) {
       for (const auto& cycle : task.parsed_block_->validator_cycles_) {
         auto it = latest_cycles.find(cycle.utime_since);
-        if (it == latest_cycles.end() ||
-            should_replace_snapshot(it->second.source_mc_seqno, cycle.source_mc_seqno)) {
-          latest_cycles[cycle.utime_since] = cycle;
+        if (it == latest_cycles.end()) {
+          latest_cycles.emplace(cycle.utime_since, cycle);
+        } else {
+          auto original_total_stake = refint_max(it->second.total_stake, cycle.total_stake);
+          auto original_election_id = it->second.election_id.has_value() ? it->second.election_id : cycle.election_id;
+          if (should_replace_snapshot(it->second.source_mc_seqno, cycle.source_mc_seqno)) {
+            it->second = cycle;  // latest snapshot wins for immutable fields + seqno
+          }
+          it->second.total_stake = std::move(original_total_stake);  // total_stake keeps the max
+          it->second.election_id = original_election_id;             // election_id keeps the first non-null
         }
       }
     }
@@ -4193,22 +4226,43 @@ void InsertBatchPostgres::insert_validator_snapshots(pqxx::work &txn) {
 
   {
     std::initializer_list<std::string_view> columns = {
-      "utime_since", "validator_index", "validator_pubkey", "adnl_addr", "weight", "source_mc_seqno"
+      "utime_since", "validator_index", "validator_pubkey", "adnl_addr", "weight", "stake", "source_mc_seqno"
     };
     PopulateTableStream stream(txn, "validator_cycle_members", columns, 1000, false);
+    // validator_cycle_members columns are either immutable within a cycle (pubkey/adnl/weight) or
+    // monotonic, so each column is merged independently, which makes the upsert order-independent for
+    // any snapshot arrival order (including reorgs/catch-up):
+    //   - stake only ever decreases over a cycle's life (elector punish() does `stake -= fine`), so the
+    //     original true_stake is the maximum ever observed -> GREATEST (also NULL-safe: a snapshot that
+    //     fails to read the frozen dict cannot wipe an already-recorded stake);
+    //   - source_mc_seqno tracks freshness -> GREATEST (keep the latest).
+    // The WHERE fires the update only when it would actually change something (seqno advances, or stake
+    // rises / gets filled), skipping no-op rewrites on re-indexing the same block. This does not affect
+    // the converged state: a skipped update is exactly one where both GREATEST()s are already no-ops.
     stream.setConflictDoUpdate(
         {"utime_since", "validator_index"},
-        "validator_cycle_members.source_mc_seqno <= EXCLUDED.source_mc_seqno");
+        "EXCLUDED.source_mc_seqno > validator_cycle_members.source_mc_seqno"
+        " OR GREATEST(validator_cycle_members.stake, EXCLUDED.stake) IS DISTINCT FROM validator_cycle_members.stake",
+        {
+          {"stake", "GREATEST(validator_cycle_members.stake, EXCLUDED.stake)"},
+          {"source_mc_seqno", "GREATEST(validator_cycle_members.source_mc_seqno, EXCLUDED.source_mc_seqno)"},
+        });
 
+    // Same rule for the in-batch dedup: keep the max stake, latest snapshot for everything else.
     std::map<std::tuple<uint32_t, uint32_t>, schema::ValidatorCycleMember> latest_members;
     for (const auto& task : insert_tasks_) {
       for (const auto& cycle : task.parsed_block_->validator_cycles_) {
         for (const auto& member : cycle.members) {
           auto key = std::make_tuple(member.utime_since, member.validator_index);
           auto it = latest_members.find(key);
-          if (it == latest_members.end() ||
-              should_replace_snapshot(it->second.source_mc_seqno, member.source_mc_seqno)) {
-            latest_members[std::move(key)] = member;
+          if (it == latest_members.end()) {
+            latest_members.emplace(std::move(key), member);
+          } else {
+            auto original_stake = refint_max(it->second.stake, member.stake);
+            if (should_replace_snapshot(it->second.source_mc_seqno, member.source_mc_seqno)) {
+              it->second = member;  // latest snapshot wins for immutable fields + seqno
+            }
+            it->second.stake = std::move(original_stake);  // stake keeps the max (= original true_stake)
           }
         }
       }
@@ -4221,6 +4275,7 @@ void InsertBatchPostgres::insert_validator_snapshots(pqxx::work &txn) {
         member.validator_pubkey,
         member.adnl_addr,
         member.weight,
+        member.stake,
         member.source_mc_seqno
       ));
     }
