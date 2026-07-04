@@ -532,6 +532,17 @@ std::string nominators_json(const std::vector<schema::NominatorPoolNominator>& n
   return jb.string_builder().as_cslice().str();
 }
 
+std::vector<std::string> nominator_address_keys(const std::vector<schema::NominatorPoolNominator>& nominators) {
+  std::vector<std::string> result;
+  result.reserve(nominators.size());
+  for (const auto& nominator : nominators) {
+    result.push_back(address_key(nominator.address));
+  }
+  std::sort(result.begin(), result.end());
+  result.erase(std::unique(result.begin(), result.end()), result.end());
+  return result;
+}
+
 void json_put_common(td::JsonObjectScope& obj, std::uint32_t source_mc_seqno) {
   json_put_i64(obj, "schema_version", 1);
   json_put_i64(obj, "source_mc_seqno", source_mc_seqno);
@@ -1050,7 +1061,11 @@ std::vector<KvrocksIndexEntry> build_indexes(const PreparedNominatorPoolRow& row
   if (row.destroyed) {
     return indexes;
   }
-  add_by_id_index(indexes, "nominator_pools", "all:by_id", address_key(row.address));
+  const auto pool = address_key(row.address);
+  add_by_id_index(indexes, "nominator_pools", "all:by_id", pool);
+  for (const auto& nominator : row.active_nominator_addresses) {
+    add_lex_index(indexes, "nominator_pools", "nominator:" + nominator + ":by_pool", pool);
+  }
   return indexes;
 }
 
@@ -1838,6 +1853,7 @@ PreparedNominatorPoolRow make_destroyed_nominator_pool_row(const DestroyedAccoun
     .min_validator_stake = zero_refint(),
     .min_nominator_stake = zero_refint(),
     .active_nominators = "[]",
+    .active_nominator_addresses = {},
     .last_transaction_lt = state.last_transaction_lt,
     .code_hash = zero_bits256(),
     .data_hash = zero_bits256(),
@@ -2632,6 +2648,7 @@ StateBatch prepare_point_state_batch(const std::vector<PointStateData>& data,
         .min_validator_stake = value.min_validator_stake,
         .min_nominator_stake = value.min_nominator_stake,
         .active_nominators = nominators_json(value.nominators),
+        .active_nominator_addresses = nominator_address_keys(value.nominators),
         .last_transaction_lt = value.last_transaction_lt,
         .code_hash = value.code_hash,
         .data_hash = value.data_hash,

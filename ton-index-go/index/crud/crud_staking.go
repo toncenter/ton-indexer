@@ -356,6 +356,14 @@ func (db *DbClient) GetNominatorPools(nominatorAddr string, settings models.Requ
 	ctx, cancelCtx := context.WithTimeout(context.Background(), settings.Timeout)
 	defer cancelCtx()
 
+	if db.Kvrocks != nil {
+		pools, err := db.Kvrocks.QueryNominatorPoolsByNominator(ctx, nominatorAddr)
+		if err != nil {
+			return nil, models.IndexError{Code: 500, Message: err.Error()}
+		}
+		return pools, nil
+	}
+
 	conn, err := db.Pool.Acquire(ctx)
 	if err != nil {
 		return nil, models.IndexError{Code: 500, Message: err.Error()}
@@ -401,6 +409,17 @@ func (db *DbClient) GetNominatorPools(nominatorAddr string, settings models.Requ
 func (db *DbClient) GetPool(poolAddr string, settings models.RequestSettings) (*models.NominatorPoolInfo, error) {
 	ctx, cancelCtx := context.WithTimeout(context.Background(), settings.Timeout)
 	defer cancelCtx()
+
+	if db.Kvrocks != nil {
+		poolInfo, err := db.Kvrocks.GetNominatorPool(ctx, poolAddr)
+		if err != nil {
+			return nil, models.IndexError{Code: 500, Message: err.Error()}
+		}
+		if poolInfo == nil {
+			return nil, models.IndexError{Code: 404, Message: "Pool not found"}
+		}
+		return poolInfo, nil
+	}
 
 	conn, err := db.Pool.Acquire(ctx)
 	if err != nil {

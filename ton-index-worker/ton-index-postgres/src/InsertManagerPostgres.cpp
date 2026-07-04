@@ -234,6 +234,17 @@ std::string nominators_to_json_string(const std::vector<schema::NominatorPoolNom
   return nominators_json.string_builder().as_cslice().str();
 }
 
+std::vector<std::string> nominator_address_keys(const std::vector<schema::NominatorPoolNominator>& nominators) {
+  std::vector<std::string> result;
+  result.reserve(nominators.size());
+  for (const auto& nominator : nominators) {
+    result.push_back(convert::to_raw_address(nominator.address));
+  }
+  std::sort(result.begin(), result.end());
+  result.erase(std::unique(result.begin(), result.end()), result.end());
+  return result;
+}
+
 void PostgresLeaderHeartbeat::hold() {
   bool was_empty = active_leader_batches_ == 0;
   ++active_leader_batches_;
@@ -636,6 +647,7 @@ struct PreparedNominatorPoolRow {
   td::RefInt256 min_validator_stake;
   td::RefInt256 min_nominator_stake;
   std::string active_nominators;
+  std::vector<std::string> active_nominator_addresses;
   uint64_t last_transaction_lt;
   td::Bits256 code_hash;
   td::Bits256 data_hash;
@@ -1120,6 +1132,7 @@ kvrocks_state::StateBatch make_kvrocks_state_batch(const PreparedBatchPostgres& 
       .min_validator_stake = row.min_validator_stake,
       .min_nominator_stake = row.min_nominator_stake,
       .active_nominators = row.active_nominators,
+      .active_nominator_addresses = row.active_nominator_addresses,
       .last_transaction_lt = row.last_transaction_lt,
       .code_hash = row.code_hash,
       .data_hash = row.data_hash,
@@ -1422,6 +1435,7 @@ PreparedNominatorPoolRow make_destroyed_nominator_pool_row(const DestroyedAccoun
     .min_validator_stake = zero_refint(),
     .min_nominator_stake = zero_refint(),
     .active_nominators = "[]",
+    .active_nominator_addresses = {},
     .last_transaction_lt = state.last_transaction_lt,
     .code_hash = zero_bits256(),
     .data_hash = zero_bits256(),
@@ -2568,6 +2582,7 @@ void collect_and_prepare_batch_rows(const std::vector<InsertTaskStruct>& insert_
         .min_validator_stake = pool.min_validator_stake,
         .min_nominator_stake = pool.min_nominator_stake,
         .active_nominators = nominators_to_json_string(pool.nominators),
+        .active_nominator_addresses = nominator_address_keys(pool.nominators),
         .last_transaction_lt = pool.last_transaction_lt,
         .code_hash = pool.code_hash,
         .data_hash = pool.data_hash,

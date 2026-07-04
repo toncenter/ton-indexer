@@ -17,6 +17,7 @@ import (
 
 const kvrocksKeyPrefix = "ton-index:v1"
 const kvrocksAddressBookStateScriptBatchSize = 200
+const kvrocksNominatorPoolsBatchSize = 1000
 
 // Address book only needs code_hash and contract methods; keep BOC-heavy account state payloads inside Kvrocks.
 var kvrocksAddressBookStateScript = redis.NewScript(`
@@ -2467,6 +2468,115 @@ func (s *KvrocksStore) orderedVestingContracts(ctx context.Context, ids []string
 	}
 	if err := s.attachVestingWhitelist(ctx, res); err != nil {
 		return nil, err
+	}
+	return res, nil
+}
+
+type kvNominatorPoolPayload struct {
+	StakeAmountSent      string                       `json:"stake_amount_sent"`
+	ValidatorAmount      string                       `json:"validator_amount"`
+	ValidatorAddress     models.AccountAddress        `json:"validator_address"`
+	ValidatorRewardShare int                          `json:"validator_reward_share"`
+	State                int                          `json:"state"`
+	NominatorsCount      int                          `json:"nominators_count"`
+	MaxNominatorsCount   int                          `json:"max_nominators_count"`
+	MinValidatorStake    string                       `json:"min_validator_stake"`
+	MinNominatorStake    string                       `json:"min_nominator_stake"`
+	ActiveNominators     []models.ActiveNominatorInfo `json:"active_nominators"`
+}
+
+func decodeNominatorPoolPayload(id string, payload string) (models.NominatorPoolInfo, error) {
+	var row kvNominatorPoolPayload
+	if err := json.Unmarshal([]byte(payload), &row); err != nil {
+		return models.NominatorPoolInfo{}, fmt.Errorf("decode nominator_pools %s: %w", id, err)
+	}
+	return models.NominatorPoolInfo{
+		StakeAmountSent:      row.StakeAmountSent,
+		ValidatorAmount:      row.ValidatorAmount,
+		ValidatorAddress:     row.ValidatorAddress,
+		ValidatorRewardShare: row.ValidatorRewardShare,
+		State:                row.State,
+		NominatorsCount:      row.NominatorsCount,
+		MaxNominatorsCount:   row.MaxNominatorsCount,
+		MinValidatorStake:    row.MinValidatorStake,
+		MinNominatorStake:    row.MinNominatorStake,
+		ActiveNominators:     row.ActiveNominators,
+	}, nil
+}
+
+func (s *KvrocksStore) GetNominatorPool(ctx context.Context, poolAddr string) (*models.NominatorPoolInfo, error) {
+	payloads, err := s.getPayloads(ctx, "nominator_pools", []string{poolAddr})
+	if err != nil {
+		return nil, err
+	}
+	payload, ok := payloads[poolAddr]
+	if !ok {
+		return nil, nil
+	}
+	destroyed, err := kvrocksPayloadDestroyed(poolAddr, "nominator_pools", payload)
+	if err != nil {
+		return nil, err
+	}
+	if destroyed {
+		return nil, nil
+	}
+	pool, err := decodeNominatorPoolPayload(poolAddr, payload)
+	if err != nil {
+		return nil, err
+	}
+	return &pool, nil
+}
+
+func (s *KvrocksStore) QueryNominatorPoolsByNominator(ctx context.Context, nominatorAddr string) ([]models.NominatorPoolPosition, error) {
+	ctx = s.pinReadSnapshot(ctx)
+	ids := make([]string, 0)
+	seen := make(map[string]struct{})
+	for offset := int64(0); ; {
+		members, err := s.rangeByLex(ctx, "nominator_pools", "nominator:"+nominatorAddr+":by_pool",
+			kvrocksNominatorPoolsBatchSize, offset, false)
+		if err != nil {
+			return nil, err
+		}
+		for _, member := range members {
+			ids = appendUniqueString(ids, seen, member)
+		}
+		if len(members) < kvrocksNominatorPoolsBatchSize {
+			break
+		}
+		offset += int64(len(members))
+	}
+
+	payloads, err := s.getPayloads(ctx, "nominator_pools", ids)
+	if err != nil {
+		return nil, err
+	}
+	res := make([]models.NominatorPoolPosition, 0, len(ids))
+	for _, id := range ids {
+		payload, ok := payloads[id]
+		if !ok {
+			continue
+		}
+		destroyed, err := kvrocksPayloadDestroyed(id, "nominator_pools", payload)
+		if err != nil {
+			return nil, err
+		}
+		if destroyed {
+			continue
+		}
+		pool, err := decodeNominatorPoolPayload(id, payload)
+		if err != nil {
+			return nil, err
+		}
+		for _, nominator := range pool.ActiveNominators {
+			if nominator.Address == nominatorAddr {
+				res = append(res, models.NominatorPoolPosition{
+					PoolAddress:    models.AccountAddress(id),
+					Balance:        nominator.Balance,
+					PendingBalance: nominator.PendingBalance,
+				})
+				break
+			}
+		}
 	}
 	return res, nil
 }

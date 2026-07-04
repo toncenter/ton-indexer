@@ -362,6 +362,7 @@ struct PreparedNominatorPoolRow {
   td::RefInt256 min_validator_stake;
   td::RefInt256 min_nominator_stake;
   std::string active_nominators;
+  std::vector<std::string> active_nominator_addresses;
   std::uint64_t last_transaction_lt;
   td::Bits256 code_hash;
   td::Bits256 data_hash;
