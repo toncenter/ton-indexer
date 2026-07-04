@@ -333,15 +333,20 @@ func finalizeTransactionPtrsFromKvrocks(txs []*models.Transaction, store *Kvrock
 		return nil
 	}
 
+	maxMcSeqno := uint32(0)
 	hashes := make([]models.HashType, 0, len(txs)*2)
 	for _, tx := range txs {
 		if tx == nil {
 			continue
 		}
+		if tx.McSeqno > 0 && uint32(tx.McSeqno) > maxMcSeqno {
+			maxMcSeqno = uint32(tx.McSeqno)
+		}
 		hashes = append(hashes, tx.AccountStateHashBefore, tx.AccountStateHashAfter)
 	}
+	pinnedCtx := store.pinReadSnapshot(kvrocksContextWithMaxKnownMcSeqno(context.Background(), maxMcSeqno))
 	if len(hashes) > 0 {
-		ctx, cancel_ctx := context.WithTimeout(context.Background(), settings.Timeout)
+		ctx, cancel_ctx := context.WithTimeout(pinnedCtx, settings.Timeout)
 		defer cancel_ctx()
 		acsts_map, err := store.GetAccountStates(ctx, hashes)
 		if err != nil {
@@ -360,7 +365,7 @@ func finalizeTransactionPtrsFromKvrocks(txs []*models.Transaction, store *Kvrock
 		}
 	}
 
-	return finalizeMessagePtrs(transactionMessagePtrs(txs), store, settings)
+	return finalizeMessagePtrs(pinnedCtx, transactionMessagePtrs(txs), store, settings)
 }
 
 func finalizeTraceTransactionsFromKvrocks(traces []models.Trace, store *KvrocksStore, settings models.RequestSettings) error {

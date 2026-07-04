@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/redis/go-redis/v9"
 	"github.com/toncenter/ton-indexer/ton-index-go/index/detect"
@@ -62,10 +63,23 @@ type KvrocksConfig struct {
 	Username           string
 	Password           string
 	DB                 int
+
+	ReplicaReads    bool
+	StalenessBlocks int64
+	ReplicaRefresh  time.Duration
 }
 
 type KvrocksStore struct {
-	client redis.UniversalClient
+	client   redis.UniversalClient
+	replicas *kvrocksReplicaSet
+}
+
+// Immutable hash-addressed payloads referenced by postgres rows: the worker
+// writes them to kvrocks before the postgres commit, so a miss on a replica
+// always means replication lag and the key can be refetched from the master.
+var kvrocksRefillTables = map[string]struct{}{
+	"message_contents": {},
+	"account_states":   {},
 }
 
 func NewKvrocksStore(cfg KvrocksConfig) (*KvrocksStore, error) {
@@ -106,11 +120,30 @@ func NewKvrocksStore(cfg KvrocksConfig) (*KvrocksStore, error) {
 		_ = client.Close()
 		return nil, err
 	}
-	return &KvrocksStore{client: client}, nil
+	if err := kvrocksAddressBookStateScript.Load(context.Background(), client).Err(); err != nil {
+		log.Printf("failed to preload kvrocks address book script: %v", err)
+	}
+
+	store := &KvrocksStore{client: client}
+	if cfg.ReplicaReads && len(cfg.SentinelAddrs) > 0 {
+		if cfg.ReplicaRefresh <= 0 {
+			cfg.ReplicaRefresh = 300 * time.Millisecond
+		}
+		if cfg.StalenessBlocks < 0 {
+			cfg.StalenessBlocks = 0
+		}
+		store.replicas = newKvrocksReplicaSet(cfg, client)
+		log.Printf("kvrocks replica reads enabled: staleness <= %d blocks, refresh every %s", cfg.StalenessBlocks, cfg.ReplicaRefresh)
+	}
+	return store, nil
 }
 
 func (s *KvrocksStore) Close() error {
-	if s == nil || s.client == nil {
+	if s == nil {
+		return nil
+	}
+	s.replicas.close()
+	if s.client == nil {
 		return nil
 	}
 	return s.client.Close()
@@ -149,24 +182,68 @@ func (s *KvrocksStore) getPayloads(ctx context.Context, table string, ids []stri
 		return payloads, nil
 	}
 
-	values, err := s.client.MGet(ctx, keys...).Result()
+	values, replica, err := kvReadWithFallback(ctx, s, func(c redis.UniversalClient) ([]interface{}, error) {
+		return c.MGet(ctx, keys...).Result()
+	})
 	if err != nil {
 		return nil, err
 	}
+
+	missing := make([]int, 0)
 	for idx, value := range values {
 		if value == nil {
+			missing = append(missing, idx)
 			continue
 		}
-		switch payload := value.(type) {
-		case string:
+		payload, err := kvrocksPayloadString(value)
+		if err != nil {
+			return nil, fmt.Errorf("%w for %s", err, uniqueIDs[idx])
+		}
+		payloads[uniqueIDs[idx]] = payload
+	}
+
+	// A replica may not have received the newest immutable payloads yet;
+	// refetch exactly the missing keys from the master. Intermediate account
+	// states (non-last transaction of an account within a block) are never
+	// written to kvrocks at all, so when the replica already covers the
+	// requested blocks a miss is a legitimate absence and nothing is refetched.
+	readOptions := kvrocksReadOptionsFromContext(ctx)
+	if _, refill := kvrocksRefillTables[table]; refill && replica != nil && len(missing) > 0 && replica.mayLagBehind(readOptions.maxKnownMcSeqno) {
+		missingKeys := make([]string, len(missing))
+		for i, idx := range missing {
+			missingKeys[i] = keys[idx]
+		}
+		refillValues, err := s.client.MGet(ctx, missingKeys...).Result()
+		if err != nil {
+			return nil, err
+		}
+		if s.replicas != nil {
+			s.replicas.refilledKeys.Add(uint64(len(missingKeys)))
+		}
+		for i, value := range refillValues {
+			if value == nil {
+				continue
+			}
+			idx := missing[i]
+			payload, err := kvrocksPayloadString(value)
+			if err != nil {
+				return nil, fmt.Errorf("%w for %s", err, uniqueIDs[idx])
+			}
 			payloads[uniqueIDs[idx]] = payload
-		case []byte:
-			payloads[uniqueIDs[idx]] = string(payload)
-		default:
-			return nil, fmt.Errorf("unexpected kvrocks payload type %T for %s", value, uniqueIDs[idx])
 		}
 	}
 	return payloads, nil
+}
+
+func kvrocksPayloadString(value interface{}) (string, error) {
+	switch payload := value.(type) {
+	case string:
+		return payload, nil
+	case []byte:
+		return string(payload), nil
+	default:
+		return "", fmt.Errorf("unexpected kvrocks payload type %T", value)
+	}
 }
 
 func kvrocksPayloadDestroyed(id string, table string, payload string) (bool, error) {
@@ -223,10 +300,13 @@ func (s *KvrocksStore) rangeByID(ctx context.Context, table string, indexName st
 	start := offset
 	stop := offset + limit - 1
 	key := s.indexKey(table, indexName)
-	if desc {
-		return s.client.ZRevRange(ctx, key, start, stop).Result()
-	}
-	return s.client.ZRange(ctx, key, start, stop).Result()
+	values, _, err := kvReadWithFallback(ctx, s, func(c redis.UniversalClient) ([]string, error) {
+		if desc {
+			return c.ZRevRange(ctx, key, start, stop).Result()
+		}
+		return c.ZRange(ctx, key, start, stop).Result()
+	})
+	return values, err
 }
 
 func (s *KvrocksStore) rangeByLex(ctx context.Context, table string, indexName string, limit int64, offset int64, desc bool) ([]string, error) {
@@ -235,10 +315,13 @@ func (s *KvrocksStore) rangeByLex(ctx context.Context, table string, indexName s
 	}
 	key := s.indexKey(table, indexName)
 	opt := &redis.ZRangeBy{Min: "-", Max: "+", Offset: offset, Count: limit}
-	if desc {
-		return s.client.ZRevRangeByLex(ctx, key, opt).Result()
-	}
-	return s.client.ZRangeByLex(ctx, key, opt).Result()
+	values, _, err := kvReadWithFallback(ctx, s, func(c redis.UniversalClient) ([]string, error) {
+		if desc {
+			return c.ZRevRangeByLex(ctx, key, opt).Result()
+		}
+		return c.ZRangeByLex(ctx, key, opt).Result()
+	})
+	return values, err
 }
 
 func (s *KvrocksStore) rangeByLexBounds(ctx context.Context, table string, indexName string, min string, max string, limit int64, offset int64, desc bool) ([]string, error) {
@@ -247,10 +330,13 @@ func (s *KvrocksStore) rangeByLexBounds(ctx context.Context, table string, index
 	}
 	key := s.indexKey(table, indexName)
 	opt := &redis.ZRangeBy{Min: min, Max: max, Offset: offset, Count: limit}
-	if desc {
-		return s.client.ZRevRangeByLex(ctx, key, opt).Result()
-	}
-	return s.client.ZRangeByLex(ctx, key, opt).Result()
+	values, _, err := kvReadWithFallback(ctx, s, func(c redis.UniversalClient) ([]string, error) {
+		if desc {
+			return c.ZRevRangeByLex(ctx, key, opt).Result()
+		}
+		return c.ZRangeByLex(ctx, key, opt).Result()
+	})
+	return values, err
 }
 
 func (s *KvrocksStore) rangeByIDWithScores(ctx context.Context, table string, indexName string, limit int64, offset int64, desc bool) ([]redis.Z, error) {
@@ -260,10 +346,13 @@ func (s *KvrocksStore) rangeByIDWithScores(ctx context.Context, table string, in
 	start := offset
 	stop := offset + limit - 1
 	key := s.indexKey(table, indexName)
-	if desc {
-		return s.client.ZRevRangeWithScores(ctx, key, start, stop).Result()
-	}
-	return s.client.ZRangeWithScores(ctx, key, start, stop).Result()
+	values, _, err := kvReadWithFallback(ctx, s, func(c redis.UniversalClient) ([]redis.Z, error) {
+		if desc {
+			return c.ZRevRangeWithScores(ctx, key, start, stop).Result()
+		}
+		return c.ZRangeWithScores(ctx, key, start, stop).Result()
+	})
+	return values, err
 }
 
 func appendUniqueString(dst []string, seen map[string]struct{}, value string) []string {
@@ -835,7 +924,9 @@ func (s *KvrocksStore) getAddressBookStates(ctx context.Context, addresses []mod
 			args = append(args, address.String())
 		}
 
-		raw, err := kvrocksAddressBookStateScript.Run(ctx, s.client, nil, args...).Result()
+		raw, _, err := kvReadWithFallback(ctx, s, func(c redis.UniversalClient) (interface{}, error) {
+			return kvrocksAddressBookStateScript.RunRO(ctx, c, nil, args...).Result()
+		})
 		if err != nil {
 			return nil, err
 		}
@@ -851,6 +942,7 @@ func (s *KvrocksStore) getAddressBookStates(ctx context.Context, addresses []mod
 }
 
 func (s *KvrocksStore) getLatestAccountStatesByIDs(ctx context.Context, ids []string, includeBOC bool) ([]models.AccountStateFull, error) {
+	ctx = s.pinReadSnapshot(ctx)
 	payloads, err := s.getPayloads(ctx, "latest_account_states", ids)
 	if err != nil {
 		return nil, err
@@ -913,6 +1005,7 @@ func (s *KvrocksStore) GetLatestAccountStates(ctx context.Context, addresses []m
 }
 
 func (s *KvrocksStore) QueryAccountStates(ctx context.Context, accountReq models.AccountRequest, settings models.RequestSettings) ([]models.AccountStateFull, error) {
+	ctx = s.pinReadSnapshot(ctx)
 	includeBOC := true
 	if accountReq.IncludeBOC != nil {
 		includeBOC = *accountReq.IncludeBOC
@@ -966,6 +1059,7 @@ func (s *KvrocksStore) QueryAccountStates(ctx context.Context, accountReq models
 }
 
 func (s *KvrocksStore) QueryTopAccountBalances(ctx context.Context, req models.TopAccountsByBalanceRequest, settings models.RequestSettings) ([]models.AccountBalance, error) {
+	ctx = s.pinReadSnapshot(ctx)
 	limReq := req.GetLimitParams()
 
 	limit, offset, err := kvrocksLimitOffset(limReq, settings)
@@ -1082,6 +1176,7 @@ func (s *KvrocksStore) GetJettonMasters(ctx context.Context, addresses []models.
 }
 
 func (s *KvrocksStore) QueryJettonMasters(ctx context.Context, req models.JettonMasterRequest, settings models.RequestSettings) ([]models.JettonMaster, error) {
+	ctx = s.pinReadSnapshot(ctx)
 	limReq := req.GetLimitParams()
 
 	limit, offset, err := kvrocksLimitOffset(limReq, settings)
@@ -1146,6 +1241,7 @@ func (s *KvrocksStore) QueryJettonMasters(ctx context.Context, req models.Jetton
 }
 
 func (s *KvrocksStore) QueryJettonWallets(ctx context.Context, req models.JettonWalletRequest, settings models.RequestSettings) ([]models.JettonWallet, error) {
+	ctx = s.pinReadSnapshot(ctx)
 	limReq := req.GetLimitParams()
 
 	limit, offset, err := kvrocksLimitOffset(limReq, settings)
@@ -1321,6 +1417,7 @@ func (s *KvrocksStore) GetNFTCollections(ctx context.Context, addresses []models
 }
 
 func (s *KvrocksStore) QueryNFTCollections(ctx context.Context, req models.NFTCollectionRequest, settings models.RequestSettings) ([]models.NFTCollection, error) {
+	ctx = s.pinReadSnapshot(ctx)
 	limReq := req.GetLimitParams()
 
 	limit, offset, err := kvrocksLimitOffset(limReq, settings)
@@ -1457,6 +1554,7 @@ func (s *KvrocksStore) attachNFTItemDetails(ctx context.Context, items []models.
 }
 
 func (s *KvrocksStore) QueryNFTItems(ctx context.Context, req models.NFTItemRequest, settings models.RequestSettings) ([]models.NFTItem, error) {
+	ctx = s.pinReadSnapshot(ctx)
 	limReq := req.GetLimitParams()
 
 	if len(req.Index) > 0 && len(req.CollectionAddress) == 0 {
@@ -1676,6 +1774,7 @@ func (s *KvrocksStore) decodeDNSRecords(ids []string, payloads map[string]string
 }
 
 func (s *KvrocksStore) QueryDNSRecords(ctx context.Context, req models.DNSRecordsRequest, settings models.RequestSettings) ([]models.DNSRecord, error) {
+	ctx = s.pinReadSnapshot(ctx)
 	limReq := req.GetLimitParams()
 
 	limit, offset, err := kvrocksLimitOffset(limReq, settings)
@@ -1703,6 +1802,7 @@ func (s *KvrocksStore) QueryDNSRecords(ctx context.Context, req models.DNSRecord
 }
 
 func (s *KvrocksStore) GetNFTSales(ctx context.Context, addresses []models.AccountAddress) ([]models.RawNFTSale, error) {
+	ctx = s.pinReadSnapshot(ctx)
 	sales, err := s.getGetgemsSales(ctx, addresses)
 	if err != nil {
 		return nil, err
@@ -2235,6 +2335,7 @@ func decodeMultisigOrderPayload(id string, payload string) (models.MultisigOrder
 }
 
 func (s *KvrocksStore) QueryMultisigs(ctx context.Context, req models.MultisigRequest, settings models.RequestSettings) ([]models.Multisig, error) {
+	ctx = s.pinReadSnapshot(ctx)
 	limReq := req.GetLimitParams()
 
 	limit, offset, err := kvrocksLimitOffset(limReq, settings)
@@ -2347,6 +2448,7 @@ func (s *KvrocksStore) attachMultisigOrders(ctx context.Context, multisigs []mod
 }
 
 func (s *KvrocksStore) QueryMultisigOrders(ctx context.Context, req models.MultisigOrderRequest, settings models.RequestSettings) ([]models.MultisigOrder, error) {
+	ctx = s.pinReadSnapshot(ctx)
 	limReq := req.GetLimitParams()
 
 	limit, offset, err := kvrocksLimitOffset(limReq, settings)
@@ -2595,6 +2697,7 @@ func (s *KvrocksStore) attachVestingWhitelist(ctx context.Context, vestings []mo
 }
 
 func (s *KvrocksStore) QueryVestingContracts(ctx context.Context, req models.VestingContractsRequest, settings models.RequestSettings) ([]models.VestingInfo, error) {
+	ctx = s.pinReadSnapshot(ctx)
 	limReq := req.GetLimitParams()
 	if len(req.ContractAddress) == 0 && len(req.WalletAddress) == 0 {
 		return nil, models.IndexError{Code: 422, Message: "at least one of contract_address or wallet_address is required"}
@@ -2650,13 +2753,30 @@ func (s *KvrocksStore) batchPrimaryDomains(ctx context.Context, addrList []model
 	}
 
 	// primary-domain ZRANGEBYLEX per address.
-	pipe := s.client.Pipeline()
-	cmds := make([]*redis.StringSliceCmd, len(addrList))
-	for i, raw := range addrList {
-		key := s.indexKey("dns_entries", "owner_wallet:"+raw.String()+":by_domain")
-		cmds[i] = pipe.ZRangeByLex(ctx, key, &redis.ZRangeBy{Min: "-", Max: "+", Offset: 0, Count: 1})
-	}
-	if _, err := pipe.Exec(ctx); err != nil && err != redis.Nil {
+	memberLists, _, err := kvReadWithFallback(ctx, s, func(c redis.UniversalClient) ([][]string, error) {
+		pipe := c.Pipeline()
+		cmds := make([]*redis.StringSliceCmd, len(addrList))
+		for i, raw := range addrList {
+			key := s.indexKey("dns_entries", "owner_wallet:"+raw.String()+":by_domain")
+			cmds[i] = pipe.ZRangeByLex(ctx, key, &redis.ZRangeBy{Min: "-", Max: "+", Offset: 0, Count: 1})
+		}
+		if _, err := pipe.Exec(ctx); err != nil && err != redis.Nil {
+			return nil, err
+		}
+		lists := make([][]string, len(addrList))
+		for i := range cmds {
+			members, err := cmds[i].Result()
+			if err != nil {
+				if err == redis.Nil {
+					continue
+				}
+				return nil, err
+			}
+			lists[i] = members
+		}
+		return lists, nil
+	})
+	if err != nil {
 		return nil, err
 	}
 
@@ -2664,14 +2784,7 @@ func (s *KvrocksStore) batchPrimaryDomains(ctx context.Context, addrList []model
 	addrIDs := make([][]string, len(addrList))
 	allIDs := []string{}
 	for i := range addrList {
-		members, err := cmds[i].Result()
-		if err != nil {
-			if err == redis.Nil {
-				continue
-			}
-			return nil, err
-		}
-		ids := addressIDsFromLexMembers(members)
+		ids := addressIDsFromLexMembers(memberLists[i])
 		addrIDs[i] = ids
 		allIDs = append(allIDs, ids...)
 	}
@@ -2713,6 +2826,7 @@ func QueryAddressBookImplKvrocks(addrList []models.AccountAddress, store *Kvrock
 
 	ctx, cancel := context.WithTimeout(context.Background(), settings.Timeout)
 	defer cancel()
+	ctx = store.pinReadSnapshot(ctx)
 	uniqueAddrList := uniqueAccountAddresses(addrList)
 	states, err := store.getAddressBookStates(ctx, uniqueAddrList)
 	if err != nil {
@@ -2868,6 +2982,7 @@ func QueryMetadataImplKvrocks(addrList []models.AccountAddress, settings models.
 
 	ctx, cancel := context.WithTimeout(context.Background(), settings.Timeout)
 	defer cancel()
+	ctx = store.pinReadSnapshot(ctx)
 
 	tokenInfoMap := map[models.AccountAddress][]models.TokenInfo{}
 	jettonWalletInfos, additionalAddrs, err := store.queryJettonWalletsTokenInfo(ctx, addrList)
