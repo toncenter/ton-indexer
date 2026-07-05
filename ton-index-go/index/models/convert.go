@@ -3,7 +3,6 @@ package models
 import (
 	"encoding/base64"
 	"encoding/hex"
-	"errors"
 	"fmt"
 	"reflect"
 	"strconv"
@@ -204,12 +203,9 @@ func MustParseAccountAddress(s string) AccountAddress {
 }
 
 func ParseHashType(s string) (*HashType, error) {
-	val, err := base64.StdEncoding.DecodeString(s)
+	val, err := ParseHashBytes(s)
 	if err != nil {
 		return nil, err
-	}
-	if len(val) != 32 {
-		return nil, errors.New(fmt.Sprintf("invalid hash type 32 bytes expected, got %d", len(val)))
 	}
 	return new(HashType(base64.StdEncoding.EncodeToString(val))), nil
 }
@@ -329,26 +325,43 @@ func GetAccountAddressFriendly(account AccountAddress, code_hash *HashType, is_t
 	return addr.String()
 }
 
+func ParseHashBytes(value string) ([]byte, error) {
+	value = strings.TrimSpace(value)
+	if len(value) == 66 && (strings.HasPrefix(value, "0x") || strings.HasPrefix(value, "0X")) {
+		value = value[2:]
+	}
+	if len(value) == 64 {
+		bytes, err := hex.DecodeString(value)
+		if err != nil {
+			return nil, err
+		}
+		if len(bytes) == 32 {
+			return bytes, nil
+		}
+	}
+	if len(value) == 43 || len(value) == 44 {
+		for _, encoding := range []*base64.Encoding{
+			base64.StdEncoding,
+			base64.URLEncoding,
+			base64.RawStdEncoding,
+			base64.RawURLEncoding,
+		} {
+			bytes, err := encoding.DecodeString(value)
+			if err == nil && len(bytes) == 32 {
+				return bytes, nil
+			}
+		}
+	}
+	return nil, fmt.Errorf("expected 32-byte hash in hex, base64, or base64url format")
+}
+
 // converters
 func HashConverter(value string) reflect.Value {
-	if len(value) == 64 || len(value) == 66 && strings.HasPrefix(value, "0x") {
-		value = strings.TrimPrefix(value, "0x")
-		if res, err := hex.DecodeString(value); err == nil {
-			return reflect.ValueOf(HashType(base64.StdEncoding.EncodeToString(res)))
-		} else {
-			return reflect.Value{}
-		}
+	res, err := ParseHashBytes(value)
+	if err != nil {
+		return reflect.Value{}
 	}
-	if len(value) == 44 {
-		if res, err := base64.StdEncoding.DecodeString(value); err == nil {
-			return reflect.ValueOf(HashType(base64.StdEncoding.EncodeToString(res)))
-		} else if res, err := base64.URLEncoding.DecodeString(value); err == nil {
-			return reflect.ValueOf(HashType(base64.StdEncoding.EncodeToString(res)))
-		} else {
-			return reflect.Value{}
-		}
-	}
-	return reflect.Value{}
+	return reflect.ValueOf(HashType(base64.StdEncoding.EncodeToString(res)))
 }
 
 func AccountAddressConverter(value string) reflect.Value {

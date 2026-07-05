@@ -3,6 +3,8 @@ package crud
 import (
 	"context"
 	"database/sql"
+	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -97,6 +99,7 @@ func (db *DbClient) QueryValidatorEvents(
 
 func (db *DbClient) QueryValidatorElections(
 	req models.ValidatorElectionsRequest,
+	includeParticipants bool,
 	utimeReq models.UtimeParams,
 	settings models.RequestSettings,
 ) ([]models.ValidatorElection, error) {
@@ -193,7 +196,6 @@ func (db *DbClient) QueryValidatorElections(
 	}
 	rows.Close()
 
-	includeParticipants := req.ReturnParticipants != nil && *req.ReturnParticipants
 	if includeParticipants {
 		for i := range elections {
 			participants, err := db.queryValidatorElectionParticipants(ctx, conn, elections[i].ElectionId)
@@ -261,6 +263,7 @@ func (db *DbClient) queryValidatorElectionParticipants(
 
 func (db *DbClient) QueryValidatorCycles(
 	req models.ValidatorCyclesRequest,
+	includeValidators bool,
 	utimeReq models.UtimeParams,
 	settings models.RequestSettings,
 ) ([]models.ValidatorCycle, error) {
@@ -393,10 +396,14 @@ func (db *DbClient) QueryValidatorCycles(
 	}
 	rows.Close()
 
-	includeValidators := req.ReturnValidators != nil && *req.ReturnValidators
 	if includeValidators {
+		var stakeHolderAddress *string
+		if req.StakeHolderAddress != nil {
+			value := string(*req.StakeHolderAddress)
+			stakeHolderAddress = &value
+		}
 		for i := range cycles {
-			validators, err := db.queryValidatorCycleValidators(ctx, conn, cycles[i].CycleStart)
+			validators, err := db.queryValidatorCycleValidators(ctx, conn, cycles[i].CycleStart, stakeHolderAddress)
 			if err != nil {
 				return nil, err
 			}
@@ -421,8 +428,9 @@ func (db *DbClient) queryValidatorCycleValidators(
 	ctx context.Context,
 	conn *pgxpool.Conn,
 	utimeSince int32,
+	stakeHolderAddress *string,
 ) ([]models.ValidatorCycleValidator, error) {
-	rows, err := conn.Query(ctx, `
+	query := `
 		SELECT m.validator_index, m.validator_pubkey,
 		       m.adnl_addr, m.weight::text,
 		       p.stake_holder_address::text, p.max_factor,
@@ -434,12 +442,23 @@ func (db *DbClient) queryValidatorCycleValidators(
 			FROM validator_election_participants p
 			WHERE p.election_id = vc.election_id
 			  AND p.validator_pubkey = m.validator_pubkey
+	`
+	args := []interface{}{utimeSince}
+	if stakeHolderAddress != nil {
+		query += " AND p.stake_holder_address = $2"
+		args = append(args, *stakeHolderAddress)
+	}
+	query += `
 			ORDER BY source_mc_seqno DESC
 			LIMIT 1
 		) p ON true
 		WHERE m.utime_since = $1
-		ORDER BY m.validator_index
-	`, utimeSince)
+	`
+	if stakeHolderAddress != nil {
+		query += " AND p.stake_holder_address IS NOT NULL"
+	}
+	query += " ORDER BY m.validator_index"
+	rows, err := conn.Query(ctx, query, args...)
 	if err != nil {
 		return nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
@@ -650,6 +669,10 @@ func scanValidatorComplaint(rows pgx.Rows) (models.ValidatorComplaint, error) {
 	}
 	if len(votedRaw) == 0 {
 		votedRaw = []byte("[]")
+	}
+	// The worker stores complaint hashes as hex; the API convention for hashes is base64.
+	if decoded, err := hex.DecodeString(complaint.ComplaintHash); err == nil {
+		complaint.ComplaintHash = base64.StdEncoding.EncodeToString(decoded)
 	}
 	complaint.AdnlAddr = adnlAddr
 	if stakeHolderAddress.Valid {

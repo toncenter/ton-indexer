@@ -77,6 +77,10 @@ private:
   static constexpr std::uint32_t ELECTOR_NEW_COMPLAINT = 0x52674370;
   static constexpr std::uint32_t ELECTOR_VOTE_COMPLAINT = 0x56744370;
   static constexpr std::int64_t ELECTOR_STAKE_FEE = 1000000000;
+  // SmartContract::run_get_method defaults to a 1M gas budget, but list_complaints serializes every
+  // voter of every complaint (~700 gas per entry) and dies at ~1500 entries, freezing snapshots
+  // mid-voting. Size the budget for the elector's worst case (hundreds of complaints x full vset).
+  static constexpr long long ELECTOR_GET_METHOD_GAS_LIMIT = 1'000'000'000;
   static constexpr std::uint32_t NOMINATOR_POOL_VALIDATOR_DEPOSIT = 4;
   static constexpr std::uint32_t NOMINATOR_POOL_VALIDATOR_WITHDRAWAL = 5;
 
@@ -617,6 +621,7 @@ private:
     args.set_address(account_state.account);
     args.set_stack(std::move(input));
     args.set_method_id(method_id);
+    args.set_limits(vm::GasLimits{ELECTOR_GET_METHOD_GAS_LIMIT});
 
     auto result = smc.run_get_method(args);
     if (!result.success) {
@@ -989,7 +994,7 @@ private:
       if (past_elections_r.is_ok()) {
         past_elections_by_vset_hash = past_elections_r.move_as_ok();
       } else {
-        LOG(DEBUG) << "Failed to read past elections: " << past_elections_r.move_as_error();
+        LOG(WARNING) << "Failed to read past elections: " << past_elections_r.move_as_error();
       }
     }
 
@@ -1006,7 +1011,7 @@ private:
       for (auto config_id : {34, 36, 32}) {
         auto cycle_r = parse_validator_cycle(config_id, mc_seqno, past_elections_by_vset_hash);
         if (cycle_r.is_error()) {
-          LOG(DEBUG) << "Failed to parse validator cycle config " << config_id << ": " << cycle_r.move_as_error();
+          LOG(WARNING) << "Failed to parse validator cycle config " << config_id << ": " << cycle_r.move_as_error();
           continue;
         }
         auto cycle = cycle_r.move_as_ok();
@@ -1052,7 +1057,7 @@ private:
           block_->validator_elections_.push_back(std::move(election.value()));
         }
       } else {
-        LOG(DEBUG) << "Failed to parse validator election: " << election_r.move_as_error();
+        LOG(WARNING) << "Failed to parse validator election: " << election_r.move_as_error();
       }
     }
 
@@ -1076,8 +1081,8 @@ private:
       auto complaints_r = parse_validator_complaints(
           *elector_state.value(), parsed_cycle.cycle, cycles_by_vset_hash, current_voting_cycle, mc_seqno);
       if (complaints_r.is_error()) {
-        LOG(DEBUG) << "Failed to parse validator complaints for election " << election_id
-                   << ": " << complaints_r.move_as_error();
+        LOG(WARNING) << "Failed to parse validator complaints for election " << election_id
+                     << ": " << complaints_r.move_as_error();
         continue;
       }
       for (auto& complaint : complaints_r.move_as_ok()) {

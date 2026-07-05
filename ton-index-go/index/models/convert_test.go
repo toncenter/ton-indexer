@@ -1,6 +1,81 @@
 package models
 
-import "testing"
+import (
+	"encoding/hex"
+	"strings"
+	"testing"
+)
+
+func TestParseHashBytesAcceptsHexAndBase64(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{
+			name:     "lowercase hex",
+			input:    strings.Repeat("ab", 32),
+			expected: strings.Repeat("AB", 32),
+		},
+		{
+			name:     "uppercase hex prefix",
+			input:    "0X" + strings.Repeat("cd", 32),
+			expected: strings.Repeat("CD", 32),
+		},
+		{
+			name:     "standard base64",
+			input:    "//////////////////////////////////////////8=",
+			expected: strings.Repeat("FF", 32),
+		},
+		{
+			name:     "padded base64url",
+			input:    "__________________________________________8=",
+			expected: strings.Repeat("FF", 32),
+		},
+		{
+			name:     "raw base64url",
+			input:    "__________________________________________8",
+			expected: strings.Repeat("FF", 32),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := ParseHashBytes(tt.input)
+			if err != nil {
+				t.Fatalf("ParseHashBytes(%q) returned error: %v", tt.input, err)
+			}
+			gotHex := strings.ToUpper(hex.EncodeToString(got))
+			if gotHex != tt.expected {
+				t.Fatalf("ParseHashBytes(%q) = %q, want %q", tt.input, gotHex, tt.expected)
+			}
+		})
+	}
+}
+
+func TestParseHashBytesRejectsInvalidValues(t *testing.T) {
+	for _, input := range []string{"", "not-a-hash", strings.Repeat("a", 63), strings.Repeat("A", 45)} {
+		t.Run(input, func(t *testing.T) {
+			if got, err := ParseHashBytes(input); err == nil {
+				t.Fatalf("ParseHashBytes(%q) = %q, want error", input, got)
+			}
+		})
+	}
+}
+
+func TestHashConverterAcceptsRawBase64URL(t *testing.T) {
+	got := HashConverter("__________________________________________8")
+	if !got.IsValid() {
+		t.Fatal("HashConverter returned invalid value")
+	}
+	hash, ok := got.Interface().(HashType)
+	if !ok {
+		t.Fatalf("HashConverter returned %T", got.Interface())
+	}
+	if hash.String() != "//////////////////////////////////////////8=" {
+		t.Fatalf("HashConverter returned %q", hash.String())
+	}
+}
 
 func TestOpcodeTypeConverterUsesSignedDatabaseRepresentation(t *testing.T) {
 	tests := []struct {

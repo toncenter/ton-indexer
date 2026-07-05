@@ -212,7 +212,7 @@ type ValidatorComplaintVote struct {
 type ValidatorComplaint struct {
 	CycleStart         int32                    `json:"cycle_start"`
 	ElectionId         int32                    `json:"election_id"`
-	ComplaintHash      string                   `json:"complaint_hash"`
+	ComplaintHash      string                   `json:"complaint_hash" example:"PJI18TRG8OZhVPZNN7epvMb25yZivlGQvVj9LC8omOg="`
 	ValidatorPubkey    string                   `json:"validator_pubkey"`
 	AdnlAddr           *string                  `json:"adnl_addr"`
 	StakeHolderAddress *AccountAddress          `json:"stake_holder_address,omitempty"`
