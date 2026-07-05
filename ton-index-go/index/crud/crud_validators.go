@@ -110,20 +110,25 @@ func (db *DbClient) QueryValidatorElections(
 	defer conn.Release()
 
 	query := `
-		SELECT election_id, elect_close, min_stake::text, total_stake::text,
-		       failed, finished
-		FROM validator_elections
+		SELECT e.election_id, e.elect_close, e.min_stake::text, e.total_stake::text,
+		       participant_stats.total_participants, e.failed, e.finished
+		FROM validator_elections e
+		LEFT JOIN LATERAL (
+			SELECT count(*)::integer AS total_participants
+			FROM validator_election_participants p
+			WHERE p.election_id = e.election_id
+		) participant_stats ON true
 		WHERE true
 	`
 	args := []interface{}{}
 	argIdx := 1
 	if req.ElectionId != nil {
-		query += fmt.Sprintf(" AND election_id = $%d", argIdx)
+		query += fmt.Sprintf(" AND e.election_id = $%d", argIdx)
 		args = append(args, *req.ElectionId)
 		argIdx++
 	}
 	if req.Finished != nil {
-		query += fmt.Sprintf(" AND finished = $%d", argIdx)
+		query += fmt.Sprintf(" AND e.finished = $%d", argIdx)
 		args = append(args, *req.Finished)
 		argIdx++
 	}
@@ -146,10 +151,10 @@ func (db *DbClient) QueryValidatorElections(
 	if len(participantFilters) > 0 {
 		query += fmt.Sprintf(` AND EXISTS (
 			SELECT 1 FROM validator_election_participants p
-			WHERE p.election_id = validator_elections.election_id%s
+			WHERE p.election_id = e.election_id%s
 		)`, strings.Join(participantFilters, ""))
 	}
-	query, args, _, err = appendStakingUtimeFilters(query, args, argIdx, "election_id", utimeReq)
+	query, args, _, err = appendStakingUtimeFilters(query, args, argIdx, "e.election_id", utimeReq)
 	if err != nil {
 		return nil, err
 	}
@@ -173,6 +178,7 @@ func (db *DbClient) QueryValidatorElections(
 			&election.ElectClose,
 			&election.MinStake,
 			&election.TotalStake,
+			&election.TotalParticipants,
 			&election.Failed,
 			&election.Finished,
 		); err != nil {
@@ -206,11 +212,21 @@ func (db *DbClient) queryValidatorElectionParticipants(
 	electionId int32,
 ) ([]models.ValidatorElectionParticipant, error) {
 	rows, err := conn.Query(ctx, `
-		SELECT validator_pubkey, stake::text, max_factor,
-		       stake_holder_address, adnl_addr
-		FROM validator_election_participants
-		WHERE election_id = $1
-		ORDER BY stake DESC, validator_pubkey
+		SELECT p.validator_pubkey, cycle_member.validator_index, p.stake::text, p.max_factor,
+		       p.stake_holder_address, p.adnl_addr
+		FROM validator_election_participants p
+		LEFT JOIN LATERAL (
+			SELECT m.validator_index
+			FROM validator_cycles vc
+			JOIN validator_cycle_members m
+			  ON m.utime_since = vc.utime_since
+			 AND m.validator_pubkey = p.validator_pubkey
+			WHERE vc.election_id = p.election_id
+			ORDER BY vc.utime_since DESC
+			LIMIT 1
+		) cycle_member ON true
+		WHERE p.election_id = $1
+		ORDER BY p.stake DESC, p.validator_pubkey
 	`, electionId)
 	if err != nil {
 		return nil, models.IndexError{Code: 500, Message: err.Error()}
@@ -220,14 +236,20 @@ func (db *DbClient) queryValidatorElectionParticipants(
 	participants := []models.ValidatorElectionParticipant{}
 	for rows.Next() {
 		var participant models.ValidatorElectionParticipant
+		var validatorIndex sql.NullInt32
 		if err := rows.Scan(
 			&participant.ValidatorPubkey,
+			&validatorIndex,
 			&participant.Stake,
 			&participant.MaxFactor,
 			&participant.StakeHolderAddress,
 			&participant.AdnlAddr,
 		); err != nil {
 			return nil, models.IndexError{Code: 500, Message: err.Error()}
+		}
+		if validatorIndex.Valid {
+			value := validatorIndex.Int32
+			participant.ValidatorIndex = &value
 		}
 		participants = append(participants, participant)
 	}

@@ -136,6 +136,7 @@ type ValidatorEventsResponse struct {
 
 type ValidatorElectionParticipant struct {
 	ValidatorPubkey    string         `json:"validator_pubkey"`
+	ValidatorIndex     *int32         `json:"validator_index,omitempty"`
 	Stake              string         `json:"stake"`
 	MaxFactor          int32          `json:"max_factor"`
 	StakeHolderAddress AccountAddress `json:"stake_holder_address"`
@@ -143,13 +144,14 @@ type ValidatorElectionParticipant struct {
 } // @name ValidatorElectionParticipant
 
 type ValidatorElection struct {
-	ElectionId   int32                          `json:"election_id"`
-	ElectClose   int32                          `json:"elect_close"`
-	MinStake     string                         `json:"min_stake"`
-	TotalStake   string                         `json:"total_stake"`
-	Failed       bool                           `json:"failed"`
-	Finished     bool                           `json:"finished"`
-	Participants []ValidatorElectionParticipant `json:"participants,omitempty"`
+	ElectionId        int32                          `json:"election_id"`
+	ElectClose        int32                          `json:"elect_close"`
+	MinStake          string                         `json:"min_stake"`
+	TotalStake        string                         `json:"total_stake"`
+	TotalParticipants int32                          `json:"total_participants"`
+	Failed            bool                           `json:"failed"`
+	Finished          bool                           `json:"finished"`
+	Participants      []ValidatorElectionParticipant `json:"participants,omitempty"`
 } // @name ValidatorElection
 
 type ValidatorElectionsResponse struct {
