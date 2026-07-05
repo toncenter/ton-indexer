@@ -206,7 +206,7 @@ func (db *DbClient) queryValidatorElectionParticipants(
 	electionId int32,
 ) ([]models.ValidatorElectionParticipant, error) {
 	rows, err := conn.Query(ctx, `
-		SELECT election_id, validator_pubkey, stake::text, max_factor,
+		SELECT validator_pubkey, stake::text, max_factor,
 		       stake_holder_address, adnl_addr
 		FROM validator_election_participants
 		WHERE election_id = $1
@@ -221,7 +221,6 @@ func (db *DbClient) queryValidatorElectionParticipants(
 	for rows.Next() {
 		var participant models.ValidatorElectionParticipant
 		if err := rows.Scan(
-			&participant.ElectionId,
 			&participant.ValidatorPubkey,
 			&participant.Stake,
 			&participant.MaxFactor,
@@ -402,7 +401,7 @@ func (db *DbClient) queryValidatorCycleValidators(
 	utimeSince int32,
 ) ([]models.ValidatorCycleValidator, error) {
 	rows, err := conn.Query(ctx, `
-		SELECT m.utime_since, m.validator_index, m.validator_pubkey,
+		SELECT m.validator_index, m.validator_pubkey,
 		       m.adnl_addr, m.weight::text,
 		       p.stake_holder_address::text, p.max_factor,
 		       m.stake::text AS stake
@@ -431,7 +430,6 @@ func (db *DbClient) queryValidatorCycleValidators(
 		var maxFactor sql.NullInt32
 		var stake sql.NullString
 		if err := rows.Scan(
-			&validator.CycleStart,
 			&validator.ValidatorIndex,
 			&validator.ValidatorPubkey,
 			&validator.AdnlAddr,

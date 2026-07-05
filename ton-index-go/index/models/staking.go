@@ -135,7 +135,6 @@ type ValidatorEventsResponse struct {
 } // @name ValidatorEventsResponse
 
 type ValidatorElectionParticipant struct {
-	ElectionId         int32          `json:"election_id"`
 	ValidatorPubkey    string         `json:"validator_pubkey"`
 	Stake              string         `json:"stake"`
 	MaxFactor          int32          `json:"max_factor"`
@@ -159,7 +158,6 @@ type ValidatorElectionsResponse struct {
 } // @name ValidatorElectionsResponse
 
 type ValidatorCycleValidator struct {
-	CycleStart         int32           `json:"cycle_start"`
 	ValidatorIndex     int32           `json:"validator_index"`
 	ValidatorPubkey    string          `json:"validator_pubkey"`
 	AdnlAddr           string          `json:"adnl_addr"`
