@@ -2518,6 +2518,9 @@ func GetValidatorCycles(c *fiber.Ctx) error {
 				addrList = append(addrList, *validator.StakeHolderAddress)
 			}
 			for _, complaint := range validator.Complaints {
+				if complaint.StakeHolderAddress != nil {
+					addrList = append(addrList, *complaint.StakeHolderAddress)
+				}
 				addrList = append(addrList, complaint.RewardAddress)
 			}
 		}
@@ -2534,6 +2537,7 @@ func GetValidatorCycles(c *fiber.Ctx) error {
 // @tags staking
 // @id getValidatorComplaints
 // @param cycle_start query integer false "Validator cycle start time"
+// @param election_id query integer false "Elector election id"
 // @param stake_holder_address query string false "Stake holder address in any form"
 // @param adnl_address query string false "ADNL address hex"
 // @param validator_pubkey query string false "Validator public key hex"
@@ -2569,6 +2573,9 @@ func GetValidatorComplaints(c *fiber.Ctx) error {
 		addrList = append(addrList, *req.StakeHolderAddress)
 	}
 	for _, complaint := range complaints {
+		if complaint.StakeHolderAddress != nil {
+			addrList = append(addrList, *complaint.StakeHolderAddress)
+		}
 		addrList = append(addrList, complaint.RewardAddress)
 	}
 	book, err := pool.QueryAddressBookByAddresses(addrList, requestSettings)

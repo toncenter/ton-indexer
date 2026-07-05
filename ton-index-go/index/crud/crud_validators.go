@@ -467,12 +467,21 @@ func (db *DbClient) queryValidatorCycleComplaints(
 	utimeSince int32,
 ) (map[string][]models.ValidatorComplaint, error) {
 	rows, err := conn.Query(ctx, `
-		SELECT vc.utime_since, c.complaint_hash, c.validator_pubkey, c.adnl_addr, c.description_boc,
-		       c.created_at, c.severity, c.reward_address, c.paid::text, c.suggested_fine::text,
+		SELECT vc.utime_since, c.election_id, c.complaint_hash, c.validator_pubkey, c.adnl_addr,
+		       p.stake_holder_address::text, c.description_boc, c.created_at, c.severity,
+		       c.reward_address, c.paid::text, c.suggested_fine::text,
 		       c.suggested_fine_part, c.voted_validators, c.vset_id, c.weight_remaining,
 		       c.approved_percent, c.is_passed
 		FROM validator_complaints c
 		JOIN validator_cycles vc ON vc.election_id = c.election_id
+		LEFT JOIN LATERAL (
+			SELECT stake_holder_address
+			FROM validator_election_participants p
+			WHERE p.election_id = c.election_id
+			  AND p.validator_pubkey = c.validator_pubkey
+			ORDER BY source_mc_seqno DESC
+			LIMIT 1
+		) p ON true
 		WHERE vc.utime_since = $1
 		ORDER BY c.created_at DESC, c.complaint_hash
 	`, utimeSince)
@@ -510,12 +519,21 @@ func (db *DbClient) QueryValidatorComplaints(
 	defer conn.Release()
 
 	query := `
-		SELECT vc.utime_since, c.complaint_hash, c.validator_pubkey, c.adnl_addr, c.description_boc,
-		       c.created_at, c.severity, c.reward_address, c.paid::text, c.suggested_fine::text,
+		SELECT vc.utime_since, c.election_id, c.complaint_hash, c.validator_pubkey, c.adnl_addr,
+		       p.stake_holder_address::text, c.description_boc, c.created_at, c.severity,
+		       c.reward_address, c.paid::text, c.suggested_fine::text,
 		       c.suggested_fine_part, c.voted_validators, c.vset_id, c.weight_remaining,
 		       c.approved_percent, c.is_passed
 		FROM validator_complaints c
 		JOIN validator_cycles vc ON vc.election_id = c.election_id
+		LEFT JOIN LATERAL (
+			SELECT stake_holder_address
+			FROM validator_election_participants p
+			WHERE p.election_id = c.election_id
+			  AND p.validator_pubkey = c.validator_pubkey
+			ORDER BY source_mc_seqno DESC
+			LIMIT 1
+		) p ON true
 		WHERE true
 	`
 	args := []interface{}{}
@@ -525,6 +543,11 @@ func (db *DbClient) QueryValidatorComplaints(
 		args = append(args, *req.CycleStart)
 		argIdx++
 	}
+	if req.ElectionId != nil {
+		query += fmt.Sprintf(" AND c.election_id = $%d", argIdx)
+		args = append(args, *req.ElectionId)
+		argIdx++
+	}
 	if req.ValidatorPubkey != nil {
 		query += fmt.Sprintf(" AND c.validator_pubkey = $%d", argIdx)
 		args = append(args, strings.ToUpper(*req.ValidatorPubkey))
@@ -532,10 +555,10 @@ func (db *DbClient) QueryValidatorComplaints(
 	}
 	if req.StakeHolderAddress != nil {
 		query += fmt.Sprintf(` AND EXISTS (
-			SELECT 1 FROM validator_election_participants p
-			WHERE p.election_id = c.election_id
-			  AND p.validator_pubkey = c.validator_pubkey
-			  AND p.stake_holder_address = $%d
+			SELECT 1 FROM validator_election_participants fp
+			WHERE fp.election_id = c.election_id
+			  AND fp.validator_pubkey = c.validator_pubkey
+			  AND fp.stake_holder_address = $%d
 		)`, argIdx)
 		args = append(args, string(*req.StakeHolderAddress))
 		argIdx++
@@ -580,11 +603,14 @@ func scanValidatorComplaint(rows pgx.Rows) (models.ValidatorComplaint, error) {
 	var complaint models.ValidatorComplaint
 	var votedRaw []byte
 	var adnlAddr *string
+	var stakeHolderAddress sql.NullString
 	if err := rows.Scan(
 		&complaint.CycleStart,
+		&complaint.ElectionId,
 		&complaint.ComplaintHash,
 		&complaint.ValidatorPubkey,
 		&adnlAddr,
+		&stakeHolderAddress,
 		&complaint.DescriptionBoc,
 		&complaint.CreatedAt,
 		&complaint.Severity,
@@ -604,6 +630,10 @@ func scanValidatorComplaint(rows pgx.Rows) (models.ValidatorComplaint, error) {
 		votedRaw = []byte("[]")
 	}
 	complaint.AdnlAddr = adnlAddr
+	if stakeHolderAddress.Valid {
+		addr := models.AccountAddress(stakeHolderAddress.String)
+		complaint.StakeHolderAddress = &addr
+	}
 	if err := json.Unmarshal(votedRaw, &complaint.VotedValidators); err != nil {
 		return complaint, models.IndexError{Code: 500, Message: err.Error()}
 	}
