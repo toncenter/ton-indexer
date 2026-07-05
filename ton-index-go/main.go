@@ -2403,7 +2403,7 @@ func normalizeValidatorHashFilter(field string, value *string) error {
 // @success 200 {object} models.ValidatorEventsResponse
 // @failure 422 {object} models.IndexError
 // @failure 500 {object} models.IndexError
-// @router /api/v3/staking/validators/events [get]
+// @router /api/v3/validators/events [get]
 func GetValidatorEvents(c *fiber.Ctx) error {
 	requestSettings := GetRequestSettings(c, &settings)
 	req := models.ValidatorEventsRequest{}
@@ -2459,7 +2459,7 @@ func GetValidatorEvents(c *fiber.Ctx) error {
 // @success 200 {object} models.ValidatorElectionsResponse
 // @failure 422 {object} models.IndexError
 // @failure 500 {object} models.IndexError
-// @router /api/v3/staking/validators/elections [get]
+// @router /api/v3/validators/elections [get]
 func GetValidatorElections(c *fiber.Ctx) error {
 	requestSettings := GetRequestSettings(c, &settings)
 	req := models.ValidatorElectionsRequest{}
@@ -2517,7 +2517,7 @@ func GetValidatorElections(c *fiber.Ctx) error {
 // @success 200 {object} models.ValidatorCyclesResponse
 // @failure 422 {object} models.IndexError
 // @failure 500 {object} models.IndexError
-// @router /api/v3/staking/validators/cycles [get]
+// @router /api/v3/validators/cycles [get]
 func GetValidatorCycles(c *fiber.Ctx) error {
 	requestSettings := GetRequestSettings(c, &settings)
 	req := models.ValidatorCyclesRequest{}
@@ -2581,7 +2581,7 @@ func GetValidatorCycles(c *fiber.Ctx) error {
 // @success 200 {object} models.ValidatorComplaintsResponse
 // @failure 422 {object} models.IndexError
 // @failure 500 {object} models.IndexError
-// @router /api/v3/staking/validators/complaints [get]
+// @router /api/v3/validators/complaints [get]
 func GetValidatorComplaints(c *fiber.Ctx) error {
 	requestSettings := GetRequestSettings(c, &settings)
 	req := models.ValidatorComplaintsRequest{}
@@ -2837,10 +2837,10 @@ func main() {
 	app.Get("/api/v3/staking/nominatorPools/nominatorRewards", GetNominatorPoolNominatorRewards)
 	app.Get("/api/v3/staking/nominatorPools/validatorEvents", GetNominatorPoolValidatorEvents)
 	app.Get("/api/v3/staking/nominatorPools/validatorRewards", GetNominatorPoolValidatorRewards)
-	app.Get("/api/v3/staking/validators/events", GetValidatorEvents)
-	app.Get("/api/v3/staking/validators/elections", GetValidatorElections)
-	app.Get("/api/v3/staking/validators/cycles", GetValidatorCycles)
-	app.Get("/api/v3/staking/validators/complaints", GetValidatorComplaints)
+	app.Get("/api/v3/validators/events", GetValidatorEvents)
+	app.Get("/api/v3/validators/elections", GetValidatorElections)
+	app.Get("/api/v3/validators/cycles", GetValidatorCycles)
+	app.Get("/api/v3/validators/complaints", GetValidatorComplaints)
 
 	// actions
 	app.Get("/api/v3/actions", GetActions)
