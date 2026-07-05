@@ -255,10 +255,19 @@ func (db *DbClient) QueryValidatorCycles(
 	query := `
 		SELECT election_id, utime_since, utime_until, total, main,
 		       total_weight::text, total_stake::text,
+		       stake_stats.min_stake::text, stake_stats.max_stake::text,
 		       validators_elected_for, elections_start_before, elections_end_before,
 		       stake_held_for, max_validators, max_main_validators, min_validators,
-		       min_stake::text, max_stake::text, min_total_stake::text, max_stake_factor
+		       validator_cycles.min_stake::text, validator_cycles.max_stake::text,
+		       min_total_stake::text, max_stake_factor
 		FROM validator_cycles
+		LEFT JOIN LATERAL (
+			SELECT
+				CASE WHEN count(*) = count(stake) THEN min(stake) END AS min_stake,
+				CASE WHEN count(*) = count(stake) THEN max(stake) END AS max_stake
+			FROM validator_cycle_members m
+			WHERE m.utime_since = validator_cycles.utime_since
+		) stake_stats ON true
 		WHERE true
 	`
 	args := []interface{}{}
@@ -322,6 +331,8 @@ func (db *DbClient) QueryValidatorCycles(
 	cycles := []models.ValidatorCycle{}
 	for rows.Next() {
 		var cycle models.ValidatorCycle
+		var minStake sql.NullString
+		var maxStake sql.NullString
 		if err := rows.Scan(
 			&cycle.ElectionId,
 			&cycle.CycleStart,
@@ -330,6 +341,8 @@ func (db *DbClient) QueryValidatorCycles(
 			&cycle.Main,
 			&cycle.TotalWeight,
 			&cycle.TotalStake,
+			&minStake,
+			&maxStake,
 			&cycle.ValidatorsElectedFor,
 			&cycle.ElectionsStartBefore,
 			&cycle.ElectionsEndBefore,
@@ -337,13 +350,19 @@ func (db *DbClient) QueryValidatorCycles(
 			&cycle.MaxValidators,
 			&cycle.MaxMainValidators,
 			&cycle.MinValidators,
-			&cycle.MinStake,
-			&cycle.MaxStake,
+			&cycle.MinStakeLimit,
+			&cycle.MaxStakeLimit,
 			&cycle.MinTotalStake,
 			&cycle.MaxStakeFactor,
 		); err != nil {
 			rows.Close()
 			return nil, models.IndexError{Code: 500, Message: err.Error()}
+		}
+		if minStake.Valid {
+			cycle.MinStake = &minStake.String
+		}
+		if maxStake.Valid {
+			cycle.MaxStake = &maxStake.String
 		}
 		cycles = append(cycles, cycle)
 	}

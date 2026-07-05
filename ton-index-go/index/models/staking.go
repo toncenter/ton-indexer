@@ -188,8 +188,10 @@ type ValidatorCycle struct {
 	MaxValidators        int32                     `json:"max_validators"`
 	MaxMainValidators    int32                     `json:"max_main_validators"`
 	MinValidators        int32                     `json:"min_validators"`
-	MinStake             string                    `json:"min_stake"`
-	MaxStake             string                    `json:"max_stake"`
+	MinStake             *string                   `json:"min_stake,omitempty"`
+	MaxStake             *string                   `json:"max_stake,omitempty"`
+	MinStakeLimit        string                    `json:"min_stake_limit"`
+	MaxStakeLimit        string                    `json:"max_stake_limit"`
 	MinTotalStake        string                    `json:"min_total_stake"`
 	MaxStakeFactor       int32                     `json:"max_stake_factor"`
 	Validators           []ValidatorCycleValidator `json:"validators,omitempty"`

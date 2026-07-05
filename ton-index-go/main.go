@@ -2472,7 +2472,7 @@ func GetValidatorElections(c *fiber.Ctx) error {
 
 // GetValidatorCycles godoc
 // @summary Get validator cycles
-// @description When return_validators=true, each validator's `max_factor` is the participant's raw declared factor (65536 = 1.0); the effective factor used to derive `stake` is min(max_factor, cycle `max_stake_factor`).
+// @description Cycle `min_stake`/`max_stake` are selected validators' true stake bounds. `min_stake_limit`/`max_stake_limit` are config17 election limits. When return_validators=true, each validator's `max_factor` is the participant's raw declared factor (65536 = 1.0); the effective factor used to derive `stake` is min(max_factor, cycle `max_stake_factor`).
 // @tags staking
 // @id getValidatorCycles
 // @param cycle_start query integer false "Validator cycle start time"
