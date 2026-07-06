@@ -352,6 +352,7 @@ type ValidatorCyclesRequest struct {
 
 type ValidatorComplaintsRequest struct {
 	CycleStart         *int32          `query:"cycle_start"`
+	ElectionId         *int32          `query:"election_id"`
 	StakeHolderAddress *AccountAddress `query:"stake_holder_address"`
 	AdnlAddress        *string         `query:"adnl_address"`
 	ValidatorPubkey    *string         `query:"validator_pubkey"`

@@ -135,8 +135,8 @@ type ValidatorEventsResponse struct {
 } // @name ValidatorEventsResponse
 
 type ValidatorElectionParticipant struct {
-	ElectionId         int32          `json:"election_id"`
 	ValidatorPubkey    string         `json:"validator_pubkey"`
+	ValidatorIndex     *int32         `json:"validator_index,omitempty"`
 	Stake              string         `json:"stake"`
 	MaxFactor          int32          `json:"max_factor"`
 	StakeHolderAddress AccountAddress `json:"stake_holder_address"`
@@ -144,13 +144,14 @@ type ValidatorElectionParticipant struct {
 } // @name ValidatorElectionParticipant
 
 type ValidatorElection struct {
-	ElectionId   int32                          `json:"election_id"`
-	ElectClose   int32                          `json:"elect_close"`
-	MinStake     string                         `json:"min_stake"`
-	TotalStake   string                         `json:"total_stake"`
-	Failed       bool                           `json:"failed"`
-	Finished     bool                           `json:"finished"`
-	Participants []ValidatorElectionParticipant `json:"participants,omitempty"`
+	ElectionId        int32                          `json:"election_id"`
+	ElectClose        int32                          `json:"elect_close"`
+	MinStake          string                         `json:"min_stake"`
+	TotalStake        string                         `json:"total_stake"`
+	TotalParticipants int32                          `json:"total_participants"`
+	Failed            bool                           `json:"failed"`
+	Finished          bool                           `json:"finished"`
+	Participants      []ValidatorElectionParticipant `json:"participants,omitempty"`
 } // @name ValidatorElection
 
 type ValidatorElectionsResponse struct {
@@ -159,11 +160,17 @@ type ValidatorElectionsResponse struct {
 } // @name ValidatorElectionsResponse
 
 type ValidatorCycleValidator struct {
-	CycleStart      int32  `json:"cycle_start"`
-	ValidatorIndex  int32  `json:"validator_index"`
-	ValidatorPubkey string `json:"validator_pubkey"`
-	AdnlAddr        string `json:"adnl_addr"`
-	Weight          string `json:"weight"`
+	ValidatorIndex     int32           `json:"validator_index"`
+	ValidatorPubkey    string          `json:"validator_pubkey"`
+	AdnlAddr           string          `json:"adnl_addr"`
+	Weight             string          `json:"weight"`
+	StakeHolderAddress *AccountAddress `json:"stake_holder_address,omitempty"`
+	Stake              *string         `json:"stake,omitempty"`
+	// MaxFactor is the participant's raw declared max stake factor (65536 = 1.0), not the effective one.
+	// The elector caps it at the cycle's max_stake_factor when computing Stake, so the effective factor a
+	// consumer should use to relate Stake and MaxFactor is min(MaxFactor, ValidatorCycle.MaxStakeFactor).
+	MaxFactor  *int32               `json:"max_factor,omitempty"`
+	Complaints []ValidatorComplaint `json:"complaints"`
 } // @name ValidatorCycleValidator
 
 type ValidatorCycle struct {
@@ -181,8 +188,10 @@ type ValidatorCycle struct {
 	MaxValidators        int32                     `json:"max_validators"`
 	MaxMainValidators    int32                     `json:"max_main_validators"`
 	MinValidators        int32                     `json:"min_validators"`
-	MinStake             string                    `json:"min_stake"`
-	MaxStake             string                    `json:"max_stake"`
+	MinStake             *string                   `json:"min_stake,omitempty"`
+	MaxStake             *string                   `json:"max_stake,omitempty"`
+	MinStakeLimit        string                    `json:"min_stake_limit"`
+	MaxStakeLimit        string                    `json:"max_stake_limit"`
 	MinTotalStake        string                    `json:"min_total_stake"`
 	MaxStakeFactor       int32                     `json:"max_stake_factor"`
 	Validators           []ValidatorCycleValidator `json:"validators,omitempty"`
@@ -201,22 +210,24 @@ type ValidatorComplaintVote struct {
 } // @name ValidatorComplaintVote
 
 type ValidatorComplaint struct {
-	CycleStart        int32                    `json:"cycle_start"`
-	ComplaintHash     string                   `json:"complaint_hash"`
-	ValidatorPubkey   string                   `json:"validator_pubkey"`
-	AdnlAddr          *string                  `json:"adnl_addr"`
-	DescriptionBoc    string                   `json:"description_boc"`
-	CreatedAt         int32                    `json:"created_at"`
-	Severity          int32                    `json:"severity"`
-	RewardAddress     AccountAddress           `json:"reward_address"`
-	Paid              string                   `json:"paid"`
-	SuggestedFine     string                   `json:"suggested_fine"`
-	SuggestedFinePart int32                    `json:"suggested_fine_part"`
-	VotedValidators   []ValidatorComplaintVote `json:"voted_validators"`
-	VsetId            string                   `json:"vset_id"`
-	WeightRemaining   int64                    `json:"weight_remaining,string"`
-	ApprovedPercent   float64                  `json:"approved_percent"`
-	IsPassed          bool                     `json:"is_passed"`
+	CycleStart         int32                    `json:"cycle_start"`
+	ElectionId         int32                    `json:"election_id"`
+	ComplaintHash      string                   `json:"complaint_hash" example:"PJI18TRG8OZhVPZNN7epvMb25yZivlGQvVj9LC8omOg="`
+	ValidatorPubkey    string                   `json:"validator_pubkey"`
+	AdnlAddr           *string                  `json:"adnl_addr"`
+	StakeHolderAddress *AccountAddress          `json:"stake_holder_address,omitempty"`
+	DescriptionBoc     string                   `json:"description_boc"`
+	CreatedAt          int32                    `json:"created_at"`
+	Severity           int32                    `json:"severity"`
+	RewardAddress      AccountAddress           `json:"reward_address"`
+	Paid               string                   `json:"paid"`
+	SuggestedFine      string                   `json:"suggested_fine"`
+	SuggestedFinePart  int32                    `json:"suggested_fine_part"`
+	VotedValidators    []ValidatorComplaintVote `json:"voted_validators"`
+	VsetId             string                   `json:"vset_id"`
+	WeightRemaining    int64                    `json:"weight_remaining,string"`
+	ApprovedPercent    float64                  `json:"approved_percent"`
+	IsPassed           bool                     `json:"is_passed"`
 } // @name ValidatorComplaint
 
 type ValidatorComplaintsResponse struct {

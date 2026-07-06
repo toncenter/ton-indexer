@@ -1,5 +1,6 @@
 #pragma once
 #include <pqxx/pqxx>
+#include <map>
 #include "IndexData.h"
 
 namespace pqxx
@@ -154,6 +155,9 @@ private:
     ConflictAction conflict_action_{ConflictAction::None};
     std::initializer_list<std::string_view> conflict_columns_;
     std::string update_condition_;
+    // Optional per-column update expressions overriding the default `col = EXCLUDED.col`
+    // in the ON CONFLICT DO UPDATE clause (e.g. `col = GREATEST(table.col, EXCLUDED.col)`).
+    std::map<std::string, std::string> column_overrides_;
 
 public:
     struct UpsertConfig {
@@ -184,13 +188,18 @@ public:
         buildConflictClause();
     }
 
-    void setConflictDoUpdate(std::initializer_list<std::string_view> conflict_columns, std::string_view update_condition) {
+    void setConflictDoUpdate(std::initializer_list<std::string_view> conflict_columns, std::string_view update_condition,
+                             std::map<std::string_view, std::string_view> column_overrides = {}) {
         if (with_copy_) {
             throw std::runtime_error("ON CONFLICT not supported with COPY mode");
         }
         conflict_action_ = ConflictAction::DoUpdate;
         conflict_columns_ = std::move(conflict_columns);
         update_condition_ = std::move(update_condition);
+        column_overrides_.clear();
+        for (const auto& [col, expr] : column_overrides) {
+            column_overrides_.emplace(std::string(col), std::string(expr));
+        }
         buildConflictClause();
     }
 
@@ -218,7 +227,12 @@ private:
               bool first = true;
               for (const auto& col : column_names_) {
                   if (!first) conflict_stream << ", ";
-                  conflict_stream << col << " = EXCLUDED." << col;
+                  auto override_it = column_overrides_.find(std::string(col));
+                  if (override_it != column_overrides_.end()) {
+                      conflict_stream << col << " = " << override_it->second;
+                  } else {
+                      conflict_stream << col << " = EXCLUDED." << col;
+                  }
                   first = false;
               }
               if (!update_condition_.empty()) {

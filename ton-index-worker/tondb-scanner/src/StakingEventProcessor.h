@@ -11,6 +11,7 @@
 #include "td/utils/JsonBuilder.h"
 #include "td/utils/logging.h"
 #include "vm/boc.h"
+#include "vm/dict.h"
 
 #include <algorithm>
 #include <cmath>
@@ -76,6 +77,10 @@ private:
   static constexpr std::uint32_t ELECTOR_NEW_COMPLAINT = 0x52674370;
   static constexpr std::uint32_t ELECTOR_VOTE_COMPLAINT = 0x56744370;
   static constexpr std::int64_t ELECTOR_STAKE_FEE = 1000000000;
+  // SmartContract::run_get_method defaults to a 1M gas budget, but list_complaints serializes every
+  // voter of every complaint (~700 gas per entry) and dies at ~1500 entries, freezing snapshots
+  // mid-voting. Size the budget for the elector's worst case (hundreds of complaints x full vset).
+  static constexpr long long ELECTOR_GET_METHOD_GAS_LIMIT = 1'000'000'000;
   static constexpr std::uint32_t NOMINATOR_POOL_VALIDATOR_DEPOSIT = 4;
   static constexpr std::uint32_t NOMINATOR_POOL_VALIDATOR_WITHDRAWAL = 5;
 
@@ -551,6 +556,48 @@ private:
     return serialized.value_or("");
   }
 
+  td::Result<td::Ref<vm::Cell>> stack_cell_or_null(const vm::StackEntry& entry, td::Slice field_name) const {
+    if (entry.type() == vm::StackEntry::Type::t_cell) {
+      return entry.as_cell();
+    }
+    if (entry.type() == vm::StackEntry::Type::t_slice) {
+      return vm::CellBuilder().append_cellslice(entry.as_slice()).finalize();
+    }
+    if (entry.type() == vm::StackEntry::Type::t_null) {
+      return td::Ref<vm::Cell>{};
+    }
+    return td::Status::Error(PSLICE() << "Expected cell stack entry for " << field_name);
+  }
+
+  td::Result<std::unordered_map<std::string, td::RefInt256>> parse_frozen_stakes_by_pubkey(
+      const vm::StackEntry& entry) const {
+    std::unordered_map<std::string, td::RefInt256> result;
+    TRY_RESULT(frozen_cell, stack_cell_or_null(entry, "past_election_frozen_dict"));
+    if (frozen_cell.is_null()) {
+      return result;
+    }
+
+    vm::Dictionary frozen_dict{frozen_cell, 256};
+    for (auto it = frozen_dict.begin(); !it.eof(); ++it) {
+      auto value = *it.cur_value();
+      td::Bits256 stake_holder_addr;
+      unsigned long long frozen_weight = 0;
+      if (!value.fetch_bits_to(stake_holder_addr) || !value.fetch_uint_to(64, frozen_weight)) {
+        LOG(DEBUG) << "Failed to parse frozen validator address/weight";
+        continue;
+      }
+
+      auto stake = block::tlb::t_Grams.as_integer_skip(value);
+      if (stake.is_null()) {
+        LOG(DEBUG) << "Failed to parse frozen validator stake";
+        continue;
+      }
+
+      result[td::BitArray<256>(it.cur_pos()).to_hex()] = stake;
+    }
+    return result;
+  }
+
   td::Result<std::vector<vm::StackEntry>> run_get_method_at_time(
       const schema::AccountState& account_state,
       const std::string& method_id,
@@ -574,6 +621,7 @@ private:
     args.set_address(account_state.account);
     args.set_stack(std::move(input));
     args.set_method_id(method_id);
+    args.set_limits(vm::GasLimits{ELECTOR_GET_METHOD_GAS_LIMIT});
 
     auto result = smc.run_get_method(args);
     if (!result.success) {
@@ -660,6 +708,7 @@ private:
   struct PastElectionInfo {
     uint32_t election_id;
     td::RefInt256 total_stake;
+    std::unordered_map<std::string, td::RefInt256> stakes_by_pubkey;
   };
 
   struct ParsedValidatorCycle {
@@ -687,13 +736,28 @@ private:
       auto election_id_value = election_id.move_as_ok();
       td::Result<std::string> vset_hash = td::Status::Error("past election vset hash not found");
       td::Result<td::RefInt256> total_stake = td::Status::Error("past election total stake not found");
+      std::unordered_map<std::string, td::RefInt256> stakes_by_pubkey;
       if (election_tuple->size() >= 6) {
         vset_hash = stack_int_to_hex(election_tuple->at(3), "past_election_vset_hash");
+        auto stakes_r = parse_frozen_stakes_by_pubkey(election_tuple->at(4));
+        if (stakes_r.is_ok()) {
+          stakes_by_pubkey = stakes_r.move_as_ok();
+        } else {
+          LOG(DEBUG) << "Failed to parse frozen stakes for past election " << election_id_value
+                     << ": " << stakes_r.move_as_error();
+        }
         total_stake = stack_int(election_tuple->at(5), "past_election_total_stake");
       } else {
         auto data_tuple = election_tuple->at(1).as_tuple();
         if (data_tuple.not_null() && data_tuple->size() >= 5) {
           vset_hash = stack_int_to_hex(data_tuple->at(2), "past_election_vset_hash");
+          auto stakes_r = parse_frozen_stakes_by_pubkey(data_tuple->at(3));
+          if (stakes_r.is_ok()) {
+            stakes_by_pubkey = stakes_r.move_as_ok();
+          } else {
+            LOG(DEBUG) << "Failed to parse frozen stakes for past election " << election_id_value
+                       << ": " << stakes_r.move_as_error();
+          }
           total_stake = stack_int(data_tuple->at(4), "past_election_total_stake");
         }
       }
@@ -702,6 +766,7 @@ private:
         result[normalized_hash] = PastElectionInfo{
             .election_id = election_id_value,
             .total_stake = total_stake.move_as_ok(),
+            .stakes_by_pubkey = std::move(stakes_by_pubkey),
         };
       }
     }
@@ -738,12 +803,22 @@ private:
 
     uint32_t index = 0;
     for (const auto& validator : vset->list) {
+      auto validator_pubkey = validator.pubkey.as_bits256().to_hex();
+      std::optional<td::RefInt256> stake;
+      if (past_election_it != past_elections_by_vset_hash.end()) {
+        const auto& stakes_by_pubkey = past_election_it->second.stakes_by_pubkey;
+        auto stake_it = stakes_by_pubkey.find(validator_pubkey);
+        if (stake_it != stakes_by_pubkey.end()) {
+          stake = stake_it->second;
+        }
+      }
       cycle.members.push_back(schema::ValidatorCycleMember{
           .utime_since = cycle.utime_since,
           .validator_index = index++,
-          .validator_pubkey = validator.pubkey.as_bits256().to_hex(),
+          .validator_pubkey = std::move(validator_pubkey),
           .adnl_addr = validator.adnl_addr.to_hex(),
           .weight = validator.weight,
+          .stake = std::move(stake),
           .source_mc_seqno = mc_seqno,
       });
     }
@@ -919,7 +994,7 @@ private:
       if (past_elections_r.is_ok()) {
         past_elections_by_vset_hash = past_elections_r.move_as_ok();
       } else {
-        LOG(DEBUG) << "Failed to read past elections: " << past_elections_r.move_as_error();
+        LOG(WARNING) << "Failed to read past elections: " << past_elections_r.move_as_error();
       }
     }
 
@@ -936,7 +1011,7 @@ private:
       for (auto config_id : {34, 36, 32}) {
         auto cycle_r = parse_validator_cycle(config_id, mc_seqno, past_elections_by_vset_hash);
         if (cycle_r.is_error()) {
-          LOG(DEBUG) << "Failed to parse validator cycle config " << config_id << ": " << cycle_r.move_as_error();
+          LOG(WARNING) << "Failed to parse validator cycle config " << config_id << ": " << cycle_r.move_as_error();
           continue;
         }
         auto cycle = cycle_r.move_as_ok();
@@ -982,7 +1057,7 @@ private:
           block_->validator_elections_.push_back(std::move(election.value()));
         }
       } else {
-        LOG(DEBUG) << "Failed to parse validator election: " << election_r.move_as_error();
+        LOG(WARNING) << "Failed to parse validator election: " << election_r.move_as_error();
       }
     }
 
@@ -1006,8 +1081,8 @@ private:
       auto complaints_r = parse_validator_complaints(
           *elector_state.value(), parsed_cycle.cycle, cycles_by_vset_hash, current_voting_cycle, mc_seqno);
       if (complaints_r.is_error()) {
-        LOG(DEBUG) << "Failed to parse validator complaints for election " << election_id
-                   << ": " << complaints_r.move_as_error();
+        LOG(WARNING) << "Failed to parse validator complaints for election " << election_id
+                     << ": " << complaints_r.move_as_error();
         continue;
       }
       for (auto& complaint : complaints_r.move_as_ok()) {

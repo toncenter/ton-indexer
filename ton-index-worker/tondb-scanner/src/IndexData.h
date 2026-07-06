@@ -570,6 +570,7 @@ struct ValidatorCycleMember {
   std::string validator_pubkey;
   std::string adnl_addr;
   uint64_t weight;
+  std::optional<td::RefInt256> stake;
   uint32_t source_mc_seqno;
 };
 

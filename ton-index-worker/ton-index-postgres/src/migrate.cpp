@@ -1168,6 +1168,7 @@ create table if not exists validator_cycle_members
     validator_pubkey    varchar not null,
     adnl_addr           varchar not null,
     weight              numeric not null,
+    stake               numeric,
     source_mc_seqno     integer not null,
     primary key (utime_since, validator_index)
 );
@@ -1792,15 +1793,10 @@ int main(int argc, char *argv[]) {
       current_version = Version{1, 3, 0};
     }
 
-
     // In future, more migrations will be added here
     // not every version must have migrations
     // name of a function should have target version of migration,
-    // f.e. run_1_3_1 sets version to 1.3.1
-    // if (migration_needed(current_version, Version{1, 3, 1})) {
-    //   run_1_3_1_migrations(pg_connection_string);
-    //   current_version = Version{1, 3, 1};
-    // }
+    // f.e. run_1_3_1_migrations sets version to 1.3.1
     // and so on...
 
     // finally, we bump a version to the latest
