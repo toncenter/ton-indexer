@@ -3,6 +3,9 @@ from __future__ import annotations
 import base64
 from dataclasses import dataclass
 
+from pytoniq_core import Slice
+
+from indexer.core.database import Transaction
 from indexer.events.blocks.basic_blocks import CallContractBlock, TonTransferBlock
 from indexer.events.blocks.basic_matchers import (
     BlockMatcher,
@@ -20,6 +23,31 @@ from indexer.events.blocks.utils.block_utils import get_labeled
 from indexer.events.blocks.utils.ton_utils import Amount
 
 
+def _vesting_message_was_sent(
+    vesting_tx: Transaction, request: VestingSendMessage
+) -> bool:
+    expected_dest = AccountId(request.message_destination)
+    for msg in vesting_tx.messages:
+        if msg.direction != "out" or msg.destination is None:
+            continue
+        if AccountId(msg.destination) != expected_dest:
+            continue
+        if request.message_body_hash is None:
+            # could not hash the requested body - fall back to value matching
+            if msg.value == request.message_value:
+                return True
+            continue
+        if msg.message_content is None or not msg.message_content.body:
+            continue
+        try:
+            out_body_hash = Slice.one_from_boc(msg.message_content.body).to_cell().hash
+        except Exception:
+            continue
+        if out_body_hash == request.message_body_hash:
+            return True
+    return False
+
+
 @dataclass
 class VestingSendMessageData:
     query_id: int
@@ -28,6 +56,7 @@ class VestingSendMessageData:
     message_boc_str: str
     message_destination: AccountId
     message_value: Amount
+    success: bool
 
 
 class VestingSendMessageBlock(Block):
@@ -82,6 +111,8 @@ class VestingSendMessageBlockMatcher(BlockMatcher):
         sender = AccountId(msg.source)
         vesting = AccountId(msg.destination)
 
+        success = _vesting_message_was_sent(msg.transaction, request_data)
+
         include = [block]
         resp = get_labeled("response", other_blocks, CallContractBlock)
         if resp:
@@ -97,6 +128,7 @@ class VestingSendMessageBlockMatcher(BlockMatcher):
                 ).decode(),
                 message_destination=AccountId(request_data.message_destination),
                 message_value=Amount(request_data.message_value),
+                success=success,
             )
         )
         new_block.merge_blocks(include)

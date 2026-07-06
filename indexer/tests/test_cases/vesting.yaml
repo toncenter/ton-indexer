@@ -32,9 +32,32 @@ cases:
             - jEFg8m3O2KaxbYwClL3h9bIkEoqJeRzBO34s8bgkFGs=
             - 03RZCW7mu3eJp+FWifVzKsRHafUrqQNu4E6YwZxvXJ0=
           amount: 100000000000
+          success: true
           vesting_send_message_data:
             query_id: 0
             message_boc: te6ccgEBAQEAQgAAgGIAVFNL1eqiRdmvXeoKcmTsexD6nbPaoqirAyLcdhL8PpyoukO3QAAAAAAAAAAAAAAAAAAAAAAAAERlcG9zaXQ=
           source: 0:335908D9CDA99C650695253FAD22BE00E0B1005634133589DFA8BDF522B367BA
           destination: 0:0F956925D8E1E32E5189E35100ADEF828BE779D079C6D8B966B2209FCCE213D4
           destination_secondary: 0:A8A697ABD5448BB35EBBD414E4C9D8F621F53B67B54551560645B8EC25F87D39
+  Vesting send message dropped:
+    # Message forwarded with send mode 3 (ignore errors) that was silently
+    # skipped by the vesting contract, while the transaction itself succeeded.
+    trace-id: 1NL0tCMrxYE_fu-V-gJvUR_ioFsSPT7HVFGWZIB627A=
+    expected-actions:
+      - type: vesting_send_message
+        values:
+          accounts:
+            - 0:9A347A64C17280DE13431138A8D7712BBA0CF43674CA94D3AD940B617EDA15B9
+            - 0:74DDD0211F5AD8DA314C1C796905F7FBFE937E608B0AAE6B34F3EF804F6C8743
+          tx_hashes:
+            - 1NL0tCMrxYE/fu+V+gJvUR/ioFsSPT7HVFGWZIB627A=
+            - AwZRzTtUBtX7zgtWSUV917AZwh5SEJS6inPW34tILgM=
+            - YBeUige0mZTPzA1nO8K7YYe6zaLHBlo/V63puEwAazU=
+          amount: 138886000000000
+          success: false
+          vesting_send_message_data:
+            query_id: 0
+            message_boc: te6ccgEBAQEAOAAAbEIAOm7oEI+tbG0Ypg48tIL7/f9JvzBFhVc1mnn3wCe2Q6Gz8odVjeAAAAAAAAAAAAAAAAAAAA==
+          source: 0:74DDD0211F5AD8DA314C1C796905F7FBFE937E608B0AAE6B34F3EF804F6C8743
+          destination: 0:9A347A64C17280DE13431138A8D7712BBA0CF43674CA94D3AD940B617EDA15B9
+          destination_secondary: 0:74DDD0211F5AD8DA314C1C796905F7FBFE937E608B0AAE6B34F3EF804F6C8743
