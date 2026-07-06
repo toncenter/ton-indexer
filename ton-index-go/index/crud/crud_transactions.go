@@ -680,18 +680,6 @@ func transactionsBoundaryFilters(p txQueryParts, floor, ceil *uint64) []string {
 	return filters
 }
 
-func buildTransactionsPageQuery(p txQueryParts, floor, ceil *uint64, limit int32, settings models.RequestSettings) (string, error) {
-	limit_query, err := limitOnlyQuery(&limit, settings)
-	if err != nil {
-		return "", err
-	}
-	filter_query := ``
-	if filters := transactionsBoundaryFilters(p, floor, ceil); len(filters) > 0 {
-		filter_query = ` where ` + strings.Join(filters, " and ")
-	}
-	return `select ` + transactionsColumns + ` from` + p.fromQuery + filter_query + p.orderBy + limit_query, nil
-}
-
 func buildTransactionsOffsetQuery(p txQueryParts, floor, ceil *uint64, offset, limit int) string {
 	filter_query := ``
 	if filters := transactionsBoundaryFilters(p, floor, ceil); len(filters) > 0 {
@@ -781,10 +769,11 @@ func (db *DbClient) QueryTransactions(
 			return nil, nil, models.IndexError{Code: 404, Message: fmt.Sprintf("masterchain block %d not found", *req.McSeqno)}
 		}
 		parts := transactionsQueryParts(req, sortOrder)
-		query, qerr := buildTransactionsPageQuery(parts, nil, nil, limit, settings)
-		if qerr != nil {
-			return nil, nil, models.IndexError{Code: 500, Message: qerr.Error()}
+		offset := 0
+		if lim_req.Offset != nil {
+			offset = int(max(0, *lim_req.Offset))
 		}
+		query := buildTransactionsOffsetQuery(parts, nil, nil, offset, int(limit))
 		if settings.DebugRequest {
 			log.Println("Debug query:", query)
 		}
