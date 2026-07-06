@@ -14,6 +14,42 @@ import (
 	"github.com/toncenter/ton-indexer/ton-index-go/index/models"
 )
 
+// Validator rows are heavyweight (embedded sets, complaints with full voter lists), so the
+// validators endpoints default to a smaller page than the service-wide default limit.
+const validatorsDefaultLimit = 10
+
+// validatorMemberFilter narrows embedded validator/participant lists to the entries matching the
+// request's participant filter; nil means the full set is returned.
+type validatorMemberFilter struct {
+	stakeHolderAddress *string
+	adnlAddr           *string
+	validatorPubkey    *string
+}
+
+func validatorMemberFilterFromRequest(
+	stakeHolder *models.AccountAddress,
+	adnlAddr *string,
+	validatorPubkey *string,
+) *validatorMemberFilter {
+	if stakeHolder == nil && adnlAddr == nil && validatorPubkey == nil {
+		return nil
+	}
+	filter := validatorMemberFilter{}
+	if stakeHolder != nil {
+		value := string(*stakeHolder)
+		filter.stakeHolderAddress = &value
+	}
+	if adnlAddr != nil {
+		value := strings.ToUpper(*adnlAddr)
+		filter.adnlAddr = &value
+	}
+	if validatorPubkey != nil {
+		value := strings.ToUpper(*validatorPubkey)
+		filter.validatorPubkey = &value
+	}
+	return &filter
+}
+
 func (db *DbClient) QueryValidatorEvents(
 	req models.ValidatorEventsRequest,
 	utimeReq models.UtimeParams,
@@ -48,6 +84,11 @@ func (db *DbClient) QueryValidatorEvents(
 		args = append(args, strings.ToUpper(*req.ValidatorPubkey))
 		argIdx++
 	}
+	if req.AdnlAddress != nil {
+		query += fmt.Sprintf(" AND adnl_addr = $%d", argIdx)
+		args = append(args, strings.ToUpper(*req.AdnlAddress))
+		argIdx++
+	}
 	if req.EventType != nil {
 		query += fmt.Sprintf(" AND event_type = $%d", argIdx)
 		args = append(args, *req.EventType)
@@ -59,7 +100,7 @@ func (db *DbClient) QueryValidatorEvents(
 		return nil, err
 	}
 	query += " ORDER BY tx_now DESC, tx_lt DESC"
-	limit, err := limitOnlyQuery(req.Limit, settings)
+	limit, err := limitOnlyQueryWithDefault(req.Limit, validatorsDefaultLimit, settings)
 	if err != nil {
 		return nil, err
 	}
@@ -162,7 +203,7 @@ func (db *DbClient) QueryValidatorElections(
 		return nil, err
 	}
 	query += " ORDER BY election_id DESC"
-	limit, err := limitOnlyQuery(req.Limit, settings)
+	limit, err := limitOnlyQueryWithDefault(req.Limit, validatorsDefaultLimit, settings)
 	if err != nil {
 		return nil, err
 	}
@@ -197,8 +238,9 @@ func (db *DbClient) QueryValidatorElections(
 	rows.Close()
 
 	if includeParticipants {
+		matchFilter := validatorMemberFilterFromRequest(req.StakeHolderAddress, req.AdnlAddress, req.ValidatorPubkey)
 		for i := range elections {
-			participants, err := db.queryValidatorElectionParticipants(ctx, conn, elections[i].ElectionId)
+			participants, err := db.queryValidatorElectionParticipants(ctx, conn, elections[i].ElectionId, matchFilter)
 			if err != nil {
 				return nil, err
 			}
@@ -212,8 +254,9 @@ func (db *DbClient) queryValidatorElectionParticipants(
 	ctx context.Context,
 	conn *pgxpool.Conn,
 	electionId int32,
+	matchFilter *validatorMemberFilter,
 ) ([]models.ValidatorElectionParticipant, error) {
-	rows, err := conn.Query(ctx, `
+	query := `
 		SELECT p.validator_pubkey, cycle_member.validator_index, p.stake::text, p.max_factor,
 		       p.stake_holder_address, p.adnl_addr
 		FROM validator_election_participants p
@@ -228,8 +271,28 @@ func (db *DbClient) queryValidatorElectionParticipants(
 			LIMIT 1
 		) cycle_member ON true
 		WHERE p.election_id = $1
-		ORDER BY p.stake DESC, p.validator_pubkey
-	`, electionId)
+	`
+	args := []interface{}{electionId}
+	argIdx := 2
+	if matchFilter != nil {
+		if matchFilter.stakeHolderAddress != nil {
+			query += fmt.Sprintf(" AND p.stake_holder_address = $%d", argIdx)
+			args = append(args, *matchFilter.stakeHolderAddress)
+			argIdx++
+		}
+		if matchFilter.adnlAddr != nil {
+			query += fmt.Sprintf(" AND p.adnl_addr = $%d", argIdx)
+			args = append(args, *matchFilter.adnlAddr)
+			argIdx++
+		}
+		if matchFilter.validatorPubkey != nil {
+			query += fmt.Sprintf(" AND p.validator_pubkey = $%d", argIdx)
+			args = append(args, *matchFilter.validatorPubkey)
+			argIdx++
+		}
+	}
+	query += " ORDER BY p.stake DESC, p.validator_pubkey"
+	rows, err := conn.Query(ctx, query, args...)
 	if err != nil {
 		return nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
@@ -341,7 +404,7 @@ func (db *DbClient) QueryValidatorCycles(
 		return nil, err
 	}
 	query += " ORDER BY utime_since DESC"
-	limit, err := limitOnlyQuery(req.Limit, settings)
+	limit, err := limitOnlyQueryWithDefault(req.Limit, validatorsDefaultLimit, settings)
 	if err != nil {
 		return nil, err
 	}
@@ -397,13 +460,9 @@ func (db *DbClient) QueryValidatorCycles(
 	rows.Close()
 
 	if includeValidators {
-		var stakeHolderAddress *string
-		if req.StakeHolderAddress != nil {
-			value := string(*req.StakeHolderAddress)
-			stakeHolderAddress = &value
-		}
+		matchFilter := validatorMemberFilterFromRequest(req.StakeHolderAddress, req.AdnlAddress, req.ValidatorPubkey)
 		for i := range cycles {
-			validators, err := db.queryValidatorCycleValidators(ctx, conn, cycles[i].CycleStart, stakeHolderAddress)
+			validators, err := db.queryValidatorCycleValidators(ctx, conn, cycles[i].CycleStart, matchFilter)
 			if err != nil {
 				return nil, err
 			}
@@ -428,7 +487,7 @@ func (db *DbClient) queryValidatorCycleValidators(
 	ctx context.Context,
 	conn *pgxpool.Conn,
 	utimeSince int32,
-	stakeHolderAddress *string,
+	matchFilter *validatorMemberFilter,
 ) ([]models.ValidatorCycleValidator, error) {
 	query := `
 		SELECT m.validator_index, m.validator_pubkey,
@@ -444,9 +503,11 @@ func (db *DbClient) queryValidatorCycleValidators(
 			  AND p.validator_pubkey = m.validator_pubkey
 	`
 	args := []interface{}{utimeSince}
-	if stakeHolderAddress != nil {
-		query += " AND p.stake_holder_address = $2"
-		args = append(args, *stakeHolderAddress)
+	argIdx := 2
+	if matchFilter != nil && matchFilter.stakeHolderAddress != nil {
+		query += fmt.Sprintf(" AND p.stake_holder_address = $%d", argIdx)
+		args = append(args, *matchFilter.stakeHolderAddress)
+		argIdx++
 	}
 	query += `
 			ORDER BY source_mc_seqno DESC
@@ -454,8 +515,20 @@ func (db *DbClient) queryValidatorCycleValidators(
 		) p ON true
 		WHERE m.utime_since = $1
 	`
-	if stakeHolderAddress != nil {
-		query += " AND p.stake_holder_address IS NOT NULL"
+	if matchFilter != nil {
+		if matchFilter.stakeHolderAddress != nil {
+			query += " AND p.stake_holder_address IS NOT NULL"
+		}
+		if matchFilter.adnlAddr != nil {
+			query += fmt.Sprintf(" AND m.adnl_addr = $%d", argIdx)
+			args = append(args, *matchFilter.adnlAddr)
+			argIdx++
+		}
+		if matchFilter.validatorPubkey != nil {
+			query += fmt.Sprintf(" AND m.validator_pubkey = $%d", argIdx)
+			args = append(args, *matchFilter.validatorPubkey)
+			argIdx++
+		}
 	}
 	query += " ORDER BY m.validator_index"
 	rows, err := conn.Query(ctx, query, args...)
@@ -614,7 +687,7 @@ func (db *DbClient) QueryValidatorComplaints(
 		return nil, err
 	}
 	query += " ORDER BY c.created_at DESC, c.complaint_hash"
-	limit, err := limitOnlyQuery(req.Limit, settings)
+	limit, err := limitOnlyQueryWithDefault(req.Limit, validatorsDefaultLimit, settings)
 	if err != nil {
 		return nil, err
 	}
@@ -670,9 +743,12 @@ func scanValidatorComplaint(rows pgx.Rows) (models.ValidatorComplaint, error) {
 	if len(votedRaw) == 0 {
 		votedRaw = []byte("[]")
 	}
-	// The worker stores complaint hashes as hex; the API convention for hashes is base64.
+	// The worker stores complaint and vset hashes as hex; the API convention for hashes is base64.
 	if decoded, err := hex.DecodeString(complaint.ComplaintHash); err == nil {
 		complaint.ComplaintHash = base64.StdEncoding.EncodeToString(decoded)
+	}
+	if decoded, err := hex.DecodeString(complaint.VsetId); err == nil {
+		complaint.VsetId = base64.StdEncoding.EncodeToString(decoded)
 	}
 	complaint.AdnlAddr = adnlAddr
 	if stakeHolderAddress.Valid {

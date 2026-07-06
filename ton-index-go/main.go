@@ -2367,6 +2367,20 @@ func validateValidatorAddressFilters(stakeHolderAddress *models.AccountAddress, 
 	return nil
 }
 
+// Embedding a full validator set runs two extra queries per row; past ~100 rows the request blows
+// through the query deadline and dies with a 500, so reject oversized limits up front instead.
+const maxEmbeddedSetLimit = 100
+
+func validateEmbeddedSetLimit(includeSet bool, limit *int32, paramName string) error {
+	if includeSet && limit != nil && *limit > maxEmbeddedSetLimit {
+		return models.IndexError{
+			Code:    422,
+			Message: fmt.Sprintf("limit must not exceed %d when %s is true", maxEmbeddedSetLimit, paramName),
+		}
+	}
+	return nil
+}
+
 func normalizeValidatorHashFilters(validatorPubkey *string, adnlAddress *string) error {
 	if err := normalizeValidatorHashFilter("validator_pubkey", validatorPubkey); err != nil {
 		return err
@@ -2391,14 +2405,15 @@ func normalizeValidatorHashFilter(field string, value *string) error {
 
 // GetValidatorEvents godoc
 // @summary Get validator stake/recover events
-// @tags staking
+// @tags validators
 // @id getValidatorEvents
 // @param stake_holder_address query string false "Stake holder address in any form"
+// @param adnl_address query string false "ADNL address in hex, base64 or base64url form"
 // @param validator_pubkey query string false "Validator public key in hex, base64 or base64url form"
-// @param type query string false "Event type"
+// @param type query string false "Event type" Enums(stake_accepted, stake_rejected, stake_recovered)
 // @param start_utime query integer false "Query events with timestamp at or after given timestamp." minimum(0)
 // @param end_utime query integer false "Query events with timestamp at or before given timestamp." minimum(0)
-// @param limit query int32 false "Limit number of queried rows." minimum(1) maximum(1000) default(100)
+// @param limit query int32 false "Limit number of queried rows." minimum(1) maximum(1000) default(10)
 // @produce json
 // @success 200 {object} models.ValidatorEventsResponse
 // @failure 422 {object} models.IndexError
@@ -2410,7 +2425,10 @@ func GetValidatorEvents(c *fiber.Ctx) error {
 	if err := c.QueryParser(&req); err != nil {
 		return models.IndexError{Code: 422, Message: err.Error()}
 	}
-	if err := normalizeValidatorHashFilters(req.ValidatorPubkey, nil); err != nil {
+	if err := validateValidatorAddressFilters(req.StakeHolderAddress, req.AdnlAddress); err != nil {
+		return err
+	}
+	if err := normalizeValidatorHashFilters(req.ValidatorPubkey, req.AdnlAddress); err != nil {
 		return err
 	}
 
@@ -2444,17 +2462,17 @@ func GetValidatorEvents(c *fiber.Ctx) error {
 
 // GetValidatorElections godoc
 // @summary Get validator elections
-// @tags staking
+// @tags validators
 // @id getValidatorElections
 // @param election_id query integer false "Election id"
 // @param stake_holder_address query string false "Stake holder address in any form"
 // @param adnl_address query string false "ADNL address in hex, base64 or base64url form"
 // @param validator_pubkey query string false "Validator public key in hex, base64 or base64url form"
-// @param return_participants query boolean false "Return election participants" default(false)
+// @param return_participants query boolean false "Return election participants. If stake_holder_address, adnl_address or validator_pubkey is specified, returns only matching participants." default(false)
 // @param finished query boolean false "Filter by finished flag"
 // @param start_utime query integer false "Query elections with election_id at or after given value. For elections, start_utime is applied to election_id, not elect_close." minimum(0)
 // @param end_utime query integer false "Query elections with election_id at or before given value. For elections, end_utime is applied to election_id, not elect_close." minimum(0)
-// @param limit query int32 false "Limit number of queried rows." minimum(1) maximum(1000) default(100)
+// @param limit query int32 false "Limit number of queried rows. At most 100 when return_participants is true." minimum(1) maximum(1000) default(10)
 // @produce json
 // @success 200 {object} models.ValidatorElectionsResponse
 // @failure 422 {object} models.IndexError
@@ -2473,6 +2491,9 @@ func GetValidatorElections(c *fiber.Ctx) error {
 		return err
 	}
 	includeParticipants := req.ReturnParticipants != nil && *req.ReturnParticipants
+	if err := validateEmbeddedSetLimit(includeParticipants, req.Limit, "return_participants"); err != nil {
+		return err
+	}
 
 	utimeReq, err := parseStakingUtimeFilter(c)
 	if err != nil {
@@ -2502,17 +2523,17 @@ func GetValidatorElections(c *fiber.Ctx) error {
 // GetValidatorCycles godoc
 // @summary Get validator cycles
 // @description Cycle `min_stake`/`max_stake` are selected validators' true stake bounds. `min_stake_limit`/`max_stake_limit` are config17 election limits. When validators are returned, each validator's `max_factor` is the participant's raw declared factor (65536 = 1.0); the effective factor used to derive `stake` is min(max_factor, cycle `max_stake_factor`).
-// @tags staking
+// @tags validators
 // @id getValidatorCycles
 // @param cycle_start query integer false "Validator cycle start time"
 // @param election_id query integer false "Elector election id that produced the cycle"
 // @param stake_holder_address query string false "Stake holder address in any form"
 // @param adnl_address query string false "ADNL address in hex, base64 or base64url form"
 // @param validator_pubkey query string false "Validator public key in hex, base64 or base64url form"
-// @param return_validators query boolean false "Return validators in the set. If stake_holder_address is specified, returns only validators matching that stake holder." default(false)
+// @param return_validators query boolean false "Return validators in the set. If stake_holder_address, adnl_address or validator_pubkey is specified, returns only matching validators." default(false)
 // @param start_utime query integer false "Query cycles with cycle_start at or after given timestamp." minimum(0)
 // @param end_utime query integer false "Query cycles with cycle_start at or before given timestamp." minimum(0)
-// @param limit query int32 false "Limit number of queried rows." minimum(1) maximum(1000) default(100)
+// @param limit query int32 false "Limit number of queried rows. At most 100 when return_validators is true." minimum(1) maximum(1000) default(10)
 // @produce json
 // @success 200 {object} models.ValidatorCyclesResponse
 // @failure 422 {object} models.IndexError
@@ -2531,6 +2552,9 @@ func GetValidatorCycles(c *fiber.Ctx) error {
 		return err
 	}
 	includeValidators := req.ReturnValidators != nil && *req.ReturnValidators
+	if err := validateEmbeddedSetLimit(includeValidators, req.Limit, "return_validators"); err != nil {
+		return err
+	}
 
 	utimeReq, err := parseStakingUtimeFilter(c)
 	if err != nil {
@@ -2567,7 +2591,7 @@ func GetValidatorCycles(c *fiber.Ctx) error {
 
 // GetValidatorComplaints godoc
 // @summary Get validator complaints
-// @tags staking
+// @tags validators
 // @id getValidatorComplaints
 // @param cycle_start query integer false "Validator cycle start time"
 // @param election_id query integer false "Elector election id"
@@ -2576,7 +2600,7 @@ func GetValidatorCycles(c *fiber.Ctx) error {
 // @param validator_pubkey query string false "Validator public key in hex, base64 or base64url form"
 // @param start_utime query integer false "Query complaints with created_at at or after given timestamp." minimum(0)
 // @param end_utime query integer false "Query complaints with created_at at or before given timestamp." minimum(0)
-// @param limit query int32 false "Limit number of queried rows." minimum(1) maximum(1000) default(100)
+// @param limit query int32 false "Limit number of queried rows." minimum(1) maximum(1000) default(10)
 // @produce json
 // @success 200 {object} models.ValidatorComplaintsResponse
 // @failure 422 {object} models.IndexError

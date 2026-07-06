@@ -117,7 +117,7 @@ type ValidatorEvent struct {
 	TxHash             HashType       `json:"tx_hash"`
 	TxLt               int64          `json:"tx_lt,string"`
 	Utime              int32          `json:"utime"`
-	Type               string         `json:"type"`
+	Type               string         `json:"type" enums:"stake_accepted,stake_rejected,stake_recovered"` // "stake_accepted", "stake_rejected", "stake_recovered"
 	StakeHolderAddress AccountAddress `json:"stake_holder_address"`
 	ValidatorPubkey    *string        `json:"validator_pubkey,omitempty"`
 	AdnlAddr           *string        `json:"adnl_addr,omitempty"`
@@ -224,7 +224,7 @@ type ValidatorComplaint struct {
 	SuggestedFine      string                   `json:"suggested_fine"`
 	SuggestedFinePart  int32                    `json:"suggested_fine_part"`
 	VotedValidators    []ValidatorComplaintVote `json:"voted_validators"`
-	VsetId             string                   `json:"vset_id"`
+	VsetId             string                   `json:"vset_id" example:"REenLSr+rc8TCU/oc7Hcwburz3bMdA+DJzGA1PAHSes="`
 	WeightRemaining    int64                    `json:"weight_remaining,string"`
 	ApprovedPercent    float64                  `json:"approved_percent"`
 	IsPassed           bool                     `json:"is_passed"`

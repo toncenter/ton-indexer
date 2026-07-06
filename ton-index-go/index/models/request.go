@@ -325,6 +325,7 @@ type NominatorPoolValidatorRewardsRequest struct {
 
 type ValidatorEventsRequest struct {
 	StakeHolderAddress *AccountAddress `query:"stake_holder_address"`
+	AdnlAddress        *string         `query:"adnl_address"`
 	ValidatorPubkey    *string         `query:"validator_pubkey"`
 	EventType          *string         `query:"type"`
 	Limit              *int32          `query:"limit"`
