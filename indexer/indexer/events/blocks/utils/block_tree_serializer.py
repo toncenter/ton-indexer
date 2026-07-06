@@ -890,6 +890,7 @@ def _fill_vesting_send_message(block: VestingSendMessageBlock, action: Action):
         block.data.message_destination
     )  # where the msg was sent to
     action.amount = block.data.message_value.value  # the value of the msg
+    action.success = block.data.success  # whether the message was actually sent
     action.vesting_send_message_data = {
         "query_id": block.data.query_id,
         "message_boc": block.data.message_boc_str,
