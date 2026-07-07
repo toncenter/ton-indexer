@@ -135,7 +135,7 @@ func buildNFTItemsQuery(req models.NFTItemRequest, settings models.RequestSettin
 }
 
 const nftTransfersColumns = ` T.tx_hash, T.tx_lt, T.tx_now, T.tx_aborted, T.query_id,
-	T.nft_item_address, T.nft_item_index, T.nft_collection_address, T.old_owner, T.new_owner, T.response_destination, T.custom_payload,
+	T.nft_item_address, T.nft_item_index, coalesce(T.nft_collection_address, '') as nft_collection_address, coalesce(T.old_owner, '') as old_owner, coalesce(T.new_owner, '') as new_owner, T.response_destination, T.custom_payload,
 	T.forward_amount, T.forward_payload, T.trace_id`
 
 // nftTransfersParts holds the shared pieces of an nft transfers listing query.
