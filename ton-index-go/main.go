@@ -2414,6 +2414,8 @@ func normalizeValidatorHashFilter(field string, value *string) error {
 // @param start_utime query integer false "Query events with timestamp at or after given timestamp." minimum(0)
 // @param end_utime query integer false "Query events with timestamp at or before given timestamp." minimum(0)
 // @param limit query int32 false "Limit number of queried rows." minimum(1) maximum(1000) default(10)
+// @param offset query int32 false "Skip first N rows." minimum(0) default(0)
+// @param sort query string false "Sort events by event time." Enums(asc, desc) default(desc)
 // @produce json
 // @success 200 {object} models.ValidatorEventsResponse
 // @failure 422 {object} models.IndexError
@@ -2473,6 +2475,8 @@ func GetValidatorEvents(c *fiber.Ctx) error {
 // @param start_utime query integer false "Query elections with election_id at or after given value. For elections, start_utime is applied to election_id, not elect_close." minimum(0)
 // @param end_utime query integer false "Query elections with election_id at or before given value. For elections, end_utime is applied to election_id, not elect_close." minimum(0)
 // @param limit query int32 false "Limit number of queried rows. At most 100 when return_participants is true." minimum(1) maximum(1000) default(10)
+// @param offset query int32 false "Skip first N rows." minimum(0) default(0)
+// @param sort query string false "Sort elections by election_id." Enums(asc, desc) default(desc)
 // @produce json
 // @success 200 {object} models.ValidatorElectionsResponse
 // @failure 422 {object} models.IndexError
@@ -2534,6 +2538,8 @@ func GetValidatorElections(c *fiber.Ctx) error {
 // @param start_utime query integer false "Query cycles with cycle_start at or after given timestamp." minimum(0)
 // @param end_utime query integer false "Query cycles with cycle_start at or before given timestamp." minimum(0)
 // @param limit query int32 false "Limit number of queried rows. At most 100 when return_validators is true." minimum(1) maximum(1000) default(10)
+// @param offset query int32 false "Skip first N rows." minimum(0) default(0)
+// @param sort query string false "Sort cycles by cycle start time." Enums(asc, desc) default(desc)
 // @produce json
 // @success 200 {object} models.ValidatorCyclesResponse
 // @failure 422 {object} models.IndexError
@@ -2601,6 +2607,8 @@ func GetValidatorCycles(c *fiber.Ctx) error {
 // @param start_utime query integer false "Query complaints with created_at at or after given timestamp." minimum(0)
 // @param end_utime query integer false "Query complaints with created_at at or before given timestamp." minimum(0)
 // @param limit query int32 false "Limit number of queried rows." minimum(1) maximum(1000) default(10)
+// @param offset query int32 false "Skip first N rows." minimum(0) default(0)
+// @param sort query string false "Sort complaints by creation time." Enums(asc, desc) default(desc)
 // @produce json
 // @success 200 {object} models.ValidatorComplaintsResponse
 // @failure 422 {object} models.IndexError
