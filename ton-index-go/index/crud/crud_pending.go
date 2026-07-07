@@ -339,7 +339,7 @@ func QueryPendingTransactionsImpl(emulatedContext *EmulatedTracesContext, conn *
 }
 
 func queryPendingTracesImpl(emulatedContext *EmulatedTracesContext, conn *pgxpool.Conn, settings models.RequestSettings, request models.PendingTracesRequest) ([]models.Trace, []models.AccountAddress, error) {
-	var traces []models.Trace
+	traces := []models.Trace{}
 	completed_traces, err := queryCompletedEmulatedTraces(emulatedContext, conn, settings, true)
 	if err != nil {
 		return nil, nil, err

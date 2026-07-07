@@ -907,6 +907,9 @@ func (db *DbClient) QueryTraces(
 	if err != nil {
 		return nil, nil, nil, err
 	}
+	if traces == nil {
+		traces = []models.Trace{}
+	}
 
 	// Map each trace to its db source
 	hotIdx, coldIdx := []int{}, []int{}
