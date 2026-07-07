@@ -74,8 +74,8 @@ func validateTransactionsDirection(req models.TransactionsRequest) error {
 	if err := validateDirection(req.Direction); err != nil {
 		return err
 	}
-	if req.Direction != nil && len(req.MessageHash) == 0 {
-		return models.IndexError{Code: 422, Message: "direction can be specified only with msg_hash"}
+	if req.Direction != nil && len(req.MessageHash) == 0 && req.Opcode == nil {
+		return models.IndexError{Code: 422, Message: "direction can be specified only with msg_hash or opcode"}
 	}
 	return nil
 }

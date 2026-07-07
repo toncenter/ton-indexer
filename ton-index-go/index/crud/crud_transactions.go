@@ -23,7 +23,7 @@ const transactionsColumns = `T.account, T.hash, T.lt, T.block_workchain, T.block
 	T.action_tot_actions, T.action_spec_actions, T.action_skipped_actions, T.action_msgs_created, T.action_action_list_hash,
 	T.action_tot_msg_size_cells, T.action_tot_msg_size_bits, T.bounce, T.bounce_msg_size_cells, T.bounce_msg_size_bits,
 	T.bounce_req_fwd_fees, T.bounce_msg_fees, T.bounce_fwd_fees, T.split_info_cur_shard_pfx_len, T.split_info_acc_split_depth,
-	T.split_info_this_addr, T.split_info_sibling_addr, false as emulated, 3 as finality`
+	T.split_info_this_addr, T.split_info_sibling_addr, false as emulated, 2 as finality`
 
 func buildTransactionsQuery(
 	req models.TransactionsRequest,
@@ -45,7 +45,7 @@ func buildTransactionsQuery(
 	T.action_tot_actions, T.action_spec_actions, T.action_skipped_actions, T.action_msgs_created, T.action_action_list_hash, 
 	T.action_tot_msg_size_cells, T.action_tot_msg_size_bits, T.bounce, T.bounce_msg_size_cells, T.bounce_msg_size_bits, 
 	T.bounce_req_fwd_fees, T.bounce_msg_fees, T.bounce_fwd_fees, T.split_info_cur_shard_pfx_len, T.split_info_acc_split_depth, 
-	T.split_info_this_addr, T.split_info_sibling_addr, false as emulated, 3 as finality from`
+	T.split_info_this_addr, T.split_info_sibling_addr, false as emulated, 2 as finality from`
 	from_query := ` transactions as T`
 	filter_list := []string{}
 	filter_query := ``
@@ -151,7 +151,7 @@ func buildTransactionsQuery(
 	}
 	if v := req.Opcode; v != nil {
 		by_msg = true
-		filter_list = append(filter_list, fmt.Sprintf("M.opcode = %d and M.direction = 'in'", *v))
+		filter_list = append(filter_list, fmt.Sprintf("M.opcode = %d", *v))
 	}
 	if by_msg {
 		from_query = " messages as M join transactions as T on M.tx_hash = T.hash and M.tx_lt = T.lt"
@@ -642,7 +642,7 @@ func transactionsQueryParts(req models.TransactionsRequest, sortOrder string) tx
 	}
 	if v := req.Opcode; v != nil {
 		by_msg = true
-		filter_list = append(filter_list, fmt.Sprintf("M.opcode = %d and M.direction = 'in'", *v))
+		filter_list = append(filter_list, fmt.Sprintf("M.opcode = %d", *v))
 	}
 	if by_msg {
 		from_query = " messages as M join transactions as T on M.tx_hash = T.hash and M.tx_lt = T.lt"
