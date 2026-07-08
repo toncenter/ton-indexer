@@ -135,7 +135,7 @@ func jettonTransfersQueryParts(req models.JettonTransferRequest, sortOrder strin
 	lt_req := req.GetLtParams()
 
 	clmn_query := `T.tx_hash, T.tx_lt, T.tx_now, T.tx_aborted, T.query_id,
-		T.amount, T.source, T.destination, T.jetton_wallet_address, T.jetton_master_address, T.response_destination, T.custom_payload,
+		T.amount, coalesce(T.source::text, '') as source, coalesce(T.destination::text, '') as destination, coalesce(T.jetton_wallet_address::text, '') as jetton_wallet_address, coalesce(T.jetton_master_address::text, '') as jetton_master_address, T.response_destination, T.custom_payload,
 		T.forward_ton_amount, T.forward_payload, T.trace_id`
 	from_query := `jetton_transfers as T`
 	filter_list := []string{"T.tx_aborted is false"}
@@ -233,7 +233,7 @@ func jettonBurnsQueryParts(req models.JettonBurnRequest, sortOrder string) txLtL
 	lt_req := req.GetLtParams()
 
 	clmn_query := `T.tx_hash, T.tx_lt, T.tx_now, T.tx_aborted, T.query_id,
-		T.owner, T.jetton_wallet_address, T.jetton_master_address, T.amount, T.response_destination, T.custom_payload, T.trace_id`
+		coalesce(T.owner::text, '') as owner, coalesce(T.jetton_wallet_address::text, '') as jetton_wallet_address, coalesce(T.jetton_master_address::text, '') as jetton_master_address, T.amount, T.response_destination, T.custom_payload, T.trace_id`
 	from_query := `jetton_burns as T`
 	filter_list := []string{}
 
