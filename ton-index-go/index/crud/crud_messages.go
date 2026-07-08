@@ -22,8 +22,7 @@ const messagesClmnQuery = `'', 0, M.msg_hash, '', ` + messagesRestColumns + `,
 
 const messagesGroupBy = ` group by M.msg_hash, ` + messagesRestColumns
 
-// msgQueryParts holds the shared pieces of a messages listing query. orderByNow
-// selects the time axis (M.created_at) over the lt axis (M.created_lt) for boundary + ordering.
+// msgQueryParts holds the shared pieces of a messages listing query.
 type msgQueryParts struct {
 	filterList []string
 	args       []any
@@ -93,67 +92,43 @@ func messagesQueryParts(req models.MessageRequest, sortOrder string, useKvrocks 
 		filter_list = append(filter_list, order_col+" is NULL")
 	}
 
-	orderby_query := fmt.Sprintf(" order by %s %s, M.msg_hash %s", order_col, sortOrder, sortOrder)
+	// With one address filter, lead ORDER BY with that address column so Postgres
+	// can use the composite (address, created_lt) index. The created_at path has
+	// no matching composite index.
+	addressFirst := ""
+	if req.Destination != nil && req.Source == nil {
+		addressFirst = "M.destination"
+	} else if req.Source != nil && req.Destination == nil {
+		addressFirst = "M.source"
+	}
+
+	var orderby_query string
+	if addressFirst != "" && !orderByNow {
+		orderby_query = fmt.Sprintf(" order by %s %s, %s %s, M.msg_hash %s", addressFirst, sortOrder, order_col, sortOrder, sortOrder)
+	} else {
+		orderby_query = fmt.Sprintf(" order by %s %s, M.msg_hash %s", order_col, sortOrder, sortOrder)
+	}
 	return msgQueryParts{filterList: filter_list, args: args, orderBy: orderby_query, orderByNow: orderByNow, useKvrocks: useKvrocks}
 }
 
-// messagesBoundaryFilters appends this leg's [floor, ceil) boundary on the sort
-// axis (M.created_lt or M.created_at). External messages carry a permanently null
-// axis value (and partition by mc_seqno, so they live on either side), so they
-// can't be banded by the sort axis. When federated (ltSeam set), they are banded
-// by the non-null M.tx_lt against the lt seam on BOTH legs so each external is
-// returned exactly once. Standalone (ltSeam nil) keeps the old simple null arm.
-func messagesBoundaryFilters(p msgQueryParts, floor, ceil, ltSeam *uint64) []string {
-	col := "M.created_lt"
-	if p.orderByNow {
-		col = "M.created_at"
-	}
-	filters := append([]string{}, p.filterList...)
-	if floor != nil {
-		if ltSeam != nil {
-			filters = append(filters, fmt.Sprintf("(%s >= %d or (%s is null and M.tx_lt >= %d))", col, *floor, col, *ltSeam))
-		} else {
-			filters = append(filters, fmt.Sprintf("(%s >= %d or %s is null)", col, *floor, col))
-		}
-	}
-	if ceil != nil {
-		if ltSeam != nil {
-			filters = append(filters, fmt.Sprintf("(%s < %d or (%s is null and M.tx_lt < %d))", col, *ceil, col, *ltSeam))
-		} else {
-			filters = append(filters, fmt.Sprintf("%s < %d", col, *ceil))
-		}
-	}
-	return filters
-}
-
-// messagesPageInner builds the grouped per-msg_hash page (the in/out rows collapse
-// to one row per msg_hash). The message_contents join is applied only by the
-// offset builder; the count wraps this bare grouped shape instead.
-func messagesPageInner(p msgQueryParts, floor, ceil, ltSeam *uint64, orderLimit string) string {
+// messagesPageInner builds one grouped page without hot/cold seam bounds.
+func messagesPageInner(p msgQueryParts, orderLimit string) string {
 	filter_query := ``
-	if filters := messagesBoundaryFilters(p, floor, ceil, ltSeam); len(filters) > 0 {
-		filter_query = ` where ` + strings.Join(filters, " and ")
+	if len(p.filterList) > 0 {
+		filter_query = ` where ` + strings.Join(p.filterList, " and ")
 	}
 	return `select ` + messagesClmnQuery + ` from messages as M` + filter_query + messagesGroupBy + orderLimit
 }
 
-func buildMessagesOffsetQuery(p msgQueryParts, floor, ceil, ltSeam *uint64, offset, limit int) string {
+func buildMessagesOffsetQuery(p msgQueryParts, offset, limit int) string {
 	limit_query := fmt.Sprintf(" limit %d offset %d", max(1, limit), max(0, offset))
-	inner_query := messagesPageInner(p, floor, ceil, ltSeam, p.orderBy+limit_query)
+	inner_query := messagesPageInner(p, p.orderBy+limit_query)
 	if p.useKvrocks {
 		return `select MM.*, NULL::tonhash, NULL::text, NULL::tonhash, NULL::text from (` + inner_query + `) as MM;`
 	}
 	return `select MM.*, B.*, I.* from (` + inner_query + `) as MM
 	left join message_contents as B on MM.body_hash = B.hash
 	left join message_contents as I on MM.init_state_hash = I.hash;`
-}
-
-// buildMessagesCountQuery counts the grouped page rows (one per msg_hash). The
-// GROUP BY collapses the in/out rows, so wrapping count(*) around the grouped
-// shape yields the distinct-msg_hash count the offset arithmetic needs — without
-// the message_contents join.
-func buildMessagesCountQuery(p msgQueryParts, floor, ceil, ltSeam *uint64) string {
-	return `select count(*) from (` + messagesPageInner(p, floor, ceil, ltSeam, ``) + `) as sub`
 }
 
 func messagePtrs(msgs []models.Message) []*models.Message {
@@ -265,6 +240,74 @@ func queryMessagesImpl(query string, conn *pgxpool.Conn, settings models.Request
 	return msgs, nil
 }
 
+// messagesCanHaveNullKeys reports whether a page can contain external-in messages
+func messagesCanHaveNullKeys(req models.MessageRequest) bool {
+	if req.ExcludeExternals != nil && *req.ExcludeExternals {
+		return false
+	}
+	if req.Source != nil && !req.Source.IsAddressNone() {
+		return false
+	}
+	if req.Direction != nil && *req.Direction == "out" {
+		return false
+	}
+	return true
+}
+
+// messageOrderKey returns nil for external messages with NULL created_lt; that
+// forces cold fallback during hot-page verification.
+func messageOrderKey(orderByNow bool) func(*models.Message) *uint64 {
+	if orderByNow {
+		return func(m *models.Message) *uint64 {
+			if m.CreatedAt == nil {
+				return nil
+			}
+			v := uint64(*m.CreatedAt)
+			return &v
+		}
+	}
+	return func(m *models.Message) *uint64 { return m.CreatedLt }
+}
+
+// queryMessagesRouted fetches one grouped page via the hot/cold router.
+func queryMessagesRouted(
+	fc *fedConns,
+	req models.MessageRequest,
+	parts msgQueryParts,
+	sortOrder string,
+	offset, limit int,
+	fetch func(query string, conn *pgxpool.Conn) ([]models.Message, error),
+) ([]models.Message, error) {
+	query := buildMessagesOffsetQuery(parts, offset, limit)
+
+	// Single pool: read cold directly, no classification.
+	dec := routeCold
+	var floor uint64
+	if fc.federated {
+		w := routeWindow{
+			startLt:         req.StartLt,
+			endLt:           req.EndLt,
+			startUtime:      (*uint64)(req.StartUtime),
+			endUtime:        (*uint64)(req.EndUtime),
+			orderByNow:      parts.orderByNow,
+			sortDesc:        sortOrder == "desc",
+			canHaveNullKeys: messagesCanHaveNullKeys(req),
+		}
+		dec = classifyRoute(w, fc.split, fc.utimeMargin)
+
+		// created_lt >= split.Lt keeps the whole grouped message above the floor.
+		floor = fc.split.Lt
+		if parts.orderByNow {
+			floor = fc.split.Utime + fc.utimeMargin
+		}
+	}
+
+	msgs, _, err := routedPage(fc, dec,
+		func(conn *pgxpool.Conn) ([]models.Message, error) { return fetch(query, conn) },
+		messageOrderKey(parts.orderByNow), limit, floor)
+	return msgs, err
+}
+
 func (db *DbClient) QueryMessages(
 	req models.MessageRequest,
 	settings models.RequestSettings,
@@ -291,10 +334,6 @@ func (db *DbClient) QueryMessages(
 	}
 
 	parts := messagesQueryParts(req, sortOrder, db.Kvrocks != nil)
-	orderKey := "lt"
-	if parts.orderByNow {
-		orderKey = "utime"
-	}
 
 	fc, release, err := db.acquireFedForRequest(settings)
 	if err != nil {
@@ -309,29 +348,7 @@ func (db *DbClient) QueryMessages(
 		return queryMessagesImpl(query, conn, settings, parts.args...)
 	}
 
-	// externals have a null sort axis (created_lt/created_at); band them by tx_lt at
-	// the lt seam so they aren't dropped or duplicated across the legs.
-	var ltSeam *uint64
-	if fc.federated {
-		s := fc.split.Lt
-		ltSeam = &s
-	}
-
-	// messages are offset-paged (no lt cursor); the count wraps count(*) around the
-	// grouped page because the GROUP BY collapses in/out rows to one per msg_hash. A
-	// msg_hash whose in-tx and out-tx straddle the split yields a per-leg partial
-	// group (the GROUP BY runs per DB), an accepted group-complete-style shift at the seam.
-	msgs, err := cascadePageOffset(fc, sortOrder, offset, int(limit),
-		func(floor, ceil *uint64, off, lim int) (string, error) {
-			return buildMessagesOffsetQuery(parts, floor, ceil, ltSeam, off, lim), nil
-		},
-		func(floor, ceil *uint64) string { return buildMessagesCountQuery(parts, floor, ceil, ltSeam) },
-		fetch,
-		func(query string, conn *pgxpool.Conn) (int, error) {
-			return queryCount(query, conn, settings, parts.args...)
-		},
-		orderKey,
-	)
+	msgs, err := queryMessagesRouted(fc, req, parts, sortOrder, offset, int(limit), fetch)
 	if err != nil {
 		return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 	}

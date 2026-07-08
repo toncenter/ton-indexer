@@ -118,10 +118,8 @@ func buildJettonWalletsQuery(req models.JettonWalletRequest, settings models.Req
 	return query, nil
 }
 
-// txLtListParts holds the shared pieces of a jetton transfers/burns listing query.
-// Both are flat listings on a `T`-aliased table whose sort axis is T.tx_lt, or
-// T.tx_now when a start/end utime filter is present (orderByNow). The boundary, offset
-// and count builders below are shared across both endpoints.
+// txLtListParts is shared by jetton transfers and burns.
+// Both list on T.tx_lt, or T.tx_now when orderByNow is selected.
 type txLtListParts struct {
 	clmnQuery  string
 	fromQuery  string
@@ -194,38 +192,13 @@ func jettonTransfersQueryParts(req models.JettonTransferRequest, sortOrder strin
 	return txLtListParts{clmnQuery: clmn_query, fromQuery: from_query, filterList: filter_list, orderBy: orderby_query, orderByNow: orderByNow}
 }
 
-// txLtListBoundaryFilters appends this leg's [floor, ceil) boundary on the sort
-// axis (T.tx_lt or T.tx_now). lt/now are never null, so no null handling is needed.
-func txLtListBoundaryFilters(p txLtListParts, floor, ceil *uint64) []string {
-	col := "T.tx_lt"
-	if p.orderByNow {
-		col = "T.tx_now"
-	}
-	filters := append([]string{}, p.filterList...)
-	if floor != nil {
-		filters = append(filters, fmt.Sprintf("%s >= %d", col, *floor))
-	}
-	if ceil != nil {
-		filters = append(filters, fmt.Sprintf("%s < %d", col, *ceil))
-	}
-	return filters
-}
-
-func buildTxLtListOffset(p txLtListParts, floor, ceil *uint64, offset, limit int) string {
+func buildTxLtListOffset(p txLtListParts, offset, limit int) string {
 	filter_query := ``
-	if filters := txLtListBoundaryFilters(p, floor, ceil); len(filters) > 0 {
-		filter_query = ` where ` + strings.Join(filters, " and ")
+	if len(p.filterList) > 0 {
+		filter_query = ` where ` + strings.Join(p.filterList, " and ")
 	}
 	limit_query := fmt.Sprintf(" limit %d offset %d", max(1, limit), max(0, offset))
 	return `select ` + p.clmnQuery + ` from ` + p.fromQuery + filter_query + p.orderBy + limit_query
-}
-
-func buildTxLtListCount(p txLtListParts, floor, ceil *uint64) string {
-	filter_query := ``
-	if filters := txLtListBoundaryFilters(p, floor, ceil); len(filters) > 0 {
-		filter_query = ` where ` + strings.Join(filters, " and ")
-	}
-	return `select count(*) from ` + p.fromQuery + filter_query
 }
 
 func jettonBurnsQueryParts(req models.JettonBurnRequest, sortOrder string) txLtListParts {
@@ -276,6 +249,90 @@ func jettonBurnsQueryParts(req models.JettonBurnRequest, sortOrder string) txLtL
 	orderby_query := fmt.Sprintf(" order by %s %s", order_col, sortOrder)
 
 	return txLtListParts{clmnQuery: clmn_query, fromQuery: from_query, filterList: filter_list, orderBy: orderby_query, orderByNow: orderByNow}
+}
+
+// jettonRouteWindow builds the shared transfer/burn router window.
+func jettonRouteWindow(startLt, endLt *uint64, startUtime, endUtime *models.UtimeType, orderByNow, sortDesc bool) routeWindow {
+	return routeWindow{
+		startLt:         startLt,
+		endLt:           endLt,
+		startUtime:      (*uint64)(startUtime),
+		endUtime:        (*uint64)(endUtime),
+		orderByNow:      orderByNow,
+		sortDesc:        sortDesc,
+		canHaveNullKeys: false,
+	}
+}
+
+// queryTxLtListRouted is the shared routed page fetcher for transfers and burns.
+func queryTxLtListRouted[T any](
+	fc *fedConns,
+	w routeWindow,
+	parts txLtListParts,
+	offset, limit int,
+	fetch func(query string, conn *pgxpool.Conn) ([]T, error),
+	orderKeyOf func(*T) *uint64,
+) ([]T, error) {
+	query := buildTxLtListOffset(parts, offset, limit)
+
+	// Single pool: read cold directly, no classification.
+	dec := routeCold
+	var floor uint64
+	if fc.federated {
+		dec = classifyRoute(w, fc.split, fc.utimeMargin)
+		floor = fc.split.Lt
+		if parts.orderByNow {
+			floor = fc.split.Utime + fc.utimeMargin
+		}
+	}
+
+	rows, _, err := routedPage(fc, dec,
+		func(conn *pgxpool.Conn) ([]T, error) { return fetch(query, conn) },
+		orderKeyOf, limit, floor)
+	return rows, err
+}
+
+// jettonTransferOrderKey returns the row's non-null router sort key.
+func jettonTransferOrderKey(orderByNow bool) func(*models.JettonTransfer) *uint64 {
+	if orderByNow {
+		return func(t *models.JettonTransfer) *uint64 { v := uint64(t.TransactionNow); return &v }
+	}
+	return func(t *models.JettonTransfer) *uint64 { v := uint64(t.TransactionLt); return &v }
+}
+
+// jettonBurnOrderKey is jettonTransferOrderKey's counterpart for JettonBurn.
+func jettonBurnOrderKey(orderByNow bool) func(*models.JettonBurn) *uint64 {
+	if orderByNow {
+		return func(t *models.JettonBurn) *uint64 { v := uint64(t.TransactionNow); return &v }
+	}
+	return func(t *models.JettonBurn) *uint64 { v := uint64(t.TransactionLt); return &v }
+}
+
+// queryJettonTransfersRouted routes one jetton-transfers page through the
+// hot/cold router.
+func queryJettonTransfersRouted(
+	fc *fedConns,
+	req models.JettonTransferRequest,
+	parts txLtListParts,
+	sortOrder string,
+	offset, limit int,
+	fetch func(query string, conn *pgxpool.Conn) ([]models.JettonTransfer, error),
+) ([]models.JettonTransfer, error) {
+	w := jettonRouteWindow(req.StartLt, req.EndLt, req.StartUtime, req.EndUtime, parts.orderByNow, sortOrder == "desc")
+	return queryTxLtListRouted(fc, w, parts, offset, limit, fetch, jettonTransferOrderKey(parts.orderByNow))
+}
+
+// queryJettonBurnsRouted routes one jetton-burns page through the hot/cold router.
+func queryJettonBurnsRouted(
+	fc *fedConns,
+	req models.JettonBurnRequest,
+	parts txLtListParts,
+	sortOrder string,
+	offset, limit int,
+	fetch func(query string, conn *pgxpool.Conn) ([]models.JettonBurn, error),
+) ([]models.JettonBurn, error) {
+	w := jettonRouteWindow(req.StartLt, req.EndLt, req.StartUtime, req.EndUtime, parts.orderByNow, sortOrder == "desc")
+	return queryTxLtListRouted(fc, w, parts, offset, limit, fetch, jettonBurnOrderKey(parts.orderByNow))
 }
 
 func queryJettonWalletsTokenInfo(addr_list []models.AccountAddress, conn *pgxpool.Conn, ctx context.Context) (map[models.AccountAddress]models.TokenInfo, []models.AccountAddress, error) {
@@ -658,10 +715,6 @@ func (db *DbClient) QueryJettonTransfers(
 	}
 
 	parts := jettonTransfersQueryParts(req, sortOrder)
-	orderKey := "lt"
-	if parts.orderByNow {
-		orderKey = "utime"
-	}
 
 	fc, release, err := db.acquireFedForRequest(settings)
 	if err != nil {
@@ -669,22 +722,14 @@ func (db *DbClient) QueryJettonTransfers(
 	}
 	defer release()
 
-	res, err := cascadePageOffset(fc, sortOrder, offset, int(limit),
-		func(floor, ceil *uint64, off, lim int) (string, error) {
-			return buildTxLtListOffset(parts, floor, ceil, off, lim), nil
-		},
-		func(floor, ceil *uint64) string { return buildTxLtListCount(parts, floor, ceil) },
-		func(query string, conn *pgxpool.Conn) ([]models.JettonTransfer, error) {
-			if settings.DebugRequest {
-				log.Println("Debug query:", query)
-			}
-			return queryJettonTransfersImpl(query, conn, settings)
-		},
-		func(query string, conn *pgxpool.Conn) (int, error) {
-			return queryCount(query, conn, settings)
-		},
-		orderKey,
-	)
+	fetch := func(query string, conn *pgxpool.Conn) ([]models.JettonTransfer, error) {
+		if settings.DebugRequest {
+			log.Println("Debug query:", query)
+		}
+		return queryJettonTransfersImpl(query, conn, settings)
+	}
+
+	res, err := queryJettonTransfersRouted(fc, req, parts, sortOrder, offset, int(limit), fetch)
 	if err != nil {
 		return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
@@ -756,10 +801,6 @@ func (db *DbClient) QueryJettonBurns(
 	}
 
 	parts := jettonBurnsQueryParts(req, sortOrder)
-	orderKey := "lt"
-	if parts.orderByNow {
-		orderKey = "utime"
-	}
 
 	fc, release, err := db.acquireFedForRequest(settings)
 	if err != nil {
@@ -767,22 +808,14 @@ func (db *DbClient) QueryJettonBurns(
 	}
 	defer release()
 
-	res, err := cascadePageOffset(fc, sortOrder, offset, int(limit),
-		func(floor, ceil *uint64, off, lim int) (string, error) {
-			return buildTxLtListOffset(parts, floor, ceil, off, lim), nil
-		},
-		func(floor, ceil *uint64) string { return buildTxLtListCount(parts, floor, ceil) },
-		func(query string, conn *pgxpool.Conn) ([]models.JettonBurn, error) {
-			if settings.DebugRequest {
-				log.Println("Debug query:", query)
-			}
-			return queryJettonBurnsImpl(query, conn, settings)
-		},
-		func(query string, conn *pgxpool.Conn) (int, error) {
-			return queryCount(query, conn, settings)
-		},
-		orderKey,
-	)
+	fetch := func(query string, conn *pgxpool.Conn) ([]models.JettonBurn, error) {
+		if settings.DebugRequest {
+			log.Println("Debug query:", query)
+		}
+		return queryJettonBurnsImpl(query, conn, settings)
+	}
+
+	res, err := queryJettonBurnsRouted(fc, req, parts, sortOrder, offset, int(limit), fetch)
 	if err != nil {
 		return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 	}

@@ -15,9 +15,8 @@ const tracesColumns = `E.trace_id, E.external_hash, E.mc_seqno_start, E.mc_seqno
 			   E.start_lt, E.start_utime, E.end_lt, E.end_utime,
 			   E.state, E.edges_, E.nodes_, E.pending_edges_, E.classification_state`
 
-// tracesBaseFilters builds the WHERE fragments shared by every traces query:
-// the caller's time/lt window plus the account/tx/msg/trace_id/mc_seqno
-// filters. The hot/cold split bound and the page limit are added per query.
+// tracesBaseFilters builds the request filters shared by trace queries.
+// Split bounds and limits are added by each query shape.
 func tracesBaseFilters(req models.TracesRequest) []string {
 	utime_req := req.GetUtimeParams()
 	lt_req := req.GetLtParams()
@@ -91,59 +90,12 @@ func tracesBaseFilters(req models.TracesRequest) []string {
 	return filter_list
 }
 
-// buildTracesPageQuery builds one cascade page for a single DB.
-func buildTracesPageQuery(req models.TracesRequest, settings models.RequestSettings,
-	sortOrder string, ltFloor, ltCeil *uint64, limit *int32, orderByNow bool) (string, error) {
-
-	filter_list := tracesBoundaryFilters(req, ltFloor, ltCeil, orderByNow)
-
-	limit_query, err := limitOnlyQuery(limit, settings)
-	if err != nil {
-		return "", err
-	}
-
-	filter_query := ``
-	if len(filter_list) > 0 {
-		filter_query = ` where ` + strings.Join(filter_list, " and ")
-	}
-
-	orderby_query := fmt.Sprintf(" order by E.end_lt %s, E.trace_id %s", sortOrder, sortOrder)
-	if orderByNow {
-		orderby_query = fmt.Sprintf(" order by E.end_utime %s, E.trace_id %s", sortOrder, sortOrder)
-	}
-	return `select ` + tracesColumns + ` from traces as E` + filter_query + orderby_query + limit_query, nil
-}
-
-func buildTracesGroupQuery(req models.TracesRequest, sortOrder string, endLt uint64) string {
-	filter_list := tracesBaseFilters(req)
-	filter_list = append(filter_list, fmt.Sprintf("E.end_lt = %d", endLt))
-	filter_query := ` where ` + strings.Join(filter_list, " and ")
-	orderby_query := fmt.Sprintf(" order by E.end_lt %s, E.trace_id %s", sortOrder, sortOrder)
-	return `select ` + tracesColumns + ` from traces as E` + filter_query + orderby_query
-}
-
-// tracesBoundaryFilters appends the per-leg hot/cold boundary ([floor, ceil);
-// nil = unbounded) to the shared filters, on end_lt or end_utime per sort axis.
-func tracesBoundaryFilters(req models.TracesRequest, floor, ceil *uint64, orderByNow bool) []string {
-	filter_list := tracesBaseFilters(req)
-	col := "end_lt"
-	if orderByNow {
-		col = "end_utime"
-	}
-	if floor != nil {
-		filter_list = append(filter_list, fmt.Sprintf("E.%s >= %d", col, *floor))
-	}
-	if ceil != nil {
-		filter_list = append(filter_list, fmt.Sprintf("E.%s < %d", col, *ceil))
-	}
-	return filter_list
-}
-
-func buildTracesOffsetQuery(req models.TracesRequest, sortOrder string, floor, ceil *uint64, offset, limit int,
+// buildTracesOffsetQuery builds one page without hot/cold seam bounds.
+func buildTracesOffsetQuery(req models.TracesRequest, sortOrder string, offset, limit int,
 	orderByNow bool) string {
 
 	filter_query := ``
-	if filter_list := tracesBoundaryFilters(req, floor, ceil, orderByNow); len(filter_list) > 0 {
+	if filter_list := tracesBaseFilters(req); len(filter_list) > 0 {
 		filter_query = ` where ` + strings.Join(filter_list, " and ")
 	}
 	orderby_query := fmt.Sprintf(" order by E.end_lt %s, E.trace_id %s", sortOrder, sortOrder)
@@ -152,24 +104,6 @@ func buildTracesOffsetQuery(req models.TracesRequest, sortOrder string, floor, c
 	}
 	limit_query := fmt.Sprintf(" limit %d offset %d", max(1, limit), max(0, offset))
 	return `select ` + tracesColumns + ` from traces as E` + filter_query + orderby_query + limit_query
-}
-
-func buildTracesCountQuery(req models.TracesRequest, floor, ceil *uint64, orderByNow bool) string {
-	filter_query := ``
-	if filter_list := tracesBoundaryFilters(req, floor, ceil, orderByNow); len(filter_list) > 0 {
-		filter_query = ` where ` + strings.Join(filter_list, " and ")
-	}
-	return `select count(*) from traces as E` + filter_query
-}
-
-func queryCount(query string, conn *pgxpool.Conn, settings models.RequestSettings, args ...any) (int, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), settings.Timeout)
-	defer cancel()
-	var n int
-	if err := conn.QueryRow(ctx, query, args...).Scan(&n); err != nil {
-		return 0, models.IndexError{Code: 500, Message: err.Error()}
-	}
-	return n, nil
 }
 
 func queryTracesImpl(query string, includeActions bool, supportedActionTypes []string, conn *pgxpool.Conn, settings models.RequestSettings, store *KvrocksStore) ([]models.Trace, []models.AccountAddress, error) {
@@ -508,53 +442,61 @@ func queryTraces(query string, conn *pgxpool.Conn, settings models.RequestSettin
 	return traces, nil
 }
 
-func cascadeTracePage(req models.TracesRequest, settings models.RequestSettings, sortOrder string, fc *fedConns,
-	want int, orderByNow bool) ([]models.Trace, error) {
-	orderKey := "lt"
+// Traces prefer the lt axis; utime is used only when no lt bound is present.
+func tracesOrderByNow(req models.TracesRequest) bool {
+	return (req.StartUtime != nil || req.EndUtime != nil) && req.StartLt == nil && req.EndLt == nil
+}
+
+// traceOrderKey returns nil for incomplete traces, forcing cold fallback during
+// hot-page verification.
+func traceOrderKey(orderByNow bool) func(*models.Trace) *uint64 {
 	if orderByNow {
-		orderKey = "utime"
+		return func(t *models.Trace) *uint64 {
+			if t.EndUtime == nil {
+				return nil
+			}
+			v := uint64(*t.EndUtime)
+			return &v
+		}
 	}
-	return cascadePage(fc, sortOrder, want,
-		func(floor, ceil *uint64, limit int32) (string, error) {
-			return buildTracesPageQuery(req, settings, sortOrder, floor, ceil, &limit, orderByNow)
-		},
-		func(key uint64) string {
-			return buildTracesGroupQuery(req, sortOrder, key)
-		},
-		func(query string, conn *pgxpool.Conn) ([]models.Trace, error) {
+	return func(t *models.Trace) *uint64 { return t.EndLt }
+}
+
+// queryTracesRouted returns one router-served page plus the side it came from.
+func queryTracesRouted(req models.TracesRequest, settings models.RequestSettings,
+	sortOrder string, fc *fedConns, offset, limit int, orderByNow bool) ([]models.Trace, bool, error) {
+	query := buildTracesOffsetQuery(req, sortOrder, offset, limit, orderByNow)
+
+	// Single pool: read cold directly, no classification.
+	dec := routeCold
+	var floor uint64
+	if fc.federated {
+		w := routeWindow{
+			startLt:         req.StartLt,
+			endLt:           req.EndLt,
+			startUtime:      (*uint64)(req.StartUtime),
+			endUtime:        (*uint64)(req.EndUtime),
+			orderByNow:      orderByNow,
+			sortDesc:        sortOrder == "desc",
+			canHaveNullKeys: false,
+		}
+		dec = classifyRoute(w, fc.split, fc.utimeMargin)
+
+		// Verify against the same floor classifyRoute used.
+		floor = fc.split.Lt
+		if orderByNow {
+			floor = fc.split.Utime + fc.utimeMargin
+		}
+	}
+
+	return routedPage(fc, dec,
+		func(conn *pgxpool.Conn) ([]models.Trace, error) {
 			if settings.DebugRequest {
-				log.Println("Debug cascade query:", query)
+				log.Println("Debug router query:", query)
 			}
 			return queryTraces(query, conn, settings)
 		},
-		func(m *models.Trace) *uint64 {
-			return m.EndLt
-		},
-		orderKey,
-		!orderByNow, // complete groups only for lt pagination
-	)
-}
-
-// offsetTracePage serves a legacy offset/limit page across the hot/cold seam
-func offsetTracePage(req models.TracesRequest, settings models.RequestSettings,
-	sortOrder string, fc *fedConns, offset, limit int, orderByNow bool) ([]models.Trace, error) {
-	orderKey := "lt"
-	if orderByNow {
-		orderKey = "utime"
-	}
-	return cascadePageOffset(fc, sortOrder, offset, limit,
-		func(floor, ceil *uint64, off, lim int) (string, error) {
-			return buildTracesOffsetQuery(req, sortOrder, floor, ceil, off, lim, orderByNow), nil
-		},
-		func(floor, ceil *uint64) string { return buildTracesCountQuery(req, floor, ceil, orderByNow) },
-		func(query string, conn *pgxpool.Conn) ([]models.Trace, error) {
-			return queryTraces(query, conn, settings)
-		},
-		func(query string, conn *pgxpool.Conn) (int, error) {
-			return queryCount(query, conn, settings)
-		},
-		orderKey,
-	)
+		traceOrderKey(orderByNow), limit, floor)
 }
 
 func enrichTraces(traces []models.Trace, idxs []int, includeActions bool, supportedActionTypes []string,
@@ -893,17 +835,11 @@ func (db *DbClient) QueryTraces(
 	if lim_req.Offset != nil {
 		offset = int(max(0, *lim_req.Offset))
 	}
-	// Prefer order by lt if any lt filter passed
-	orderByNow := false
-	if (req.StartUtime != nil || req.EndUtime != nil) && req.StartLt == nil && req.EndLt == nil {
-		orderByNow = true
-	}
-	var traces []models.Trace
-	if offset > 0 {
-		traces, err = offsetTracePage(req, settings, sortOrder, fc, offset, int(limit), orderByNow)
-	} else {
-		traces, err = cascadeTracePage(req, settings, sortOrder, fc, int(limit), orderByNow)
-	}
+	// Prefer order by lt if any lt filter passed.
+	orderByNow := tracesOrderByNow(req)
+
+	// Enrich from the same side that served the routed page.
+	traces, servedCold, err := queryTracesRouted(req, settings, sortOrder, fc, offset, int(limit), orderByNow)
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -911,17 +847,18 @@ func (db *DbClient) QueryTraces(
 		traces = []models.Trace{}
 	}
 
-	// Map each trace to its db source
+	// Hot pages may contain seam-spanning traces whose early rows exist only on
+	// cold. Enrich only those traces from cold.
 	hotIdx, coldIdx := []int{}, []int{}
 	for i := range traces {
-		onHot := traces[i].EndLt == nil || *traces[i].EndLt >= fc.split.Lt
-		if onHot && traces[i].McSeqnoStart > 0 && uint64(traces[i].McSeqnoStart) < fc.split.Seqno {
-			onHot = false
+		toCold := servedCold
+		if !servedCold && traces[i].McSeqnoStart > 0 && uint64(traces[i].McSeqnoStart) < fc.split.Seqno {
+			toCold = true
 		}
-		if onHot {
-			hotIdx = append(hotIdx, i)
-		} else {
+		if toCold {
 			coldIdx = append(coldIdx, i)
+		} else {
+			hotIdx = append(hotIdx, i)
 		}
 	}
 	// Enrich traces from associated databases

@@ -32,22 +32,23 @@ import (
 )
 
 type Settings struct {
-	PgDsn           string
-	PgHotDsn        string
-	PgMasterDsn     string
-	TaskChannelSize int
-	MaxConns        int
-	MinConns        int
-	MasterMaxConns  int
-	Bind            string
-	InstanceName    string
-	Prefork         bool
-	MaxThreads      int
-	Debug           bool
-	Request         models.RequestSettings
-	ImgProxyBaseUrl string
-	UseCache        bool
-	CacheServiceUrl string
+	PgDsn             string
+	PgHotDsn          string
+	PgMasterDsn       string
+	TaskChannelSize   int
+	MaxConns          int
+	MinConns          int
+	MasterMaxConns    int
+	Bind              string
+	InstanceName      string
+	Prefork           bool
+	MaxThreads        int
+	Debug             bool
+	Request           models.RequestSettings
+	ImgProxyBaseUrl   string
+	UseCache          bool
+	CacheServiceUrl   string
+	RouterUtimeMargin int64
 }
 
 func onlyOneOf(flags ...bool) bool {
@@ -2674,6 +2675,7 @@ func main() {
 	flag.StringVar(&settings.Request.V2ApiKey, "v2-apikey", "", "API key for TON HTTP API endpoint")
 	flag.StringVar(&settings.ImgProxyBaseUrl, "imgproxy-baseurl", "", "Imgproxy base URL")
 	flag.Int64Var(&hotcold_split_ttl_ms, "hot-cold-split-ttl", 2000, "Hot/cold split-point cache TTL in milliseconds")
+	flag.Int64Var(&settings.RouterUtimeMargin, "hotcold-router-utime-margin", 10, "Safety margin in seconds added to the utime split floor for hot-side routing")
 	flag.IntVar(&settings.MaxConns, "maxconns", 100, "PostgreSQL max connections")
 	flag.IntVar(&settings.MinConns, "minconns", 0, "PostgreSQL min connections")
 	flag.IntVar(&settings.MasterMaxConns, "master-maxconns", 4, "PostgreSQL master max connections")
@@ -2755,6 +2757,12 @@ func main() {
 			os.Exit(63)
 		}
 	}
+
+	routerUtimeMargin := settings.RouterUtimeMargin
+	if routerUtimeMargin < 0 {
+		routerUtimeMargin = 0
+	}
+	pool.RouterUtimeMargin = uint64(routerUtimeMargin)
 
 	// get database version
 	service_version := crud.LoadVersion(pool.Pool)

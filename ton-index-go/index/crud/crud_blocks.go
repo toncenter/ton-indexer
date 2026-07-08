@@ -61,34 +61,13 @@ func buildBlocksParts(req models.BlocksRequest, sortOrder string) blocksQueryPar
 	return blocksQueryParts{filterList: filter_list, orderBy: orderBy}
 }
 
-// blocksBoundaryFilters appends this leg's [floor, ceil) boundary on the sort
-// axis (gen_utime, never null).
-func blocksBoundaryFilters(p blocksQueryParts, floor, ceil *uint64) []string {
-	filters := append([]string{}, p.filterList...)
-	if floor != nil {
-		filters = append(filters, fmt.Sprintf("gen_utime >= %d", *floor))
-	}
-	if ceil != nil {
-		filters = append(filters, fmt.Sprintf("gen_utime < %d", *ceil))
-	}
-	return filters
-}
-
-func buildBlocksOffsetQuery(p blocksQueryParts, floor, ceil *uint64, offset, limit int) string {
+func buildBlocksOffsetQuery(p blocksQueryParts, offset, limit int) string {
 	filter_query := ``
-	if filters := blocksBoundaryFilters(p, floor, ceil); len(filters) > 0 {
-		filter_query = ` where ` + strings.Join(filters, " and ")
+	if len(p.filterList) > 0 {
+		filter_query = ` where ` + strings.Join(p.filterList, " and ")
 	}
 	limit_query := fmt.Sprintf(" limit %d offset %d", max(1, limit), max(0, offset))
 	return `select blocks.* from blocks` + filter_query + p.orderBy + limit_query
-}
-
-func buildBlocksCountQuery(p blocksQueryParts, floor, ceil *uint64) string {
-	filter_query := ``
-	if filters := blocksBoundaryFilters(p, floor, ceil); len(filters) > 0 {
-		filter_query = ` where ` + strings.Join(filters, " and ")
-	}
-	return `select count(*) from blocks` + filter_query
 }
 
 // query implementation functions
@@ -134,6 +113,53 @@ func queryBlockExists(seqno int32, conn *pgxpool.Conn, settings models.RequestSe
 		return false, models.IndexError{Code: 500, Message: err.Error()}
 	}
 	return exists, nil
+}
+
+// Blocks route by gen_utime only; start_lt/end_lt stay plain block filters.
+func blocksRouteWindow(req models.BlocksRequest, sortOrder string) routeWindow {
+	utime_req := req.GetUtimeParams()
+	return routeWindow{
+		startUtime: (*uint64)(utime_req.StartUtime),
+		endUtime:   (*uint64)(utime_req.EndUtime),
+		orderByNow: true,
+		sortDesc:   sortOrder == "desc",
+		// gen_utime is non-null in models.Block.
+		canHaveNullKeys: false,
+	}
+}
+
+// blocksOrderKey returns gen_utime, the only blocks router axis.
+func blocksOrderKey(b *models.Block) *uint64 {
+	v := uint64(b.GenUtime)
+	return &v
+}
+
+// queryBlocksRouted fetches one page via the hot/cold router.
+func queryBlocksRouted(
+	fc *fedConns,
+	req models.BlocksRequest,
+	parts blocksQueryParts,
+	sortOrder string,
+	offset, limit int,
+	fetch func(query string, conn *pgxpool.Conn) ([]models.Block, error),
+) ([]models.Block, error) {
+	query := buildBlocksOffsetQuery(parts, offset, limit)
+
+	// Single pool: read cold directly, no classification.
+	dec := routeCold
+	var floor uint64
+	if fc.federated {
+		w := blocksRouteWindow(req, sortOrder)
+		dec = classifyRoute(w, fc.split, fc.utimeMargin)
+
+		// Blocks verify against the utime floor.
+		floor = fc.split.Utime + fc.utimeMargin
+	}
+
+	res, _, err := routedPage(fc, dec,
+		func(conn *pgxpool.Conn) ([]models.Block, error) { return fetch(query, conn) },
+		blocksOrderKey, limit, floor)
+	return res, err
 }
 
 // Exported methods
@@ -223,18 +249,10 @@ func (db *DbClient) QueryBlocks(
 		if cerr != nil {
 			return nil, models.IndexError{Code: 500, Message: cerr.Error()}
 		}
-		return fetch(buildBlocksOffsetQuery(parts, nil, nil, offset, int(limit)), conn)
+		return fetch(buildBlocksOffsetQuery(parts, offset, int(limit)), conn)
 	}
 
-	return cascadePageOffset(fc, effSort, offset, int(limit),
-		func(floor, ceil *uint64, off, lim int) (string, error) {
-			return buildBlocksOffsetQuery(parts, floor, ceil, off, lim), nil
-		},
-		func(floor, ceil *uint64) string { return buildBlocksCountQuery(parts, floor, ceil) },
-		fetch,
-		func(query string, conn *pgxpool.Conn) (int, error) { return queryCount(query, conn, settings) },
-		"utime",
-	)
+	return queryBlocksRouted(fc, req, parts, effSort, offset, int(limit), fetch)
 }
 
 func (db *DbClient) QueryShards(

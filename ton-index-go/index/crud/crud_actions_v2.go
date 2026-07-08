@@ -58,6 +58,9 @@ func (db *DbClient) QueryActionsV2(
 	}
 
 	var raw_actions []models.RawAction
+	// Router-served pages enrich from the same DB that served the page.
+	routed := false
+	servedCold := false
 	if req.McSeqno != nil {
 		// a masterchain round's actions live wholly in one partition
 		conn, cerr := fc.connForSeqno(uint64(*req.McSeqno))
@@ -71,19 +74,10 @@ func (db *DbClient) QueryActionsV2(
 		if !exists {
 			return nil, nil, nil, models.IndexError{Code: 404, Message: fmt.Sprintf("masterchain block %d not found", *req.McSeqno)}
 		}
-		raw_actions, err = fetch(buildActionsOffsetQueryV2(parts, nil, nil, offset, int(limit)), conn)
+		raw_actions, err = fetch(buildActionsOffsetQueryV2(parts, offset, int(limit)), conn)
 	} else {
-		raw_actions, err = cascadePageOffset(fc, sortOrder, offset, int(limit),
-			func(floor, ceil *uint64, off, lim int) (string, error) {
-				return buildActionsOffsetQueryV2(parts, floor, ceil, off, lim), nil
-			},
-			func(floor, ceil *uint64) string { return buildActionsCountQueryV2(parts, floor, ceil) },
-			fetch,
-			func(query string, conn *pgxpool.Conn) (int, error) {
-				return queryCount(query, conn, settings, parts.args...)
-			},
-			parts.orderKey,
-		)
+		routed = true
+		raw_actions, servedCold, err = queryActionsRouted(fc, req, parts, sortOrder, offset, int(limit), fetch)
 	}
 	if err != nil {
 		return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
@@ -102,8 +96,14 @@ func (db *DbClient) QueryActionsV2(
 		actions = append(actions, *action)
 	}
 	if req.IncludeAccounts != nil && *req.IncludeAccounts {
-		if err := enrichActionsAccounts(fc, actions, settings); err != nil {
-			return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
+		var eerr error
+		if routed {
+			eerr = enrichActionsAccountsRouted(fc, actions, servedCold, settings)
+		} else {
+			eerr = enrichActionsAccounts(fc, actions, settings)
+		}
+		if eerr != nil {
+			return nil, nil, nil, models.IndexError{Code: 500, Message: eerr.Error()}
 		}
 	}
 	if req.IncludeTransactions != nil && *req.IncludeTransactions {
@@ -145,8 +145,7 @@ func (db *DbClient) QueryActionsV2(
 	return actions, book, metadata, nil
 }
 
-// enrichActionsAccounts attaches each action's account list, routed to the DB that
-// owns the action's partition (trace_mc_seqno_end), batched per side.
+// enrichActionsAccounts batches account enrichment by the action's owning DB.
 func enrichActionsAccounts(fc *fedConns, actions []models.Action, settings models.RequestSettings) error {
 	if len(actions) == 0 {
 		return nil
@@ -178,6 +177,78 @@ func enrichActionsAccounts(fc *fedConns, actions []models.Action, settings model
 		}
 	}
 	return nil
+}
+
+// enrichActionsAccountsRouted uses the one DB that served the routed page.
+func enrichActionsAccountsRouted(fc *fedConns, actions []models.Action, servedCold bool, settings models.RequestSettings) error {
+	if len(actions) == 0 {
+		return nil
+	}
+	idxs := make([]int, len(actions))
+	for i := range actions {
+		idxs[i] = i
+	}
+	conn, err := fc.conn(servedCold)
+	if err != nil {
+		return err
+	}
+	return queryActionsAccountsImpl(actions, idxs, conn, settings)
+}
+
+// actionOrderKey returns the row's router sort key; action keys are non-null.
+func actionOrderKey(orderByNow bool) func(*models.RawAction) *uint64 {
+	if orderByNow {
+		return func(a *models.RawAction) *uint64 {
+			v := uint64(a.TraceEndUtime)
+			return &v
+		}
+	}
+	return func(a *models.RawAction) *uint64 {
+		v := uint64(a.TraceEndLt)
+		return &v
+	}
+}
+
+// queryActionsRouted returns one router-served page plus the side it came from.
+func queryActionsRouted(
+	fc *fedConns,
+	req models.ActionRequest,
+	parts actionsQueryParts,
+	sortOrder string,
+	offset, limit int,
+	fetch func(query string, conn *pgxpool.Conn) ([]models.RawAction, error),
+) ([]models.RawAction, bool, error) {
+	query := buildActionsOffsetQueryV2(parts, offset, limit)
+
+	// Match the sort axis selected by actionsQueryPartsV2.
+	orderByNow := parts.orderKey == "utime"
+
+	// Single pool: read cold directly, no classification.
+	dec := routeCold
+	var floor uint64
+	if fc.federated {
+		w := routeWindow{
+			startLt:    req.StartLt,
+			endLt:      req.EndLt,
+			startUtime: (*uint64)(req.StartUtime),
+			endUtime:   (*uint64)(req.EndUtime),
+			orderByNow: orderByNow,
+			sortDesc:   sortOrder == "desc",
+			// trace_end_lt/trace_end_utime are NOT NULL.
+			canHaveNullKeys: false,
+		}
+		dec = classifyRoute(w, fc.split, fc.utimeMargin)
+
+		// Verify against the same floor classifyRoute used.
+		floor = fc.split.Lt
+		if orderByNow {
+			floor = fc.split.Utime + fc.utimeMargin
+		}
+	}
+
+	return routedPage(fc, dec,
+		func(conn *pgxpool.Conn) ([]models.RawAction, error) { return fetch(query, conn) },
+		actionOrderKey(orderByNow), limit, floor)
 }
 
 func actionsQueryPartsV2(req models.ActionRequest, sort_order string) actionsQueryParts {
@@ -517,69 +588,40 @@ func actionsQueryPartsV2(req models.ActionRequest, sort_order string) actionsQue
 	}
 	filter_list = append(filter_list, "NOT(A.ancestor_type && $1::varchar[])")
 
-	// trace_end_lt/utime is the sort axis; boundary on it with the alias the ORDER BY uses.
-	boundaryPrefix := "A"
-	if strings.Contains(from_query, "action_accounts") {
-		boundaryPrefix = "AA"
-	}
-	boundaryCol := boundaryPrefix + ".trace_end_lt"
+	// trace_end_lt/utime is the sort axis the router classifies on.
 	orderKey := "lt"
 	if order_by_now {
-		boundaryCol = boundaryPrefix + ".trace_end_utime"
 		orderKey = "utime"
 	}
 
 	return actionsQueryParts{
-		clmnQuery:   clmn_query,
-		fromQuery:   from_query,
-		filterList:  filter_list,
-		args:        args,
-		orderBy:     orderby_query,
-		boundaryCol: boundaryCol,
-		orderKey:    orderKey,
+		clmnQuery:  clmn_query,
+		fromQuery:  from_query,
+		filterList: filter_list,
+		args:       args,
+		orderBy:    orderby_query,
+		orderKey:   orderKey,
 	}
 }
 
-// actionsQueryParts holds the shared pieces of an actions listing; boundaryCol is the
-// prefixed sort-axis column (A. or AA., trace_end_lt or trace_end_utime).
+// actionsQueryParts holds the shared pieces of an actions listing; orderKey names
+// the sort axis ("lt" or "utime") the router classifies the request window on.
 type actionsQueryParts struct {
-	clmnQuery   string
-	fromQuery   string
-	filterList  []string
-	args        []any
-	orderBy     string
-	boundaryCol string
-	orderKey    string
+	clmnQuery  string
+	fromQuery  string
+	filterList []string
+	args       []any
+	orderBy    string
+	orderKey   string
 }
 
-func actionsBoundaryFilters(p actionsQueryParts, floor, ceil *uint64) []string {
-	filters := append([]string{}, p.filterList...)
-	if floor != nil {
-		filters = append(filters, fmt.Sprintf("%s >= %d", p.boundaryCol, *floor))
-	}
-	if ceil != nil {
-		filters = append(filters, fmt.Sprintf("%s < %d", p.boundaryCol, *ceil))
-	}
-	return filters
-}
-
-func buildActionsOffsetQueryV2(p actionsQueryParts, floor, ceil *uint64, offset, limit int) string {
+func buildActionsOffsetQueryV2(p actionsQueryParts, offset, limit int) string {
 	filter_query := ``
-	if filters := actionsBoundaryFilters(p, floor, ceil); len(filters) > 0 {
-		filter_query = ` where ` + strings.Join(filters, " and ")
+	if len(p.filterList) > 0 {
+		filter_query = ` where ` + strings.Join(p.filterList, " and ")
 	}
 	limit_query := fmt.Sprintf(" limit %d offset %d", max(1, limit), max(0, offset))
 	return `select ` + p.clmnQuery + ` from ` + p.fromQuery + filter_query + p.orderBy + limit_query
-}
-
-// buildActionsCountQueryV2 wraps the distinct-on page shape: the join modes fan rows
-// out and distinct-on collapses them, so count(*) over the page == its row count.
-func buildActionsCountQueryV2(p actionsQueryParts, floor, ceil *uint64) string {
-	filter_query := ``
-	if filters := actionsBoundaryFilters(p, floor, ceil); len(filters) > 0 {
-		filter_query = ` where ` + strings.Join(filters, " and ")
-	}
-	return `select count(*) from (select ` + p.clmnQuery + ` from ` + p.fromQuery + filter_query + `) as sub`
 }
 
 func queryRawActionsImplV2(query string, args []any, conn *pgxpool.Conn, settings models.RequestSettings) ([]models.RawAction, error) {
@@ -634,7 +676,7 @@ func queryActionsTransactionsImpl(fc *fedConns, release func(), actions []models
 	}
 
 	// Build query using buildTransactionsQuery with multiple hashes
-	// Only the Hash field of TransactionRequest is needed for this query; other fields are left at their zero values intentionally.
+	// Only Hash is relevant here; the rest of TransactionRequest stays zero.
 	tx_req := models.TransactionsRequest{Hash: txHashes}
 	query, queryArgs, err := buildTransactionsQuery(tx_req, settings)
 	if err != nil {

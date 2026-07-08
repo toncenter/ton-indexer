@@ -16,6 +16,8 @@ type DbClient struct {
 	HotPool *pgxpool.Pool
 	Split   *SplitProvider
 	Kvrocks *KvrocksStore
+
+	RouterUtimeMargin uint64
 }
 
 func afterConnectRegisterTypes(ctx context.Context, conn *pgx.Conn) error {
