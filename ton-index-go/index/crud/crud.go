@@ -51,12 +51,13 @@ func limitOnlyQuery(limit *int32, settings models.RequestSettings) (string, erro
 	return limitQuery(models.LimitParams{Limit: limit}, settings)
 }
 
-// limitOnlyQueryWithDefault is limitOnlyQuery with a per-endpoint default instead of the global one.
-func limitOnlyQueryWithDefault(limit *int32, defaultLimit int32, settings models.RequestSettings) (string, error) {
-	if limit == nil {
-		limit = &defaultLimit
+// limitOffsetQueryWithDefault is limitQuery with a per-endpoint default limit instead of the global one.
+func limitOffsetQueryWithDefault(lim models.LimitParams, defaultLimit int32, settings models.RequestSettings) (string, error) {
+	if lim.Limit == nil {
+		d := defaultLimit
+		lim.Limit = &d
 	}
-	return limitQuery(models.LimitParams{Limit: limit}, settings)
+	return limitQuery(lim, settings)
 }
 
 func requestContext(settings models.RequestSettings) (context.Context, context.CancelFunc) {

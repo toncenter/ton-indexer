@@ -99,8 +99,15 @@ func (db *DbClient) QueryValidatorEvents(
 	if err != nil {
 		return nil, err
 	}
-	query += " ORDER BY tx_now DESC, tx_lt DESC"
-	limit, err := limitOnlyQueryWithDefault(req.Limit, validatorsDefaultLimit, settings)
+	sortOrder := "desc"
+	if req.Sort != nil {
+		sortOrder, err = getSortOrder(*req.Sort)
+		if err != nil {
+			return nil, err
+		}
+	}
+	query += fmt.Sprintf(" ORDER BY tx_now %s, tx_lt %s", sortOrder, sortOrder)
+	limit, err := limitOffsetQueryWithDefault(req.GetLimitParams(), validatorsDefaultLimit, settings)
 	if err != nil {
 		return nil, err
 	}
@@ -202,8 +209,15 @@ func (db *DbClient) QueryValidatorElections(
 	if err != nil {
 		return nil, err
 	}
-	query += " ORDER BY election_id DESC"
-	limit, err := limitOnlyQueryWithDefault(req.Limit, validatorsDefaultLimit, settings)
+	sortOrder := "desc"
+	if req.Sort != nil {
+		sortOrder, err = getSortOrder(*req.Sort)
+		if err != nil {
+			return nil, err
+		}
+	}
+	query += fmt.Sprintf(" ORDER BY election_id %s", sortOrder)
+	limit, err := limitOffsetQueryWithDefault(req.GetLimitParams(), validatorsDefaultLimit, settings)
 	if err != nil {
 		return nil, err
 	}
@@ -403,8 +417,15 @@ func (db *DbClient) QueryValidatorCycles(
 	if err != nil {
 		return nil, err
 	}
-	query += " ORDER BY utime_since DESC"
-	limit, err := limitOnlyQueryWithDefault(req.Limit, validatorsDefaultLimit, settings)
+	sortOrder := "desc"
+	if req.Sort != nil {
+		sortOrder, err = getSortOrder(*req.Sort)
+		if err != nil {
+			return nil, err
+		}
+	}
+	query += fmt.Sprintf(" ORDER BY utime_since %s", sortOrder)
+	limit, err := limitOffsetQueryWithDefault(req.GetLimitParams(), validatorsDefaultLimit, settings)
 	if err != nil {
 		return nil, err
 	}
@@ -686,8 +707,15 @@ func (db *DbClient) QueryValidatorComplaints(
 	if err != nil {
 		return nil, err
 	}
-	query += " ORDER BY c.created_at DESC, c.complaint_hash"
-	limit, err := limitOnlyQueryWithDefault(req.Limit, validatorsDefaultLimit, settings)
+	sortOrder := "desc"
+	if req.Sort != nil {
+		sortOrder, err = getSortOrder(*req.Sort)
+		if err != nil {
+			return nil, err
+		}
+	}
+	query += fmt.Sprintf(" ORDER BY c.created_at %s, c.complaint_hash", sortOrder)
+	limit, err := limitOffsetQueryWithDefault(req.GetLimitParams(), validatorsDefaultLimit, settings)
 	if err != nil {
 		return nil, err
 	}
