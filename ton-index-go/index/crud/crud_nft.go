@@ -138,8 +138,7 @@ const nftTransfersColumns = ` T.tx_hash, T.tx_lt, T.tx_now, T.tx_aborted, T.quer
 	T.nft_item_address, T.nft_item_index, coalesce(T.nft_collection_address::text, '') as nft_collection_address, coalesce(T.old_owner::text, '') as old_owner, coalesce(T.new_owner::text, '') as new_owner, T.response_destination, T.custom_payload,
 	T.forward_amount, T.forward_payload, T.trace_id`
 
-// nftTransfersParts holds the shared pieces of an nft transfers listing query.
-// orderByNow selects the time axis (T.tx_now) over the lt axis (T.tx_lt) for boundary + ordering.
+// nftTransfersParts holds the shared pieces of an NFT transfers listing query.
 type nftTransfersParts struct {
 	fromQuery  string
 	filterList []string
@@ -208,38 +207,13 @@ func nftTransfersQueryParts(req models.NFTTransferRequest, sortOrder string) nft
 	return nftTransfersParts{fromQuery: from_query, filterList: filter_list, orderBy: orderby_query, orderByNow: orderByNow}
 }
 
-// nftTransfersBoundaryFilters appends this leg's [floor, ceil) boundary on the
-// sort axis (T.tx_lt or T.tx_now). lt/now are never null, so no null handling is needed.
-func nftTransfersBoundaryFilters(p nftTransfersParts, floor, ceil *uint64) []string {
-	col := "T.tx_lt"
-	if p.orderByNow {
-		col = "T.tx_now"
-	}
-	filters := append([]string{}, p.filterList...)
-	if floor != nil {
-		filters = append(filters, fmt.Sprintf("%s >= %d", col, *floor))
-	}
-	if ceil != nil {
-		filters = append(filters, fmt.Sprintf("%s < %d", col, *ceil))
-	}
-	return filters
-}
-
-func buildNFTTransfersOffsetQuery(p nftTransfersParts, floor, ceil *uint64, offset, limit int) string {
+func buildNFTTransfersOffsetQuery(p nftTransfersParts, offset, limit int) string {
 	filter_query := ``
-	if filters := nftTransfersBoundaryFilters(p, floor, ceil); len(filters) > 0 {
-		filter_query = ` where ` + strings.Join(filters, " and ")
+	if len(p.filterList) > 0 {
+		filter_query = ` where ` + strings.Join(p.filterList, " and ")
 	}
 	limit_query := fmt.Sprintf(" limit %d offset %d", max(1, limit), max(0, offset))
 	return `select` + nftTransfersColumns + ` from` + p.fromQuery + filter_query + p.orderBy + limit_query
-}
-
-func buildNFTTransfersCountQuery(p nftTransfersParts, floor, ceil *uint64) string {
-	filter_query := ``
-	if filters := nftTransfersBoundaryFilters(p, floor, ceil); len(filters) > 0 {
-		filter_query = ` where ` + strings.Join(filters, " and ")
-	}
-	return `select count(*) from` + p.fromQuery + filter_query
 }
 
 func queryNFTCollectionsImpl(query string, conn *pgxpool.Conn, settings models.RequestSettings) ([]models.NFTCollection, error) {
@@ -333,6 +307,59 @@ func queryNFTTransfersImpl(query string, conn *pgxpool.Conn, settings models.Req
 	}
 
 	return res, nil
+}
+
+// nftTransferOrderKey returns the row's non-null router sort key.
+func nftTransferOrderKey(orderByNow bool) func(*models.NFTTransfer) *uint64 {
+	if orderByNow {
+		return func(t *models.NFTTransfer) *uint64 {
+			v := uint64(t.TransactionNow)
+			return &v
+		}
+	}
+	return func(t *models.NFTTransfer) *uint64 {
+		v := uint64(t.TransactionLt)
+		return &v
+	}
+}
+
+// queryNFTTransfersRouted fetches one page via the hot/cold router.
+func queryNFTTransfersRouted(
+	fc *fedConns,
+	req models.NFTTransferRequest,
+	parts nftTransfersParts,
+	sortOrder string,
+	offset, limit int,
+	fetch func(query string, conn *pgxpool.Conn) ([]models.NFTTransfer, error),
+) ([]models.NFTTransfer, error) {
+	query := buildNFTTransfersOffsetQuery(parts, offset, limit)
+
+	// Single pool: read cold directly, no classification.
+	dec := routeCold
+	var floor uint64
+	if fc.federated {
+		w := routeWindow{
+			startLt:         req.StartLt,
+			endLt:           req.EndLt,
+			startUtime:      (*uint64)(req.StartUtime),
+			endUtime:        (*uint64)(req.EndUtime),
+			orderByNow:      parts.orderByNow,
+			sortDesc:        sortOrder == "desc",
+			canHaveNullKeys: false, // tx_lt/tx_now are never NULL
+		}
+		dec = classifyRoute(w, fc.split, fc.utimeMargin)
+
+		// Verify against the same floor classifyRoute used.
+		floor = fc.split.Lt
+		if parts.orderByNow {
+			floor = fc.split.Utime + fc.utimeMargin
+		}
+	}
+
+	res, _, err := routedPage(fc, dec,
+		func(conn *pgxpool.Conn) ([]models.NFTTransfer, error) { return fetch(query, conn) },
+		nftTransferOrderKey(parts.orderByNow), limit, floor)
+	return res, err
 }
 
 func (db *DbClient) QueryNFTCollections(
@@ -528,31 +555,19 @@ func (db *DbClient) QueryNFTTransfers(
 	defer release()
 
 	parts := nftTransfersQueryParts(req, sortOrder)
-	orderKey := "lt"
-	if parts.orderByNow {
-		orderKey = "utime"
-	}
 	offset := 0
 	if lim_req.Offset != nil {
 		offset = int(max(0, *lim_req.Offset))
 	}
-	// nft transfers are offset-paged (no lt cursor); offset 0 is just the first page.
-	res, err := cascadePageOffset(fc, sortOrder, offset, int(limit),
-		func(floor, ceil *uint64, off, lim int) (string, error) {
-			return buildNFTTransfersOffsetQuery(parts, floor, ceil, off, lim), nil
-		},
-		func(floor, ceil *uint64) string { return buildNFTTransfersCountQuery(parts, floor, ceil) },
-		func(query string, conn *pgxpool.Conn) ([]models.NFTTransfer, error) {
-			if settings.DebugRequest {
-				log.Println("Debug query:", query)
-			}
-			return queryNFTTransfersImpl(query, conn, settings)
-		},
-		func(query string, conn *pgxpool.Conn) (int, error) {
-			return queryCount(query, conn, settings)
-		},
-		orderKey,
-	)
+
+	fetch := func(query string, conn *pgxpool.Conn) ([]models.NFTTransfer, error) {
+		if settings.DebugRequest {
+			log.Println("Debug query:", query)
+		}
+		return queryNFTTransfersImpl(query, conn, settings)
+	}
+
+	res, err := queryNFTTransfersRouted(fc, req, parts, sortOrder, offset, int(limit), fetch)
 	if err != nil {
 		return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 	}

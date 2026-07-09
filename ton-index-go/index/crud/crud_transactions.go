@@ -558,8 +558,7 @@ func enrichTransactionsImpl(txs []models.Transaction, idxs []int, conn *pgxpool.
 	return nil
 }
 
-// txQueryParts holds the shared pieces of a transactions listing query. orderByNow
-// selects the time axis (T.now) over the lt axis (T.lt) for band + ordering.
+// txQueryParts holds the shared pieces of a transactions listing query.
 type txQueryParts struct {
 	fromQuery  string
 	filterList []string
@@ -663,40 +662,83 @@ func transactionsQueryParts(req models.TransactionsRequest, sortOrder string) tx
 	return txQueryParts{fromQuery: from_query, filterList: filter_list, args: args, orderBy: orderby_query, orderByNow: orderByNow}
 }
 
-// transactionsBoundaryFilters appends this leg's [floor, ceil) boundary on the
-// sort axis (T.lt or T.now). lt/now are never null, so no null handling is needed.
-func transactionsBoundaryFilters(p txQueryParts, floor, ceil *uint64) []string {
-	col := "T.lt"
-	if p.orderByNow {
-		col = "T.now"
-	}
-	filters := append([]string{}, p.filterList...)
-	if floor != nil {
-		filters = append(filters, fmt.Sprintf("%s >= %d", col, *floor))
-	}
-	if ceil != nil {
-		filters = append(filters, fmt.Sprintf("%s < %d", col, *ceil))
-	}
-	return filters
-}
-
-func buildTransactionsOffsetQuery(p txQueryParts, floor, ceil *uint64, offset, limit int) string {
+func buildTransactionsOffsetQuery(p txQueryParts, offset, limit int) string {
 	filter_query := ``
-	if filters := transactionsBoundaryFilters(p, floor, ceil); len(filters) > 0 {
-		filter_query = ` where ` + strings.Join(filters, " and ")
+	if len(p.filterList) > 0 {
+		filter_query = ` where ` + strings.Join(p.filterList, " and ")
 	}
 	limit_query := fmt.Sprintf(" limit %d offset %d", max(1, limit), max(0, offset))
 	return `select ` + transactionsColumns + ` from` + p.fromQuery + filter_query + p.orderBy + limit_query
 }
 
-// buildTransactionsCountQuery counts a leg's band; the page has no DISTINCT, so
-// any by_msg join dups count identically on both sides → consistent offset math.
-func buildTransactionsCountQuery(p txQueryParts, floor, ceil *uint64) string {
-	filter_query := ``
-	if filters := transactionsBoundaryFilters(p, floor, ceil); len(filters) > 0 {
-		filter_query = ` where ` + strings.Join(filters, " and ")
+// txOrderKey returns the row's non-null router sort key.
+func txOrderKey(orderByNow bool) func(*models.Transaction) *uint64 {
+	if orderByNow {
+		return func(t *models.Transaction) *uint64 {
+			v := uint64(t.Now)
+			return &v
+		}
 	}
-	return `select count(*) from` + p.fromQuery + filter_query
+	return func(t *models.Transaction) *uint64 {
+		v := uint64(t.Lt)
+		return &v
+	}
+}
+
+// queryTransactionsRouted returns one router-served page plus the side it came from.
+func queryTransactionsRouted(
+	fc *fedConns,
+	req models.TransactionsRequest,
+	parts txQueryParts,
+	sortOrder string,
+	offset, limit int,
+	fetch func(query string, conn *pgxpool.Conn) ([]models.Transaction, error),
+) ([]models.Transaction, bool, error) {
+	query := buildTransactionsOffsetQuery(parts, offset, limit)
+
+	// Standalone (single pool): read cold directly, one query, no classification.
+	dec := routeCold
+	var floor uint64
+	if fc.federated {
+		w := routeWindow{
+			startLt:    req.StartLt,
+			endLt:      req.EndLt,
+			startUtime: (*uint64)(req.StartUtime),
+			endUtime:   (*uint64)(req.EndUtime),
+			orderByNow: parts.orderByNow,
+			sortDesc:   sortOrder == "desc",
+			// Transaction sort keys are never NULL.
+			canHaveNullKeys: false,
+		}
+		dec = classifyRoute(w, fc.split, fc.utimeMargin)
+
+		// Verify against the same floor classifyRoute used.
+		floor = fc.split.Lt
+		if parts.orderByNow {
+			floor = fc.split.Utime + fc.utimeMargin
+		}
+	}
+
+	return routedPage(fc, dec,
+		func(conn *pgxpool.Conn) ([]models.Transaction, error) { return fetch(query, conn) },
+		txOrderKey(parts.orderByNow), limit, floor)
+}
+
+// txEnrichmentSplit chooses where account states/messages are read from.
+// Router-served pages use one DB; point lookups can mix sides and split by lt.
+func txEnrichmentSplit(txs []models.Transaction, fc *fedConns, routed, servedCold bool) (hotIdx, coldIdx []int) {
+	for i := range txs {
+		toCold := servedCold
+		if !routed {
+			toCold = fc.federated && uint64(txs[i].Lt) < fc.split.Lt
+		}
+		if toCold {
+			coldIdx = append(coldIdx, i)
+		} else {
+			hotIdx = append(hotIdx, i)
+		}
+	}
+	return hotIdx, coldIdx
 }
 
 func (db *DbClient) QueryTransactions(
@@ -727,6 +769,7 @@ func (db *DbClient) QueryTransactions(
 	defer release()
 
 	var txs []models.Transaction
+	routed, servedCold := false, false
 	switch {
 	case len(req.Hash) > 0:
 		// point lookup by tx hash: a tx may be hot or cold-only, consult both
@@ -773,7 +816,7 @@ func (db *DbClient) QueryTransactions(
 		if lim_req.Offset != nil {
 			offset = int(max(0, *lim_req.Offset))
 		}
-		query := buildTransactionsOffsetQuery(parts, nil, nil, offset, int(limit))
+		query := buildTransactionsOffsetQuery(parts, offset, int(limit))
 		if settings.DebugRequest {
 			log.Println("Debug query:", query)
 		}
@@ -784,45 +827,24 @@ func (db *DbClient) QueryTransactions(
 
 	default:
 		parts := transactionsQueryParts(req, sortOrder)
-		orderKey := "lt"
-		if parts.orderByNow {
-			orderKey = "utime"
-		}
 		offset := 0
 		if lim_req.Offset != nil {
 			offset = int(max(0, *lim_req.Offset))
 		}
-		// transactions are offset-paged (no lt cursor); offset 0 is just the first page.
-		txs, err = cascadePageOffset(fc, sortOrder, offset, int(limit),
-			func(floor, ceil *uint64, off, lim int) (string, error) {
-				return buildTransactionsOffsetQuery(parts, floor, ceil, off, lim), nil
-			},
-			func(floor, ceil *uint64) string { return buildTransactionsCountQuery(parts, floor, ceil) },
-			func(query string, conn *pgxpool.Conn) ([]models.Transaction, error) {
-				if settings.DebugRequest {
-					log.Println("Debug query:", query)
-				}
-				return scanTransactionsImpl(query, conn, settings, parts.args...)
-			},
-			func(query string, conn *pgxpool.Conn) (int, error) {
-				return queryCount(query, conn, settings, parts.args...)
-			},
-			orderKey,
-		)
+		fetch := func(query string, conn *pgxpool.Conn) ([]models.Transaction, error) {
+			if settings.DebugRequest {
+				log.Println("Debug query:", query)
+			}
+			return scanTransactionsImpl(query, conn, settings, parts.args...)
+		}
+		routed = true
+		txs, servedCold, err = queryTransactionsRouted(fc, req, parts, sortOrder, offset, int(limit), fetch)
 		if err != nil {
 			return nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 		}
 	}
 
-	// account states + messages come from each transaction's owning DB (routed by lt)
-	hotIdx, coldIdx := []int{}, []int{}
-	for i := range txs {
-		if fc.federated && uint64(txs[i].Lt) < fc.split.Lt {
-			coldIdx = append(coldIdx, i)
-		} else {
-			hotIdx = append(hotIdx, i)
-		}
-	}
+	hotIdx, coldIdx := txEnrichmentSplit(txs, fc, routed, servedCold)
 	if len(hotIdx) > 0 {
 		hotConn, herr := fc.hot()
 		if herr != nil {
