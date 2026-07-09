@@ -403,12 +403,17 @@ void PartitionManagerPostgres::publish_split(pqxx::connection &c) const {
     conservative_split = true;
   }
 
-  const auto base = conservative_split ? oldest->end : oldest -> start;
+  const auto base = conservative_split ? oldest->end : oldest->start;
   const auto seqno_split = base + config_.trace_split_safe_guard;
 
-  // Calculate LT split point
-  auto lt_rows = txn.exec("SELECT end_lt, gen_utime FROM blocks WHERE workchain = -1 AND seqno >= $1 ORDER BY seqno LIMIT 1",
-    pqxx::params{seqno_split});
+  // Calculate sort-key split points as cumulative maximums over the cold side.
+  // Router code treats mc_seqno < seqno_split as cold, so LT/utime floors must
+  // cover every block in those masterchain rounds, including shard blocks.
+  auto lt_rows = txn.exec(R"SQL(
+    SELECT max(end_lt), max(gen_utime)
+    FROM blocks
+    WHERE mc_block_seqno < $1
+  )SQL", pqxx::params{seqno_split});
 
   if (lt_rows.empty() || lt_rows[0][0].is_null() || lt_rows[0][1].is_null()) {
     txn.commit();
