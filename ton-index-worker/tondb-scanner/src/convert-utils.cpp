@@ -31,13 +31,16 @@ std::string bits_to_padded_hex(td::ConstBitPtr bits, int bit_len) {
   return result;
 }
 
-td::Status apply_anycast(td::Ref<vm::CellSlice> anycast_ref, td::BitPtr address_bits) {
+td::Status apply_anycast(td::Ref<vm::CellSlice> anycast_ref, td::BitPtr address_bits, unsigned address_bit_len) {
   if (anycast_ref.not_null() && anycast_ref->bit_at(0) == 1) {
     auto anycast_slice = vm::CellSlice(*anycast_ref);
     anycast_slice.advance(1); // skip maybe bit
     block::gen::Anycast::Record anycast;
     if (!tlb::unpack_exact(anycast_slice, anycast)) {
       return td::Status::Error("Failed to unpack Anycast");
+    }
+    if (anycast.depth > address_bit_len) {
+      return td::Status::Error("Anycast depth exceeds address length");
     }
     address_bits.copy_from(anycast.rewrite_pfx->cbits(), anycast.depth);
   }
@@ -56,7 +59,7 @@ td::Result<std::string> convert::to_raw_address(td::Ref<vm::CellSlice> cs) {
           if (!tlb::csr_unpack(cs, addr)) {
             return td::Status::Error("Failed to unpack addr_var");
           }
-          TRY_STATUS(apply_anycast(addr.anycast, addr.address.write().bits()));
+          TRY_STATUS(apply_anycast(addr.anycast, addr.address.write().bits(), addr.addr_len));
           return "var$" + std::to_string(addr.workchain_id) + ":" +
                  std::to_string(addr.addr_len) + ":" +
                  bits_to_padded_hex(addr.address->cbits(), addr.addr_len);
@@ -66,7 +69,7 @@ td::Result<std::string> convert::to_raw_address(td::Ref<vm::CellSlice> cs) {
           if (!tlb::csr_unpack(cs, addr)) {
             return td::Status::Error("Failed to unpack MsgAddressInt");
           }
-          TRY_STATUS(apply_anycast(addr.anycast, addr.address.bits()));
+          TRY_STATUS(apply_anycast(addr.anycast, addr.address.bits(), addr.address.size()));
           return std::to_string(addr.workchain_id) + ":" + addr.address.to_hex();
         }
         default:
@@ -104,7 +107,7 @@ td::Result<block::StdAddress> convert::to_std_address(td::Ref<vm::CellSlice> cs)
           if (!tlb::csr_unpack(cs, addr)) {
             return td::Status::Error("Failed to unpack addr_std");
           }
-          TRY_STATUS(apply_anycast(addr.anycast, addr.address.bits()));
+          TRY_STATUS(apply_anycast(addr.anycast, addr.address.bits(), addr.address.size()));
           return block::StdAddress(addr.workchain_id, addr.address);
         }
         default:

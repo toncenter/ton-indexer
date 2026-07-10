@@ -32,6 +32,34 @@ TEST(convert, to_raw_address_with_anycast) {
     ASSERT_EQ("0:249A19CFF5961F85C5BACC7E70446EA8E72F23E09F34491621828BD840B2FE9A", raw_address_serialized.move_as_ok());
 }
 
+TEST(convert, to_raw_addr_var_with_anycast) {
+    vm::CellBuilder builder;
+    CHECK(builder.store_long_bool(3, 2));  // addr_var$11
+    CHECK(builder.store_bool_bool(true));  // just$1
+    CHECK(builder.store_uint_leq(30, 1));  // anycast depth
+    CHECK(builder.store_bool_bool(true));  // rewrite prefix
+    CHECK(builder.store_long_bool(1, 9));  // address length
+    CHECK(builder.store_long_bool(0, 32)); // workchain
+    CHECK(builder.store_bool_bool(false)); // address
+
+    auto raw_address = convert::to_raw_address(vm::load_cell_slice_ref(builder.finalize()));
+    CHECK(raw_address.is_ok());
+    ASSERT_EQ("var$0:1:8", raw_address.move_as_ok());
+}
+
+TEST(convert, rejects_addr_var_with_anycast_deeper_than_address) {
+    vm::CellBuilder builder;
+    CHECK(builder.store_long_bool(3, 2));  // addr_var$11
+    CHECK(builder.store_bool_bool(true));  // just$1
+    CHECK(builder.store_uint_leq(30, 1));  // anycast depth
+    CHECK(builder.store_bool_bool(true));  // rewrite prefix
+    CHECK(builder.store_long_bool(0, 9));  // address length
+    CHECK(builder.store_long_bool(0, 32)); // workchain
+
+    auto raw_address = convert::to_raw_address(vm::load_cell_slice_ref(builder.finalize()));
+    CHECK(raw_address.is_error());
+}
+
 TEST(convert, to_std_address) {
     auto address = vm::std_boc_deserialize(td::base64_decode(td::Slice("te6ccgEBAQEAJAAAQ4ARhy+Ifz/haSyza6FGBWNSde+ZjHy+uBieS1O4PxaPVnA=")).move_as_ok()).move_as_ok();
     auto std_address_serialized = convert::to_std_address(vm::load_cell_slice_ref(address));
