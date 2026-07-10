@@ -5,6 +5,7 @@
 #include "td/utils/check.h"
 #include "td/actor/actor.h"
 #include "td/utils/port/path.h"
+#include "td/utils/filesystem.h"
 #include "crypto/vm/cp0.h"
 #include "DbScanner.h"
 #include "SmcScanner.h"
@@ -80,7 +81,8 @@ int main(int argc, char *argv[]) {
   std::chrono::milliseconds insert_retry_initial_delay{500};
   std::chrono::milliseconds insert_retry_max_delay{5000};
   std::string jemalloc_profile_prefix = "/tmp/ton-smc-scanner.heap";
-  
+  std::string accounts_file;
+
   td::OptionParser p;
   p.set_description("Scan all accounts at some seqno, detect interfaces and save them to Postgres and/or Kvrocks");
   p.add_option('\0', "help", "prints_help", [&]() {
@@ -331,6 +333,11 @@ int main(int argc, char *argv[]) {
   p.add_option('\0', "account-states", "Index account states", [&] {
     options_.index_account_states_ = true;
   });
+  p.add_option('\0', "accounts-file", "Path to a text file with raw-format addresses, one per line. "
+                                      "When set, only these accounts are scanned instead of the full shard sweep. "
+                                      "Blank lines, whitespace and lines starting with # are ignored", [&](td::Slice value) {
+    accounts_file = value.str();
+  });
   p.add_option('\0', "testnet", "Use for testnet. It is used for correct indexing of .ton DNS entries (in testnet .ton collection has a different address)", [&]() {
     is_testnet = true;
   });
@@ -394,6 +401,61 @@ int main(int argc, char *argv[]) {
       LOG(ERROR) << "Failed to create working directory " << options_.working_dir_ << ": " << S.move_as_error();
       std::exit(2);
     }
+  }
+
+  if (!accounts_file.empty()) {
+    auto content_r = td::read_file(accounts_file);
+    if (content_r.is_error()) {
+      LOG(ERROR) << "Failed to read --accounts-file " << accounts_file << ": " << content_r.move_as_error();
+      std::exit(2);
+    }
+    std::string content = content_r.move_as_ok().as_slice().str();
+
+    auto addresses = std::make_shared<std::vector<block::StdAddress>>();
+    std::vector<int> bad_lines;
+    int line_no = 0;
+    std::size_t pos = 0;
+    while (pos <= content.size()) {
+      auto nl = content.find('\n', pos);
+      std::string line = (nl == std::string::npos) ? content.substr(pos) : content.substr(pos, nl - pos);
+      pos = (nl == std::string::npos) ? content.size() + 1 : nl + 1;
+      ++line_no;
+
+      auto begin = line.find_first_not_of(" \t\r\n");
+      if (begin == std::string::npos) {
+        continue;
+      }
+      auto end = line.find_last_not_of(" \t\r\n");
+      std::string trimmed = line.substr(begin, end - begin + 1);
+      if (trimmed[0] == '#') {
+        continue;
+      }
+
+      auto addr_r = block::StdAddress::parse(trimmed);
+      if (addr_r.is_error()) {
+        bad_lines.push_back(line_no);
+        continue;
+      }
+      addresses->push_back(addr_r.move_as_ok());
+    }
+
+    if (!bad_lines.empty()) {
+      std::string bad_list;
+      for (std::size_t i = 0; i < bad_lines.size(); ++i) {
+        if (i != 0) {
+          bad_list += ", ";
+        }
+        bad_list += std::to_string(bad_lines[i]);
+      }
+      LOG(ERROR) << "--accounts-file " << accounts_file << " has unparseable address(es) on line(s): " << bad_list;
+      std::exit(2);
+    }
+    if (addresses->empty()) {
+      LOG(ERROR) << "--accounts-file " << accounts_file << " contains no addresses";
+      std::exit(2);
+    }
+    LOG(INFO) << "Account-list mode: loaded " << addresses->size() << " addresses from " << accounts_file;
+    options_.account_addresses_ = std::move(addresses);
   }
 
   NftItemDetectorR::is_testnet = is_testnet;

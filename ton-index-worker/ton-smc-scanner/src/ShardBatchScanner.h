@@ -63,3 +63,26 @@ public:
   void got_reload_cell_db_reader(td::Result<std::shared_ptr<vm::CellDbReader>> result);
   void update_checkpoint(td::Bits256 new_checkpoint);
 };
+
+// Scans accounts already assigned to this shard through the normal parse-and-insert path.
+// Targeted scans do not use checkpoints or reload shard state.
+class AccountListShardScanner: public td::actor::Actor {
+private:
+  ShardStateDataPtr shard_state_data_;
+  Options options_;
+  std::vector<block::StdAddress> addresses_;
+
+  ton::ShardIdFull shard_;
+  std::vector<std::pair<td::Bits256, block::gen::ShardAccount::Record>> accounts_;
+  std::size_t next_index_{0};
+  std::uint32_t batches_in_flight_{0};
+
+public:
+  AccountListShardScanner(ShardStateDataPtr shard_state_data, Options options, std::vector<block::StdAddress> addresses);
+
+  void start_up() override;
+  void schedule_next();
+  void batch_parsed(std::vector<InsertData> results);
+  void batch_inserted();
+  void fail_batch(td::Status error);
+};

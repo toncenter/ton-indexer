@@ -189,12 +189,17 @@ struct PreparedDnsEntryRow {
   std::optional<block::StdAddress> dns_wallet;
   std::optional<td::Bits256> dns_site_adnl;
   std::optional<td::Bits256> dns_storage_bag_id;
+  std::optional<block::StdAddress> max_bid_address;
+  td::RefInt256 max_bid_amount;
+  std::optional<uint64_t> auction_end_time;
+  std::optional<uint64_t> last_fill_up_time;
   std::uint64_t last_transaction_lt;
   bool destroyed;
   std::uint32_t source_mc_seqno;
 
   KVROCKS_PREPARED_ROW_AS_TUPLE(nft_item_address, nft_item_owner, domain, dns_next_resolver, dns_wallet,
-                                dns_site_adnl, dns_storage_bag_id, last_transaction_lt, destroyed);
+                                dns_site_adnl, dns_storage_bag_id, max_bid_address, max_bid_amount,
+                                auction_end_time, last_fill_up_time, last_transaction_lt, destroyed);
 };
 
 struct PreparedGetgemsSaleRow {

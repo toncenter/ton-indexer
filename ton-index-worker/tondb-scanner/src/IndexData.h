@@ -635,6 +635,10 @@ struct NFTItemDataV2 {
     std::optional<block::StdAddress> next_resolver;
     std::optional<td::Bits256> site_adnl;
     std::optional<td::Bits256> storage_bag_id;
+    std::optional<block::StdAddress> max_bid_address;
+    td::RefInt256 max_bid_amount;
+    std::optional<uint64_t> auction_end_time;
+    std::optional<uint64_t> last_fill_up_time;
   };
 
   block::StdAddress address;

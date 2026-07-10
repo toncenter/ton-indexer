@@ -73,6 +73,10 @@ public:
       std::optional<block::StdAddress> next_resolver;
       std::optional<td::Bits256> site_adnl;
       std::optional<td::Bits256> storage_bag_id;
+      std::optional<block::StdAddress> max_bid_address;
+      td::RefInt256 max_bid_amount;
+      std::optional<uint64_t> auction_end_time;
+      std::optional<uint64_t> last_fill_up_time;
     };
     block::StdAddress address;
     bool init;
@@ -101,6 +105,8 @@ private:
                                                             td::Ref<vm::Cell> collection_code, td::Ref<vm::Cell> collection_data);
   void process_domain_and_dns_data(const block::StdAddress& root_address, const std::function<td::Result<std::string>()>& get_domain_function, Result& item_data);
   td::Result<NftItemDetectorR::Result::DNSEntry> get_dns_entry_data();
+  td::Status get_auction_info(Result::DNSEntry& entry);
+  td::Status get_last_fill_up_time(Result::DNSEntry& entry);
   td::Result<std::string> get_ton_domain();
   td::Result<std::string> get_t_me_domain();
   static block::StdAddress get_dot_ton_dns_root_addr();

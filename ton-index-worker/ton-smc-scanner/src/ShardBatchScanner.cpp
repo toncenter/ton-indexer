@@ -356,3 +356,91 @@ void ShardStateScanner::got_reload_cell_db_reader(td::Result<std::shared_ptr<vm:
     completed_batches_since_reload_ = 0;
     schedule_next();
 }
+
+AccountListShardScanner::AccountListShardScanner(ShardStateDataPtr shard_state_data, Options options,
+                                                 std::vector<block::StdAddress> addresses)
+    : shard_state_data_(std::move(shard_state_data))
+    , options_(std::move(options))
+    , addresses_(std::move(addresses)) {
+}
+
+void AccountListShardScanner::start_up() {
+    shard_ = ton::ShardIdFull(block::ShardId(shard_state_data_->sstate_.shard_id.write()));
+    vm::AugmentedDictionary accounts_dict{vm::load_cell_slice_ref(shard_state_data_->sstate_.accounts), 256, block::tlb::aug_ShardAccounts};
+
+    accounts_.reserve(addresses_.size());
+    for (const auto &address : addresses_) {
+        auto shard_account_csr = accounts_dict.lookup(address.addr);
+        if (shard_account_csr.is_null()) {
+            LOG(WARNING) << "Account " << address.workchain << ":" << address.addr.to_hex()
+                         << " not found in shard " << shard_.to_str() << ", skipping";
+            continue;
+        }
+        block::gen::ShardAccount::Record acc_info;
+        if (!tlb::csr_unpack(std::move(shard_account_csr), acc_info)) {
+            LOG(ERROR) << "Failed to unpack ShardAccount for " << address.addr.to_hex() << ", skipping";
+            continue;
+        }
+        accounts_.emplace_back(address.addr, std::move(acc_info));
+    }
+
+    LOG(INFO) << "Account-list mode: shard " << shard_.to_str() << " matched " << accounts_.size()
+              << " of " << addresses_.size() << " listed accounts";
+    schedule_next();
+}
+
+void AccountListShardScanner::schedule_next() {
+    while (batches_in_flight_ < static_cast<std::uint32_t>(options_.max_parallel_batches_) && next_index_ < accounts_.size()) {
+        std::size_t batch_end = std::min<std::size_t>(next_index_ + options_.batch_size_, accounts_.size());
+        std::vector<std::pair<td::Bits256, block::gen::ShardAccount::Record>> batch(
+            std::make_move_iterator(accounts_.begin() + next_index_),
+            std::make_move_iterator(accounts_.begin() + batch_end));
+        next_index_ = batch_end;
+
+        auto P = td::PromiseCreator::lambda([SelfId = actor_id(this)](td::Result<std::vector<InsertData>> R) mutable {
+            if (R.is_error()) {
+                td::actor::send_closure(SelfId, &AccountListShardScanner::fail_batch,
+                                        R.move_as_error_prefix("Failed to process batch: "));
+                return;
+            }
+            td::actor::send_closure(SelfId, &AccountListShardScanner::batch_parsed, R.move_as_ok());
+        });
+        td::actor::create_actor<StateBatchParser>("parser", std::move(batch), shard_state_data_, options_, std::move(P)).release();
+
+        ++batches_in_flight_;
+    }
+
+    if (batches_in_flight_ == 0 && next_index_ >= accounts_.size()) {
+        LOG(INFO) << "Account-list mode: shard " << shard_.to_str() << " finished with " << accounts_.size() << " accounts";
+        stop();
+    }
+}
+
+void AccountListShardScanner::batch_parsed(std::vector<InsertData> results) {
+    if (results.empty()) {
+        batch_inserted();
+        return;
+    }
+
+    auto P = td::PromiseCreator::lambda([SelfId = actor_id(this), cnt = results.size()](td::Result<td::Unit> R) mutable {
+        if (R.is_error()) {
+            td::actor::send_closure(SelfId, &AccountListShardScanner::fail_batch,
+                                    R.move_as_error_prefix("Failed to insert data: "));
+            return;
+        }
+        LOG(INFO) << "Account-list mode: inserted " << cnt << " accstates+interfaces";
+        td::actor::send_closure(SelfId, &AccountListShardScanner::batch_inserted);
+    });
+    td::actor::send_closure(options_.insert_manager_, &PostgreSQLInsertManager::insert_data, std::move(results), std::move(P));
+}
+
+void AccountListShardScanner::batch_inserted() {
+    --batches_in_flight_;
+    schedule_next();
+}
+
+void AccountListShardScanner::fail_batch(td::Status error) {
+    LOG(ERROR) << "Account-list mode: shard " << shard_.to_str() << " batch failed: " << error;
+    --batches_in_flight_;
+    schedule_next();
+}

@@ -85,10 +85,14 @@ void StateBatchParser::interfaces_detected(block::StdAddress address, std::vecto
                 nft_item_data.data_hash = data_hash;
                 if (arg.dns_entry) {
                     nft_item_data.dns_entry = schema::NFTItemDataV2::DNSEntry{arg.dns_entry->domain,
-                                                                      arg.dns_entry->wallet, 
-                                                                      arg.dns_entry->next_resolver, 
+                                                                      arg.dns_entry->wallet,
+                                                                      arg.dns_entry->next_resolver,
                                                                       arg.dns_entry->site_adnl,
-                                                                      arg.dns_entry->storage_bag_id};
+                                                                      arg.dns_entry->storage_bag_id,
+                                                                      arg.dns_entry->max_bid_address,
+                                                                      arg.dns_entry->max_bid_amount,
+                                                                      arg.dns_entry->auction_end_time,
+                                                                      arg.dns_entry->last_fill_up_time};
                 }
                 interfaces_[address].push_back(nft_item_data);
             } else if constexpr (std::is_same_v<T, GetGemsNftAuction::Result>) {

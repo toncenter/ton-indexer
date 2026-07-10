@@ -105,6 +105,12 @@ type DNSRecordsResponse struct {
 	AddressBook AddressBook `json:"address_book"`
 } // @name DNSRecordsResponse
 
+type DNSAuctionsResponse struct {
+	Auctions    []DNSAuction `json:"auctions"`
+	AddressBook AddressBook  `json:"address_book"`
+	Metadata    Metadata     `json:"metadata"`
+} // @name DNSAuctionsResponse
+
 type MultisigResponse struct {
 	Multisigs   []Multisig  `json:"multisigs"`
 	AddressBook AddressBook `json:"address_book"`

@@ -177,7 +177,8 @@ void PostgreSQLInserter::insert_nft_items(pqxx::work& txn, const kvrocks_state::
 
   std::initializer_list<std::string_view> dns_columns = {
     "nft_item_address", "nft_item_owner", "domain", "dns_next_resolver", "dns_wallet", "dns_site_adnl",
-    "dns_storage_bag_id", "last_transaction_lt", "destroyed"
+    "dns_storage_bag_id", "max_bid_address", "max_bid_amount", "auction_end_time", "last_fill_up_time",
+    "last_transaction_lt", "destroyed"
   };
   PopulateTableStream dns_stream(txn, "dns_entries", dns_columns, 1000, false);
   dns_stream.setConflictDoUpdate({"nft_item_address"}, "dns_entries.last_transaction_lt < EXCLUDED.last_transaction_lt");
