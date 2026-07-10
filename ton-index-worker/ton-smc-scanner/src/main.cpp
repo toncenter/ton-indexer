@@ -10,6 +10,7 @@
 #include "DbScanner.h"
 #include "SmcScanner.h"
 
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <string>
@@ -454,6 +455,20 @@ int main(int argc, char *argv[]) {
       LOG(ERROR) << "--accounts-file " << accounts_file << " contains no addresses";
       std::exit(2);
     }
+
+    // Dedup: sorted order also improves dictionary lookup locality per shard chunk.
+    std::size_t before_dedup = addresses->size();
+    std::sort(addresses->begin(), addresses->end(), [](const block::StdAddress &a, const block::StdAddress &b) {
+      if (a.workchain != b.workchain) {
+        return a.workchain < b.workchain;
+      }
+      return a.addr < b.addr;
+    });
+    addresses->erase(std::unique(addresses->begin(), addresses->end()), addresses->end());
+    if (addresses->size() != before_dedup) {
+      LOG(INFO) << "Account-list mode: removed " << (before_dedup - addresses->size()) << " duplicate address(es)";
+    }
+
     LOG(INFO) << "Account-list mode: loaded " << addresses->size() << " addresses from " << accounts_file;
     options_.account_addresses_ = std::move(addresses);
   }

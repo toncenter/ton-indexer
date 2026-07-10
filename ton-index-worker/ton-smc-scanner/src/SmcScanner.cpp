@@ -82,6 +82,7 @@ void SmcScanner::got_block(schema::MasterchainBlockDataState block) {
             std::string actor_name = "ALScanner:" + shard_entries[i].shard_id.to_str();
             td::actor::create_actor<AccountListShardScanner>(
                 actor_name,
+                shard_entries[i].shard_id,
                 shard_entries[i].data,
                 options_,
                 std::move(per_shard_addresses[i])).release();
