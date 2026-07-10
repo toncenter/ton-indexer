@@ -189,6 +189,8 @@ std::string ShardStateScanner::get_checkpoint_file_path() {
 }
 
 void ShardStateScanner::range_scan_completed(AddrRange range, std::vector<std::pair<td::Bits256, block::gen::ShardAccount::Record>> results) {
+    accounts_cnt_ += results.size();
+
     auto P = td::PromiseCreator::lambda([SelfId = actor_id(this), range](td::Result<std::vector<InsertData>> R) mutable {
         if (R.is_error()) {
             td::actor::send_closure(SelfId, &ShardStateScanner::fail_range, range,
@@ -199,8 +201,6 @@ void ShardStateScanner::range_scan_completed(AddrRange range, std::vector<std::p
     });
     
     td::actor::create_actor<StateBatchParser>("parser", std::move(results), shard_state_data_, options_, std::move(P)).release();
-
-    accounts_cnt_ += results.size();
 }
 
 void ShardStateScanner::range_parsed(AddrRange range, std::vector<InsertData> results) {    
