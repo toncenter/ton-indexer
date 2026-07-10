@@ -1828,16 +1828,16 @@ func (s *KvrocksStore) QueryDNSRecords(ctx context.Context, req models.DNSRecord
 	return s.orderedDNSRecords(ctx, ids)
 }
 
-func (s *KvrocksStore) QueryDNSAuctions(ctx context.Context, req models.DNSAuctionsRequest, settings models.RequestSettings) ([]models.DNSAuction, error) {
+func (s *KvrocksStore) QueryDNSAuctions(ctx context.Context, req models.DNSAuctionsRequest, settings models.RequestSettings) ([]models.DNSAuction, *string, error) {
 	ctx = s.pinReadSnapshot(ctx)
 	limReq := req.GetLimitParams()
 
 	limit, offset, err := kvrocksLimitOffset(limReq, settings)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if req.Bidder == nil {
-		return nil, models.IndexError{Code: 422, Message: "bidder is required"}
+		return nil, nil, models.IndexError{Code: 422, Message: "bidder is required"}
 	}
 
 	now := time.Now().Unix()
@@ -1852,25 +1852,41 @@ func (s *KvrocksStore) QueryDNSAuctions(ctx context.Context, req models.DNSAucti
 	case "bidding":
 		minBound = "[" + splitKey
 	default:
-		return nil, models.IndexError{Code: 422, Message: fmt.Sprintf("state is not allowed: %s", req.State)}
+		return nil, nil, models.IndexError{Code: 422, Message: fmt.Sprintf("state is not allowed: %s", req.State)}
+	}
+	if req.After != nil && *req.After != "" {
+		member, err := decodeDNSAuctionCursor(*req.After)
+		if err != nil {
+			return nil, nil, models.IndexError{Code: 422, Message: err.Error()}
+		}
+		// Strictly-after the cursor member; keep the state lower bound when it is higher.
+		if minBound == "-" || member >= minBound[1:] {
+			minBound = "(" + member
+		}
 	}
 
 	indexName := "bidder:" + string(*req.Bidder) + ":by_auction_end_time"
 	members, err := s.rangeByLexBounds(ctx, "dns_entries", indexName, minBound, maxBound, limit, offset, false)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	records, err := s.orderedDNSAuctionRecords(ctx, addressIDsFromLexMembers(members))
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	auctions := dnsRecordsToAuctions(records, now)
+	// Cursor advances over the raw fetched page (pre settle-race filtering) so dropped rows can't stall pagination.
+	var next_cursor *string
+	if len(members) > 0 && len(members) == int(limit) {
+		cursor := encodeDNSAuctionCursorMember(members[len(members)-1])
+		next_cursor = &cursor
+	}
 	if req.IncludeNftItems != nil && *req.IncludeNftItems {
 		if err := s.attachAuctionNFTItems(ctx, auctions); err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 	}
-	return auctions, nil
+	return auctions, next_cursor, nil
 }
 
 func (s *KvrocksStore) attachAuctionNFTItems(ctx context.Context, auctions []models.DNSAuction) error {

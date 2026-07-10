@@ -718,6 +718,7 @@ func GetDNSRecords(c *fiber.Ctx) error {
 // @description Returns DNS auctions where the address is the current leading bidder.
 // @description Use `bidding` for open auctions and `won` for ended but unclaimed auctions.
 // @description Claimed auctions are no longer returned.
+// @description Ordering for *bidding* and *all* can change between pages as auctions update; prefer larger limits.
 // @description Set *include_nft_items* to include NFT details. Available NFT and collection metadata is returned separately.
 //
 // @id api_v3_get_dns_active_auctions
@@ -729,8 +730,9 @@ func GetDNSRecords(c *fiber.Ctx) error {
 // @param bidder query string true "Address of the current leading bidder."
 // @param state query string false "Filter by auction state." Enums(all, won, bidding) default(all)
 // @param include_nft_items query bool false "Include NFT item details." default(false)
+// @param after query string false "Opaque pagination cursor from *next_cursor* of the previous page. Returns rows strictly after it; preferred over *offset*."
 // @param limit query int32 false "Maximum rows to return." minimum(1) maximum(1000) default(100)
-// @param offset query int32 false "Rows to skip." minimum(0) default(0)
+// @param offset query int32 false "Rows to skip. Not allowed together with *after*." minimum(0) default(0)
 // @router /api/v3/dns/activeAuctions [get]
 // @security		APIKeyHeader
 // @security		APIKeyQuery
@@ -751,13 +753,17 @@ func GetDNSAuctions(c *fiber.Ctx) error {
 		return models.IndexError{Code: 422, Message: "state must be one of: all, won, bidding"}
 	}
 
-	res, book, metadata, err := pool.QueryDNSAuctions(req, request_settings)
+	if req.After != nil && *req.After != "" && req.Offset != nil && *req.Offset > 0 {
+		return models.IndexError{Code: 422, Message: "use either after or offset, not both"}
+	}
+
+	res, book, metadata, next_cursor, err := pool.QueryDNSAuctions(req, request_settings)
 	if err != nil {
 		return err
 	}
 	crud.SubstituteImgproxyBaseUrl(&metadata, settings.ImgProxyBaseUrl)
 
-	resp := models.DNSAuctionsResponse{Auctions: res, AddressBook: book, Metadata: metadata}
+	resp := models.DNSAuctionsResponse{Auctions: res, AddressBook: book, Metadata: metadata, NextCursor: next_cursor}
 	return c.JSON(resp)
 }
 

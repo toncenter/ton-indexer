@@ -109,6 +109,7 @@ type DNSAuctionsResponse struct {
 	Auctions    []DNSAuction `json:"auctions"`
 	AddressBook AddressBook  `json:"address_book"`
 	Metadata    Metadata     `json:"metadata"`
+	NextCursor  *string      `json:"next_cursor"`
 } // @name DNSAuctionsResponse
 
 type MultisigResponse struct {
