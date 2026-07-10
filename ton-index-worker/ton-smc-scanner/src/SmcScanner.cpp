@@ -1,6 +1,7 @@
 #include "SmcScanner.h"
 #include "convert-utils.h"
 #include "ShardBatchScanner.h"
+#include <block/block.h>
 
 void SmcScanner::start_up() {
     auto P = td::PromiseCreator::lambda([=, SelfId = actor_id(this)](td::Result<schema::MasterchainBlockDataState> R){
@@ -37,6 +38,57 @@ void SmcScanner::got_block(schema::MasterchainBlockDataState block) {
         return;
     }
     auto config = std::shared_ptr<block::ConfigInfo>(config_r.move_as_ok());
+
+    if (options_.account_addresses_ && !options_.account_addresses_->empty()) {
+        struct ShardEntry {
+            ton::ShardIdFull shard_id;
+            ShardStateDataPtr data;
+        };
+        std::vector<ShardEntry> shard_entries;
+        shard_entries.reserve(block.shard_blocks_.size());
+        for (std::size_t index = 0; index < block.shard_blocks_.size(); ++index) {
+            const auto &shard_ds = block.shard_blocks_[index];
+            auto shard_state_data = std::make_shared<ShardStateData>();
+            shard_state_data->shard_states_ = shard_states;
+            shard_state_data->config_ = config;
+            if (!tlb::unpack_cell(shard_ds.block_state, shard_state_data->sstate_)) {
+                LOG(ERROR) << "Failed to unpack initial shard state for " << shard_ds.handle->id().to_str();
+                continue;
+            }
+            auto shard_id = ton::ShardIdFull(block::ShardId(shard_state_data->sstate_.shard_id.write()));
+            shard_entries.push_back({shard_id, std::move(shard_state_data)});
+        }
+
+        std::vector<std::vector<block::StdAddress>> per_shard_addresses(shard_entries.size());
+        for (const auto &address : *options_.account_addresses_) {
+            bool routed = false;
+            for (std::size_t i = 0; i < shard_entries.size(); ++i) {
+                if (ton::shard_contains(shard_entries[i].shard_id, ton::extract_addr_prefix(address.workchain, address.addr))) {
+                    per_shard_addresses[i].push_back(address);
+                    routed = true;
+                    break;
+                }
+            }
+            if (!routed) {
+                LOG(WARNING) << "Listed account " << address.workchain << ":" << address.addr.to_hex()
+                             << " does not belong to any scanned shard, skipping";
+            }
+        }
+
+        for (std::size_t i = 0; i < shard_entries.size(); ++i) {
+            if (per_shard_addresses[i].empty()) {
+                continue;
+            }
+            std::string actor_name = "ALScanner:" + shard_entries[i].shard_id.to_str();
+            td::actor::create_actor<AccountListShardScanner>(
+                actor_name,
+                shard_entries[i].shard_id,
+                shard_entries[i].data,
+                options_,
+                std::move(per_shard_addresses[i])).release();
+        }
+        return;
+    }
 
     for (std::size_t index = 0; index < block.shard_blocks_.size(); ++index) {
         const auto &shard_ds = block.shard_blocks_[index];

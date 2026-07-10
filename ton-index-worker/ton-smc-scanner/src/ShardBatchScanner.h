@@ -20,6 +20,22 @@ public:
     void start_up() override;
 };
 
+// Looks up one chunk of listed addresses against its own copy of the shard accounts
+// dictionary and returns the found (address, ShardAccount) records
+class AccountListLookupScanner : public td::actor::Actor {
+private:
+    vm::AugmentedDictionary accounts_dict_;
+    std::vector<block::StdAddress> addresses_;
+    ton::ShardIdFull shard_;
+    td::Promise<std::vector<std::pair<td::Bits256, block::gen::ShardAccount::Record>>> promise_;
+
+public:
+    AccountListLookupScanner(vm::AugmentedDictionary accounts_dict, std::vector<block::StdAddress> addresses,
+                             ton::ShardIdFull shard,
+                             td::Promise<std::vector<std::pair<td::Bits256, block::gen::ShardAccount::Record>>> promise);
+    void start_up() override;
+};
+
 using AddrRange = std::pair<td::Bits256, td::Bits256>;
 
 class ShardStateScanner: public td::actor::Actor {
@@ -62,4 +78,32 @@ public:
   void request_shard_state_reload();
   void got_reload_cell_db_reader(td::Result<std::shared_ptr<vm::CellDbReader>> result);
   void update_checkpoint(td::Bits256 new_checkpoint);
+};
+
+// Scans accounts already assigned to this shard through the normal parse-and-insert path.
+// Targeted scans do not use checkpoints or reload shard state.
+class AccountListShardScanner: public td::actor::Actor {
+private:
+  ShardStateDataPtr shard_state_data_;
+  Options options_;
+  std::vector<block::StdAddress> addresses_;
+
+  ton::ShardIdFull shard_;
+  std::size_t next_index_{0};
+  std::uint32_t batches_in_flight_{0};
+
+  // Per-shard counters for the final summary.
+  std::size_t found_cnt_{0};
+  std::size_t missing_cnt_{0};
+  std::size_t inserted_batches_{0};
+
+public:
+  AccountListShardScanner(ton::ShardIdFull shard, ShardStateDataPtr shard_state_data, Options options, std::vector<block::StdAddress> addresses);
+
+  void start_up() override;
+  void schedule_next();
+  void chunk_looked_up(std::vector<std::pair<td::Bits256, block::gen::ShardAccount::Record>> results);
+  void batch_parsed(std::vector<InsertData> results);
+  void batch_inserted();
+  void fail_batch(td::Status error);
 };

@@ -953,6 +953,10 @@ create table if not exists dns_entries
     dns_wallet          tonaddr,
     dns_site_adnl       tonhash,
     dns_storage_bag_id  tonhash,
+    max_bid_address     tonaddr,
+    max_bid_amount      numeric,
+    auction_end_time    bigint,
+    last_fill_up_time   bigint,
     last_transaction_lt bigint,
     destroyed           boolean not null default false
 ) with (fillfactor = 70);
@@ -1587,6 +1591,7 @@ create index if not exists blocks_index_6 on blocks (file_hash);
 
 create index if not exists dns_entries_index_1 on dns_entries (dns_wallet, length(domain));
 create index if not exists dns_entries_index_2 on dns_entries (nft_item_owner, length(domain)) include (domain) where ((nft_item_owner)::text = (dns_wallet)::text);
+create index if not exists dns_entries_index_3 on dns_entries (max_bid_address, auction_end_time) where max_bid_address is not null;
 
 create index if not exists jetton_masters_index_1 on jetton_masters (admin_address, id);
 create index if not exists jetton_masters_index_2 on jetton_masters (id);

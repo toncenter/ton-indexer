@@ -474,12 +474,17 @@ struct PreparedDnsEntryRow {
   std::optional<block::StdAddress> dns_wallet;
   std::optional<td::Bits256> dns_site_adnl;
   std::optional<td::Bits256> dns_storage_bag_id;
+  std::optional<block::StdAddress> max_bid_address;
+  td::RefInt256 max_bid_amount;
+  std::optional<uint64_t> auction_end_time;
+  std::optional<uint64_t> last_fill_up_time;
   uint64_t last_transaction_lt;
   bool destroyed;
   std::uint32_t source_mc_seqno;
 
   PREPARED_ROW_AS_TUPLE(nft_item_address, nft_item_owner, domain, dns_next_resolver, dns_wallet,
-                        dns_site_adnl, dns_storage_bag_id, last_transaction_lt, destroyed);
+                        dns_site_adnl, dns_storage_bag_id, max_bid_address, max_bid_amount,
+                        auction_end_time, last_fill_up_time, last_transaction_lt, destroyed);
 };
 
 struct PreparedGetgemsSaleRow {
@@ -965,6 +970,10 @@ kvrocks_state::StateBatch make_kvrocks_state_batch(const PreparedBatchPostgres& 
       .dns_wallet = row.dns_wallet,
       .dns_site_adnl = row.dns_site_adnl,
       .dns_storage_bag_id = row.dns_storage_bag_id,
+      .max_bid_address = row.max_bid_address,
+      .max_bid_amount = row.max_bid_amount,
+      .auction_end_time = row.auction_end_time,
+      .last_fill_up_time = row.last_fill_up_time,
       .last_transaction_lt = row.last_transaction_lt,
       .destroyed = row.destroyed,
       .source_mc_seqno = row.source_mc_seqno,
@@ -1284,6 +1293,10 @@ PreparedDnsEntryRow make_destroyed_dns_entry_row(const DestroyedAccountState& st
     .dns_wallet = std::nullopt,
     .dns_site_adnl = std::nullopt,
     .dns_storage_bag_id = std::nullopt,
+    .max_bid_address = std::nullopt,
+    .max_bid_amount = {},
+    .auction_end_time = std::nullopt,
+    .last_fill_up_time = std::nullopt,
     .last_transaction_lt = state.last_transaction_lt,
     .destroyed = true,
     .source_mc_seqno = state.source_mc_seqno,
@@ -2317,6 +2330,10 @@ void collect_and_prepare_batch_rows(const std::vector<InsertTaskStruct>& insert_
           .dns_wallet = nft_item.dns_entry->wallet,
           .dns_site_adnl = nft_item.dns_entry->site_adnl,
           .dns_storage_bag_id = nft_item.dns_entry->storage_bag_id,
+          .max_bid_address = nft_item.dns_entry->max_bid_address,
+          .max_bid_amount = nft_item.dns_entry->max_bid_amount,
+          .auction_end_time = nft_item.dns_entry->auction_end_time,
+          .last_fill_up_time = nft_item.dns_entry->last_fill_up_time,
           .last_transaction_lt = nft_item.last_transaction_lt,
           .destroyed = false,
           .source_mc_seqno = nft_item_with_source_ptr->source_mc_seqno,
@@ -3832,7 +3849,8 @@ std::string InsertBatchPostgres::insert_nft_items(pqxx::work &txn) {
                                     prepared_batch_->nft_items);
 
   std::initializer_list<std::string_view> dns_columns = {
-    "nft_item_address", "nft_item_owner", "domain", "dns_next_resolver", "dns_wallet", "dns_site_adnl", "dns_storage_bag_id", "last_transaction_lt", "destroyed"
+    "nft_item_address", "nft_item_owner", "domain", "dns_next_resolver", "dns_wallet", "dns_site_adnl", "dns_storage_bag_id",
+    "max_bid_address", "max_bid_amount", "auction_end_time", "last_fill_up_time", "last_transaction_lt", "destroyed"
   };
   result += insert_current_rows(txn, "dns_entries", dns_columns, "nft_item_address", "last_transaction_lt",
                                 "dns_entries.last_transaction_lt < EXCLUDED.last_transaction_lt",

@@ -338,9 +338,53 @@ void NftItemDetectorR::process_domain_and_dns_data(const block::StdAddress& root
     auto dns_data = get_dns_entry_data();
     if (dns_data.is_ok()) {
         dns_data.ok_ref().domain = domain.move_as_ok();
+        if (auto status = get_auction_info(dns_data.ok_ref()); status.is_error()) {
+          LOG(DEBUG) << "Failed to get dns auction info for " << address_ << ": " << status;
+        }
+        if (auto status = get_last_fill_up_time(dns_data.ok_ref()); status.is_error()) {
+          LOG(DEBUG) << "Failed to get dns last fill up time for " << address_ << ": " << status;
+        }
         item_data.dns_entry = dns_data.move_as_ok();
     }
   }
+}
+
+td::Status NftItemDetectorR::get_auction_info(Result::DNSEntry& entry) {
+  TRY_RESULT(stack, execute_smc_method<3>(address_, code_cell_, data_cell_, config_, "get_auction_info", {},
+        {vm::StackEntry::Type::t_slice, vm::StackEntry::Type::t_int, vm::StackEntry::Type::t_int}));
+
+  auto max_bid_address_cs = stack[0].as_slice();
+  if (max_bid_address_cs->size() == 2 && max_bid_address_cs->prefetch_ulong(2) == 0) {
+    // No auction is active.
+    return td::Status::OK();
+  }
+
+  auto max_bid_address = convert::to_std_address(max_bid_address_cs);
+  if (max_bid_address.is_error()) {
+    return max_bid_address.move_as_error_prefix("dns auction max_bid_address parsing failed: ");
+  }
+
+  auto auction_end_time = stack[2].as_int();
+  if (auction_end_time->sgn() < 0 || auction_end_time->to_long() >= (static_cast<int64_t>(1) << 40)) {
+    return td::Status::Error("get_auction_info returned out-of-range auction_end_time");
+  }
+
+  entry.max_bid_address = max_bid_address.move_as_ok();
+  entry.max_bid_amount = stack[1].as_int();
+  entry.auction_end_time = static_cast<uint64_t>(auction_end_time->to_long());
+  return td::Status::OK();
+}
+
+td::Status NftItemDetectorR::get_last_fill_up_time(Result::DNSEntry& entry) {
+  TRY_RESULT(stack, execute_smc_method<1>(address_, code_cell_, data_cell_, config_, "get_last_fill_up_time", {},
+        {vm::StackEntry::Type::t_int}));
+
+  auto value = stack[0].as_int();
+  if (value->sgn() < 0 || value->to_long() >= (static_cast<int64_t>(1) << 40)) {
+    return td::Status::Error("get_last_fill_up_time returned out-of-range value");
+  }
+  entry.last_fill_up_time = static_cast<uint64_t>(value->to_long());
+  return td::Status::OK();
 }
 
 td::Result<NftItemDetectorR::Result::DNSEntry> NftItemDetectorR::get_dns_entry_data() {

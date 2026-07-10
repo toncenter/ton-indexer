@@ -269,6 +269,14 @@ type DNSRecordsRequest struct {
 	LimitParams
 }
 
+type DNSAuctionsRequest struct {
+	Bidder          *AccountAddress `query:"bidder"`
+	State           string          `query:"state"`
+	After           *string         `query:"after"`
+	IncludeNftItems *bool           `query:"include_nft_items"`
+	LimitParams
+}
+
 type MultisigRequest struct {
 	Address       []AccountAddress `query:"address"`
 	WalletAddress []AccountAddress `query:"wallet_address"`

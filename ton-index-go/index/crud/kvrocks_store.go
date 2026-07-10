@@ -1773,6 +1773,33 @@ func (s *KvrocksStore) decodeDNSRecords(ids []string, payloads map[string]string
 	return res, nil
 }
 
+func (s *KvrocksStore) orderedDNSAuctionRecords(ctx context.Context, ids []string) ([]models.DNSAuctionRecord, error) {
+	payloads, err := s.getPayloads(ctx, "dns_entries", ids)
+	if err != nil {
+		return nil, err
+	}
+	res := make([]models.DNSAuctionRecord, 0, len(ids))
+	for _, id := range ids {
+		payload, ok := payloads[id]
+		if !ok {
+			continue
+		}
+		destroyed, err := kvrocksPayloadDestroyed(id, "dns_entries", payload)
+		if err != nil {
+			return nil, err
+		}
+		if destroyed {
+			continue
+		}
+		var row models.DNSAuctionRecord
+		if err := json.Unmarshal([]byte(payload), &row); err != nil {
+			return nil, fmt.Errorf("decode dns_entries %s: %w", id, err)
+		}
+		res = append(res, row)
+	}
+	return res, nil
+}
+
 func (s *KvrocksStore) QueryDNSRecords(ctx context.Context, req models.DNSRecordsRequest, settings models.RequestSettings) ([]models.DNSRecord, error) {
 	ctx = s.pinReadSnapshot(ctx)
 	limReq := req.GetLimitParams()
@@ -1799,6 +1826,92 @@ func (s *KvrocksStore) QueryDNSRecords(ctx context.Context, req models.DNSRecord
 		}
 	}
 	return s.orderedDNSRecords(ctx, ids)
+}
+
+func (s *KvrocksStore) QueryDNSAuctions(ctx context.Context, req models.DNSAuctionsRequest, settings models.RequestSettings) ([]models.DNSAuction, *string, error) {
+	ctx = s.pinReadSnapshot(ctx)
+	limReq := req.GetLimitParams()
+
+	limit, offset, err := kvrocksLimitOffset(limReq, settings)
+	if err != nil {
+		return nil, nil, err
+	}
+	if req.Bidder == nil {
+		return nil, nil, models.IndexError{Code: 422, Message: "bidder is required"}
+	}
+
+	now := time.Now().Unix()
+	// Members are "<20-digit end time>:<item address>". Splitting at now+1
+	// puts ended auctions below the key and active auctions at or above it.
+	splitKey := padDecimalString(strconv.FormatInt(now+1, 10), 20)
+	minBound, maxBound := "-", "+"
+	switch req.State {
+	case "", "all":
+	case "won":
+		maxBound = "(" + splitKey
+	case "bidding":
+		minBound = "[" + splitKey
+	default:
+		return nil, nil, models.IndexError{Code: 422, Message: fmt.Sprintf("state is not allowed: %s", req.State)}
+	}
+	if req.After != nil && *req.After != "" {
+		member, err := decodeDNSAuctionCursor(*req.After)
+		if err != nil {
+			return nil, nil, models.IndexError{Code: 422, Message: err.Error()}
+		}
+		// Strictly-after the cursor member; keep the state lower bound when it is higher.
+		if minBound == "-" || member >= minBound[1:] {
+			minBound = "(" + member
+		}
+	}
+
+	indexName := "bidder:" + string(*req.Bidder) + ":by_auction_end_time"
+	members, err := s.rangeByLexBounds(ctx, "dns_entries", indexName, minBound, maxBound, limit, offset, false)
+	if err != nil {
+		return nil, nil, err
+	}
+	records, err := s.orderedDNSAuctionRecords(ctx, addressIDsFromLexMembers(members))
+	if err != nil {
+		return nil, nil, err
+	}
+	auctions := dnsRecordsToAuctions(records, now)
+	// Cursor advances over the raw fetched page (pre settle-race filtering) so dropped rows can't stall pagination.
+	var next_cursor *string
+	if len(members) > 0 && len(members) == int(limit) {
+		cursor := encodeDNSAuctionCursorMember(members[len(members)-1])
+		next_cursor = &cursor
+	}
+	if req.IncludeNftItems != nil && *req.IncludeNftItems {
+		if err := s.attachAuctionNFTItems(ctx, auctions); err != nil {
+			return nil, nil, err
+		}
+	}
+	return auctions, next_cursor, nil
+}
+
+func (s *KvrocksStore) attachAuctionNFTItems(ctx context.Context, auctions []models.DNSAuction) error {
+	ids := []string{}
+	seen := map[string]struct{}{}
+	for _, a := range auctions {
+		ids = appendUniqueString(ids, seen, string(a.NftItemAddress))
+	}
+	items, err := s.orderedNFTItems(ctx, ids)
+	if err != nil {
+		return err
+	}
+	if err := s.attachNFTItemDetails(ctx, items); err != nil {
+		return err
+	}
+	byAddr := make(map[models.AccountAddress]*models.NFTItem, len(items))
+	for i := range items {
+		byAddr[items[i].Address] = &items[i]
+	}
+	for i := range auctions {
+		if item, ok := byAddr[auctions[i].NftItemAddress]; ok {
+			auctions[i].NftItem = item
+		}
+	}
+	return nil
 }
 
 func (s *KvrocksStore) GetNFTSales(ctx context.Context, addresses []models.AccountAddress) ([]models.RawNFTSale, error) {

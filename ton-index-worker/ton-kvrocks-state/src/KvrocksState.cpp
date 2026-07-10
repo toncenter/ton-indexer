@@ -442,6 +442,14 @@ void json_put_int256(td::JsonObjectScope& obj, td::Slice field, const td::RefInt
   obj(field, value->to_dec_string());
 }
 
+void json_put_optional_int256(td::JsonObjectScope& obj, td::Slice field, const td::RefInt256& value) {
+  if (value.not_null()) {
+    json_put_int256(obj, field, value);
+  } else {
+    json_put_null(obj, field);
+  }
+}
+
 void json_put_hash(td::JsonObjectScope& obj, td::Slice field, const td::Bits256& value) {
   obj(field, hash_key(value));
 }
@@ -679,6 +687,10 @@ std::string build_payload(const PreparedDnsEntryRow& row) {
     json_put_optional_address(obj, "dns_wallet", row.dns_wallet);
     json_put_optional_hash(obj, "dns_site_adnl", row.dns_site_adnl);
     json_put_optional_hash(obj, "dns_storage_bag_id", row.dns_storage_bag_id);
+    json_put_optional_address(obj, "max_bid_address", row.max_bid_address);
+    json_put_optional_int256(obj, "max_bid_amount", row.max_bid_amount);
+    json_put_optional_u64_string(obj, "auction_end_time", row.auction_end_time);
+    json_put_optional_u64_string(obj, "last_fill_up_time", row.last_fill_up_time);
     json_put_u64_string(obj, "last_transaction_lt", row.last_transaction_lt);
     json_put_bool(obj, "destroyed", row.destroyed);
   });
@@ -1004,6 +1016,12 @@ std::vector<KvrocksIndexEntry> build_indexes(const PreparedDnsEntryRow& row) {
       add_lex_index(indexes, "dns_entries", "owner_wallet:" + address_key(*row.dns_wallet) + ":by_domain",
                     domain_member);
     }
+  }
+  if (row.max_bid_address && row.auction_end_time) {
+    // Index active auctions by bidder and end time. Lua cleanup removes the old
+    // member when the auction changes or is claimed.
+    add_lex_index(indexes, "dns_entries", "bidder:" + address_key(*row.max_bid_address) + ":by_auction_end_time",
+                  u64_key(*row.auction_end_time) + ":" + id);
   }
   return indexes;
 }
@@ -1702,6 +1720,10 @@ PreparedDnsEntryRow make_destroyed_dns_entry_row(const DestroyedAccountState& st
     .dns_wallet = std::nullopt,
     .dns_site_adnl = std::nullopt,
     .dns_storage_bag_id = std::nullopt,
+    .max_bid_address = std::nullopt,
+    .max_bid_amount = {},
+    .auction_end_time = std::nullopt,
+    .last_fill_up_time = std::nullopt,
     .last_transaction_lt = state.last_transaction_lt,
     .destroyed = true,
     .source_mc_seqno = state.source_mc_seqno,
@@ -2397,6 +2419,10 @@ StateBatch prepare_point_state_batch(const std::vector<PointStateData>& data,
           .dns_wallet = value.dns_entry->wallet,
           .dns_site_adnl = value.dns_entry->site_adnl,
           .dns_storage_bag_id = value.dns_entry->storage_bag_id,
+          .max_bid_address = value.dns_entry->max_bid_address,
+          .max_bid_amount = value.dns_entry->max_bid_amount,
+          .auction_end_time = value.dns_entry->auction_end_time,
+          .last_fill_up_time = value.dns_entry->last_fill_up_time,
           .last_transaction_lt = value.last_transaction_lt,
           .destroyed = false,
           .source_mc_seqno = value_with_source_ptr->source_mc_seqno,
