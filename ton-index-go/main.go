@@ -501,7 +501,7 @@ func GetTransactionsByMessage(c *fiber.Ctx) error {
 // @param only_externals query bool false "Return only external messages."
 // @param limit query int32 false "Limit number of queried rows. Use with *offset* to batch read." minimum(1) maximum(1000) default(10)
 // @param offset query int32 false "Skip first N rows. Use with *limit* to batch read." minimum(0) default(0)
-// @param sort query string false "Sort transactions by lt. If set to `desc`, you better set `start_lt = 1` to get latest messages." Enums(asc, desc) default(desc)
+// @param sort query string false "Sort messages by effective LT: `created_lt` for internal/external-out messages and the receiving transaction LT for external-in messages." Enums(asc, desc) default(desc)
 // @router			/api/v3/messages [get]
 // @security		APIKeyHeader
 // @security		APIKeyQuery

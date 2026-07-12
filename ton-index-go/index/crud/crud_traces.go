@@ -472,13 +472,12 @@ func queryTracesRouted(req models.TracesRequest, settings models.RequestSettings
 	var floor uint64
 	if fc.federated {
 		w := routeWindow{
-			startLt:         req.StartLt,
-			endLt:           req.EndLt,
-			startUtime:      (*uint64)(req.StartUtime),
-			endUtime:        (*uint64)(req.EndUtime),
-			orderByNow:      orderByNow,
-			sortDesc:        sortOrder == "desc",
-			canHaveNullKeys: false,
+			startLt:    req.StartLt,
+			endLt:      req.EndLt,
+			startUtime: (*uint64)(req.StartUtime),
+			endUtime:   (*uint64)(req.EndUtime),
+			orderByNow: orderByNow,
+			sortDesc:   sortOrder == "desc",
 		}
 		dec = classifyRoute(w, fc.split, fc.utimeMargin)
 
@@ -816,20 +815,6 @@ func (db *DbClient) QueryTraces(
 	}
 	defer release()
 
-	if seqno := req.McSeqno; seqno != nil {
-		conn, err := fc.connForSeqno(uint64(*seqno))
-		if err != nil {
-			return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
-		}
-		exists, err := queryBlockExists(*seqno, conn, settings)
-		if err != nil {
-			return nil, nil, nil, err
-		}
-		if !exists {
-			return nil, nil, nil, models.IndexError{Code: 404, Message: fmt.Sprintf("masterchain block %d not found", *seqno)}
-		}
-	}
-
 	// offset > 0 keeps legacy offset/limit paging, offset == 0 uses the fast keyset cascade.
 	offset := 0
 	if lim_req.Offset != nil {
@@ -838,8 +823,36 @@ func (db *DbClient) QueryTraces(
 	// Prefer order by lt if any lt filter passed.
 	orderByNow := tracesOrderByNow(req)
 
-	// Enrich from the same side that served the routed page.
-	traces, servedCold, err := queryTracesRouted(req, settings, sortOrder, fc, offset, int(limit), orderByNow)
+	// The writer publishes a guarded split so a trace and its related rows are
+	// retained on the side that owns mc_seqno_end.
+	var seqnoConn *pgxpool.Conn
+	if seqno := req.McSeqno; seqno != nil {
+		seqnoConn, err = fc.connForSeqno(uint64(*seqno))
+		if err != nil {
+			return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
+		}
+		exists, existsErr := queryBlockExists(*seqno, seqnoConn, settings)
+		if existsErr != nil {
+			return nil, nil, nil, existsErr
+		}
+		if !exists {
+			return nil, nil, nil, models.IndexError{Code: 404, Message: fmt.Sprintf("masterchain block %d not found", *seqno)}
+		}
+	}
+
+	var traces []models.Trace
+	servedCold := false
+	if seqno := req.McSeqno; seqno != nil {
+		query := buildTracesOffsetQuery(req, sortOrder, offset, int(limit), orderByNow)
+		if settings.DebugRequest {
+			log.Println("Debug mc_seqno query:", query)
+		}
+		traces, err = queryTraces(query, seqnoConn, settings)
+		servedCold = fc.coldForSeqno(uint64(*seqno))
+	} else {
+		// Enrich from the same side that served the routed page.
+		traces, servedCold, err = queryTracesRouted(req, settings, sortOrder, fc, offset, int(limit), orderByNow)
+	}
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -847,8 +860,8 @@ func (db *DbClient) QueryTraces(
 		traces = []models.Trace{}
 	}
 
-	// Hot pages may contain seam-spanning traces whose early rows exist only on
-	// cold. Enrich only those traces from cold.
+	// Keep a defensive cold-enrichment fallback for exceptional traces whose
+	// start lies below the published guarded split.
 	hotIdx, coldIdx := []int{}, []int{}
 	for i := range traces {
 		toCold := servedCold
@@ -917,7 +930,7 @@ func (db *DbClient) QueryTraces(
 			if err != nil {
 				return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 			}
-		} else {
+		} else if !settings.NoAddressBook || !settings.NoMetadata {
 			cold, err := fc.cold()
 			if err != nil {
 				return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}

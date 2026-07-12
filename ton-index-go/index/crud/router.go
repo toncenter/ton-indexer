@@ -19,7 +19,6 @@ type routeWindow struct {
 	startUtime, endUtime *uint64 // bounds on utime axis (from request UtimeParams)
 	orderByNow           bool    // sort axis is utime, not lt
 	sortDesc             bool    // resolved sort order
-	canHaveNullKeys      bool    // messages only: externals with NULL created_lt possible
 }
 
 // classifyRoute picks cold, hot, or hot-with-verification for a paged request.
@@ -41,7 +40,7 @@ func classifyRoute(w routeWindow, s hotColdSplit, utimeMarginSec uint64) routeDe
 	if end != nil && *end < coldFloor {
 		return routeCold
 	}
-	// 2. Lower bound below the floor: window may reach into cold.
+	// 2. Lower bound below the floor: the requested window reaches cold.
 	if start != nil && *start < hotFloor {
 		return routeCold
 	}
@@ -49,17 +48,12 @@ func classifyRoute(w routeWindow, s hotColdSplit, utimeMarginSec uint64) routeDe
 	if !w.sortDesc && start == nil {
 		return routeCold
 	}
-	// 4. Descending page that may contain NULL sort keys (externals): the
-	//    NULLS FIRST clamp needs the full historical set.
-	if w.canHaveNullKeys && w.sortDesc && start == nil {
-		return routeCold
-	}
-	// 5. Lower bound at or above the floor: whole window is in hot, a short
+	// 4. Lower bound at or above the floor: whole window is in hot, a short
 	//    page is a legitimate full answer.
 	if start != nil && *start >= hotFloor {
 		return routeHot
 	}
-	// 6. Descending, no lower bound: hot likely has the page; verify, rerun on
+	// 5. Descending, no lower bound: hot likely has the page; verify, rerun on
 	//    cold if it crossed the floor.
 	return routeHotVerify
 }
@@ -74,12 +68,11 @@ func verifyHotPage(orderKeys []*uint64, limit int, floor uint64) bool {
 		if k == nil {
 			return false // NULL sort key: position vs floor unknown
 		}
+		if *k < floor {
+			return false // page crosses below the split floor
+		}
 	}
-	if len(orderKeys) == 0 {
-		return true // limit 0
-	}
-	last := orderKeys[len(orderKeys)-1]
-	return *last >= floor
+	return true
 }
 
 // resolveRouted records the chosen path before a possible cold read.

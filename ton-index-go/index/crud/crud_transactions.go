@@ -707,8 +707,6 @@ func queryTransactionsRouted(
 			endUtime:   (*uint64)(req.EndUtime),
 			orderByNow: parts.orderByNow,
 			sortDesc:   sortOrder == "desc",
-			// Transaction sort keys are never NULL.
-			canHaveNullKeys: false,
 		}
 		dec = classifyRoute(w, fc.split, fc.utimeMargin)
 

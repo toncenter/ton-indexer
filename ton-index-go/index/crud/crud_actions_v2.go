@@ -123,7 +123,7 @@ func (db *DbClient) QueryActionsV2(
 			if err != nil {
 				return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 			}
-		} else {
+		} else if !settings.NoAddressBook || !settings.NoMetadata {
 			coldConn, cerr := fc.cold()
 			if cerr != nil {
 				return nil, nil, nil, models.IndexError{Code: 500, Message: cerr.Error()}
@@ -234,8 +234,6 @@ func queryActionsRouted(
 			endUtime:   (*uint64)(req.EndUtime),
 			orderByNow: orderByNow,
 			sortDesc:   sortOrder == "desc",
-			// trace_end_lt/trace_end_utime are NOT NULL.
-			canHaveNullKeys: false,
 		}
 		dec = classifyRoute(w, fc.split, fc.utimeMargin)
 
@@ -483,18 +481,23 @@ func actionsQueryPartsV2(req models.ActionRequest, sort_order string) actionsQue
 		}
 		filter_list = append(filter_list, fmt.Sprintf("%s <= %d", field, *v))
 	}
-	if v := req.AccountAddress; v != nil {
+	if v := req.AccountAddress; join_accounts && v != nil {
 		filter_str := fmt.Sprintf("AA.account = '%s'::tonaddr", v.FilterString())
 		filter_list = append(filter_list, filter_str)
 
-		from_query = `action_accounts as AA join lateral (
-			select *
-			from actions as A
-			where A.trace_id = AA.trace_id
-				and A.action_id = AA.action_id
-				and A.trace_mc_seqno_end = AA.trace_mc_seqno_end
-			limit 1
-		) as A on true`
+		action_accounts_from := `action_accounts as AA`
+		if trace_filter := filterByArray("trace_id", req.TraceId); len(trace_filter) > 0 {
+			// Limit action_accounts before the lateral join for account+trace_id.
+			action_accounts_from = fmt.Sprintf("(select * from action_accounts where %s) as AA", trace_filter)
+		}
+		from_query = action_accounts_from + ` join lateral (
+				select *
+				from actions as A
+				where A.trace_id = AA.trace_id
+					and A.action_id = AA.action_id
+					and A.trace_mc_seqno_end = AA.trace_mc_seqno_end
+				limit 1
+			) as A on true`
 		if order_by_now {
 			clmn_query = `distinct on (AA.account, AA.trace_end_utime, AA.trace_id, AA.action_end_utime, AA.action_id) ` + clmn_query_default
 		} else {
@@ -505,23 +508,26 @@ func actionsQueryPartsV2(req models.ActionRequest, sort_order string) actionsQue
 		filter_str := filterByArray("T.hash", v)
 		if len(filter_str) > 0 {
 			filter_list = append(filter_list, filter_str)
+			from_query += ` join transactions as T on A.trace_id = T.trace_id and A.tx_hashes @> array[T.hash::tonhash]`
 		}
-		from_query = `actions as A join transactions as T on A.trace_id = T.trace_id and A.tx_hashes @> array[T.hash::tonhash]`
-		if order_by_now {
-			clmn_query = `distinct on (A.trace_end_utime, A.trace_id, A.end_utime, A.action_id) ` + clmn_query_default
-		} else {
-			clmn_query = `distinct on (A.trace_end_lt, A.trace_id, A.end_lt, A.action_id) ` + clmn_query_default
+		if len(filter_str) > 0 && !join_accounts {
+			if order_by_now {
+				clmn_query = `distinct on (A.trace_end_utime, A.trace_id, A.end_utime, A.action_id) ` + clmn_query_default
+			} else {
+				clmn_query = `distinct on (A.trace_end_lt, A.trace_id, A.end_lt, A.action_id) ` + clmn_query_default
+			}
 		}
 	}
 	if v := req.MessageHash; len(v) > 0 {
 		filter_str := fmt.Sprintf("(%s or %s)", filterByArray("M.msg_hash", v), filterByArray("M.msg_hash_norm", v))
 		filter_list = append(filter_list, filter_str)
-
-		from_query = `actions as A join messages as M on A.trace_id = M.trace_id and array[M.tx_hash::tonhash] <@ A.tx_hashes`
-		if order_by_now {
-			clmn_query = `distinct on (A.trace_end_utime, A.trace_id, A.end_utime, A.action_id) ` + clmn_query_default
-		} else {
-			clmn_query = `distinct on (A.trace_end_lt, A.trace_id, A.end_lt, A.action_id) ` + clmn_query_default
+		from_query += ` join messages as M on A.trace_id = M.trace_id and array[M.tx_hash::tonhash] <@ A.tx_hashes`
+		if !join_accounts {
+			if order_by_now {
+				clmn_query = `distinct on (A.trace_end_utime, A.trace_id, A.end_utime, A.action_id) ` + clmn_query_default
+			} else {
+				clmn_query = `distinct on (A.trace_end_lt, A.trace_id, A.end_lt, A.action_id) ` + clmn_query_default
+			}
 		}
 	}
 	if v := req.IncludeActionTypes; len(v) > 0 {
@@ -534,35 +540,17 @@ func actionsQueryPartsV2(req models.ActionRequest, sort_order string) actionsQue
 	}
 	if v := req.McSeqno; v != nil {
 		filter_list = append(filter_list, fmt.Sprintf("A.trace_mc_seqno_end = %d", *v))
-		from_query = `actions as A`
-		clmn_query = clmn_query_default
 	}
 	if v := req.ActionId; v != nil {
-		from_query = `actions as A`
 		filter_str := filterByArray("A.action_id", v)
 		if len(filter_str) > 0 {
-			filter_list = []string{filter_str}
+			filter_list = append(filter_list, filter_str)
 		}
-		clmn_query = clmn_query_default
 	}
 	if v := req.TraceId; v != nil {
-		trace_filter := filterByArray("trace_id", v)
-		if len(trace_filter) > 0 {
-			joined_accounts := strings.Contains(from_query, "action_accounts")
-			if join_accounts && joined_accounts {
-				// Limit action_accounts before join to keep account+trace_id requests fast.
-				from_query = fmt.Sprintf("(select * from action_accounts where %s) as AA join actions as A on A.trace_id = AA.trace_id and A.action_id = AA.action_id and A.trace_mc_seqno_end = AA.trace_mc_seqno_end", trace_filter)
-			} else {
-				filter_str := filterByArray("A.trace_id", v)
-				if len(filter_str) > 0 {
-					if join_accounts {
-						filter_list = append(filter_list, filter_str)
-					} else {
-						from_query = `actions as A`
-						filter_list = []string{filter_str}
-					}
-				}
-			}
+		filter_str := filterByArray("A.trace_id", v)
+		if len(filter_str) > 0 {
+			filter_list = append(filter_list, filter_str)
 		}
 	}
 	if strings.Contains(from_query, "action_accounts") {

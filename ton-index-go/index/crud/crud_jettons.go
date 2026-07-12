@@ -254,13 +254,12 @@ func jettonBurnsQueryParts(req models.JettonBurnRequest, sortOrder string) txLtL
 // jettonRouteWindow builds the shared transfer/burn router window.
 func jettonRouteWindow(startLt, endLt *uint64, startUtime, endUtime *models.UtimeType, orderByNow, sortDesc bool) routeWindow {
 	return routeWindow{
-		startLt:         startLt,
-		endLt:           endLt,
-		startUtime:      (*uint64)(startUtime),
-		endUtime:        (*uint64)(endUtime),
-		orderByNow:      orderByNow,
-		sortDesc:        sortDesc,
-		canHaveNullKeys: false,
+		startLt:    startLt,
+		endLt:      endLt,
+		startUtime: (*uint64)(startUtime),
+		endUtime:   (*uint64)(endUtime),
+		orderByNow: orderByNow,
+		sortDesc:   sortDesc,
 	}
 }
 

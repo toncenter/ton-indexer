@@ -123,8 +123,6 @@ func blocksRouteWindow(req models.BlocksRequest, sortOrder string) routeWindow {
 		endUtime:   (*uint64)(utime_req.EndUtime),
 		orderByNow: true,
 		sortDesc:   sortOrder == "desc",
-		// gen_utime is non-null in models.Block.
-		canHaveNullKeys: false,
 	}
 }
 

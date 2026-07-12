@@ -1645,13 +1645,14 @@ create index if not exists jetton_transfers_index_9 on jetton_transfers (tx_lt);
 
 create index if not exists messages_index_1 on messages (msg_hash);
 create index if not exists messages_index_2 on messages (trace_id, tx_lt);
-create index if not exists messages_index_3 on messages (source, created_lt);
-create index if not exists messages_index_4 on messages (opcode, created_lt);
 create index if not exists messages_index_5 on messages (created_at, msg_hash);
-create index if not exists messages_index_6 on messages (created_lt, msg_hash);
-create index if not exists messages_index_7 on messages (destination, created_lt);
 create index if not exists messages_index_8 on messages (body_hash);
 create index if not exists messages_index_9 on messages (msg_hash_norm) where msg_hash_norm is not null;
+create index if not exists messages_order_lt_v2_idx on messages ((coalesce(created_lt, tx_lt)), msg_hash);
+create index if not exists messages_source_order_lt_v2_idx on messages (source, (coalesce(created_lt, tx_lt)), msg_hash);
+create index if not exists messages_destination_order_lt_v2_idx on messages (destination, (coalesce(created_lt, tx_lt)), msg_hash);
+create index if not exists messages_opcode_order_lt_v2_idx on messages (opcode, (coalesce(created_lt, tx_lt)), msg_hash);
+create index if not exists messages_destination_opcode_order_lt_v2_idx on messages (destination, opcode, (coalesce(created_lt, tx_lt)), msg_hash);
 
 create index if not exists nft_transfers_index_1 on nft_transfers (nft_item_address, tx_lt);
 create index if not exists nft_transfers_index_2 on nft_transfers (nft_collection_address, tx_now);

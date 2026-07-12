@@ -12,21 +12,24 @@ import (
 	"github.com/toncenter/ton-indexer/ton-index-go/index/parse"
 )
 
+const messageOrderLtExpr = "COALESCE(M.created_lt, M.tx_lt)"
+
 const messagesRestColumns = `M.trace_id, M.source, M.destination, M.value,
 	M.value_extra_currencies, M.fwd_fee, M.ihr_fee, M.extra_flags, M.created_lt, M.created_at, M.opcode, M.ihr_disabled, M.bounce,
 	M.bounced, M.import_fee, M.body_hash, M.init_state_hash, M.msg_hash_norm`
 
-const messagesClmnQuery = `'', 0, M.msg_hash, '', ` + messagesRestColumns + `,
+const messagesClmnQuery = `'', ` + messageOrderLtExpr + ` as message_order_key, M.msg_hash, '', ` + messagesRestColumns + `,
 	(array_agg(M.tx_hash ORDER BY M.tx_lt) FILTER (WHERE M.direction='in'))[1] as in_tx_hash,
 	(array_agg(M.tx_hash ORDER BY M.tx_lt) FILTER (WHERE M.direction='out'))[1] as out_tx_hash`
 
-const messagesGroupBy = ` group by M.msg_hash, ` + messagesRestColumns
+const messagesGroupBy = ` group by M.msg_hash, ` + messageOrderLtExpr + `, ` + messagesRestColumns
 
 // msgQueryParts holds the shared pieces of a messages listing query.
 type msgQueryParts struct {
 	filterList []string
 	args       []any
 	orderBy    string
+	outerOrder string
 	orderByNow bool
 	useKvrocks bool
 }
@@ -67,48 +70,72 @@ func messagesQueryParts(req models.MessageRequest, sortOrder string, useKvrocks 
 		filter_list = append(filter_list, fmt.Sprintf("M.body_hash = '%s'", v.FilterString()))
 	}
 
-	order_col := "M.created_lt"
+	orderCol := messageOrderLtExpr
 	orderByNow := false
 	if v := utime_req.StartUtime; v != nil {
 		filter_list = append(filter_list, fmt.Sprintf("M.created_at >= %d", *v))
-		order_col = "M.created_at"
+		orderCol = "M.created_at"
 		orderByNow = true
 	}
 	if v := utime_req.EndUtime; v != nil {
 		filter_list = append(filter_list, fmt.Sprintf("M.created_at <= %d", *v))
-		order_col = "M.created_at"
+		orderCol = "M.created_at"
 		orderByNow = true
 	}
+	hasLtBounds := lt_req.StartLt != nil || lt_req.EndLt != nil
+	if hasLtBounds {
+		// Keep the public bounds semantics: external-in messages still do not
+		// belong to created_lt windows. Compare K after excluding them so the
+		// expression indexes can satisfy the same request efficiently.
+		filter_list = append(filter_list, "M.created_lt is not NULL")
+	}
 	if v := lt_req.StartLt; v != nil {
-		filter_list = append(filter_list, fmt.Sprintf("M.created_lt >= %d", *v))
+		filter_list = append(filter_list, fmt.Sprintf("%s >= %d", messageOrderLtExpr, *v))
 	}
 	if v := lt_req.EndLt; v != nil {
-		filter_list = append(filter_list, fmt.Sprintf("M.created_lt <= %d", *v))
+		filter_list = append(filter_list, fmt.Sprintf("%s <= %d", messageOrderLtExpr, *v))
 	}
-	if v := req.ExcludeExternals; v != nil && *v {
-		filter_list = append(filter_list, order_col+" is not NULL")
+	if v := req.ExcludeExternals; v != nil && *v && !hasLtBounds {
+		filter_list = append(filter_list, "M.created_lt is not NULL")
 	}
 	if v := req.OnlyExternals; v != nil && *v {
-		filter_list = append(filter_list, order_col+" is NULL")
+		filter_list = append(filter_list, "M.created_lt is NULL")
 	}
 
-	// With one address filter, lead ORDER BY with that address column so Postgres
-	// can use the composite (address, created_lt) index. The created_at path has
-	// no matching composite index.
-	addressFirst := ""
-	if req.Destination != nil && req.Source == nil {
-		addressFirst = "M.destination"
-	} else if req.Source != nil && req.Destination == nil {
-		addressFirst = "M.source"
+	// Lead LT ordering with equality-constrained columns so each query shape
+	// exactly matches one of the composite COALESCE(created_lt, tx_lt) indexes.
+	orderCols := []string{}
+	if !orderByNow {
+		switch {
+		case req.Destination != nil && req.Opcode != nil:
+			orderCols = append(orderCols, "M.destination", "M.opcode")
+		case req.Source != nil:
+			orderCols = append(orderCols, "M.source")
+		case req.Destination != nil:
+			orderCols = append(orderCols, "M.destination")
+		case req.Opcode != nil:
+			orderCols = append(orderCols, "M.opcode")
+		}
+	}
+	orderCols = append(orderCols, orderCol, "M.msg_hash")
+	for i := range orderCols {
+		orderCols[i] += " " + sortOrder
 	}
 
-	var orderby_query string
-	if addressFirst != "" && !orderByNow {
-		orderby_query = fmt.Sprintf(" order by %s %s, %s %s, M.msg_hash %s", addressFirst, sortOrder, order_col, sortOrder, sortOrder)
-	} else {
-		orderby_query = fmt.Sprintf(" order by %s %s, M.msg_hash %s", order_col, sortOrder, sortOrder)
+	outerOrderCol := "MM.message_order_key"
+	if orderByNow {
+		outerOrderCol = "MM.created_at"
 	}
-	return msgQueryParts{filterList: filter_list, args: args, orderBy: orderby_query, orderByNow: orderByNow, useKvrocks: useKvrocks}
+	outerOrder := fmt.Sprintf(" order by %s %s, MM.msg_hash %s", outerOrderCol, sortOrder, sortOrder)
+
+	return msgQueryParts{
+		filterList: filter_list,
+		args:       args,
+		orderBy:    " order by " + strings.Join(orderCols, ", "),
+		outerOrder: outerOrder,
+		orderByNow: orderByNow,
+		useKvrocks: useKvrocks,
+	}
 }
 
 // messagesPageInner builds one grouped page without hot/cold seam bounds.
@@ -124,11 +151,11 @@ func buildMessagesOffsetQuery(p msgQueryParts, offset, limit int) string {
 	limit_query := fmt.Sprintf(" limit %d offset %d", max(1, limit), max(0, offset))
 	inner_query := messagesPageInner(p, p.orderBy+limit_query)
 	if p.useKvrocks {
-		return `select MM.*, NULL::tonhash, NULL::text, NULL::tonhash, NULL::text from (` + inner_query + `) as MM;`
+		return `select MM.*, NULL::tonhash, NULL::text, NULL::tonhash, NULL::text from (` + inner_query + `) as MM` + p.outerOrder + `;`
 	}
 	return `select MM.*, B.*, I.* from (` + inner_query + `) as MM
 	left join message_contents as B on MM.body_hash = B.hash
-	left join message_contents as I on MM.init_state_hash = I.hash;`
+	left join message_contents as I on MM.init_state_hash = I.hash` + p.outerOrder + `;`
 }
 
 func messagePtrs(msgs []models.Message) []*models.Message {
@@ -240,22 +267,9 @@ func queryMessagesImpl(query string, conn *pgxpool.Conn, settings models.Request
 	return msgs, nil
 }
 
-// messagesCanHaveNullKeys reports whether a page can contain external-in messages
-func messagesCanHaveNullKeys(req models.MessageRequest) bool {
-	if req.ExcludeExternals != nil && *req.ExcludeExternals {
-		return false
-	}
-	if req.Source != nil && !req.Source.IsAddressNone() {
-		return false
-	}
-	if req.Direction != nil && *req.Direction == "out" {
-		return false
-	}
-	return true
-}
-
-// messageOrderKey returns nil for external messages with NULL created_lt; that
-// forces cold fallback during hot-page verification.
+// messageOrderKey returns the actual page-order key selected into the hidden
+// Message.TxLt slot. LT pages use COALESCE(created_lt, tx_lt), while utime
+// pages continue to use created_at.
 func messageOrderKey(orderByNow bool) func(*models.Message) *uint64 {
 	if orderByNow {
 		return func(m *models.Message) *uint64 {
@@ -266,7 +280,21 @@ func messageOrderKey(orderByNow bool) func(*models.Message) *uint64 {
 			return &v
 		}
 	}
-	return func(m *models.Message) *uint64 { return m.CreatedLt }
+	return func(m *models.Message) *uint64 {
+		v := uint64(m.TxLt)
+		return &v
+	}
+}
+
+func messageRouteWindow(req models.MessageRequest, parts msgQueryParts, sortOrder string) routeWindow {
+	return routeWindow{
+		startLt:    req.StartLt,
+		endLt:      req.EndLt,
+		startUtime: (*uint64)(req.StartUtime),
+		endUtime:   (*uint64)(req.EndUtime),
+		orderByNow: parts.orderByNow,
+		sortDesc:   sortOrder == "desc",
+	}
 }
 
 // queryMessagesRouted fetches one grouped page via the hot/cold router.
@@ -284,18 +312,10 @@ func queryMessagesRouted(
 	dec := routeCold
 	var floor uint64
 	if fc.federated {
-		w := routeWindow{
-			startLt:         req.StartLt,
-			endLt:           req.EndLt,
-			startUtime:      (*uint64)(req.StartUtime),
-			endUtime:        (*uint64)(req.EndUtime),
-			orderByNow:      parts.orderByNow,
-			sortDesc:        sortOrder == "desc",
-			canHaveNullKeys: messagesCanHaveNullKeys(req),
-		}
+		w := messageRouteWindow(req, parts, sortOrder)
 		dec = classifyRoute(w, fc.split, fc.utimeMargin)
 
-		// created_lt >= split.Lt keeps the whole grouped message above the floor.
+		// message_order_key >= split.Lt keeps the whole grouped message above the floor.
 		floor = fc.split.Lt
 		if parts.orderByNow {
 			floor = fc.split.Utime + fc.utimeMargin
@@ -306,6 +326,10 @@ func queryMessagesRouted(
 		func(conn *pgxpool.Conn) ([]models.Message, error) { return fetch(query, conn) },
 		messageOrderKey(parts.orderByNow), limit, floor)
 	return msgs, err
+}
+
+func needsPostgresMessageEnrichment(settings models.RequestSettings) bool {
+	return !settings.NoAddressBook || !settings.NoMetadata
 }
 
 func (db *DbClient) QueryMessages(
@@ -377,7 +401,7 @@ func (db *DbClient) QueryMessages(
 			if err != nil {
 				return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 			}
-		} else {
+		} else if needsPostgresMessageEnrichment(settings) {
 			coldConn, cerr := fc.cold()
 			if cerr != nil {
 				return nil, nil, nil, models.IndexError{Code: 500, Message: cerr.Error()}
