@@ -339,13 +339,12 @@ func queryNFTTransfersRouted(
 	var floor uint64
 	if fc.federated {
 		w := routeWindow{
-			startLt:         req.StartLt,
-			endLt:           req.EndLt,
-			startUtime:      (*uint64)(req.StartUtime),
-			endUtime:        (*uint64)(req.EndUtime),
-			orderByNow:      parts.orderByNow,
-			sortDesc:        sortOrder == "desc",
-			canHaveNullKeys: false, // tx_lt/tx_now are never NULL
+			startLt:    req.StartLt,
+			endLt:      req.EndLt,
+			startUtime: (*uint64)(req.StartUtime),
+			endUtime:   (*uint64)(req.EndUtime),
+			orderByNow: parts.orderByNow,
+			sortDesc:   sortOrder == "desc",
 		}
 		dec = classifyRoute(w, fc.split, fc.utimeMargin)
 
