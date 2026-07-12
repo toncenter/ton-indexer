@@ -2922,6 +2922,64 @@ func addressMetadataID(address models.AccountAddress, typ string) string {
 	return address.String() + ":" + strings.TrimSpace(typ)
 }
 
+type addressMetadataFlags struct {
+	isNsfw bool
+	isScam bool
+}
+
+func (s *KvrocksStore) addressMetadataFlagKey(id string, flag string) string {
+	return s.key("address_metadata", id) + ":" + flag
+}
+
+func kvrocksMetadataFlag(value interface{}) (bool, error) {
+	if value == nil {
+		return false, nil
+	}
+	encoded, err := kvrocksPayloadString(value)
+	if err != nil {
+		return false, err
+	}
+	flag, err := strconv.ParseBool(encoded)
+	if err != nil {
+		return false, fmt.Errorf("invalid boolean value %q", encoded)
+	}
+	return flag, nil
+}
+
+func (s *KvrocksStore) getAddressMetadataFlags(ctx context.Context, ids []string) (map[string]addressMetadataFlags, error) {
+	flags := make(map[string]addressMetadataFlags, len(ids))
+	if s == nil || s.client == nil || len(ids) == 0 {
+		return flags, nil
+	}
+
+	keys := make([]string, 0, len(ids)*2)
+	for _, id := range ids {
+		keys = append(keys,
+			s.addressMetadataFlagKey(id, "is_nsfw"),
+			s.addressMetadataFlagKey(id, "is_scam"),
+		)
+	}
+	values, _, err := kvReadWithFallback(ctx, s, func(c redis.UniversalClient) ([]interface{}, error) {
+		return c.MGet(ctx, keys...).Result()
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	for i, id := range ids {
+		isNsfw, err := kvrocksMetadataFlag(values[i*2])
+		if err != nil {
+			return nil, fmt.Errorf("decode address_metadata %s is_nsfw: %w", id, err)
+		}
+		isScam, err := kvrocksMetadataFlag(values[i*2+1])
+		if err != nil {
+			return nil, fmt.Errorf("decode address_metadata %s is_scam: %w", id, err)
+		}
+		flags[id] = addressMetadataFlags{isNsfw: isNsfw, isScam: isScam}
+	}
+	return flags, nil
+}
+
 func (s *KvrocksStore) GetAddressMetadata(ctx context.Context, keys []metadataKey) (map[metadataKey]models.TokenInfo, error) {
 	ids := make([]string, 0, len(keys))
 	idToKey := make(map[string]metadataKey, len(keys))
@@ -2935,6 +2993,10 @@ func (s *KvrocksStore) GetAddressMetadata(ctx context.Context, keys []metadataKe
 		idToKey[id] = key
 	}
 	payloads, err := s.getPayloads(ctx, "address_metadata", ids)
+	if err != nil {
+		return nil, err
+	}
+	flags, err := s.getAddressMetadataFlags(ctx, ids)
 	if err != nil {
 		return nil, err
 	}
@@ -2961,6 +3023,9 @@ func (s *KvrocksStore) GetAddressMetadata(ctx context.Context, keys []metadataKe
 			typ := key.typ
 			row.Type = &typ
 		}
+		metadataFlags := flags[id]
+		isNsfw := metadataFlags.isNsfw
+		isScam := metadataFlags.isScam
 		res[key] = models.TokenInfo{
 			Address:     row.Address,
 			Valid:       row.Valid,
@@ -2970,6 +3035,8 @@ func (s *KvrocksStore) GetAddressMetadata(ctx context.Context, keys []metadataKe
 			Symbol:      row.Symbol,
 			Description: row.Description,
 			Image:       row.Image,
+			IsNsfw:      &isNsfw,
+			IsScam:      &isScam,
 			Extra:       row.Extra,
 		}
 	}
@@ -3050,7 +3117,7 @@ func QueryMetadataImplKvrocks(addrList []models.AccountAddress, settings models.
 	for key, info := range known {
 		if row, ok := metadataRows[key]; ok {
 			if row.Valid != nil && *row.Valid {
-				tokenInfoMap[key.address] = append(tokenInfoMap[key.address], row)
+				tokenInfoMap[key.address] = append(tokenInfoMap[key.address], applyNsfwTransform(row))
 			} else {
 				tokenInfoMap[key.address] = append(tokenInfoMap[key.address], models.TokenInfo{
 					Address:  key.address,
