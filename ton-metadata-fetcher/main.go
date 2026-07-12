@@ -458,9 +458,12 @@ func processTask(ctx context.Context, pool *pgxpool.Pool, kvrocks *KvrocksStore,
 		if content.Extra == nil {
 			content.Extra = make(map[string]interface{})
 		}
-		content.Extra["_image_small"] = img_url_builder.BuildUrl(*content.Image, "small")
-		content.Extra["_image_medium"] = img_url_builder.BuildUrl(*content.Image, "medium")
-		content.Extra["_image_big"] = img_url_builder.BuildUrl(*content.Image, "big")
+		content.Extra["_image_small"] = img_url_builder.BuildUrl(*content.Image, "small", false)
+		content.Extra["_image_medium"] = img_url_builder.BuildUrl(*content.Image, "medium", false)
+		content.Extra["_image_big"] = img_url_builder.BuildUrl(*content.Image, "big", false)
+		content.Extra["_image_small_blur"] = img_url_builder.BuildUrl(*content.Image, "small", true)
+		content.Extra["_image_medium_blur"] = img_url_builder.BuildUrl(*content.Image, "medium", true)
+		content.Extra["_image_big_blur"] = img_url_builder.BuildUrl(*content.Image, "big", true)
 	}
 
 	reindexAllowed := !(task.MetadataOverride != nil && len(task.MetadataOverride) > 0)

@@ -137,12 +137,50 @@ func tonaddrArrayParam(addrList []models.AccountAddress) []string {
 	return result
 }
 
+func applyNsfwTransform(row models.TokenInfo) models.TokenInfo {
+	if row.Extra == nil {
+		return row
+	}
+
+	fields := []string{"_image_small", "_image_medium", "_image_big"}
+	for _, field := range fields {
+		blurredField := field + "_blur"
+		if row.IsNsfw != nil && *row.IsNsfw {
+			if value, exists := row.Extra[field]; exists {
+				if imageURL, ok := value.(string); ok && imageURL != "" {
+					if blurredURL, exists := row.Extra[blurredField]; exists {
+						row.Extra[field] = blurredURL
+					} else {
+						row.Extra[field] = ""
+					}
+				}
+			}
+		}
+		delete(row.Extra, blurredField)
+	}
+	return row
+}
+
+func applyMetadataImageTransforms(metadata models.Metadata) {
+	for address, addressMetadata := range metadata {
+		for i := range addressMetadata.TokenInfo {
+			row := addressMetadata.TokenInfo[i]
+			if row.Valid == nil || !*row.Valid || row.Type == nil || *row.Type == "jetton_wallets" {
+				continue
+			}
+			addressMetadata.TokenInfo[i] = applyNsfwTransform(row)
+		}
+		metadata[address] = addressMetadata
+	}
+}
+
 func QueryMetadataImpl(addr_list []models.AccountAddress, conn *pgxpool.Conn, settings models.RequestSettings) (models.Metadata, error) {
 	if settings.UseCache {
 		metadata, err := services.AddressInfoCacheClient.GetMetadata(addr_list)
 		if err != nil {
 			log.Println("Error getting metadata from cache: ", err)
 		} else {
+			applyMetadataImageTransforms(metadata)
 			return metadata, nil
 		}
 	}
@@ -198,6 +236,7 @@ func QueryMetadataImpl(addr_list []models.AccountAddress, conn *pgxpool.Conn, se
 			})
 		} else {
 			row.Indexed = true
+			row = applyNsfwTransform(row)
 
 			if _, ok := token_info_map[row.Address]; !ok {
 				token_info_map[row.Address] = []models.TokenInfo{}
