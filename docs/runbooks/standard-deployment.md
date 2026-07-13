@@ -51,7 +51,8 @@ sudo apt install -y \
   openssl libssl-dev zlib1g-dev libcurl4-openssl-dev \
   gperf git curl ccache libmicrohttpd-dev liblz4-dev \
   pkg-config libsecp256k1-dev libsodium-dev libhiredis-dev \
-  python3-dev libpq-dev libjemalloc-dev automake autoconf libtool
+  python3-dev libpq-dev postgresql-client libjemalloc-dev \
+  automake autoconf libtool
 ```
 
 Репозиторий нужно скачать вместе с submodules:
@@ -256,22 +257,23 @@ sudo systemctl daemon-reload
 sudo systemctl enable --now kvrocks
 ```
 
+<a id="prepare-ton-node-host"></a>
+
 ## 5. Подготовить TON node host
 
 TON-нода к этому моменту должна быть запущена и синхронизирована. Примеры ниже
 предполагают, что её DB находится в `/var/ton-work/db`.
 
-Создать системного пользователя и рабочие директории worker:
+Создать конфигурационную и рабочую директории worker:
 
 ```bash
-sudo useradd --system --home /var/lib/ton-indexer --shell /usr/sbin/nologin ton-indexer
-sudo install -d -m 0750 -o root -g ton-indexer /etc/ton-indexer
-sudo install -d -m 0750 -o ton-indexer -g ton-indexer /var/lib/ton-indexer/worker
+sudo install -d -m 0750 -o root -g validator /etc/ton-indexer
+sudo install -d -m 0750 -o validator -g validator /var/lib/ton-indexer/worker
 ```
 
-Пользователь `ton-indexer` должен иметь read access ко всей TON DB. Обычно для
-этого его добавляют в группу пользователя TON-ноды. Не нужно менять owner
-живой node DB на `ton-indexer`.
+`/var/ton-work` и TON DB принадлежат пользователю `validator`. Поэтому
+`ton-index-postgres`, `ton-smc-scanner` и другие процессы, которые читают
+локальную TON DB, также запускаются от OS-пользователя `validator`.
 
 Создать `/etc/ton-indexer/pgpass`:
 
@@ -283,7 +285,7 @@ Host в этом файле должен совпадать с host в PostgreSQ
 файлу:
 
 ```bash
-sudo chown ton-indexer:ton-indexer /etc/ton-indexer/pgpass
+sudo chown validator:validator /etc/ton-indexer/pgpass
 sudo chmod 600 /etc/ton-indexer/pgpass
 ```
 
@@ -293,7 +295,7 @@ sudo chmod 600 /etc/ton-indexer/pgpass
 `ton-smc-scanner`, `ton-index-postgres`, API или classifier:
 
 ```bash
-sudo -u ton-indexer env PGPASSFILE=/etc/ton-indexer/pgpass \
+sudo -u validator env PGPASSFILE=/etc/ton-indexer/pgpass \
   /usr/local/bin/ton-index-postgres-migrate \
   --pg postgresql://ton_indexer@<POSTGRES_PRIVATE_IP>:5432/ton_index \
   --custom-types
@@ -319,7 +321,7 @@ TON_NETWORK_ARGS=--testnet
 пробелов и shell metacharacters. Закрыть доступ к файлу:
 
 ```bash
-sudo chown root:ton-indexer /etc/ton-indexer/worker.env
+sudo chown root:validator /etc/ton-indexer/worker.env
 sudo chmod 640 /etc/ton-indexer/worker.env
 ```
 
@@ -333,11 +335,13 @@ After=network-online.target
 
 [Service]
 Type=simple
-User=ton-indexer
-Group=ton-indexer
+User=validator
+Group=validator
 WorkingDirectory=/var/lib/ton-indexer
 EnvironmentFile=/etc/ton-indexer/worker.env
 Environment=PGPASSFILE=/etc/ton-indexer/pgpass
+ReadOnlyPaths=/var/ton-work/db
+InaccessiblePaths=-/var/ton-work/keys -/var/ton-work/keys.old -/var/ton-work/db/keyring
 ExecStart=/usr/local/bin/ton-index-postgres \
   --db ${TON_DBROOT} \
   --working-dir ${TON_WORKDIR} \
@@ -349,6 +353,7 @@ ExecStart=/usr/local/bin/ton-index-postgres \
 Restart=always
 RestartSec=10
 LimitNOFILE=1000000
+NoNewPrivileges=true
 
 [Install]
 WantedBy=multi-user.target
@@ -363,6 +368,11 @@ sudo systemctl daemon-reload
 `TON_WORKER_FROM` задаёт старт только для пустой базы. После первого запуска
 worker продолжает с progress в PostgreSQL; изменение `TON_WORKER_FROM` не
 перематывает существующий индекс.
+
+`LimitNOFILE=1000000` — systemd-эквивалент `ulimit -n 1000000`. Системный
+предел `fs.nr_open` на TON node host не должен быть ниже этого значения.
+`ReadOnlyPaths` не позволяет worker изменять живую TON DB из своего mount
+namespace, а `InaccessiblePaths` закрывает ему каталоги ключей ноды.
 
 <a id="live-only"></a>
 
@@ -553,7 +563,7 @@ journalctl -u ton-index-postgres -f
 Проверить progress в PostgreSQL:
 
 ```bash
-sudo -u ton-indexer env PGPASSFILE=/etc/ton-indexer/pgpass \
+sudo -u validator env PGPASSFILE=/etc/ton-indexer/pgpass \
   psql postgresql://ton_indexer@<POSTGRES_PRIVATE_IP>:5432/ton_index \
   -c 'select finalized_mc_seqno, updated_at from _ton_indexer_progress where id = 1;'
 ```

@@ -19,6 +19,11 @@ DB у него нет. Полный проход занимает несколь
 
 ## 1. Подготовить окружение
 
+На машине с TON-нодой сначала выполнить раздел
+[«Подготовить TON node host»](../standard-deployment.md#prepare-ton-node-host) из
+standard deployment. Он настраивает credentials и запуск DB readers от
+пользователя `validator`.
+
 Перед запуском:
 
 1. Выбрать masterchain seqno `S` и убедиться, что TON-нода полностью
@@ -26,31 +31,24 @@ DB у него нет. Полный проход занимает несколь
 2. Выполнить миграции PostgreSQL и настроить Kvrocks.
 3. Остановить `ton-index-postgres` и другие процессы, которые могут параллельно
    изменять current state в этих хранилищах.
-4. Убедиться, что пользователь `ton-indexer` читает локальную TON DB и может
+4. Убедиться, что пользователь `validator` читает локальную TON DB и может
    подключиться к PostgreSQL и Kvrocks.
 5. Для HA deployment оставить PostgreSQL и Kvrocks одиночными instances. В
    snapshot-only deployment replicas создаются после scanner, а при загрузке
    полной истории — после завершения всей full-history procedure.
 
-Создать постоянный working directory на локальном диске машины с TON-нодой:
-
-```bash
-sudo install -d -m 0750 -o ton-indexer -g ton-indexer \
-  /var/lib/ton-indexer/smc-scanner
-```
-
-Этот каталог хранит checkpoints. Его нельзя очищать или заменять до успешного
-завершения scanner.
-
 ## 2. Запустить scanner
 
-Для testnet выполнить:
-
 ```bash
-sudo -u ton-indexer env PGPASSFILE=/etc/ton-indexer/pgpass \
-  /usr/local/bin/ton-smc-scanner \
+sudo -u validator /bin/bash
+
+mkdir -p /tmp/ton-smc-scanner
+export PGPASSFILE=/etc/ton-indexer/pgpass
+ulimit -n 1000000
+
+/usr/local/bin/ton-smc-scanner \
   --db /var/ton-work/db \
-  --working-dir /var/lib/ton-indexer/smc-scanner \
+  --working-dir /tmp/ton-smc-scanner \
   --seqno <S> \
   --pg postgresql://ton_indexer@<POSTGRES_PRIVATE_IP>:5432/ton_index \
   --kvrocks tcp://<KVROCKS_PRIVATE_IP>:6666/0 \
@@ -63,8 +61,19 @@ sudo -u ton-indexer env PGPASSFILE=/etc/ton-indexer/pgpass \
   [--testnet]
 ```
 
+`/tmp/ton-smc-scanner` хранит checkpoints. Не удалять этот каталог до
+успешного завершения scanner.
+
+После успешного завершения scanner выйти из shell пользователя `validator`:
+
+```bash
+exit
+```
+
 Для mainnet убрать `--testnet`. Значения PostgreSQL и Kvrocks должны указывать
 на те же одиночные instances, из которых затем будет развёрнуто окружение.
+`ulimit` обязателен: scanner одновременно открывает большое количество файлов
+TON DB и должен запускаться с лимитом не меньше `1000000` file descriptors.
 
 `--account-states` включает запись всех account states. `--interfaces` нужен,
 если окружение должно сразу получить current data для jettons, NFT и других

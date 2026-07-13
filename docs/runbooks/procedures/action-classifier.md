@@ -30,12 +30,11 @@ sudo apt install -y \
   libpq-dev libsecp256k1-dev libsodium-dev libhiredis-dev rsync
 ```
 
-Если classifier запускается на отдельной машине, создать системного пользователя
-и директорию конфигурации:
+На classifier host создать системного пользователя и директорию конфигурации:
 
 ```bash
 sudo useradd --system --home /opt/ton-indexer --shell /usr/sbin/nologin ton-indexer
-sudo install -d -m 0750 -o root -g ton-indexer /etc/ton-indexer
+sudo install -d -m 0750 -o root -g ton-indexer /etc/ton-action-classifier
 ```
 
 Из корня checkout скопировать директорию `indexer` и создать virtual
@@ -69,7 +68,7 @@ classifier instances должны использовать общий отказ
 endpoint. Перед запуском classifier команда `redis-cli -u <REDIS_DSN> ping`
 должна вернуть `PONG`.
 
-Создать `/etc/ton-indexer/action-classifier.env`:
+Создать `/etc/ton-action-classifier/action-classifier.env`:
 
 ```env
 TON_INDEXER_PG_DSN=postgresql+asyncpg://ton_indexer@<POSTGRES_WRITE_ENDPOINT>:5432/ton_index
@@ -84,15 +83,20 @@ TON_INDEXER_KVROCKS_PASSWORD=<KVROCKS_PASSWORD>
 TON_INDEXER_IS_TESTNET=1
 ```
 
-PostgreSQL password хранить в `/etc/ton-indexer/pgpass`, как в
-[standard deployment](../standard-deployment.md). Защитить оба файла:
+PostgreSQL password хранить в `/etc/ton-action-classifier/pgpass`. Формат файла
+такой же, как в [standard deployment](../standard-deployment.md). Защитить оба
+файла:
+
+```text
+<POSTGRES_WRITE_ENDPOINT>:5432:ton_index:ton_indexer:<POSTGRES_PASSWORD>
+```
 
 ```bash
-sudo chown root:ton-indexer /etc/ton-indexer/action-classifier.env
-sudo chown ton-indexer:ton-indexer /etc/ton-indexer/pgpass
+sudo chown root:ton-indexer /etc/ton-action-classifier/action-classifier.env
+sudo chown ton-indexer:ton-indexer /etc/ton-action-classifier/pgpass
 
-sudo chmod 0640 /etc/ton-indexer/action-classifier.env
-sudo chmod 0600 /etc/ton-indexer/pgpass
+sudo chmod 0640 /etc/ton-action-classifier/action-classifier.env
+sudo chmod 0600 /etc/ton-action-classifier/pgpass
 ```
 
 Redis event cache и Kvrocks — разные хранилища. Нельзя указывать Kvrocks в
@@ -139,8 +143,8 @@ Type=simple
 User=ton-indexer
 Group=ton-indexer
 WorkingDirectory=/opt/ton-indexer/indexer
-EnvironmentFile=/etc/ton-indexer/action-classifier.env
-Environment=PGPASSFILE=/etc/ton-indexer/pgpass
+EnvironmentFile=/etc/ton-action-classifier/action-classifier.env
+Environment=PGPASSFILE=/etc/ton-action-classifier/pgpass
 ExecStart=/opt/ton-indexer/venv/bin/python3 /opt/ton-indexer/indexer/event_classifier.py --pool-size 8 --prefetch-size 10000 --batch-size 1000 --mc-seqno-batch-size 4
 Restart=always
 RestartSec=5
