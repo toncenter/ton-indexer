@@ -67,7 +67,9 @@ docker compose --profile emulate up -d
 
 Once the stack is running, the REST API and interactive Swagger are available at `localhost:8081/`.
 
-> **Production Tip:** For performance and reliability, consider running the indexer stack and the index worker on separate machines.
+> **Production Tip:** PostgreSQL, Kvrocks, the API, and other indexer services
+> may run on separate machines. The index worker itself must run on the same
+> machine as the TON full node because it reads the node database locally.
 
 # FAQ
 
