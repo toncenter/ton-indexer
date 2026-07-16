@@ -274,5 +274,8 @@ sudo -u validator env PGPASSFILE=/etc/ton-indexer/pgpass \
 
 После этого запустить API и, если нужны actions, action classifier в continuous
 mode. По умолчанию тот же PostgreSQL cluster продолжает хранить полную историю
-и принимать live data. Опциональное разделение данных между cold и hot clusters
-описано в [HA runbook](../high-availability.md#full-history).
+и принимать live data.
+
+Если выбрано разделение на cold и hot, не запускать live services по этому
+пункту. Вместо него выполнить [hot/cold procedure](hot-cold.md): она создаёт
+отдельный пустой hot PostgreSQL и запускает worker с `NEW_S + 1`.
