@@ -346,7 +346,7 @@ func SubstituteImgproxyBaseUrl(metadata *models.Metadata, base_url string) {
 
 			for _, field := range proxied_fields {
 				if val, exists := tokenInfo.Extra[field]; exists {
-					if img_url, ok := val.(string); ok && img_url != "" {
+					if img_url, ok := val.(string); ok && img_url != "" && strings.HasPrefix(img_url, "/") {
 						if result, err := url.JoinPath(base_url, img_url); err == nil {
 							tokenInfo.Extra[field] = result
 						} else {
