@@ -1,0 +1,7 @@
+---
+monitoring_cluster: "{{ monitoring_stack_name }}_cold"
+monitoring_tier: cold
+postgres_monitor_user: "{{ monitoring_postgres_user }}"
+postgres_monitor_password: "{{ vault_cold_postgres_monitor_password }}"
+postgres_exporter_database: "{{ monitoring_postgres_database }}"
+postgres_exporter_sslmode: "{{ monitoring_postgres_sslmode }}"

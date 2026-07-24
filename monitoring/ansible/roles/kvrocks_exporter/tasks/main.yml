@@ -1,0 +1,52 @@
+---
+- name: Validate kvrocks_exporter credentials
+  ansible.builtin.assert:
+    that:
+      - kvrocks_exporter_password is defined
+      - kvrocks_exporter_password | default(none) is string
+      - kvrocks_exporter_password | length > 0
+      - kvrocks_exporter_password != "CHANGE_ME"
+      - kvrocks_exporter_address is match('^kvrocks://')
+    fail_msg: >-
+      Configure and encrypt the Kvrocks monitoring password in vault.yml;
+      kvrocks_exporter_address must start with kvrocks://.
+  no_log: true
+
+- name: Remove obsolete plain-text Kvrocks password file
+  ansible.builtin.file:
+    path: /etc/kvrocks_exporter/password
+    state: absent
+
+- name: Install kvrocks_exporter
+  ansible.builtin.include_role:
+    name: exporter_common
+  vars:
+    exporter_name: kvrocks_exporter
+    exporter_description: Prometheus Kvrocks Exporter
+    exporter_version: "{{ kvrocks_exporter_version }}"
+    exporter_user: kvrocks-exporter
+    exporter_group: kvrocks-exporter
+    exporter_service_name: kvrocks_exporter
+    exporter_binary_name: kvrocks_exporter
+    exporter_binary_path: /usr/local/bin/kvrocks_exporter
+    exporter_install_dir: "/opt/kvrocks_exporter-{{ kvrocks_exporter_version }}"
+    exporter_archive_strip_components: 0
+    exporter_archive_names:
+      amd64: "kvrocks-exporter_{{ kvrocks_exporter_version }}_linux_amd64.tar.gz"
+      arm64: "kvrocks-exporter_{{ kvrocks_exporter_version }}_linux_arm64.tar.gz"
+    exporter_download_urls:
+      amd64: "https://github.com/RocksLabs/kvrocks_exporter/releases/download/v{{ kvrocks_exporter_version }}/kvrocks-exporter_{{ kvrocks_exporter_version }}_linux_amd64.tar.gz"
+      arm64: "https://github.com/RocksLabs/kvrocks_exporter/releases/download/v{{ kvrocks_exporter_version }}/kvrocks-exporter_{{ kvrocks_exporter_version }}_linux_arm64.tar.gz"
+    exporter_checksums: "{{ kvrocks_exporter_checksums }}"
+    exporter_config_directories:
+      - path: /etc/kvrocks_exporter
+    exporter_config_files:
+      - src: kvrocks_exporter.password.j2
+        dest: /etc/kvrocks_exporter/password.json
+        validate: /usr/bin/python3 -m json.tool %s
+    exporter_config_contains_secrets: true
+    exporter_arguments:
+      - "--web.listen-address={{ kvrocks_exporter_listen_address }}"
+      - "--kvrocks.addr={{ kvrocks_exporter_address }}"
+      - "--kvrocks.password-file=/etc/kvrocks_exporter/password.json"
+      - "--include-system-metrics"

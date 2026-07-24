@@ -1,0 +1,9 @@
+---
+sql_exporter_version: 0.24.3
+sql_exporter_config_root: /etc/sql_exporter
+sql_exporter_scrape_timeout: 10s
+sql_exporter_max_connections: 2
+classifier_stale_claim_seconds: 900
+sql_exporter_checksums:
+  amd64: c043f4b3723064721bd7ecaa6200a85e41790ecea057fcab48be5558dbe9ffe8
+  arm64: ca36fdd5b51e0dee6f63faeadbbb439bdb514befcfb8eec6823cc7eaf27b5c43

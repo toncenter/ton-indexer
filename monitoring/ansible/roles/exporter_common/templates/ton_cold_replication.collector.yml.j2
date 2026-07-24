@@ -1,0 +1,86 @@
+collector_name: ton_cold_replication_fast
+min_interval: 15s
+
+metrics:
+  - metric_name: ton_logical_subscription_present
+    type: gauge
+    help: Whether statistics for subscription hot_to_cold_sub exist.
+    values: [subscription_present]
+    query_ref: ton_cold_replication_state
+
+  - metric_name: ton_logical_subscription_worker_up
+    type: gauge
+    help: Whether the hot_to_cold_sub apply worker is running.
+    values: [subscription_worker_up]
+    query_ref: ton_cold_replication_state
+
+  - metric_name: ton_logical_subscription_last_message_age_seconds
+    type: gauge
+    help: Seconds since the subscriber received a message, or -1 when unavailable.
+    values: [last_message_age_seconds]
+    query_ref: ton_cold_replication_state
+
+  - metric_name: ton_logical_subscription_latest_end_age_seconds
+    type: gauge
+    help: Seconds since the publisher reported latest_end_time, or -1 when unavailable.
+    values: [latest_end_age_seconds]
+    query_ref: ton_cold_replication_state
+
+  - metric_name: ton_logical_subscription_unapplied_bytes
+    type: gauge
+    help: Approximate bytes received but not yet reported applied.
+    values: [unapplied_bytes]
+    query_ref: ton_cold_replication_state
+
+  - metric_name: ton_logical_subscription_apply_errors_total
+    type: counter
+    help: Apply errors recorded for hot_to_cold_sub.
+    values: [apply_errors_total]
+    query_ref: ton_cold_replication_state
+
+  - metric_name: ton_logical_subscription_sync_errors_total
+    type: counter
+    help: Initial table synchronization errors recorded for hot_to_cold_sub.
+    values: [sync_errors_total]
+    query_ref: ton_cold_replication_state
+
+queries:
+  - query_name: ton_cold_replication_state
+    query: |
+      WITH apply_worker AS (
+        SELECT
+          pid,
+          received_lsn,
+          last_msg_receipt_time,
+          latest_end_lsn,
+          latest_end_time
+        FROM pg_catalog.pg_stat_subscription
+        WHERE subname = 'hot_to_cold_sub'
+          AND worker_type = 'apply'
+        LIMIT 1
+      ), subscription_stats AS (
+        SELECT apply_error_count, sync_error_count
+        FROM pg_catalog.pg_stat_subscription_stats
+        WHERE subname = 'hot_to_cold_sub'
+      )
+      SELECT
+        (subscription_stats.apply_error_count IS NOT NULL)::integer AS subscription_present,
+        (apply_worker.pid IS NOT NULL)::integer AS subscription_worker_up,
+        COALESCE(
+          GREATEST(EXTRACT(EPOCH FROM now() - apply_worker.last_msg_receipt_time), 0)::double precision,
+          -1
+        ) AS last_message_age_seconds,
+        COALESCE(
+          GREATEST(EXTRACT(EPOCH FROM now() - apply_worker.latest_end_time), 0)::double precision,
+          -1
+        ) AS latest_end_age_seconds,
+        COALESCE(
+          GREATEST(pg_wal_lsn_diff(apply_worker.received_lsn, apply_worker.latest_end_lsn), 0)::double precision,
+          0
+        ) AS unapplied_bytes,
+        COALESCE(subscription_stats.apply_error_count, 0)::double precision AS apply_errors_total,
+        COALESCE(subscription_stats.sync_error_count, 0)::double precision AS sync_errors_total
+      FROM (SELECT 1) AS singleton
+      LEFT JOIN apply_worker ON true
+      LEFT JOIN subscription_stats ON true;
+

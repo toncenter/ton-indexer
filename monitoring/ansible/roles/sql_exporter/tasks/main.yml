@@ -1,0 +1,159 @@
+---
+- name: Validate generic SQL exporter stack variables
+  ansible.builtin.assert:
+    that:
+      - monitoring_stack_name is defined
+      - monitoring_stack_name is match('^[a-z0-9][a-z0-9_-]{0,17}$')
+      - sql_exporter_targets is defined
+      - sql_exporter_port is defined
+    fail_msg: >-
+      Define monitoring_stack_name as a lowercase service-safe identifier
+      (maximum 18 characters), plus sql_exporter_targets and sql_exporter_port.
+
+- name: Resolve SQL exporter instance settings
+  ansible.builtin.set_fact:
+    sql_exporter_instance_targets: "{{ sql_exporter_targets }}"
+    sql_exporter_instance_port: "{{ sql_exporter_port | int }}"
+    sql_exporter_instance_service_name: "sql_exporter-{{ monitoring_stack_name }}"
+    sql_exporter_instance_user: >-
+      sql-exporter-{{ monitoring_stack_name | replace('_', '-') }}
+    sql_exporter_instance_group: >-
+      sql-exporter-{{ monitoring_stack_name | replace('_', '-') }}
+    sql_exporter_instance_binary_path: >-
+      /usr/local/bin/sql_exporter-{{ monitoring_stack_name }}
+    sql_exporter_instance_config_dir: >-
+      {{ sql_exporter_config_root }}/{{ monitoring_stack_name }}
+    sql_exporter_instance_listen_address: >-
+      127.0.0.1:{{ sql_exporter_port | int }}
+  no_log: true
+
+- name: Validate SQL exporter topology and credentials
+  ansible.builtin.assert:
+    that:
+      - sql_exporter_instance_targets | length == 2
+      - sql_exporter_instance_targets | map(attribute='name') | unique | length == 2
+      - sql_exporter_instance_targets | map(attribute='cluster') | unique | length == 2
+      - sql_exporter_instance_targets | selectattr('tier', 'equalto', 'hot') | list | length == 1
+      - sql_exporter_instance_targets | selectattr('tier', 'equalto', 'cold') | list | length == 1
+      - sql_exporter_instance_targets | selectattr('password', 'equalto', 'CHANGE_ME') | list | length == 0
+      - sql_exporter_instance_targets | selectattr('password', 'equalto', '') | list | length == 0
+      - sql_exporter_instance_port | int > 0
+      - sql_exporter_instance_port | int < 65536
+    fail_msg: >-
+      Each stack requires one hot and one cold writable PostgreSQL target,
+      unique names and clusters, encrypted credentials, and a valid local
+      listen port.
+  no_log: true
+
+- name: Install PostgreSQL client for SQL exporter preflight
+  ansible.builtin.apt:
+    name: postgresql-client
+    state: present
+    update_cache: false
+
+- name: Verify each PostgreSQL target is a writable primary with monitoring grants
+  ansible.builtin.command:
+    argv:
+      - psql
+      - >-
+        postgresql://{{ item.user | urlencode }}@{{ item.host }}:{{ item.port }}/{{ item.database
+        }}?sslmode={{ item.sslmode }}&target_session_attrs=read-write&connect_timeout=5&application_name=sql_exporter_{{ monitoring_stack_name }}_preflight
+      - --no-psqlrc
+      - --tuples-only
+      - --no-align
+      - --command
+      - >-
+        SELECT (NOT pg_is_in_recovery())
+          AND pg_has_role(current_user, 'pg_monitor', 'member')
+          AND has_table_privilege(current_user, 'public.blocks', 'SELECT')
+          AND has_table_privilege(current_user, 'public._ton_indexer_progress', 'SELECT')
+        {% if item.tier == 'hot' %}
+          AND has_table_privilege(current_user, 'public._ton_indexer_leader', 'SELECT')
+          AND has_table_privilege(current_user, 'public._ton_hot_cold_split', 'SELECT')
+          AND has_table_privilege(current_user, 'public._classifier_progress', 'SELECT')
+          AND has_table_privilege(current_user, 'public._classifier_tasks', 'SELECT')
+          AND has_table_privilege(current_user, 'public._classifier_failed_traces', 'SELECT')
+        {% endif %}
+        ;
+  environment:
+    PGPASSWORD: "{{ item.password }}"
+  loop: "{{ sql_exporter_instance_targets }}"
+  loop_control:
+    label: "{{ item.name }}"
+  register: sql_exporter_preflight
+  changed_when: false
+  failed_when: sql_exporter_preflight.stdout | trim != "t"
+  no_log: true
+  when: not ansible_check_mode
+
+- name: Install and validate the independent SQL exporter instance
+  block:
+    - name: Install SQL exporter instance
+      ansible.builtin.include_role:
+        name: exporter_common
+      vars:
+        exporter_name: "sql_exporter {{ monitoring_stack_name }}"
+        exporter_description: >-
+          Prometheus SQL Exporter for TON Indexer {{ monitoring_stack_name }}
+        exporter_version: "{{ sql_exporter_version }}"
+        exporter_user: "{{ sql_exporter_instance_user }}"
+        exporter_group: "{{ sql_exporter_instance_group }}"
+        exporter_service_name: "{{ sql_exporter_instance_service_name }}"
+        exporter_binary_name: sql_exporter
+        exporter_binary_path: "{{ sql_exporter_instance_binary_path }}"
+        exporter_install_dir: "/opt/sql_exporter-{{ sql_exporter_version }}"
+        exporter_archive_strip_components: 1
+        exporter_archive_names:
+          amd64: "sql_exporter-{{ sql_exporter_version }}.linux-amd64.tar.gz"
+          arm64: "sql_exporter-{{ sql_exporter_version }}.linux-arm64.tar.gz"
+        exporter_download_urls:
+          amd64: "https://github.com/burningalchemist/sql_exporter/releases/download/{{ sql_exporter_version }}/sql_exporter-{{ sql_exporter_version }}.linux-amd64.tar.gz"
+          arm64: "https://github.com/burningalchemist/sql_exporter/releases/download/{{ sql_exporter_version }}/sql_exporter-{{ sql_exporter_version }}.linux-arm64.tar.gz"
+        exporter_checksums: "{{ sql_exporter_checksums }}"
+        exporter_config_directories:
+          - path: "{{ sql_exporter_config_root }}"
+            owner: root
+            group: root
+            mode: "0755"
+          - path: "{{ sql_exporter_instance_config_dir }}"
+        exporter_config_files:
+          - src: sql_exporter.yml.j2
+            dest: "{{ sql_exporter_instance_config_dir }}/sql_exporter.yml"
+          - src: ton_indexer_common.collector.yml.j2
+            dest: "{{ sql_exporter_instance_config_dir }}/ton_indexer_common.collector.yml"
+          - src: ton_hot_replication.collector.yml.j2
+            dest: "{{ sql_exporter_instance_config_dir }}/ton_hot_replication.collector.yml"
+          - src: ton_cold_replication.collector.yml.j2
+            dest: "{{ sql_exporter_instance_config_dir }}/ton_cold_replication.collector.yml"
+          - src: ton_classifier_progress.collector.yml.j2
+            dest: "{{ sql_exporter_instance_config_dir }}/ton_classifier_progress.collector.yml"
+          - src: ton_classifier_queue.collector.yml.j2
+            dest: "{{ sql_exporter_instance_config_dir }}/ton_classifier_queue.collector.yml"
+        exporter_config_contains_secrets: true
+        exporter_arguments:
+          - "--config.file={{ sql_exporter_instance_config_dir }}/sql_exporter.yml"
+          - "--web.listen-address={{ sql_exporter_instance_listen_address }}"
+
+    - name: Validate installed SQL exporter instance configuration as root
+      ansible.builtin.command:
+        argv:
+          - "{{ sql_exporter_instance_binary_path }}"
+          - "--config.file={{ sql_exporter_instance_config_dir }}/sql_exporter.yml"
+          - --config.check
+      changed_when: false
+      no_log: true
+      when: not ansible_check_mode
+
+  rescue:
+    - name: Stop the failed independent SQL exporter instance
+      ansible.builtin.systemd_service:
+        name: "{{ sql_exporter_instance_service_name }}"
+        enabled: false
+        state: stopped
+      failed_when: false
+
+    - name: Report SQL exporter instance deployment failure
+      ansible.builtin.fail:
+        msg: >-
+          The {{ monitoring_stack_name }} SQL exporter instance failed to
+          deploy.

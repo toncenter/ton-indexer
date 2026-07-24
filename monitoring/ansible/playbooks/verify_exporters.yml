@@ -1,0 +1,63 @@
+---
+- name: Verify exporter endpoints from the monitoring host
+  hosts: monitoring
+  become: false
+  gather_facts: false
+  vars:
+    stack_exporter_hosts: "{{ (groups['postgresql'] | default([])) | union(groups['kvrocks'] | default([])) }}"
+  tasks:
+    - name: Check node_exporter endpoints
+      ansible.builtin.uri:
+        url: >-
+          http://{{ hostvars[item].prometheus_target_address
+          | default(hostvars[item].ansible_host | default(item)) }}:9100/metrics
+        status_code: 200
+        return_content: false
+      loop: "{{ stack_exporter_hosts }}"
+      loop_control:
+        label: "{{ item }}"
+      changed_when: false
+
+    - name: Check postgres_exporter endpoints
+      ansible.builtin.uri:
+        url: >-
+          http://{{ hostvars[item].prometheus_target_address
+          | default(hostvars[item].ansible_host | default(item)) }}:9187/metrics
+        status_code: 200
+        return_content: false
+      loop: "{{ groups['postgresql'] | default([]) }}"
+      loop_control:
+        label: "{{ item }}"
+      changed_when: false
+
+    - name: Check kvrocks_exporter endpoints
+      ansible.builtin.uri:
+        url: >-
+          http://{{ hostvars[item].prometheus_target_address
+          | default(hostvars[item].ansible_host | default(item)) }}:9122/metrics
+        status_code: 200
+        return_content: false
+      loop: "{{ groups['kvrocks'] | default([]) }}"
+      loop_control:
+        label: "{{ item }}"
+      changed_when: false
+
+    - name: Check redis_exporter Sentinel endpoints
+      ansible.builtin.uri:
+        url: >-
+          http://{{ hostvars[item].prometheus_target_address
+          | default(hostvars[item].ansible_host | default(item)) }}:9121/metrics
+        status_code: 200
+        return_content: false
+      loop: "{{ groups['kvrocks'] | default([]) }}"
+      loop_control:
+        label: "{{ item }}"
+      changed_when: false
+
+    - name: Check stack SQL exporter endpoint
+      ansible.builtin.uri:
+        url: >-
+          http://127.0.0.1:{{ sql_exporter_port | int }}/metrics
+        status_code: 200
+        return_content: false
+      changed_when: false

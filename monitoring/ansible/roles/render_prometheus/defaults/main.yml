@@ -1,0 +1,3 @@
+---
+prometheus_bundle_dir: "{{ playbook_dir }}/../../build/prometheus"
+prometheus_install_dir: /etc/prometheus/ton-indexer

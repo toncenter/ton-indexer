@@ -1,0 +1,76 @@
+collector_name: ton_indexer_common_fast
+min_interval: 15s
+
+metrics:
+  - metric_name: ton_indexer_last_masterchain_seqno
+    type: gauge
+    help: Last masterchain seqno stored in PostgreSQL.
+    values: [last_masterchain_seqno]
+    query_ref: ton_indexer_common_state
+
+  - metric_name: ton_indexer_last_block_timestamp_seconds
+    type: gauge
+    help: Unix timestamp of the last stored masterchain block.
+    values: [last_block_timestamp_seconds]
+    query_ref: ton_indexer_common_state
+
+  - metric_name: ton_indexer_last_block_age_seconds
+    type: gauge
+    help: Age of the last stored masterchain block in seconds, or -1 when absent.
+    values: [last_block_age_seconds]
+    query_ref: ton_indexer_common_state
+
+  - metric_name: ton_indexer_finalized_masterchain_seqno
+    type: gauge
+    help: Finalized masterchain seqno from _ton_indexer_progress.
+    values: [finalized_masterchain_seqno]
+    query_ref: ton_indexer_common_state
+
+  - metric_name: ton_indexer_progress_age_seconds
+    type: gauge
+    help: Seconds since _ton_indexer_progress was updated, or -1 when absent.
+    values: [progress_age_seconds]
+    query_ref: ton_indexer_common_state
+
+  - metric_name: ton_postgres_target_is_primary
+    type: gauge
+    help: Whether the configured endpoint is connected to a writable PostgreSQL primary.
+    values: [target_is_primary]
+    query_ref: ton_indexer_common_state
+
+queries:
+  - query_name: ton_indexer_common_state
+    query: |
+      SELECT
+        COALESCE((
+          SELECT seqno::double precision
+          FROM public.blocks
+          WHERE workchain = -1
+          ORDER BY seqno DESC
+          LIMIT 1
+        ), -1) AS last_masterchain_seqno,
+        COALESCE((
+          SELECT gen_utime::double precision
+          FROM public.blocks
+          WHERE workchain = -1
+          ORDER BY seqno DESC
+          LIMIT 1
+        ), -1) AS last_block_timestamp_seconds,
+        COALESCE((
+          SELECT GREATEST(EXTRACT(EPOCH FROM now()) - gen_utime, 0)::double precision
+          FROM public.blocks
+          WHERE workchain = -1
+          ORDER BY seqno DESC
+          LIMIT 1
+        ), -1) AS last_block_age_seconds,
+        COALESCE((
+          SELECT finalized_mc_seqno::double precision
+          FROM public._ton_indexer_progress
+          WHERE id = 1
+        ), -1) AS finalized_masterchain_seqno,
+        COALESCE((
+          SELECT GREATEST(EXTRACT(EPOCH FROM now() - updated_at), 0)::double precision
+          FROM public._ton_indexer_progress
+          WHERE id = 1
+        ), -1) AS progress_age_seconds,
+        (NOT pg_is_in_recovery())::integer AS target_is_primary;

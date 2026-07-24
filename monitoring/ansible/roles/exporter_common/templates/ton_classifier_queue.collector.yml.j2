@@ -1,0 +1,58 @@
+collector_name: ton_classifier_queue
+min_interval: 5m
+
+metrics:
+  - metric_name: ton_classifier_tasks
+    type: gauge
+    help: Classifier task counts by queue state.
+    value_label: state
+    values: [total, pending, eligible, claimed, stale_claimed]
+    query_ref: ton_classifier_queue_state
+
+  - metric_name: ton_classifier_pending_min_masterchain_seqno
+    type: gauge
+    help: Lowest masterchain seqno among pending classifier tasks.
+    values: [pending_min_masterchain_seqno]
+    query_ref: ton_classifier_queue_state
+
+  - metric_name: ton_classifier_pending_max_masterchain_seqno
+    type: gauge
+    help: Highest masterchain seqno among pending classifier tasks.
+    values: [pending_max_masterchain_seqno]
+    query_ref: ton_classifier_queue_state
+
+  - metric_name: ton_classifier_failed_traces
+    type: gauge
+    help: Failed classifier traces by broken state.
+    value_label: state
+    values: [total, broken, retryable]
+    query_ref: ton_classifier_failures_state
+
+queries:
+  - query_name: ton_classifier_queue_state
+    query: |
+      SELECT
+        count(*)::double precision AS total,
+        count(*) FILTER (WHERE pending IS TRUE)::double precision AS pending,
+        count(*) FILTER (
+          WHERE pending IS TRUE
+            AND (start_after IS NULL OR start_after <= now())
+        )::double precision AS eligible,
+        count(*) FILTER (WHERE claimed_at IS NOT NULL)::double precision AS claimed,
+        count(*) FILTER (
+          WHERE claimed_at < now() - make_interval(secs => {{ classifier_stale_claim_seconds }})
+        )::double precision AS stale_claimed,
+        COALESCE(min(mc_seqno) FILTER (WHERE pending IS TRUE), -1)::double precision
+          AS pending_min_masterchain_seqno,
+        COALESCE(max(mc_seqno) FILTER (WHERE pending IS TRUE), -1)::double precision
+          AS pending_max_masterchain_seqno
+      FROM public._classifier_tasks;
+
+  - query_name: ton_classifier_failures_state
+    query: |
+      SELECT
+        count(*)::double precision AS total,
+        count(*) FILTER (WHERE broken IS TRUE)::double precision AS broken,
+        count(*) FILTER (WHERE broken IS NOT TRUE)::double precision AS retryable
+      FROM public._classifier_failed_traces;
+

@@ -1,0 +1,78 @@
+---
+- name: Validate redis_exporter credentials
+  ansible.builtin.assert:
+    that:
+      - redis_exporter_password is defined
+      - redis_exporter_password | default(none) is string
+      - redis_exporter_password | default('CHANGE_ME') != "CHANGE_ME"
+      - >-
+        redis_exporter_password | default('', true) | length == 0
+        or redis_exporter_address is match('^rediss?://')
+    fail_msg: >-
+      Configure the Sentinel password in vault.yml. Use an explicit empty
+      string when Sentinel authentication is disabled; authenticated addresses
+      must start with redis:// or rediss://.
+  no_log: true
+
+- name: Select redis_exporter authentication mode
+  ansible.builtin.set_fact:
+    redis_exporter_auth_enabled: "{{ redis_exporter_password | length > 0 }}"
+  no_log: true
+
+- name: Remove obsolete plain-text Sentinel password file
+  ansible.builtin.file:
+    path: /etc/redis_exporter/password
+    state: absent
+
+- name: Remove stale Sentinel password map when authentication is disabled
+  ansible.builtin.file:
+    path: /etc/redis_exporter/password.json
+    state: absent
+  when: not redis_exporter_auth_enabled
+
+- name: Install redis_exporter for Sentinel
+  ansible.builtin.include_role:
+    name: exporter_common
+  vars:
+    exporter_name: redis_exporter
+    exporter_description: Prometheus Redis Sentinel Exporter
+    exporter_version: "{{ redis_exporter_version }}"
+    exporter_user: redis-exporter
+    exporter_group: redis-exporter
+    exporter_service_name: redis_exporter
+    exporter_binary_name: redis_exporter
+    exporter_binary_path: /usr/local/bin/redis_exporter
+    exporter_install_dir: "/opt/redis_exporter-{{ redis_exporter_version }}"
+    exporter_archive_strip_components: 1
+    exporter_archive_names:
+      amd64: "redis_exporter-v{{ redis_exporter_version }}.linux-amd64.tar.gz"
+      arm64: "redis_exporter-v{{ redis_exporter_version }}.linux-arm64.tar.gz"
+    exporter_download_urls:
+      amd64: "https://github.com/oliver006/redis_exporter/releases/download/v{{ redis_exporter_version }}/redis_exporter-v{{ redis_exporter_version }}.linux-amd64.tar.gz"
+      arm64: "https://github.com/oliver006/redis_exporter/releases/download/v{{ redis_exporter_version }}/redis_exporter-v{{ redis_exporter_version }}.linux-arm64.tar.gz"
+    exporter_checksums: "{{ redis_exporter_checksums }}"
+    exporter_config_directories:
+      - path: /etc/redis_exporter
+    exporter_config_files: >-
+      {{
+        [
+          {
+            'src': 'redis_exporter.password.j2',
+            'dest': '/etc/redis_exporter/password.json',
+            'validate': '/usr/bin/python3 -m json.tool %s'
+          }
+        ] if redis_exporter_auth_enabled else []
+      }}
+    exporter_config_contains_secrets: "{{ redis_exporter_auth_enabled }}"
+    exporter_arguments: >-
+      {{
+        [
+          '--web.listen-address=' ~ redis_exporter_listen_address,
+          '--redis.addr=' ~ redis_exporter_address
+        ]
+        + (
+          ['--redis.password-file=/etc/redis_exporter/password.json']
+          if redis_exporter_auth_enabled else []
+        )
+        + ['--set-client-name=true']
+      }}

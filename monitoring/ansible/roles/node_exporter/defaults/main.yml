@@ -1,0 +1,7 @@
+---
+node_exporter_version: 1.11.1
+node_exporter_listen_address: 0.0.0.0:9100
+node_exporter_checksums:
+  amd64: 9f5ea48e5bc7b656f8a91a32e7d7deb89f70f73dabd0d974418aca15f37d6810
+  arm64: ba1886efbd76cb96b0087c695ea8d1b9cb6e8aa946c996d744e9ee16c8e3591a
+

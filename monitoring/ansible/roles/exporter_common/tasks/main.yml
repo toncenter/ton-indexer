@@ -1,0 +1,141 @@
+---
+- name: Validate exporter host platform
+  ansible.builtin.assert:
+    that:
+      - ansible_os_family == "Debian"
+      - ansible_service_mgr == "systemd"
+      - ansible_architecture in ["x86_64", "aarch64"]
+    fail_msg: >-
+      {{ exporter_name }} supports Debian/Ubuntu with systemd on x86_64 or aarch64
+      in this automation.
+
+- name: Map host architecture to release architecture
+  ansible.builtin.set_fact:
+    exporter_release_arch: "{{ {'x86_64': 'amd64', 'aarch64': 'arm64'}[ansible_architecture] }}"
+
+- name: Validate exporter release metadata
+  ansible.builtin.assert:
+    that:
+      - exporter_download_urls[exporter_release_arch] is defined
+      - exporter_checksums[exporter_release_arch] is defined
+      - exporter_checksums[exporter_release_arch] | length == 64
+      - exporter_binary_name | length > 0
+
+- name: Install exporter runtime dependencies
+  ansible.builtin.apt:
+    name:
+      - ca-certificates
+    state: present
+    update_cache: false
+
+- name: Create exporter system group
+  ansible.builtin.group:
+    name: "{{ exporter_group }}"
+    system: true
+    state: present
+
+- name: Create exporter system user
+  ansible.builtin.user:
+    name: "{{ exporter_user }}"
+    group: "{{ exporter_group }}"
+    home: /nonexistent
+    create_home: false
+    shell: /usr/sbin/nologin
+    system: true
+    state: present
+
+- name: Create exporter installation directory
+  ansible.builtin.file:
+    path: "{{ exporter_install_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Create exporter configuration directories
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: "{{ item.owner | default('root') }}"
+    group: "{{ item.group | default(exporter_group) }}"
+    mode: "{{ item.mode | default('0750') }}"
+  loop: "{{ exporter_config_directories | default([]) }}"
+
+- name: Download exporter release archive
+  ansible.builtin.get_url:
+    url: "{{ exporter_download_urls[exporter_release_arch] }}"
+    dest: "/var/tmp/{{ exporter_archive_names[exporter_release_arch] }}"
+    checksum: "sha256:{{ exporter_checksums[exporter_release_arch] }}"
+    mode: "0644"
+  when: not ansible_check_mode
+
+- name: Extract exporter release archive with top-level directory
+  ansible.builtin.unarchive:
+    src: "/var/tmp/{{ exporter_archive_names[exporter_release_arch] }}"
+    dest: "{{ exporter_install_dir }}"
+    remote_src: true
+    extra_opts:
+      - --strip-components={{ exporter_archive_strip_components }}
+    creates: "{{ exporter_install_dir }}/{{ exporter_binary_name }}"
+  when:
+    - not ansible_check_mode
+    - exporter_archive_strip_components | int > 0
+
+- name: Extract exporter release archive without stripping paths
+  ansible.builtin.unarchive:
+    src: "/var/tmp/{{ exporter_archive_names[exporter_release_arch] }}"
+    dest: "{{ exporter_install_dir }}"
+    remote_src: true
+    creates: "{{ exporter_install_dir }}/{{ exporter_binary_name }}"
+  when:
+    - not ansible_check_mode
+    - exporter_archive_strip_components | int == 0
+
+- name: Install exporter binary
+  ansible.builtin.copy:
+    src: "{{ exporter_install_dir }}/{{ exporter_binary_name }}"
+    dest: "{{ exporter_binary_path }}"
+    remote_src: true
+    owner: root
+    group: root
+    mode: "0755"
+  register: exporter_binary_result
+  when: not ansible_check_mode
+
+- name: Render exporter configuration files
+  ansible.builtin.template:
+    src: "{{ item.src }}"
+    dest: "{{ item.dest }}"
+    owner: "{{ item.owner | default(exporter_user) }}"
+    group: "{{ item.group | default(exporter_group) }}"
+    mode: "{{ item.mode | default('0400') }}"
+    validate: "{{ item.validate | default(omit) }}"
+  loop: "{{ exporter_config_files | default([]) }}"
+  register: exporter_config_result
+  no_log: "{{ exporter_config_contains_secrets | default(false) }}"
+
+- name: Render exporter systemd unit
+  ansible.builtin.template:
+    src: exporter.service.j2
+    dest: "/etc/systemd/system/{{ exporter_service_name }}.service"
+    owner: root
+    group: root
+    mode: "0644"
+  register: exporter_unit_result
+
+- name: Enable and start exporter service
+  ansible.builtin.systemd_service:
+    name: "{{ exporter_service_name }}"
+    daemon_reload: true
+    enabled: true
+    state: >-
+      {{ 'restarted'
+         if ((exporter_binary_result | default({})).get('changed', false))
+         or ((exporter_unit_result | default({})).get('changed', false))
+         or (
+           ((exporter_config_result | default({})).get('results', [])
+            | selectattr('changed', 'defined')
+            | selectattr('changed') | list | length) > 0
+         )
+         else 'started' }}
+  when: not ansible_check_mode

@@ -1,0 +1,42 @@
+---
+- name: Validate Prometheus render inventory
+  ansible.builtin.assert:
+    that:
+      - monitoring_stack_name is defined
+      - monitoring_stack_name is match('^[a-z0-9][a-z0-9_-]{0,17}$')
+      - groups['postgresql'] | default([]) | length > 0
+      - groups['kvrocks'] | default([]) | length > 0
+      - groups['monitoring'] | default([]) | length == 1
+      - sql_exporter_port is defined
+      - sql_exporter_port | int > 0
+      - sql_exporter_port | int < 65536
+    fail_msg: >-
+      The inventory must define monitoring_stack_name, PostgreSQL and Kvrocks
+      hosts, one monitoring host, and a valid sql_exporter_port.
+
+- name: Resolve stack render settings
+  ansible.builtin.set_fact:
+    prometheus_render_stack_name: "{{ monitoring_stack_name }}"
+    prometheus_render_postgresql_hosts: >-
+      {{ groups['postgresql'] | default([]) | sort }}
+    prometheus_render_kvrocks_hosts: >-
+      {{ groups['kvrocks'] | default([]) | sort }}
+    prometheus_render_sql_exporter_port: "{{ sql_exporter_port | int }}"
+
+- name: Create local Prometheus bundle root
+  ansible.builtin.file:
+    path: "{{ prometheus_bundle_dir }}"
+    state: directory
+    mode: "0755"
+
+- name: Remove obsolete flat Prometheus bundle files
+  ansible.builtin.file:
+    path: "{{ prometheus_bundle_dir }}/{{ item }}"
+    state: absent
+  loop:
+    - file_sd
+    - scrape_configs.yml
+    - prometheus.integration.yml
+
+- name: Render stack-specific Prometheus targets
+  ansible.builtin.include_tasks: stack.yml

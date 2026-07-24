@@ -1,0 +1,8 @@
+---
+kvrocks_exporter_version: 1.0.9
+kvrocks_exporter_listen_address: 0.0.0.0:9122
+kvrocks_exporter_address: kvrocks://127.0.0.1:6666
+kvrocks_exporter_checksums:
+  amd64: be7f8637b95bca1050ca9ffc659a8c299f4e2412e4223c5ffe255b24f2392ed2
+  arm64: 0ffd5f4b957a3bbfcbb09bf5a65871cf2ff331abd271566326f0e64a61aa555f
+

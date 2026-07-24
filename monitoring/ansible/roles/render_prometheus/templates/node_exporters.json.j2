@@ -1,0 +1,15 @@
+[
+{% set node_hosts = (prometheus_render_postgresql_hosts | union(prometheus_render_kvrocks_hosts)) | sort %}
+{% for host in node_hosts %}
+  {
+    "targets": ["{{ hostvars[host].prometheus_target_address | default(hostvars[host].ansible_host | default(host)) }}:9100"],
+    "labels": {
+      "environment": "{{ hostvars[host].monitoring_environment | default('shared') }}",
+      "cluster": "{{ hostvars[host].monitoring_cluster | default('unknown') }}",
+      "tier": "{{ hostvars[host].monitoring_tier | default('unknown') }}",
+      "instance": "{{ host }}",
+      "service": "node_exporter"
+    }
+  }{% if not loop.last %},{% endif %}
+{% endfor %}
+]

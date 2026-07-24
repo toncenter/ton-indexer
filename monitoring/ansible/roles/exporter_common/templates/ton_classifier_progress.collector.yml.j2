@@ -1,0 +1,51 @@
+collector_name: ton_classifier_progress
+min_interval: 60s
+
+metrics:
+  - metric_name: ton_classifier_last_scheduled_masterchain_seqno
+    type: gauge
+    help: Last masterchain seqno scheduled by the classifier.
+    values: [last_scheduled_masterchain_seqno]
+    query_ref: ton_classifier_progress_state
+
+  - metric_name: ton_classifier_schedule_gap_blocks
+    type: gauge
+    help: Masterchain blocks between PostgreSQL head and classifier scheduling progress.
+    values: [schedule_gap_blocks]
+    query_ref: ton_classifier_progress_state
+
+  - metric_name: ton_classifier_progress_age_seconds
+    type: gauge
+    help: Seconds since classifier scheduling progress was updated.
+    values: [progress_age_seconds]
+    query_ref: ton_classifier_progress_state
+
+queries:
+  - query_name: ton_classifier_progress_state
+    query: |
+      WITH head AS (
+        SELECT seqno
+        FROM public.blocks
+        WHERE workchain = -1
+        ORDER BY seqno DESC
+        LIMIT 1
+      ), progress AS (
+        SELECT last_scheduled_mc_seqno, updated_at
+        FROM public._classifier_progress
+        WHERE id = 1
+      )
+      SELECT
+        COALESCE(progress.last_scheduled_mc_seqno, -1)::double precision
+          AS last_scheduled_masterchain_seqno,
+        CASE
+          WHEN head.seqno IS NULL OR progress.last_scheduled_mc_seqno IS NULL THEN -1
+          ELSE GREATEST(head.seqno - progress.last_scheduled_mc_seqno, 0)::double precision
+        END AS schedule_gap_blocks,
+        COALESCE(
+          GREATEST(EXTRACT(EPOCH FROM now() - progress.updated_at), 0)::double precision,
+          -1
+        ) AS progress_age_seconds
+      FROM (SELECT 1) AS singleton
+      LEFT JOIN head ON true
+      LEFT JOIN progress ON true;
+

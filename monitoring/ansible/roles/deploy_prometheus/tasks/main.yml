@@ -1,0 +1,242 @@
+---
+- name: Validate Prometheus stack deployment selection
+  ansible.builtin.assert:
+    that:
+      - prometheus_deploy_stacks is defined
+      - prometheus_deploy_stacks | length == 1
+      - prometheus_deploy_stacks | unique | length == 1
+      - prometheus_deploy_stacks[0] is match('^[a-z0-9][a-z0-9_-]{0,17}$')
+    fail_msg: The deployment must contain exactly one valid monitoring stack.
+
+- name: Inspect Prometheus installation
+  ansible.builtin.stat:
+    path: "{{ item }}"
+    follow: true
+  loop:
+    - "{{ prometheus_config_file }}"
+    - "{{ prometheus_promtool_path }}"
+  register: prometheus_installation_files
+
+- name: Validate Prometheus installation
+  ansible.builtin.assert:
+    that:
+      - prometheus_installation_files.results[0].stat.exists
+      - prometheus_installation_files.results[0].stat.isreg
+      - prometheus_installation_files.results[1].stat.exists
+      - prometheus_installation_files.results[1].stat.isreg
+      - prometheus_installation_files.results[1].stat.executable
+    fail_msg: >-
+      The Prometheus configuration or promtool was not found. Override
+      prometheus_config_file and prometheus_promtool_path for this host.
+
+- name: Create Prometheus bundle root
+  ansible.builtin.file:
+    path: "{{ prometheus_install_dir }}"
+    state: directory
+    owner: "{{ prometheus_config_owner }}"
+    group: "{{ prometheus_config_group }}"
+    mode: "0755"
+
+- name: Copy selected Prometheus stack bundle
+  ansible.builtin.copy:
+    src: "{{ prometheus_bundle_dir }}/{{ item }}/"
+    dest: "{{ prometheus_install_dir }}/{{ item }}/"
+    owner: "{{ prometheus_config_owner }}"
+    group: "{{ prometheus_config_group }}"
+    mode: preserve
+    directory_mode: "0755"
+  loop: "{{ prometheus_deploy_stacks }}"
+  loop_control:
+    label: "{{ item }}"
+  notify: restart prometheus
+
+- name: Read the existing Prometheus configuration
+  ansible.builtin.slurp:
+    path: "{{ prometheus_config_file }}"
+  register: prometheus_config_slurp
+  no_log: true
+
+- name: Parse the existing Prometheus configuration
+  ansible.builtin.set_fact:
+    prometheus_config_text: "{{ prometheus_config_slurp.content | b64decode }}"
+    prometheus_config_document: >-
+      {{ prometheus_config_slurp.content | b64decode | from_yaml }}
+  no_log: true
+
+- name: Resolve Prometheus scrape config includes
+  ansible.builtin.set_fact:
+    prometheus_existing_scrape_config_files: >-
+      {{ prometheus_config_document.get('scrape_config_files', []) }}
+  no_log: true
+
+- name: Initialize stack Prometheus scrape includes
+  ansible.builtin.set_fact:
+    prometheus_scrape_include_paths: []
+  no_log: true
+
+- name: Resolve stack Prometheus scrape includes
+  ansible.builtin.set_fact:
+    prometheus_scrape_include_paths: >-
+      {{ prometheus_scrape_include_paths
+         + [prometheus_install_dir ~ '/' ~ item ~ '/scrape_configs.yml'] }}
+  loop: "{{ prometheus_deploy_stacks }}"
+  loop_control:
+    label: "{{ item }}"
+  no_log: true
+
+- name: Validate existing scrape_config_files format
+  ansible.builtin.assert:
+    that:
+      - prometheus_config_document is mapping
+      - prometheus_existing_scrape_config_files is sequence
+      - prometheus_existing_scrape_config_files is not string
+    fail_msg: scrape_config_files in prometheus.yml must be a YAML list.
+
+- name: Resolve Prometheus configuration migration state
+  ansible.builtin.set_fact:
+    prometheus_has_scrape_config_key: >-
+      {{ 'scrape_config_files' in prometheus_config_document }}
+    prometheus_has_legacy_scrape_include: >-
+      {{ prometheus_legacy_scrape_config_file in prometheus_existing_scrape_config_files }}
+    prometheus_missing_scrape_includes: >-
+      {{ prometheus_scrape_include_paths
+         | difference(prometheus_existing_scrape_config_files) }}
+  no_log: true
+
+- name: Validate legacy scrape include layout
+  ansible.builtin.assert:
+    that:
+      - >-
+        prometheus_config_text is regex(
+          '(?m)^\\s*-\\s*["\\\']?'
+          ~ (prometheus_legacy_scrape_config_file | regex_escape)
+          ~ '["\\\']?\\s*(?:#.*)?$'
+        )
+    fail_msg: >-
+      The legacy ton-indexer scrape include uses an unsupported inline YAML
+      layout. Convert scrape_config_files to a block list and rerun Ansible.
+  when: prometheus_has_legacy_scrape_include
+  no_log: true
+
+- name: Validate existing scrape_config_files block layout
+  ansible.builtin.assert:
+    that:
+      - prometheus_config_text is regex('(?m)^scrape_config_files:\\s*(?:#.*)?$')
+    fail_msg: >-
+      scrape_config_files uses an unsupported inline YAML layout. Convert it
+      to a block list and rerun Ansible.
+  when:
+    - prometheus_has_scrape_config_key
+    - prometheus_missing_scrape_includes | length > 0
+
+- name: Add stack to existing scrape_config_files
+  ansible.builtin.lineinfile:
+    path: "{{ prometheus_config_file }}"
+    insertafter: '^scrape_config_files:\s*(?:#.*)?$'
+    line: "  - {{ item }}"
+    backup: true
+    validate: "{{ prometheus_promtool_path }} check config %s"
+  loop: "{{ prometheus_missing_scrape_includes }}"
+  loop_control:
+    label: "{{ item }}"
+  when:
+    - prometheus_has_scrape_config_key
+    - prometheus_missing_scrape_includes | length > 0
+  notify: restart prometheus
+
+- name: Add managed scrape_config_files block
+  ansible.builtin.blockinfile:
+    path: "{{ prometheus_config_file }}"
+    marker: '# {mark} ANSIBLE MANAGED TON INDEXER SCRAPE CONFIGS'
+    insertafter: EOF
+    prepend_newline: true
+    block: |
+      scrape_config_files:
+      {% for scrape_include_path in prometheus_scrape_include_paths %}
+        - {{ scrape_include_path }}
+      {% endfor %}
+    backup: true
+    validate: "{{ prometheus_promtool_path }} check config %s"
+  when: not prometheus_has_scrape_config_key
+  notify: restart prometheus
+
+- name: Remove the legacy scrape include
+  ansible.builtin.lineinfile:
+    path: "{{ prometheus_config_file }}"
+    regexp: >-
+      ^\s*-\s*["']?{{ prometheus_legacy_scrape_config_file | regex_escape }}["']?\s*(?:#.*)?$
+    state: absent
+    backup: true
+    validate: "{{ prometheus_promtool_path }} check config %s"
+  when: prometheus_has_legacy_scrape_include
+  notify: restart prometheus
+
+- name: Re-read the updated Prometheus configuration
+  ansible.builtin.slurp:
+    path: "{{ prometheus_config_file }}"
+  register: prometheus_updated_config_slurp
+  no_log: true
+
+- name: Verify the managed scrape include is active
+  ansible.builtin.assert:
+    that:
+      - >-
+        prometheus_scrape_include_paths
+        | difference(
+            (prometheus_updated_config_slurp.content | b64decode | from_yaml)
+            .get('scrape_config_files', [])
+          )
+        | length == 0
+      - >-
+        prometheus_legacy_scrape_config_file not in
+        ((prometheus_updated_config_slurp.content | b64decode | from_yaml)
+          .get('scrape_config_files', []))
+    fail_msg: Failed to activate the managed Prometheus scrape include.
+  no_log: true
+
+- name: Remove obsolete flat Prometheus scrape configuration
+  ansible.builtin.file:
+    path: "{{ prometheus_legacy_scrape_config_file }}"
+    state: absent
+
+- name: Remove obsolete flat stack file-SD targets
+  ansible.builtin.file:
+    path: >-
+      {{ prometheus_legacy_file_sd_dir }}/{{ item.1 }}_{{ item.0 }}.json
+    state: absent
+  loop: >-
+    {{ prometheus_deploy_stacks
+       | product([
+           'node_exporters',
+           'postgres_exporters',
+           'kvrocks_exporters',
+           'sentinel_exporters',
+           'sql_exporters'
+         ])
+       | list }}
+  loop_control:
+    label: "{{ item.0 }}:{{ item.1 }}"
+
+- name: Validate the installed Prometheus configuration
+  ansible.builtin.command:
+    argv:
+      - "{{ prometheus_promtool_path }}"
+      - check
+      - config
+      - "{{ prometheus_config_file }}"
+  changed_when: false
+
+- name: Apply pending Prometheus restart
+  ansible.builtin.meta: flush_handlers
+
+- name: Wait for Prometheus readiness
+  ansible.builtin.uri:
+    url: "{{ prometheus_ready_url }}"
+    status_code: 200
+    return_content: false
+  register: prometheus_ready_result
+  until: prometheus_ready_result.status == 200
+  retries: 15
+  delay: 2
+  changed_when: false
+  when: prometheus_verify_ready | bool

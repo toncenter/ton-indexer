@@ -1,0 +1,60 @@
+global:
+  scrape_timeout: {{ sql_exporter_scrape_timeout }}
+  scrape_timeout_offset: 500ms
+  min_interval: 0s
+  max_connections: {{ sql_exporter_max_connections }}
+  max_idle_connections: {{ sql_exporter_max_connections }}
+  max_connection_lifetime: 10m
+  enable_query_metrics: true
+
+jobs:
+  - job_name: ton_indexer_common
+    collectors: [ton_indexer_common_fast]
+    static_configs:
+{% for target in sql_exporter_instance_targets %}
+      - targets:
+          {{ target.name }}: "postgresql://{{ target.user | urlencode }}:{{ target.password | urlencode }}@{{ target.host }}:{{ target.port }}/{{ target.database }}?sslmode={{ target.sslmode }}&target_session_attrs=read-write&connect_timeout=5&application_name=sql_exporter"
+        labels:
+          environment: {{ monitoring_stack_name }}
+          cluster: {{ target.cluster }}
+          tier: {{ target.tier }}
+{% endfor %}
+
+  - job_name: ton_hot_replication
+    collectors: [ton_hot_replication_fast]
+    static_configs:
+{% for target in sql_exporter_instance_targets if target.tier == 'hot' %}
+      - targets:
+          {{ target.name }}: "postgresql://{{ target.user | urlencode }}:{{ target.password | urlencode }}@{{ target.host }}:{{ target.port }}/{{ target.database }}?sslmode={{ target.sslmode }}&target_session_attrs=read-write&connect_timeout=5&application_name=sql_exporter"
+        labels:
+          environment: {{ monitoring_stack_name }}
+          cluster: {{ target.cluster }}
+          tier: {{ target.tier }}
+{% endfor %}
+
+  - job_name: ton_cold_replication
+    collectors: [ton_cold_replication_fast]
+    static_configs:
+{% for target in sql_exporter_instance_targets if target.tier == 'cold' %}
+      - targets:
+          {{ target.name }}: "postgresql://{{ target.user | urlencode }}:{{ target.password | urlencode }}@{{ target.host }}:{{ target.port }}/{{ target.database }}?sslmode={{ target.sslmode }}&target_session_attrs=read-write&connect_timeout=5&application_name=sql_exporter"
+        labels:
+          environment: {{ monitoring_stack_name }}
+          cluster: {{ target.cluster }}
+          tier: {{ target.tier }}
+{% endfor %}
+
+  - job_name: ton_classifier
+    collectors: [ton_classifier_progress, ton_classifier_queue]
+    static_configs:
+{% for target in sql_exporter_instance_targets if target.tier == 'hot' %}
+      - targets:
+          {{ target.name }}: "postgresql://{{ target.user | urlencode }}:{{ target.password | urlencode }}@{{ target.host }}:{{ target.port }}/{{ target.database }}?sslmode={{ target.sslmode }}&target_session_attrs=read-write&connect_timeout=5&application_name=sql_exporter"
+        labels:
+          environment: {{ monitoring_stack_name }}
+          cluster: {{ target.cluster }}
+          tier: {{ target.tier }}
+{% endfor %}
+
+collector_files:
+  - {{ sql_exporter_instance_config_dir }}/*.collector.yml

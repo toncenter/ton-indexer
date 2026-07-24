@@ -1,0 +1,47 @@
+---
+- name: Validate postgres_exporter credentials
+  ansible.builtin.assert:
+    that:
+      - postgres_monitor_user is defined
+      - postgres_monitor_user | length > 0
+      - postgres_monitor_password is defined
+      - postgres_monitor_password | length > 0
+      - postgres_monitor_password != "CHANGE_ME"
+    fail_msg: Configure and encrypt the PostgreSQL monitoring credentials in vault.yml.
+  no_log: true
+
+- name: Install postgres_exporter
+  ansible.builtin.include_role:
+    name: exporter_common
+  vars:
+    exporter_name: postgres_exporter
+    exporter_description: Prometheus PostgreSQL Exporter
+    exporter_version: "{{ postgres_exporter_version }}"
+    exporter_user: postgres-exporter
+    exporter_group: postgres-exporter
+    exporter_service_name: postgres_exporter
+    exporter_binary_name: postgres_exporter
+    exporter_binary_path: /usr/local/bin/postgres_exporter
+    exporter_install_dir: "/opt/postgres_exporter-{{ postgres_exporter_version }}"
+    exporter_archive_strip_components: 1
+    exporter_archive_names:
+      amd64: "postgres_exporter-{{ postgres_exporter_version }}.linux-amd64.tar.gz"
+      arm64: "postgres_exporter-{{ postgres_exporter_version }}.linux-arm64.tar.gz"
+    exporter_download_urls:
+      amd64: "https://github.com/prometheus-community/postgres_exporter/releases/download/v{{ postgres_exporter_version }}/postgres_exporter-{{ postgres_exporter_version }}.linux-amd64.tar.gz"
+      arm64: "https://github.com/prometheus-community/postgres_exporter/releases/download/v{{ postgres_exporter_version }}/postgres_exporter-{{ postgres_exporter_version }}.linux-arm64.tar.gz"
+    exporter_checksums: "{{ postgres_exporter_checksums }}"
+    exporter_config_directories:
+      - path: /etc/postgres_exporter
+    exporter_config_files:
+      - src: postgres_exporter.env.j2
+        dest: /etc/postgres_exporter/postgres_exporter.env
+      - src: postgres_exporter.password.j2
+        dest: /etc/postgres_exporter/password
+    exporter_config_contains_secrets: true
+    exporter_environment_file: /etc/postgres_exporter/postgres_exporter.env
+    exporter_arguments:
+      - "--web.listen-address={{ postgres_exporter_listen_address }}"
+      - "--collector.stat_checkpointer"
+      - "--collector.stat_wal_receiver"
+

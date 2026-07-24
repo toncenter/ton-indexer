@@ -1,0 +1,33 @@
+[Unit]
+Description={{ exporter_description }}
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User={{ exporter_user }}
+Group={{ exporter_group }}
+{% if exporter_environment_file | default('') | length > 0 %}
+EnvironmentFile={{ exporter_environment_file }}
+{% endif %}
+ExecStart={{ ([exporter_binary_path] + (exporter_arguments | default([]))) | join(' ') }}
+Restart=on-failure
+RestartSec=5s
+TimeoutStopSec=20s
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+ProtectClock=true
+RestrictSUIDSGID=true
+RestrictRealtime=true
+LockPersonality=true
+CapabilityBoundingSet=
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+
+[Install]
+WantedBy=multi-user.target

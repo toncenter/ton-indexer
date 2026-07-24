@@ -1,0 +1,6 @@
+---
+monitoring_cluster: "{{ monitoring_stack_name }}_kvrocks"
+monitoring_tier: kvrocks
+kvrocks_exporter_password: "{{ vault_kvrocks_password }}"
+kvrocks_exporter_address: kvrocks://127.0.0.1:6666
+redis_exporter_password: "{{ vault_sentinel_password }}"

@@ -1,0 +1,8 @@
+---
+# Copy this file to vault.yml, replace the values, and encrypt it with
+# ansible-vault before running deployment playbooks.
+vault_hot_postgres_monitor_password: CHANGE_ME
+vault_cold_postgres_monitor_password: CHANGE_ME
+vault_kvrocks_password: CHANGE_ME
+# Keep an explicit empty string when Sentinel authentication is disabled.
+vault_sentinel_password: ""

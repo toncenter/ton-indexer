@@ -1,0 +1,8 @@
+---
+redis_exporter_version: 1.84.0
+redis_exporter_listen_address: 0.0.0.0:9121
+redis_exporter_address: redis://127.0.0.1:26379
+redis_exporter_checksums:
+  amd64: f13280147f1a0f6ed5f5d61ac80620c0b64049d76a99c7a5f043319efeb368fd
+  arm64: 398b55dafed7ce56cc5c275ffd7c562ddf2054c6b821aaf54c13859f483cd79d
+

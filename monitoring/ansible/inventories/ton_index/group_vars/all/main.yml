@@ -1,0 +1,37 @@
+---
+# Logical stack identifier used in Prometheus labels, service names, and paths.
+# It is independent from the inventory directory name.
+monitoring_stack_name: ton_index
+monitoring_environment: "{{ monitoring_stack_name }}"
+
+prometheus_target_address: "{{ ansible_host | default(inventory_hostname) }}"
+
+monitoring_postgres_user: prometheus_monitor
+monitoring_postgres_database: ton_index
+monitoring_postgres_sslmode: disable
+
+# Must be unique on the monitoring host when several stacks are deployed there.
+sql_exporter_port: 9399
+
+# Each target may be a direct primary or a stable HAProxy/Patroni write endpoint.
+sql_exporter_targets:
+  - name: hot
+    cluster: "{{ monitoring_stack_name }}_hot"
+    tier: hot
+    host: hot-db-01.example.internal
+    port: 5432
+    database: "{{ monitoring_postgres_database }}"
+    user: "{{ monitoring_postgres_user }}"
+    password: "{{ vault_hot_postgres_monitor_password }}"
+    sslmode: "{{ monitoring_postgres_sslmode }}"
+  - name: cold
+    cluster: "{{ monitoring_stack_name }}_cold"
+    tier: cold
+    host: cold-db-01.example.internal
+    port: 5432
+    database: "{{ monitoring_postgres_database }}"
+    user: "{{ monitoring_postgres_user }}"
+    password: "{{ vault_cold_postgres_monitor_password }}"
+    sslmode: "{{ monitoring_postgres_sslmode }}"
+
+node_exporter_listen_address: 0.0.0.0:9100

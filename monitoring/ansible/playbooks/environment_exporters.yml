@@ -1,0 +1,26 @@
+---
+- name: Install node_exporter on stack hosts
+  hosts: postgresql:kvrocks
+  become: true
+  gather_facts: true
+  roles:
+    - role: node_exporter
+      tags: [node_exporter]
+
+- name: Install postgres_exporter on PostgreSQL members
+  hosts: postgresql
+  become: true
+  gather_facts: true
+  roles:
+    - role: postgres_exporter
+      tags: [postgres_exporter]
+
+- name: Install Kvrocks and Sentinel exporters
+  hosts: kvrocks
+  become: true
+  gather_facts: true
+  roles:
+    - role: kvrocks_exporter
+      tags: [kvrocks_exporter]
+    - role: redis_exporter
+      tags: [redis_exporter]

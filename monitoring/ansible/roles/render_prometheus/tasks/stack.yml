@@ -1,0 +1,66 @@
+---
+- name: Validate {{ prometheus_render_stack_name }} Prometheus targets
+  ansible.builtin.assert:
+    that:
+      - prometheus_render_postgresql_hosts | length > 0
+      - prometheus_render_kvrocks_hosts | length > 0
+      - prometheus_render_sql_exporter_port | int > 0
+      - prometheus_render_sql_exporter_port | int < 65536
+
+- name: Resolve {{ prometheus_render_stack_name }} bundle paths
+  ansible.builtin.set_fact:
+    prometheus_render_output_dir: >-
+      {{ prometheus_bundle_dir }}/{{ prometheus_render_stack_name }}
+    prometheus_render_install_dir: >-
+      {{ prometheus_install_dir }}/{{ prometheus_render_stack_name }}
+
+- name: Create {{ prometheus_render_stack_name }} bundle directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: "0755"
+  loop:
+    - "{{ prometheus_render_output_dir }}"
+    - "{{ prometheus_render_output_dir }}/file_sd"
+
+- name: Render {{ prometheus_render_stack_name }} scrape configuration
+  ansible.builtin.template:
+    src: scrape_configs.yml.j2
+    dest: "{{ prometheus_render_output_dir }}/scrape_configs.yml"
+    mode: "0644"
+
+- name: Render {{ prometheus_render_stack_name }} integration snippet
+  ansible.builtin.template:
+    src: prometheus.integration.yml.j2
+    dest: "{{ prometheus_render_output_dir }}/prometheus.integration.yml"
+    mode: "0644"
+
+- name: Render {{ prometheus_render_stack_name }} node_exporter file-SD targets
+  ansible.builtin.template:
+    src: node_exporters.json.j2
+    dest: "{{ prometheus_render_output_dir }}/file_sd/node_exporters.json"
+    mode: "0644"
+
+- name: Render {{ prometheus_render_stack_name }} postgres_exporter file-SD targets
+  ansible.builtin.template:
+    src: postgres_exporters.json.j2
+    dest: "{{ prometheus_render_output_dir }}/file_sd/postgres_exporters.json"
+    mode: "0644"
+
+- name: Render {{ prometheus_render_stack_name }} kvrocks_exporter file-SD targets
+  ansible.builtin.template:
+    src: kvrocks_exporters.json.j2
+    dest: "{{ prometheus_render_output_dir }}/file_sd/kvrocks_exporters.json"
+    mode: "0644"
+
+- name: Render {{ prometheus_render_stack_name }} Sentinel exporter file-SD targets
+  ansible.builtin.template:
+    src: sentinel_exporters.json.j2
+    dest: "{{ prometheus_render_output_dir }}/file_sd/sentinel_exporters.json"
+    mode: "0644"
+
+- name: Render {{ prometheus_render_stack_name }} SQL exporter file-SD target
+  ansible.builtin.template:
+    src: sql_exporters.json.j2
+    dest: "{{ prometheus_render_output_dir }}/file_sd/sql_exporters.json"
+    mode: "0644"

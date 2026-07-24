@@ -1,0 +1,124 @@
+{
+  "__inputs": [
+    {"name": "DS_PROMETHEUS", "label": "Prometheus", "description": "", "type": "datasource", "pluginId": "prometheus", "pluginName": "Prometheus"}
+  ],
+  "annotations": {"list": []},
+  "editable": true,
+  "graphTooltip": 1,
+  "panels": [
+    {
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "fieldConfig": {"defaults": {"min": 0, "max": 1}, "overrides": []},
+      "gridPos": {"h": 5, "w": 8, "x": 0, "y": 0},
+      "id": 1,
+      "options": {"colorMode": "background", "graphMode": "none", "justifyMode": "auto", "orientation": "horizontal", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "name"},
+      "targets": [{"expr": "kvrocks_up{environment=~\"$environment\"}", "legendFormat": "{{instance}}", "refId": "A"}],
+      "title": "Kvrocks members",
+      "type": "stat"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "fieldConfig": {"defaults": {"min": 0, "max": 1}, "overrides": []},
+      "gridPos": {"h": 5, "w": 8, "x": 8, "y": 0},
+      "id": 2,
+      "options": {"colorMode": "background", "graphMode": "none", "justifyMode": "auto", "orientation": "horizontal", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "name"},
+      "targets": [{"expr": "redis_up{environment=~\"$environment\",tier=\"sentinel\"}", "legendFormat": "{{instance}}", "refId": "A"}],
+      "title": "Sentinel members",
+      "type": "stat"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "fieldConfig": {"defaults": {"min": 0, "max": 1}, "overrides": []},
+      "gridPos": {"h": 5, "w": 8, "x": 16, "y": 0},
+      "id": 3,
+      "options": {"colorMode": "background", "graphMode": "none", "justifyMode": "auto", "orientation": "horizontal", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "name"},
+      "targets": [{"expr": "redis_sentinel_master_status{environment=~\"$environment\",master_status=\"ok\"}", "legendFormat": "{{instance}} / {{master_name}}", "refId": "A"}],
+      "title": "Sentinel master status",
+      "type": "stat"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "fieldConfig": {"defaults": {"unit": "bytes"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 5},
+      "id": 4,
+      "options": {"legend": {"calcs": [], "displayMode": "table", "placement": "right"}, "tooltip": {"mode": "multi", "sort": "desc"}},
+      "targets": [{"expr": "kvrocks_memory_used_rss_bytes{environment=~\"$environment\"}", "legendFormat": "{{instance}} Kvrocks RSS", "refId": "A"}, {"expr": "node_memory_MemTotal_bytes{environment=~\"$environment\",tier=\"kvrocks\"}", "legendFormat": "{{instance}} system total", "refId": "B"}],
+      "title": "Kvrocks memory",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "fieldConfig": {"defaults": {"unit": "short"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 5},
+      "id": 5,
+      "options": {"legend": {"calcs": [], "displayMode": "table", "placement": "right"}, "tooltip": {"mode": "multi", "sort": "desc"}},
+      "targets": [{"expr": "kvrocks_connected_clients{environment=~\"$environment\"}", "legendFormat": "{{instance}} clients", "refId": "A"}, {"expr": "rate(kvrocks_commands_processed_total{environment=~\"$environment\"}[5m])", "legendFormat": "{{instance}} commands/s", "refId": "B"}],
+      "title": "Kvrocks clients and commands",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "fieldConfig": {"defaults": {"unit": "short"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 13},
+      "id": 6,
+      "options": {"legend": {"calcs": [], "displayMode": "table", "placement": "right"}, "tooltip": {"mode": "multi", "sort": "desc"}},
+      "targets": [{"expr": "redis_sentinel_master_ok_sentinels{environment=~\"$environment\"}", "legendFormat": "{{instance}} / {{master_name}} sentinels", "refId": "A"}, {"expr": "redis_sentinel_master_ok_slaves{environment=~\"$environment\"}", "legendFormat": "{{instance}} / {{master_name}} replicas", "refId": "B"}],
+      "title": "Sentinel quorum view",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "fieldConfig": {"defaults": {"unit": "short"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 13},
+      "id": 7,
+      "options": {"legend": {"calcs": [], "displayMode": "table", "placement": "right"}, "tooltip": {"mode": "multi", "sort": "desc"}},
+      "targets": [{"expr": "rate(kvrocks_keyspace_hits{environment=~\"$environment\"}[5m])", "legendFormat": "{{instance}} hits/s", "refId": "A"}, {"expr": "rate(kvrocks_keyspace_misses{environment=~\"$environment\"}[5m])", "legendFormat": "{{instance}} misses/s", "refId": "B"}],
+      "title": "Kvrocks keyspace",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "fieldConfig": {"defaults": {"color": {"mode": "fixed", "fixedColor": "green"}, "min": 0, "max": 1}, "overrides": []},
+      "gridPos": {"h": 8, "w": 8, "x": 0, "y": 21},
+      "id": 8,
+      "options": {"colorMode": "background", "graphMode": "none", "justifyMode": "auto", "orientation": "vertical", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "name"},
+      "targets": [{"expr": "max by (environment, cluster, master_name, master_address) (redis_sentinel_master_status{environment=~\"$environment\",master_status=\"ok\"} == 1)", "legendFormat": "{{environment}} / {{cluster}} / {{master_name}} / {{master_address}}", "refId": "A"}],
+      "title": "Current Kvrocks masters",
+      "type": "stat"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "fieldConfig": {"defaults": {"mappings": [{"options": {"1": {"color": "green", "index": 0, "text": "Master"}}, "type": "value"}], "max": 1, "min": 0}, "overrides": []},
+      "gridPos": {"h": 8, "w": 16, "x": 8, "y": 21},
+      "id": 9,
+      "options": {"alignValue": "left", "legend": {"displayMode": "list", "placement": "bottom", "showLegend": true}, "mergeValues": true, "rowHeight": 0.8, "showValue": "never", "tooltip": {"mode": "single", "sort": "none"}},
+      "targets": [{"expr": "max by (environment, cluster, master_name, master_address) (redis_sentinel_master_status{environment=~\"$environment\",master_status=\"ok\"} == 1)", "legendFormat": "{{environment}} / {{cluster}} / {{master_name}} / {{master_address}}", "refId": "A"}],
+      "title": "Kvrocks master history (Sentinel)",
+      "type": "state-timeline"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "description": "Difference between the replication offset reported by the master and the local offset applied by each Kvrocks replica.",
+      "fieldConfig": {"defaults": {"min": 0, "unit": "short"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 29},
+      "id": 10,
+      "options": {"legend": {"calcs": ["lastNotNull", "max"], "displayMode": "table", "placement": "right"}, "tooltip": {"mode": "multi", "sort": "desc"}},
+      "targets": [{"expr": "clamp_min(kvrocks_master_repl_offset{environment=~\"$environment\"} - on(environment, cluster, instance) group_left(master_host, master_port) kvrocks_slave_repl_offset{environment=~\"$environment\"}, 0)", "legendFormat": "{{instance}} from {{master_host}}:{{master_port}}", "refId": "A"}],
+      "title": "Kvrocks replica lag (replication offset)",
+      "type": "timeseries"
+    }
+  ],
+  "refresh": "15s",
+  "schemaVersion": 39,
+  "tags": ["ton-indexer", "kvrocks", "sentinel"],
+  "templating": {
+    "list": [
+      {"current": {}, "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"}, "definition": "label_values(kvrocks_up, environment)", "includeAll": true, "label": "Environment", "multi": true, "name": "environment", "options": [], "query": {"query": "label_values(kvrocks_up, environment)", "refId": "PrometheusVariableQueryEditor-VariableQuery"}, "refresh": 1, "type": "query"}
+    ]
+  },
+  "time": {"from": "now-6h", "to": "now"},
+  "timezone": "browser",
+  "title": "TON Indexer / Kvrocks and Sentinel",
+  "uid": "ton-indexer-kvrocks-sentinel",
+  "version": 4
+}

@@ -1,0 +1,12 @@
+---
+prometheus_install_dir: /etc/prometheus/ton-indexer
+prometheus_config_owner: root
+prometheus_config_group: root
+prometheus_config_file: /etc/prometheus/prometheus.yml
+prometheus_service_name: prometheus
+prometheus_promtool_path: /usr/bin/promtool
+prometheus_ready_url: http://127.0.0.1:9090/-/ready
+prometheus_restart_enabled: true
+prometheus_verify_ready: true
+prometheus_legacy_scrape_config_file: /etc/prometheus/scrape_configs/ton-indexer.yml
+prometheus_legacy_file_sd_dir: /etc/prometheus/file_sd

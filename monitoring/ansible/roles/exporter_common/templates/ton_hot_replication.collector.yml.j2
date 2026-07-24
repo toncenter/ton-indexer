@@ -1,0 +1,107 @@
+collector_name: ton_hot_replication_fast
+min_interval: 15s
+
+metrics:
+  - metric_name: ton_indexer_leader_heartbeat_age_seconds
+    type: gauge
+    help: Seconds since the hot indexer leader heartbeat, or -1 when absent.
+    values: [leader_heartbeat_age_seconds]
+    query_ref: ton_hot_replication_state
+
+  - metric_name: ton_hot_cold_split_seqno
+    type: gauge
+    help: Safe hot/cold routing boundary in masterchain seqnos, or -1 when absent.
+    values: [hot_cold_split_seqno]
+    query_ref: ton_hot_replication_state
+
+  - metric_name: ton_hot_cold_split_timestamp_seconds
+    type: gauge
+    help: Safe hot/cold routing boundary Unix timestamp, or -1 when absent.
+    values: [hot_cold_split_timestamp_seconds]
+    query_ref: ton_hot_replication_state
+
+  - metric_name: ton_logical_slot_present
+    type: gauge
+    help: Whether logical replication slot hot_to_cold exists.
+    values: [slot_present]
+    query_ref: ton_hot_replication_state
+
+  - metric_name: ton_logical_slot_active
+    type: gauge
+    help: Whether logical replication slot hot_to_cold is active.
+    values: [slot_active]
+    query_ref: ton_hot_replication_state
+
+  - metric_name: ton_logical_slot_failover_enabled
+    type: gauge
+    help: Whether the logical slot is synchronized for Patroni failover.
+    values: [slot_failover_enabled]
+    query_ref: ton_hot_replication_state
+
+  - metric_name: ton_logical_slot_retained_wal_bytes
+    type: gauge
+    help: WAL bytes retained from restart_lsn by hot_to_cold.
+    values: [retained_wal_bytes]
+    query_ref: ton_hot_replication_state
+
+  - metric_name: ton_logical_slot_unconfirmed_wal_bytes
+    type: gauge
+    help: WAL bytes between current WAL and confirmed_flush_lsn.
+    values: [unconfirmed_wal_bytes]
+    query_ref: ton_hot_replication_state
+
+  - metric_name: ton_logical_slot_status_info
+    type: gauge
+    help: Current wal_status of hot_to_cold, or missing.
+    key_labels: [wal_status]
+    static_value: 1
+    query: |
+      SELECT COALESCE(
+        (SELECT wal_status FROM pg_catalog.pg_replication_slots WHERE slot_name = 'hot_to_cold'),
+        'missing'
+      ) AS wal_status;
+
+  - metric_name: ton_indexer_leader_info
+    type: gauge
+    help: Current hot indexer leader worker identity.
+    key_labels: [leader_worker_id]
+    static_value: 1
+    query: |
+      SELECT COALESCE(
+        (SELECT leader_worker_id FROM public._ton_indexer_leader WHERE id = 1),
+        'none'
+      ) AS leader_worker_id;
+
+queries:
+  - query_name: ton_hot_replication_state
+    query: |
+      SELECT
+        COALESCE((
+          SELECT GREATEST(EXTRACT(EPOCH FROM now() - last_heartbeat), 0)::double precision
+          FROM public._ton_indexer_leader
+          WHERE id = 1
+        ), -1) AS leader_heartbeat_age_seconds,
+        COALESCE((
+          SELECT seqno::double precision
+          FROM public._ton_hot_cold_split
+          WHERE id = 1
+        ), -1) AS hot_cold_split_seqno,
+        COALESCE((
+          SELECT utime::double precision
+          FROM public._ton_hot_cold_split
+          WHERE id = 1
+        ), -1) AS hot_cold_split_timestamp_seconds,
+        (s.slot_name IS NOT NULL)::integer AS slot_present,
+        COALESCE(s.active::integer, 0) AS slot_active,
+        COALESCE(s.failover::integer, 0) AS slot_failover_enabled,
+        COALESCE(
+          pg_wal_lsn_diff(pg_current_wal_lsn(), s.restart_lsn)::double precision,
+          0
+        ) AS retained_wal_bytes,
+        COALESCE(
+          pg_wal_lsn_diff(pg_current_wal_lsn(), s.confirmed_flush_lsn)::double precision,
+          0
+        ) AS unconfirmed_wal_bytes
+      FROM (SELECT 1) AS singleton
+      LEFT JOIN pg_catalog.pg_replication_slots AS s
+        ON s.slot_name = 'hot_to_cold';

@@ -1,0 +1,14 @@
+[
+{% for host in prometheus_render_kvrocks_hosts %}
+  {
+    "targets": ["{{ hostvars[host].prometheus_target_address | default(hostvars[host].ansible_host | default(host)) }}:9122"],
+    "labels": {
+      "environment": "{{ hostvars[host].monitoring_environment }}",
+      "cluster": "{{ hostvars[host].monitoring_cluster }}",
+      "tier": "{{ hostvars[host].monitoring_tier }}",
+      "instance": "{{ host }}",
+      "service": "kvrocks_exporter"
+    }
+  }{% if not loop.last %},{% endif %}
+{% endfor %}
+]

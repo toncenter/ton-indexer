@@ -1,0 +1,5 @@
+build/
+.vault-password
+ansible/inventories/*/group_vars/all/vault.yml
+ansible/inventories.local/
+.DS_Store

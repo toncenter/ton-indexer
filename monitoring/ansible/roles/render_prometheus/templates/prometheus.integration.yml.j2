@@ -1,0 +1,4 @@
+# Add this key to the existing top-level Prometheus configuration.
+# The path is resolved on the Prometheus host, not on the Ansible controller.
+scrape_config_files:
+  - {{ prometheus_install_dir }}/{{ prometheus_render_stack_name }}/scrape_configs.yml

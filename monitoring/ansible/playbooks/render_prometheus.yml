@@ -1,0 +1,24 @@
+---
+- name: Render the Prometheus scrape bundle locally
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  become: false
+  check_mode: false
+  vars:
+    prometheus_bundle_dir: "{{ playbook_dir }}/../../build/prometheus"
+  roles:
+    - role: render_prometheus
+      tags: [render_prometheus]
+
+- name: Deploy the rendered bundle and restart Prometheus
+  hosts: monitoring
+  become: true
+  gather_facts: false
+  vars:
+    prometheus_deploy_stacks:
+      - "{{ hostvars['localhost'].prometheus_render_stack_name }}"
+    prometheus_bundle_dir: "{{ playbook_dir }}/../../build/prometheus"
+  roles:
+    - role: deploy_prometheus
+      tags: [deploy_prometheus]

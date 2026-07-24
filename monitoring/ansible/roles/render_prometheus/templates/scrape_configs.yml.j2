@@ -1,0 +1,44 @@
+scrape_configs:
+  - job_name: node_exporter_{{ prometheus_render_stack_name }}
+    scrape_interval: 15s
+    scrape_timeout: 10s
+    file_sd_configs:
+      - files:
+          - {{ prometheus_render_install_dir }}/file_sd/node_exporters.json
+
+  - job_name: postgres_exporter_{{ prometheus_render_stack_name }}
+    scrape_interval: 15s
+    scrape_timeout: 10s
+    file_sd_configs:
+      - files:
+          - {{ prometheus_render_install_dir }}/file_sd/postgres_exporters.json
+
+  - job_name: kvrocks_exporter_{{ prometheus_render_stack_name }}
+    scrape_interval: 15s
+    scrape_timeout: 10s
+    file_sd_configs:
+      - files:
+          - {{ prometheus_render_install_dir }}/file_sd/kvrocks_exporters.json
+
+  - job_name: sentinel_exporter_{{ prometheus_render_stack_name }}
+    scrape_interval: 15s
+    scrape_timeout: 10s
+    file_sd_configs:
+      - files:
+          - {{ prometheus_render_install_dir }}/file_sd/sentinel_exporters.json
+
+  - job_name: sql_exporter_{{ prometheus_render_stack_name }}
+    scrape_interval: 15s
+    scrape_timeout: 10s
+    honor_labels: true
+    file_sd_configs:
+      - files:
+          - {{ prometheus_render_install_dir }}/file_sd/sql_exporters.json
+
+  - job_name: sql_exporter_internal_{{ prometheus_render_stack_name }}
+    metrics_path: /sql_exporter_metrics
+    scrape_interval: 30s
+    scrape_timeout: 10s
+    file_sd_configs:
+      - files:
+          - {{ prometheus_render_install_dir }}/file_sd/sql_exporters.json

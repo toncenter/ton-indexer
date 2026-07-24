@@ -1,0 +1,23 @@
+---
+- name: Install the stack SQL exporter on the monitoring host
+  hosts: monitoring
+  become: true
+  gather_facts: true
+  pre_tasks:
+    - name: Validate central monitoring inventory selection
+      ansible.builtin.assert:
+        that:
+          - groups['monitoring'] | default([]) | length == 1
+          - monitoring_stack_name is defined
+          - monitoring_stack_name | length > 0
+          - sql_exporter_port is defined
+          - sql_exporter_targets is defined
+        fail_msg: >-
+          The inventory must define one monitoring host and the generic
+          monitoring_stack_name, sql_exporter_port, and sql_exporter_targets
+          variables.
+      tags: [always]
+
+  roles:
+    - role: sql_exporter
+      tags: [sql_exporter]

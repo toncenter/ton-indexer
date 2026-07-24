@@ -1,0 +1,12 @@
+---
+postgres_exporter_version: 0.19.1
+postgres_exporter_listen_address: 0.0.0.0:9187
+postgres_exporter_database: postgres
+postgres_exporter_host: 127.0.0.1
+postgres_exporter_port: 5432
+postgres_exporter_sslmode: prefer
+postgres_exporter_collection_timeout: 9s
+postgres_exporter_checksums:
+  amd64: 229096c7988df6ca41fe5b4bf66865089971535e7f0d819c12c920ec64dd2bd0
+  arm64: 0ac6fe8c1f66f13b12adb8da282d248d9e1a48df6684e453ca232fd8fd62a11a
+

@@ -1,0 +1,27 @@
+---
+- name: Install node_exporter
+  ansible.builtin.include_role:
+    name: exporter_common
+  vars:
+    exporter_name: node_exporter
+    exporter_description: Prometheus Node Exporter
+    exporter_version: "{{ node_exporter_version }}"
+    exporter_user: node-exporter
+    exporter_group: node-exporter
+    exporter_service_name: node_exporter
+    exporter_binary_name: node_exporter
+    exporter_binary_path: /usr/local/bin/node_exporter
+    exporter_install_dir: "/opt/node_exporter-{{ node_exporter_version }}"
+    exporter_archive_strip_components: 1
+    exporter_archive_names:
+      amd64: "node_exporter-{{ node_exporter_version }}.linux-amd64.tar.gz"
+      arm64: "node_exporter-{{ node_exporter_version }}.linux-arm64.tar.gz"
+    exporter_download_urls:
+      amd64: "https://github.com/prometheus/node_exporter/releases/download/v{{ node_exporter_version }}/node_exporter-{{ node_exporter_version }}.linux-amd64.tar.gz"
+      arm64: "https://github.com/prometheus/node_exporter/releases/download/v{{ node_exporter_version }}/node_exporter-{{ node_exporter_version }}.linux-arm64.tar.gz"
+    exporter_checksums: "{{ node_exporter_checksums }}"
+    exporter_arguments:
+      - "--web.listen-address={{ node_exporter_listen_address }}"
+      - "--collector.systemd"
+      - "--collector.processes"
+
