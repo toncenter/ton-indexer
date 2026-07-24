@@ -32,6 +32,15 @@ var (
 	prefork                 = flag.Bool("prefork", false, "Use prefork")
 	testnet                 = flag.Bool("testnet", false, "Use testnet")
 	pg                      = flag.String("pg", "", "PostgreSQL connection string")
+	kvrocksAddr             = flag.String("kvrocks", "", "Kvrocks address or Redis URL for enrichment reads")
+	kvrocksSentinels        = flag.String("kvrocks-sentinels", "", "Comma-separated Kvrocks Sentinel addresses")
+	kvrocksSentinelMaster   = flag.String("kvrocks-sentinel-master", "", "Kvrocks Sentinel master name")
+	kvrocksUser             = flag.String("kvrocks-user", "", "Kvrocks username")
+	kvrocksPassword         = flag.String("kvrocks-password", "", "Kvrocks password")
+	kvrocksDB               = flag.Int("kvrocks-db", 0, "Kvrocks database number")
+	kvrocksReplicaReads     = flag.Bool("kvrocks-replica-reads", false, "Read from Kvrocks replicas discovered via Sentinel")
+	kvrocksStalenessBlocks  = flag.Int64("kvrocks-staleness-blocks", 5, "Max watermark lag in masterchain blocks for a Kvrocks replica to serve reads")
+	kvrocksReplicaRefreshMS = flag.Int64("kvrocks-replica-refresh-ms", 300, "Kvrocks replica discovery and freshness poll interval in milliseconds")
 	imgProxyBaseUrl         = flag.String("imgproxy-baseurl", "", "Image proxy base URL")
 	enableV1                = flag.Bool("enable-v1", false, "Enable deprecated v1 streaming endpoints and Redis consumers")
 )
@@ -59,27 +68,49 @@ func main() {
 	ctx := context.Background()
 	go runRedisPoolStatLogger(ctx, rdb)
 
-	var dbClient *crud.DbClient
-	if *pg != "" {
-		log.Printf("Connecting to PostgreSQL: %s", *pg)
-		dbClient, err = crud.NewDbClient(*pg, 100, 0, nil) // FIXME: support kvrocks
+	var kvrocksStore *crud.KvrocksStore
+	if *kvrocksAddr != "" || *kvrocksSentinels != "" {
+		kvrocksStore, err = crud.NewKvrocksStore(crud.KvrocksConfig{
+			Addr:               *kvrocksAddr,
+			SentinelAddrs:      crud.ParseKvrocksSentinelAddrs(*kvrocksSentinels),
+			SentinelMasterName: *kvrocksSentinelMaster,
+			Username:           *kvrocksUser,
+			Password:           *kvrocksPassword,
+			DB:                 *kvrocksDB,
+			ReplicaReads:       *kvrocksReplicaReads,
+			StalenessBlocks:    *kvrocksStalenessBlocks,
+			ReplicaRefresh:     time.Duration(*kvrocksReplicaRefreshMS) * time.Millisecond,
+		})
 		if err != nil {
-			log.Printf("Failed to connect to PostgreSQL: %v", err)
-			log.Printf("AddressBook and Metadata will not be available")
-		} else {
-			log.Printf("Connected to PostgreSQL successfully")
+			log.Fatalf("Failed to connect to Kvrocks: %v", err)
 		}
+		defer kvrocksStore.Close()
+		log.Printf("Kvrocks enrichment reads enabled")
+	}
+
+	if kvrocksStore == nil && *pg != "" {
+		log.Printf("Connecting to PostgreSQL: %s", *pg)
+	}
+	enrichmentReader, err := crud.NewEnrichmentReader(*pg, 100, 0, kvrocksStore)
+	if err != nil {
+		log.Printf("Failed to connect to PostgreSQL: %v", err)
+		log.Printf("AddressBook and Metadata will not be available")
+		enrichmentReader = nil
+	} else if kvrocksStore != nil {
+		log.Printf("Using Kvrocks for AddressBook and Metadata")
+	} else if *pg != "" {
+		log.Printf("Connected to PostgreSQL successfully")
 	} else {
-		log.Printf("PostgreSQL connection string is not provided")
+		log.Printf("Neither Kvrocks nor PostgreSQL enrichment backend is configured")
 		log.Printf("AddressBook and Metadata will not be available")
 	}
 
 	var manager *streamingv1.ClientManager
 	if *enableV1 {
 		streamingv1.InitConfig(streamingv1.Config{
-			DBClient:        dbClient,
-			Testnet:         *testnet,
-			ImgProxyBaseURL: *imgProxyBaseUrl,
+			EnrichmentReader: enrichmentReader,
+			Testnet:          *testnet,
+			ImgProxyBaseURL:  *imgProxyBaseUrl,
 		})
 
 		manager = streamingv1.NewClientManager()
@@ -94,9 +125,9 @@ func main() {
 	}
 
 	streamingv2.InitConfig(streamingv2.Config{
-		DBClient:        dbClient,
-		Testnet:         *testnet,
-		ImgProxyBaseURL: *imgProxyBaseUrl,
+		EnrichmentReader: enrichmentReader,
+		Testnet:          *testnet,
+		ImgProxyBaseURL:  *imgProxyBaseUrl,
 	})
 
 	v2Manager := streamingv2.NewClientManager()

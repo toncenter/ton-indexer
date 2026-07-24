@@ -496,6 +496,7 @@ class EmulatedTransactionsInterfaceRepository(InterfaceRepository):
 
     def __init__(self, redis_hash: dict[str, bytes]):
         self.data = redis_hash
+        self.kvrocks_fallback = KvRocksRepository() if kvrocks.is_enabled() else None
 
     async def get_jetton_wallet(self, address: str) -> JettonWallet | None:
         raw_data = self.data.get(address)
@@ -602,6 +603,8 @@ class EmulatedTransactionsInterfaceRepository(InterfaceRepository):
         ctx = _context()
         if address in ctx.dedust_pools.get():
             return DedustPool(address=address, assets=ctx.dedust_pools.get()[address]['assets'])
+        if self.kvrocks_fallback is not None:
+            return await self.kvrocks_fallback.get_dedust_pool(address)
         return None
 
 

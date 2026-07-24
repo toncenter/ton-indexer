@@ -592,7 +592,12 @@ async def start_processing_events_from_db(args: argparse.Namespace, shared_names
 
 async def start_emulated_task_traces_processing():
     pubsub = redis.client.pubsub()
-    await start_pools_background_updater(redis.client)
+    use_kvrocks = kvrocks.is_enabled()
+    if use_kvrocks:
+        await kvrocks.check_connection()
+        logger.info("Using Kvrocks for emulated task enrichment")
+    else:
+        await start_pools_background_updater(redis.client)
     await pubsub.subscribe(settings.emulated_traces_redis_channel)
     while True:
         message = await pubsub.get_message(timeout=1)
@@ -609,7 +614,8 @@ async def start_emulated_task_traces_processing():
                 await redis.client.publish("classifier_result_channel_" + task_id, "error")
                 logger.error(f"Failed to process emulated task {task_id}: {e}")
                 logger.exception(e, exc_info=True)
-            await get_pools_manager(redis.client).fetch_and_update_context_pools_from_redis()
+            if not use_kvrocks:
+                await get_pools_manager(redis.client).fetch_and_update_context_pools_from_redis()
 
 async def process_emulated_task_trace(task_id):
     trace_map = await redis.client.hgetall("result_" + task_id)
@@ -718,10 +724,6 @@ if __name__ == '__main__':
                         type=int)
     args = parser.parse_args()
 
-    # Create a shared namespace for cross-process data sharing
-    manager = Manager()
-    shared_namespace = manager.Namespace()
-
     settings.emulated_traces_redis_channel = args.emulated_traces_redis_channel
     settings.emulated_traces_redis_response_channel = args.emulated_traces_redis_response_channel
     settings.emulated_traces = args.emulated_traces
@@ -742,15 +744,22 @@ if __name__ == '__main__':
         logger.error("Redis client not initialized. Aborting...")
         sys.exit(1)
 
-    # Initialize pools data and store in shared namespace
-    init_pools_data(redis.sync_client)
-    # Save pools data from context to shared namespace
-    shared_namespace.dedust_pools = context.dedust_pools.get()
-
     if args.emulated_trace_tasks:
+        if kvrocks.is_enabled():
+            # Dedust pools are resolved from Kvrocks on demand in this mode.
+            # Do not initialize or refresh the PostgreSQL-backed global cache.
+            context.dedust_pools.set({})
+        else:
+            init_pools_data(redis.sync_client)
         logger.info("Starting processing emulated trace tasks")
         asyncio.run(start_emulated_task_traces_processing())
     elif settings.emulated_traces:
+        if kvrocks.is_enabled():
+            # Pending traces use their emulated interfaces and resolve Dedust
+            # pools from Kvrocks on demand, without a PostgreSQL fallback.
+            context.dedust_pools.set({})
+        else:
+            init_pools_data(redis.sync_client)
         logger.info("Starting processing emulated traces")
         asyncio.run(start_emulated_traces_processing(settings=settings,
                                                      batch_window=args.batch_time_window,
@@ -758,5 +767,10 @@ if __name__ == '__main__':
                                                      pool_size=args.pool_size,
                                                      max_queue_size=args.emulated_traces_queue_size))
     else:
+        # Historical classification uses PostgreSQL-backed worker processes.
+        manager = Manager()
+        shared_namespace = manager.Namespace()
+        init_pools_data(redis.sync_client)
+        shared_namespace.dedust_pools = context.dedust_pools.get()
         logger.info("Starting processing events from db")
         asyncio.run(start_processing_events_from_db(args, shared_namespace))

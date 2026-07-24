@@ -30,9 +30,9 @@ import (
 
 // Config provides runtime dependencies for v1 handlers.
 type Config struct {
-	DBClient        *crud.DbClient
-	Testnet         bool
-	ImgProxyBaseURL string
+	EnrichmentReader crud.EnrichmentReader
+	Testnet          bool
+	ImgProxyBaseURL  string
 }
 
 var config Config
@@ -412,20 +412,13 @@ func (manager *ClientManager) Run() {
 }
 
 // fetchAddressBookAndMetadata fetches address book and metadata for a list of addresses
-func fetchAddressBookAndMetadata(ctx context.Context, addrBookAddresses []indexModels.AccountAddress, metadataAddresses []indexModels.AccountAddress, includeAddressBook bool, includeMetadata bool) (*indexModels.AddressBook, *indexModels.Metadata) {
+func fetchAddressBookAndMetadata(_ context.Context, addrBookAddresses []indexModels.AccountAddress, metadataAddresses []indexModels.AccountAddress, includeAddressBook bool, includeMetadata bool) (*indexModels.AddressBook, *indexModels.Metadata) {
 	var addressBook *indexModels.AddressBook
 	var metadata *indexModels.Metadata
 
-	if config.DBClient == nil {
+	if config.EnrichmentReader == nil {
 		return nil, nil
 	}
-
-	conn, err := config.DBClient.Pool.Acquire(ctx)
-	if err != nil {
-		log.Printf("Error acquiring connection: %v", err)
-		return nil, nil
-	}
-	defer conn.Release()
 
 	settings := indexModels.RequestSettings{
 		Timeout:   3 * time.Second,
@@ -433,7 +426,7 @@ func fetchAddressBookAndMetadata(ctx context.Context, addrBookAddresses []indexM
 	}
 
 	if includeAddressBook {
-		book, err := crud.QueryAddressBookImpl(addrBookAddresses, conn, settings)
+		book, err := config.EnrichmentReader.QueryAddressBookByAddresses(addrBookAddresses, settings)
 		if err != nil {
 			log.Printf("Error querying address book: %v", err)
 		} else {
@@ -442,7 +435,7 @@ func fetchAddressBookAndMetadata(ctx context.Context, addrBookAddresses []indexM
 	}
 
 	if includeMetadata {
-		meta, err := crud.QueryMetadataImpl(metadataAddresses, conn, settings)
+		meta, err := config.EnrichmentReader.QueryMetadataByAddresses(metadataAddresses, settings)
 		if err != nil {
 			log.Printf("Error querying metadata: %v", err)
 		} else {

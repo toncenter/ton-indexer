@@ -74,6 +74,18 @@ type KvrocksStore struct {
 	replicas *kvrocksReplicaSet
 }
 
+// ParseKvrocksSentinelAddrs parses the comma-separated Sentinel flag shared by
+// the Go services.
+func ParseKvrocksSentinelAddrs(raw string) []string {
+	addrs := []string{}
+	for _, addr := range strings.Split(raw, ",") {
+		if addr = strings.TrimSpace(addr); addr != "" {
+			addrs = append(addrs, addr)
+		}
+	}
+	return addrs
+}
+
 // Immutable hash-addressed payloads referenced by postgres rows: the worker
 // writes them to kvrocks before the postgres commit, so a miss on a replica
 // always means replication lag and the key can be refetched from the master.
