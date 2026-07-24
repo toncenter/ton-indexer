@@ -275,17 +275,14 @@ services:
       dockerfile: Dockerfile
       target: classifier
     depends_on:
-      postgres:
-        condition: service_healthy
       emulate-redis:
         condition: service_healthy
       emulate-task-emulator:
         condition: service_started
-    secrets:
-      - postgres_password
-    command: --emulated-trace-tasks --emulated-traces-redis-channel classifierchannel
+      kvrocks:
+        condition: service_started
+    command: --emulated-trace-tasks --emulated-traces-redis-channel classifierchannel --kvrocks kvrocks:6666 --kvrocks-password "${KVROCKS_PASSWORD:?Set KVROCKS_PASSWORD in .env}"
     environment:
-      <<: *index-pg-access
       TON_INDEXER_REDIS_DSN: redis://emulate-redis:6379
       TON_INDEXER_IS_TESTNET: ${TON_INDEXER_IS_TESTNET:-0}
     restart: unless-stopped

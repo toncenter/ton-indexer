@@ -173,6 +173,11 @@ def get_client() -> aioredis.Redis:
     return _client
 
 
+async def check_connection() -> None:
+    """Fail fast when the configured Kvrocks data path is unavailable."""
+    await get_client().ping()
+
+
 async def get_payloads(
         table: str,
         ids: Iterable[str | None],
