@@ -98,7 +98,7 @@ func (req EmulateRequest) Validate() error {
 	if err != nil {
 		return fmt.Errorf("invalid boc: %v", err)
 	}
-	if pool == nil && (req.IncludeAddressBook || req.IncludeMetadata) {
+	if enrichmentReader == nil && (req.IncludeAddressBook || req.IncludeMetadata) {
 		return fmt.Errorf("address book and metadata are not available")
 	}
 
@@ -141,7 +141,7 @@ func (req TonConnectEmulateRequest) Validate() error {
 			}
 		}
 	}
-	if pool == nil && (req.IncludeAddressBook || req.IncludeMetadata) {
+	if enrichmentReader == nil && (req.IncludeAddressBook || req.IncludeMetadata) {
 		return fmt.Errorf("address book and metadata are not available")
 	}
 
@@ -154,13 +154,22 @@ var (
 	emulatorQueueName = flag.String("emulator-queue", "emulatorqueue", "Redis queue name")
 	classifierChannel = flag.String("classifier-channel", "classifierchannel", "Redis queue name")
 	pg                = flag.String("pg", "", "PostgreSQL connection string")
+	kvrocksAddr       = flag.String("kvrocks", "", "Kvrocks address or Redis URL for enrichment reads")
+	kvrocksSentinels  = flag.String("kvrocks-sentinels", "", "Comma-separated Kvrocks Sentinel addresses")
+	kvrocksMaster     = flag.String("kvrocks-sentinel-master", "", "Kvrocks Sentinel master name")
+	kvrocksUser       = flag.String("kvrocks-user", "", "Kvrocks username")
+	kvrocksPassword   = flag.String("kvrocks-password", "", "Kvrocks password")
+	kvrocksDB         = flag.Int("kvrocks-db", 0, "Kvrocks database number")
+	kvrocksReplicas   = flag.Bool("kvrocks-replica-reads", false, "Read from Kvrocks replicas discovered via Sentinel")
+	kvrocksStaleness  = flag.Int64("kvrocks-staleness-blocks", 5, "Max watermark lag in masterchain blocks for a Kvrocks replica to serve reads")
+	kvrocksRefreshMS  = flag.Int64("kvrocks-replica-refresh-ms", 300, "Kvrocks replica discovery and freshness poll interval in milliseconds")
 	imgProxyBaseUrl   = flag.String("imgproxy-baseurl", "", "Image proxy base URL")
 	serverPort        = flag.Int("port", 8080, "Server port")
 	prefork           = flag.Bool("prefork", false, "Use prefork")
 	testnet           = flag.Bool("testnet", false, "Use testnet")
 )
 
-var pool *crud.DbClient
+var enrichmentReader crud.EnrichmentReader
 var redisClient *redis.Client
 
 func generateTaskID() string {
@@ -285,7 +294,7 @@ func emulateTrace(c *fiber.Ctx) error {
 		return fiber.NewError(fiber.StatusInternalServerError, "failed to get result from Redis: "+err.Error())
 	}
 
-	result, err := models.TransformToAPIResponse(hset, pool, *testnet, req.IncludeAddressBook, req.IncludeMetadata,
+	result, err := models.TransformToAPIResponse(hset, enrichmentReader, *testnet, req.IncludeAddressBook, req.IncludeMetadata,
 		supportedActionTypes)
 	if err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, "failed to transform result: "+err.Error())
@@ -404,7 +413,7 @@ func emulateTonConnect(c *fiber.Ctx) error {
 		return fiber.NewError(fiber.StatusInternalServerError, "failed to get result from Redis: "+err.Error())
 	}
 
-	result, err := models.TransformToAPIResponse(hset, pool, *testnet, req.IncludeAddressBook, req.IncludeMetadata,
+	result, err := models.TransformToAPIResponse(hset, enrichmentReader, *testnet, req.IncludeAddressBook, req.IncludeMetadata,
 		supportedActionTypes)
 	if err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, "failed to transform result: "+err.Error())
@@ -432,16 +441,41 @@ func main() {
 	defer redisClient.Close()
 
 	var err error
-	if *pg == "" {
-		log.Print("PostgreSQL connection string is not provided")
-		log.Print("AddressBook and Metadata will not be available")
-	} else {
-		log.Print("PostgreSQL connection string: ", *pg)
-		pool, err = crud.NewDbClient(*pg, 100, 0, nil) // FIXME: Support kvrocks
+	var kvrocksStore *crud.KvrocksStore
+	if *kvrocksAddr != "" || *kvrocksSentinels != "" {
+		kvrocksStore, err = crud.NewKvrocksStore(crud.KvrocksConfig{
+			Addr:               *kvrocksAddr,
+			SentinelAddrs:      crud.ParseKvrocksSentinelAddrs(*kvrocksSentinels),
+			SentinelMasterName: *kvrocksMaster,
+			Username:           *kvrocksUser,
+			Password:           *kvrocksPassword,
+			DB:                 *kvrocksDB,
+			ReplicaReads:       *kvrocksReplicas,
+			StalenessBlocks:    *kvrocksStaleness,
+			ReplicaRefresh:     time.Duration(*kvrocksRefreshMS) * time.Millisecond,
+		})
 		if err != nil {
-			log.Print("failed to connect to PostgreSQL: ", err)
-			log.Print("AddressBook and Metadata will not be available")
+			log.Fatal("Failed to connect to Kvrocks: ", err)
 		}
+		defer kvrocksStore.Close()
+		log.Print("Kvrocks enrichment reads enabled")
+	}
+
+	if kvrocksStore == nil && *pg != "" {
+		log.Print("PostgreSQL connection string: ", *pg)
+	}
+	enrichmentReader, err = crud.NewEnrichmentReader(*pg, 100, 0, kvrocksStore)
+	if err != nil {
+		log.Print("failed to connect to PostgreSQL: ", err)
+		log.Print("AddressBook and Metadata will not be available")
+		enrichmentReader = nil
+	} else if kvrocksStore != nil {
+		log.Print("Using Kvrocks for AddressBook and Metadata")
+	} else if *pg != "" {
+		log.Print("Using PostgreSQL for AddressBook and Metadata")
+	} else {
+		log.Print("Neither Kvrocks nor PostgreSQL enrichment backend is configured")
+		log.Print("AddressBook and Metadata will not be available")
 	}
 
 	config := fiber.Config{

@@ -304,9 +304,11 @@ services:
         condition: service_healthy
       run-migrations:
         condition: service_completed_successfully
+      kvrocks:
+        condition: service_started
     secrets:
       - postgres_password
-    command: -prefork -redis emulate-redis:6379
+    command: -prefork -redis emulate-redis:6379 -kvrocks kvrocks:6666 -kvrocks-password "${KVROCKS_PASSWORD:?Set KVROCKS_PASSWORD in .env}"
     ports:
       - target: 8080
         published: ${TON_EMULATE_API_PORT:-8082}

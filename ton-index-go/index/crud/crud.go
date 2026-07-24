@@ -307,6 +307,9 @@ func (db *DbClient) QueryAddressBookByAddresses(addrList []models.AccountAddress
 	if len(addrList) == 0 || settings.NoAddressBook {
 		return models.AddressBook{}, nil
 	}
+	if db == nil {
+		return nil, models.IndexError{Code: 500, Message: "address book backend is not configured"}
+	}
 
 	addrSet := make(map[models.AccountAddress]struct{}, len(addrList))
 	uniqueAddrList := make([]models.AccountAddress, 0, len(addrList))
@@ -326,6 +329,9 @@ func (db *DbClient) QueryAddressBookByAddresses(addrList []models.AccountAddress
 
 	if db.Kvrocks != nil {
 		return QueryAddressBookImplKvrocks(uniqueAddrList, db.Kvrocks, settings)
+	}
+	if db.Pool == nil {
+		return nil, models.IndexError{Code: 500, Message: "PostgreSQL address book backend is not configured"}
 	}
 	conn, releaseConn, err := acquireConnForRequest(db.Pool, settings)
 	if err != nil {
@@ -485,15 +491,31 @@ func (db *DbClient) QueryMetadata(
 			addr_list = append(addr_list, *addr_loc)
 		}
 	}
+	return db.QueryMetadataByAddresses(addr_list, settings)
+}
+
+func (db *DbClient) QueryMetadataByAddresses(
+	addrList []models.AccountAddress,
+	settings models.RequestSettings,
+) (models.Metadata, error) {
+	if len(addrList) == 0 || settings.NoMetadata {
+		return models.Metadata{}, nil
+	}
+	if db == nil {
+		return nil, models.IndexError{Code: 500, Message: "metadata backend is not configured"}
+	}
 	if db.Kvrocks != nil {
-		return QueryMetadataImplKvrocks(addr_list, settings, db.Kvrocks)
+		return QueryMetadataImplKvrocks(addrList, settings, db.Kvrocks)
+	}
+	if db.Pool == nil {
+		return nil, models.IndexError{Code: 500, Message: "PostgreSQL metadata backend is not configured"}
 	}
 	conn, releaseConn, err := acquireConnForRequest(db.Pool, settings)
 	if err != nil {
 		return nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
 	defer releaseConn()
-	return QueryMetadataImpl(addr_list, conn, settings)
+	return QueryMetadataImpl(addrList, conn, settings)
 }
 
 func (db *DbClient) QueryAddressBook(

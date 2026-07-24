@@ -2771,16 +2771,9 @@ func main() {
 	var err error
 	var kvrocks_store *crud.KvrocksStore
 	if kvrocks_addr != "" || kvrocks_sentinels != "" {
-		sentinel_addrs := []string{}
-		for _, addr := range strings.Split(kvrocks_sentinels, ",") {
-			addr = strings.TrimSpace(addr)
-			if addr != "" {
-				sentinel_addrs = append(sentinel_addrs, addr)
-			}
-		}
 		kvrocks_store, err = crud.NewKvrocksStore(crud.KvrocksConfig{
 			Addr:               kvrocks_addr,
-			SentinelAddrs:      sentinel_addrs,
+			SentinelAddrs:      crud.ParseKvrocksSentinelAddrs(kvrocks_sentinels),
 			SentinelMasterName: kvrocks_sentinel_master,
 			Username:           kvrocks_user,
 			Password:           kvrocks_password,
