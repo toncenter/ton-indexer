@@ -1,16 +1,82 @@
 #include "TraceInserter.h"
+
 #include "Serializer.hpp"
 #include "Statistics.h"
+#include "TraceState.h"
+#include "td/utils/Timer.h"
+
+#include <algorithm>
+#include <chrono>
 #include <cstdint>
+#include <deque>
+#include <functional>
+#include <limits>
+#include <map>
 #include <optional>
 #include <queue>
+#include <set>
+#include <sstream>
+#include <stdexcept>
+#include <string>
+#include <unordered_map>
+#include <utility>
+#include <vector>
+
+struct AccountStateWrite {
+    std::string key;
+    std::string lt;
+    std::string state;
+    std::string interfaces;
+};
+
+struct RedisWritePlan {
+    std::string trace_key;
+    std::vector<std::string> node_fields_to_delete;
+    std::vector<TraceStateIndexRef> indexes_to_remove;
+    std::vector<TraceStateIndexRef> indexes_to_add;
+    std::vector<std::pair<std::string, std::string>> fields_to_set;
+    std::vector<AccountStateWrite> account_states;
+    std::string raw_external_message_hash;
+    std::vector<std::pair<std::string, std::string>> publications;
+};
+
+struct RedisWriteBatch {
+    std::vector<RedisWritePlan> plans;
+
+    void discard_trace_publications() {
+        for (auto& plan : plans) {
+            plan.publications.clear();
+        }
+    }
+};
 
 namespace {
 
 constexpr bool kPipelineTransactionCommands = false;
 constexpr bool kCreateDedicatedTransactionConnection = false;
-constexpr const char* kNewTraceChannel = "new_trace"; // for classsifier and others
-constexpr const char* kNewPendingTraceChannel = "new_pending_trace"; // for streaming only
+constexpr std::size_t kMaxConcurrentWrites = 4;
+constexpr std::size_t kMaxQueuedTraceUpdates = 10000;
+constexpr std::size_t kMaxCachedTraceNodes = 1000;
+// A normal pending -> confirmed -> finalized lifecycle takes only a few
+// seconds. Keep a generous margin without retaining every trace until Redis
+// read-model TTL (30-60 seconds).
+constexpr double kTraceStateRetentionSeconds = 10.0;
+constexpr double kEvictionIntervalSeconds = 2.0;
+
+constexpr const char* kNewTraceChannel = "new_trace";
+constexpr const char* kNewPendingTraceChannel = "new_pending_trace";
+
+constexpr const char* kUpdateAccountStateScript = R"(
+    local cur = redis.call('HGET', KEYS[1], 'lt')
+    local cur_num = tonumber(cur)
+    local new_num = tonumber(ARGV[1])
+    if (not cur_num) or (new_num > cur_num) then
+        redis.call('HSET', KEYS[1], 'lt', ARGV[1], 'state', ARGV[2], 'interfaces', ARGV[3])
+        redis.call('PUBLISH', 'new_account_state', KEYS[1])
+    end
+    redis.call('EXPIRE', KEYS[1], 60)
+    return 1
+)";
 
 std::string finality_name(FinalityState finality) {
     switch (finality) {
@@ -28,323 +94,818 @@ std::string trace_emulator_operation(FinalityState finality) {
     return finality == FinalityState::Emulated ? "emulate" : "read_finalized";
 }
 
-} // namespace
+TraceStateFinality to_state_finality(FinalityState finality) {
+    return static_cast<TraceStateFinality>(static_cast<std::uint8_t>(finality));
+}
 
-class TraceInserter: public td::actor::Actor {
-private:
-    static constexpr size_t kMaxExistingTraceFields = 1000; // to avoid reading and inserting into unexpectedly large trace
-    sw::redis::Transaction transaction_;
-    Trace trace_;
-    td::Promise<td::Unit> promise_;
-    std::string trace_key_;
-    MeasurementPtr measurement_;
-public:
-    TraceInserter(sw::redis::Transaction&& transaction, Trace trace, td::Promise<td::Unit> promise, const MeasurementPtr& measurement) :
-        transaction_(std::move(transaction)), trace_(std::move(trace)), promise_(std::move(promise)), measurement_(measurement) {
+bool is_more_final(FinalityState left, FinalityState right) {
+    return static_cast<std::uint8_t>(left) > static_cast<std::uint8_t>(right);
+}
+
+std::string node_key(const TraceNode& node) {
+    return td::base64_encode(node.node_id.as_slice());
+}
+
+std::string account_key(const block::StdAddress& address) {
+    return std::to_string(address.workchain) + ":" + address.addr.to_hex();
+}
+
+std::string node_fingerprint(const TraceNode& node) {
+    if (node.transaction_root.is_null()) {
+        return {};
     }
+
+    auto fingerprint = td::base64_encode(node.transaction_root->get_hash().as_slice());
+    fingerprint += ":" + account_key(node.address);
+    fingerprint += ":" + std::to_string(static_cast<std::uint8_t>(node.finality_state));
+    fingerprint += ":" + std::to_string(node.mc_block_seqno);
+    fingerprint += ":" + std::to_string(node.block_id.workchain);
+    fingerprint += ":" + std::to_string(node.block_id.shard);
+    fingerprint += ":" + std::to_string(node.block_id.seqno);
+    return fingerprint;
+}
+
+sw::redis::Redis create_redis(const std::string& redis_dsn) {
+    sw::redis::Uri uri(redis_dsn);
+    auto connection_options = uri.connection_options();
+    if (connection_options.connect_timeout == std::chrono::milliseconds{0}) {
+        connection_options.connect_timeout = std::chrono::seconds{2};
+    }
+    if (connection_options.socket_timeout == std::chrono::milliseconds{0}) {
+        connection_options.socket_timeout = std::chrono::seconds{5};
+    }
+
+    auto pool_options = uri.connection_pool_options();
+    pool_options.size = std::max(pool_options.size, kMaxConcurrentWrites);
+    if (pool_options.wait_timeout == std::chrono::milliseconds{0}) {
+        pool_options.wait_timeout = std::chrono::seconds{5};
+    }
+    return sw::redis::Redis(connection_options, pool_options);
+}
+
+struct AcceptedNode {
+    FinalityState finality{FinalityState::Emulated};
+    std::string transaction_hash;
+};
+
+using TraceMetadata = std::map<std::string, std::string>;
+
+struct ActiveTrace {
+    TraceState nodes;
+    TraceMetadata metadata;
+    std::uint64_t update_seq{0};
+    std::optional<std::string> root_account;
+    FinalityState finality{FinalityState::Emulated};
+};
+
+struct TraceTransition {
+    bool needs_redis_write{false};
+    ActiveTrace next_trace;
+    TraceStateDelta node_delta;
+    TraceMetadata metadata_patch;
+    std::vector<AcceptedNode> accepted_nodes;
+    std::size_t cached_nodes_count{0};
+    std::size_t reused_serializations{0};
+    std::string raw_external_message_hash;
+};
+
+struct PreparedNodeUpdate {
+    TraceStateUpdate state_update;
+    std::vector<AcceptedNode> accepted_nodes;
+    std::size_t reused_serializations{0};
+};
+
+struct PreparedTraceUpdate {
+    bool needs_redis_write{false};
+    ActiveTrace next_trace;
+    RedisWritePlan redis;
+};
+
+struct InsertRequest {
+    Trace trace;
+    td::Promise<td::Unit> promise;
+    MeasurementPtr measurement;
+    td::Timer timer;
+};
+
+struct InFlightUpdate {
+    ActiveTrace next_trace;
+    td::Promise<td::Unit> promise;
+};
+
+struct TraceSlot {
+    ActiveTrace current;
+    RedisWriteBatch dirty;
+    td::Timestamp deadline;
+
+    std::deque<InsertRequest> queued;
+    std::optional<InFlightUpdate> in_flight;
+    bool scheduled{false};
+};
+
+void remember_failed_write(TraceSlot& slot,
+                           ActiveTrace next_trace,
+                           RedisWriteBatch batch) {
+    // The logical patch is needed by later partial updates. Its Redis data
+    // commands are replayed with the next patch, but its time-sensitive trace
+    // notifications are not.
+    batch.discard_trace_publications();
+    slot.current = std::move(next_trace);
+    slot.dirty = std::move(batch);
+    slot.deadline = td::Timestamp::in(kTraceStateRetentionSeconds);
+}
+
+void add_metadata_change(const ActiveTrace& current,
+                         TraceTransition& transition,
+                         std::string field,
+                         std::string value) {
+    auto cached = current.metadata.find(field);
+    if (cached == current.metadata.end() || cached->second != value) {
+        transition.metadata_patch.emplace(field, value);
+        transition.next_trace.metadata.insert_or_assign(std::move(field), std::move(value));
+    }
+}
+
+std::vector<std::string> actual_child_keys(const TraceNode& node) {
+    std::vector<std::string> result;
+    result.reserve(node.children.size());
+    for (const auto& child : node.children) {
+        if (child) {
+            result.push_back(node_key(*child));
+        }
+    }
+    return result;
+}
+
+td::Result<TraceStateNode> prepare_state_node(const TraceNode& node,
+                                             const std::string& key,
+                                             const std::string& fingerprint,
+                                             const TraceStateNode* cached,
+                                             const std::string& trace_key,
+                                             std::size_t& reused_serializations) {
+    if (cached && cached->fingerprint == fingerprint) {
+        ++reused_serializations;
+        return *cached;
+    }
+
+    auto redis_node_result = parse_trace_node(node);
+    if (redis_node_result.is_error()) {
+        return redis_node_result.move_as_error_prefix("Failed to parse trace node: ");
+    }
+    auto redis_node = redis_node_result.move_as_ok();
+    if (!redis_node.transaction.in_msg) {
+        return td::Status::Error("Trace transaction has no inbound message");
+    }
+
+    auto parsed_key = td::base64_encode(redis_node.transaction.in_msg->hash.as_slice());
+    if (parsed_key != key) {
+        return td::Status::Error("Trace node_id does not match transaction inbound message hash");
+    }
+
+    std::stringstream buffer;
+    msgpack::pack(buffer, redis_node);
+
+    std::vector<std::string> out_message_keys;
+    out_message_keys.reserve(redis_node.transaction.out_msgs.size());
+    for (const auto& out_message : redis_node.transaction.out_msgs) {
+        out_message_keys.push_back(td::base64_encode(out_message.hash.as_slice()));
+    }
+
+    auto index = TraceStateIndexRef{
+        .index_key = account_key(redis_node.transaction.account),
+        .member = trace_key + ":" + key,
+        .score = redis_node.transaction.lt,
+    };
+    return TraceStateNode{
+        .key = key,
+        .finality = to_state_finality(redis_node.finality),
+        .fingerprint = fingerprint,
+        .serialized = std::make_shared<const std::string>(buffer.str()),
+        .child_keys = std::move(out_message_keys),
+        .index_refs = {std::move(index)},
+    };
+}
+
+td::Result<PreparedNodeUpdate> prepare_node_update(const ActiveTrace& current,
+                                                   const Trace& trace,
+                                                   const std::string& trace_key) {
+    PreparedNodeUpdate prepared;
+    if (!trace.root) {
+        return prepared;
+    }
+
+    prepared.state_update.root_key = node_key(*trace.root);
+
+    std::queue<TraceNode*> queue;
+    queue.push(trace.root.get());
+    std::set<std::string> seen;
+
+    while (!queue.empty()) {
+        auto* node = queue.front();
+        queue.pop();
+        if (!node) {
+            continue;
+        }
+
+        auto key = node_key(*node);
+        if (!seen.insert(key).second) {
+            return td::Status::Error("Incoming trace contains duplicate node_id");
+        }
+        auto fingerprint = node_fingerprint(*node);
+        if (fingerprint.empty()) {
+            return td::Status::Error("Trace node has no transaction cell");
+        }
+
+        auto* cached = current.nodes.find(key);
+        auto child_keys = actual_child_keys(*node);
+        if (cached && cached->finality > to_state_finality(node->finality_state)) {
+            prepared.state_update.nodes.push_back(TraceStateNode{
+                .key = key,
+                .finality = to_state_finality(node->finality_state),
+                .fingerprint = std::move(fingerprint),
+                .child_keys = std::move(child_keys),
+            });
+            continue;
+        }
+
+        auto state_node_result =
+            prepare_state_node(*node,
+                               key,
+                               fingerprint,
+                               cached,
+                               trace_key,
+                               prepared.reused_serializations);
+        if (state_node_result.is_error()) {
+            return state_node_result.move_as_error();
+        }
+        auto state_node = state_node_result.move_as_ok();
+
+        for (const auto& child_key : child_keys) {
+            if (std::find(state_node.child_keys.begin(), state_node.child_keys.end(), child_key) ==
+                state_node.child_keys.end()) {
+                return td::Status::Error("Trace child is not present in parent transaction out messages");
+            }
+        }
+        prepared.state_update.nodes.push_back(std::move(state_node));
+        prepared.accepted_nodes.push_back(AcceptedNode{
+            .finality = node->finality_state,
+            .transaction_hash = td::base64_encode(node->transaction_root->get_hash().as_slice()),
+        });
+
+        for (auto& child : node->children) {
+            if (child) {
+                queue.push(child.get());
+            }
+        }
+    }
+    return prepared;
+}
+
+td::Result<TraceTransition> prepare_trace_transition(const ActiveTrace& current,
+                                                     const Trace& trace,
+                                                     const std::string& trace_key) {
+    TraceTransition transition;
+    transition.cached_nodes_count = current.nodes.nodes().size();
+
+    auto node_update_result = prepare_node_update(current, trace, trace_key);
+    if (node_update_result.is_error()) {
+        return node_update_result.move_as_error();
+    }
+    auto node_update = node_update_result.move_as_ok();
+    transition.accepted_nodes = std::move(node_update.accepted_nodes);
+    transition.reused_serializations = node_update.reused_serializations;
+
+    if (transition.accepted_nodes.empty()) {
+        return transition;
+    }
+
+    auto state_change = current.nodes.prepare(node_update.state_update);
+    if (state_change.resulting_nodes.size() > kMaxCachedTraceNodes) {
+        return td::Status::Error("Trace contains more than " + std::to_string(kMaxCachedTraceNodes) +
+                                 " cached nodes");
+    }
+
+    transition.node_delta = std::move(state_change.delta);
+    transition.next_trace.nodes.apply(std::move(state_change));
+    transition.next_trace.metadata = current.metadata;
+    transition.next_trace.update_seq = current.update_seq;
+    transition.next_trace.root_account = current.root_account;
+    transition.next_trace.finality = current.finality;
+
+    for (const auto& [address, interfaces] : trace.interfaces) {
+        auto redis_interfaces = parse_interfaces(interfaces);
+        std::stringstream buffer;
+        msgpack::pack(buffer, redis_interfaces);
+        add_metadata_change(current, transition, account_key(address), buffer.str());
+    }
+
+    auto root_account = account_key(trace.root->address);
+    transition.raw_external_message_hash = td::base64_encode(trace.ext_in_msg_hash.as_slice());
+    if (node_update.state_update.root_key == transition.raw_external_message_hash) {
+        transition.next_trace.root_account = std::move(root_account);
+    }
+
+    auto root_account_it = trace.emulated_accounts.find(trace.root->address);
+    if (root_account_it != trace.emulated_accounts.end() && root_account_it->second.code.not_null()) {
+        add_metadata_change(
+            current,
+            transition,
+            "root_account_code_hash",
+            td::base64_encode(root_account_it->second.code->get_hash().as_slice()));
+    }
+    add_metadata_change(
+        current, transition, "root_node", transition.raw_external_message_hash);
+    add_metadata_change(current,
+                        transition,
+                        "depth_limit_exceeded",
+                        trace.tx_limit_exceeded ? "1" : "0");
+
+    const auto has_semantic_change =
+        !transition.node_delta.empty() || !transition.metadata_patch.empty();
+    if (has_semantic_change) {
+        if (current.update_seq == std::numeric_limits<std::uint64_t>::max()) {
+            return td::Status::Error("Trace update_seq overflow");
+        }
+        transition.next_trace.update_seq = current.update_seq + 1;
+    }
+
+    transition.next_trace.finality = trace.root->finality_state;
+    if (is_more_final(current.finality, transition.next_trace.finality)) {
+        transition.next_trace.finality = current.finality;
+    }
+    // Exact duplicates still refresh legacy TTLs and notifications.
+    transition.needs_redis_write = true;
+    return transition;
+}
+
+td::Status append_account_state_writes(RedisWritePlan& plan, const Trace& trace) {
+    for (const auto& [address, account] : trace.committed_accounts) {
+        auto redis_account_result = parse_account(account);
+        if (redis_account_result.is_error()) {
+            return redis_account_result.move_as_error_prefix("Failed to parse account: ");
+        }
+
+        std::stringstream state_buffer;
+        msgpack::pack(state_buffer, redis_account_result.move_as_ok());
+
+        std::stringstream interfaces_buffer;
+        auto interfaces = trace.committed_interfaces.find(address);
+        if (interfaces != trace.committed_interfaces.end()) {
+            msgpack::pack(interfaces_buffer, parse_interfaces(interfaces->second));
+        }
+
+        std::string prefix;
+        switch (trace.root->finality_state) {
+            case FinalityState::Finalized:
+                prefix = "account_finalized:";
+                break;
+            case FinalityState::Confirmed:
+                prefix = "account_confirmed:";
+                break;
+            case FinalityState::Emulated:
+                return td::Status::Error("Emulated trace contains committed account states");
+        }
+        plan.account_states.push_back(AccountStateWrite{
+            .key = prefix + account_key(address),
+            .lt = std::to_string(account.last_trans_lt_),
+            .state = state_buffer.str(),
+            .interfaces = interfaces_buffer.str(),
+        });
+    }
+    return td::Status::OK();
+}
+
+void append_publications(RedisWritePlan& plan,
+                         const TraceTransition& transition,
+                         const Trace& trace,
+                         const std::string& trace_key) {
+    std::string committed_transactions = trace_key + ":";
+    bool has_committed_transactions = false;
+    bool has_pending_transactions = false;
+    for (const auto& accepted : transition.accepted_nodes) {
+        if (accepted.finality == FinalityState::Emulated) {
+            has_pending_transactions = true;
+            continue;
+        }
+        if (has_committed_transactions) {
+            committed_transactions += ",";
+        }
+        committed_transactions += accepted.transaction_hash;
+        has_committed_transactions = true;
+    }
+
+    if (has_committed_transactions) {
+        auto channel = trace.root->finality_state == FinalityState::Finalized
+                           ? "new_finalized_txs"
+                           : "new_confirmed_txs";
+        plan.publications.emplace_back(channel, committed_transactions);
+        plan.publications.emplace_back("new_commited_txs", committed_transactions);
+    }
+    if (has_pending_transactions) {
+        plan.publications.emplace_back(kNewPendingTraceChannel, trace_key);
+    }
+    plan.publications.emplace_back(kNewTraceChannel, trace_key);
+}
+
+td::Result<RedisWritePlan> build_redis_plan(const TraceTransition& transition,
+                                            const Trace& trace,
+                                            const std::string& trace_key) {
+    RedisWritePlan plan;
+    plan.trace_key = trace_key;
+    plan.node_fields_to_delete = transition.node_delta.removed_node_keys;
+    plan.indexes_to_remove = transition.node_delta.removed_index_refs;
+    plan.indexes_to_add = transition.node_delta.added_index_refs;
+    plan.raw_external_message_hash = transition.raw_external_message_hash;
+
+    plan.fields_to_set.reserve(transition.node_delta.upserted_nodes.size() +
+                               transition.metadata_patch.size() + 1);
+    for (const auto& node : transition.node_delta.upserted_nodes) {
+        if (!node.serialized) {
+            return td::Status::Error("Cannot materialize trace node without serialized payload");
+        }
+        plan.fields_to_set.emplace_back(node.key, *node.serialized);
+    }
+    for (const auto& [field, value] : transition.metadata_patch) {
+        plan.fields_to_set.emplace_back(field, value);
+    }
+    if (!transition.node_delta.empty() || !transition.metadata_patch.empty()) {
+        plan.fields_to_set.emplace_back(
+            "update_seq", std::to_string(transition.next_trace.update_seq));
+    }
+
+    auto account_states_status = append_account_state_writes(plan, trace);
+    if (account_states_status.is_error()) {
+        return account_states_status;
+    }
+    append_publications(plan, transition, trace, trace_key);
+    return plan;
+}
+
+void fill_measurement(const TraceTransition& transition,
+                      const Trace& trace,
+                      const MeasurementPtr& measurement) {
+    if (!measurement) {
+        return;
+    }
+
+    measurement->set_otel_attribute(
+        "ton.trace_state.accepted_nodes_count",
+        static_cast<std::int64_t>(transition.accepted_nodes.size()));
+    if (!trace.root) {
+        return;
+    }
+    measurement->set_otel_attribute(
+        "ton.trace_state.cached_nodes_count",
+        static_cast<std::int64_t>(transition.cached_nodes_count));
+    measurement->set_otel_attribute(
+        "ton.trace_state.reused_serializations_count",
+        static_cast<std::int64_t>(transition.reused_serializations));
+    if (!transition.needs_redis_write) {
+        return;
+    }
+
+    measurement->set_finality(finality_name(trace.root->finality_state));
+    measurement->set_operation(trace_emulator_operation(trace.root->finality_state));
+    measurement->set_out_channel(kNewTraceChannel);
+    measurement->set_otel_attribute(
+        "ton.trace_state.upserted_nodes_count",
+        static_cast<std::int64_t>(transition.node_delta.upserted_nodes.size()));
+    measurement->set_otel_attribute(
+        "ton.trace_state.removed_nodes_count",
+        static_cast<std::int64_t>(transition.node_delta.removed_node_keys.size()));
+    measurement->set_otel_attribute(
+        "ton.trace_state.update_seq",
+        static_cast<std::int64_t>(transition.next_trace.update_seq));
+}
+
+void append_otel_propagation(const MeasurementPtr& measurement, RedisWritePlan& redis_plan) {
+    if (!measurement) {
+        return;
+    }
+    for (const auto& [field, value] : measurement->otel_propagation_fields()) {
+        redis_plan.fields_to_set.emplace_back(field, value);
+    }
+}
+
+td::Result<PreparedTraceUpdate> prepare_trace_update(const ActiveTrace& current,
+                                                     const Trace& trace,
+                                                     const std::string& trace_key,
+                                                     const MeasurementPtr& measurement) {
+    auto transition_result = prepare_trace_transition(current, trace, trace_key);
+    if (transition_result.is_error()) {
+        return transition_result.move_as_error();
+    }
+    auto transition = transition_result.move_as_ok();
+    fill_measurement(transition, trace, measurement);
+
+    if (!transition.needs_redis_write) {
+        return PreparedTraceUpdate{};
+    }
+
+    auto redis_result = build_redis_plan(transition, trace, trace_key);
+    if (redis_result.is_error()) {
+        return redis_result.move_as_error();
+    }
+    auto redis = redis_result.move_as_ok();
+    append_otel_propagation(measurement, redis);
+
+    PreparedTraceUpdate prepared;
+    prepared.needs_redis_write = true;
+    prepared.next_trace = std::move(transition.next_trace);
+    prepared.redis = std::move(redis);
+    return prepared;
+}
+
+void append_redis_commands(sw::redis::Transaction& transaction, const RedisWritePlan& plan) {
+    if (!plan.node_fields_to_delete.empty()) {
+        transaction.hdel(plan.trace_key,
+                         plan.node_fields_to_delete.begin(),
+                         plan.node_fields_to_delete.end());
+    }
+    for (const auto& index : plan.indexes_to_remove) {
+        transaction.zrem(index.index_key, index.member);
+    }
+    for (const auto& index : plan.indexes_to_add) {
+        transaction.zadd(index.index_key, index.member, index.score);
+    }
+    if (!plan.fields_to_set.empty()) {
+        transaction.hset(plan.trace_key,
+                         plan.fields_to_set.begin(),
+                         plan.fields_to_set.end());
+    }
+    for (const auto& account : plan.account_states) {
+        transaction.eval(kUpdateAccountStateScript,
+                         {account.key},
+                         {account.lt, account.state, account.interfaces});
+    }
+
+    auto message_key = "tr_in_msg:" + plan.raw_external_message_hash;
+    transaction.set(message_key, plan.trace_key);
+    transaction.expire(message_key, 600);
+
+    for (const auto& [channel, message] : plan.publications) {
+        transaction.publish(channel, message);
+    }
+}
+
+class RedisTraceWriter : public td::actor::Actor {
+public:
+    using Completion = std::function<void(td::Status, RedisWriteBatch)>;
+
+    RedisTraceWriter(sw::redis::Transaction&& transaction,
+                     RedisWriteBatch batch,
+                     Completion completion,
+                     td::Timer timer)
+        : transaction_(std::move(transaction))
+        , batch_(std::move(batch))
+        , completion_(std::move(completion))
+        , timer_(timer) {
+    }
+
+private:
+    sw::redis::Transaction transaction_;
+    RedisWriteBatch batch_;
+    Completion completion_;
+    td::Timer timer_;
 
     void start_up() override {
-        td::Timer timer;
+        auto status = td::Status::OK();
         try {
-            std::queue<TraceNode*> queue;
-        
-            std::vector<std::string> tx_keys_to_delete;
-            std::vector<std::pair<std::string, std::string>> addr_keys_to_delete;
-            std::vector<std::pair<std::string, RedisTraceNode>> flattened_trace;
-
-            trace_key_ = td::base64_encode(trace_.ext_in_msg_hash_norm.as_slice());
-            auto existing_fields_count = transaction_.redis().hlen(trace_key_);
-            bool has_existing_trace = existing_fields_count > 0;
-            measurement_->set_otel_attribute("ton.redis.existing_fields_count", static_cast<std::int64_t>(existing_fields_count));
-            if (existing_fields_count > static_cast<long long>(kMaxExistingTraceFields)) {
-                LOG(WARNING) << "Skipping trace insert for " << trace_key_
-                             << ": existing trace hash is too large (" << existing_fields_count << " fields)";
-                promise_.set_value(td::Unit());
-                stop();
-                return;
+            for (const auto& plan : batch_.plans) {
+                append_redis_commands(transaction_, plan);
             }
 
-            if (trace_.root) {
-                queue.push(trace_.root.get());
+            auto replies = transaction_.exec();
+            for (std::size_t index = 0; index < replies.size(); ++index) {
+                // Accessing each reply makes redis-plus-plus surface errors
+                // returned by individual commands inside EXEC.
+                replies.get(index);
             }
-
-            while (!queue.empty()) {
-                TraceNode* current = queue.front();
-                queue.pop();
-                if (!current) {
-                    continue;
-                }
-
-                auto redis_node_r = parse_trace_node(*current);
-                if (redis_node_r.is_error()) {
-                    promise_.set_error(redis_node_r.move_as_error_prefix("Failed to parse trace node: "));
-                    stop();
-                    return;
-                }
-                auto redis_node = redis_node_r.move_as_ok();
-                auto msg_hash_key = td::base64_encode(redis_node.transaction.in_msg.value().hash.as_slice());
-
-                // if existing node is more advanced (e.g. it's finalized, but we are inserting emulated), skip subtree
-                std::optional<RedisTraceNode> existing_node;
-                if (has_existing_trace) {
-                    existing_node = load_existing_node(trace_key_, msg_hash_key);
-                }
-                if (existing_node &&
-                    static_cast<int>(existing_node->finality) > static_cast<int>(redis_node.finality)) {
-                    continue;
-                }
-
-                for (auto& child : current->children) {
-                    if (child) {
-                        queue.push(child.get());
-                    }
-                }
-
-                if (has_existing_trace && redis_node.finality != FinalityState::Emulated) {
-                    delete_db_subtree(msg_hash_key, tx_keys_to_delete, addr_keys_to_delete,
-                                      existing_node ? &*existing_node : nullptr);
-                }
-
-                flattened_trace.emplace_back(std::move(msg_hash_key), std::move(redis_node));
-            }
-
-            if (flattened_trace.empty()) {
-                measurement_->set_otel_attribute("ton.redis.flattened_nodes_count", static_cast<std::int64_t>(0));
-                promise_.set_value(td::Unit());
-                stop();
-                return;
-            }
-            measurement_->set_otel_attribute("ton.redis.flattened_nodes_count", static_cast<std::int64_t>(flattened_trace.size()));
-            measurement_->set_otel_attribute("ton.redis.deleted_nodes_count", static_cast<std::int64_t>(tx_keys_to_delete.size()));
-
-            // delete previously emulated trace
-            if (tx_keys_to_delete.size() > 0) {
-                transaction_.hdel(trace_key_, tx_keys_to_delete.begin(), tx_keys_to_delete.end());
-            }
-
-            for (const auto& [addr, by_addr_key] : addr_keys_to_delete) {
-                transaction_.zrem(addr, by_addr_key);
-            }
-
-            std::string commited_txs_hashes = trace_key_ + ":";
-            bool has_commited_txs = false;
-            bool has_pending_txs = false;
-            std::vector<std::pair<std::string, std::string>> trace_fields_to_set;
-            trace_fields_to_set.reserve(flattened_trace.size() + trace_.interfaces.size() + 4);
-
-            // insert new trace
-            for (const auto& entry : flattened_trace) {
-                const auto& node_key = entry.first;
-                const auto& node = entry.second;
-                std::stringstream buffer;
-                msgpack::pack(buffer, node);
-
-                trace_fields_to_set.emplace_back(node_key, buffer.str());
-
-                auto addr_raw = std::to_string(node.transaction.account.workchain) + ":" + node.transaction.account.addr.to_hex();
-                auto by_addr_key = trace_key_ + ":" + td::base64_encode(node.transaction.in_msg.value().hash.as_slice());
-                transaction_.zadd(addr_raw, by_addr_key, node.transaction.lt);
-
-                if (node.finality == FinalityState::Emulated) {
-                    has_pending_txs = true;
-                } else {
-                    if (has_commited_txs) {
-                        commited_txs_hashes += ",";
-                    }
-                    commited_txs_hashes += td::base64_encode(node.transaction.hash.as_slice());
-                    has_commited_txs = true;
-                }
-            }
-
-            // insert interfaces
-            for (const auto& [addr, interfaces] : trace_.interfaces) {
-                auto interfaces_redis = parse_interfaces(interfaces);
-                std::stringstream buffer;
-                msgpack::pack(buffer, interfaces_redis);
-                auto addr_raw = std::to_string(addr.workchain) + ":" + addr.addr.to_hex();
-                trace_fields_to_set.emplace_back(addr_raw, buffer.str());
-            }
-            
-            for (const auto& [addr, account] : trace_.committed_accounts) {
-                auto account_redis_r = parse_account(account);
-                if (account_redis_r.is_error()) {
-                    promise_.set_error(account_redis_r.move_as_error_prefix("Failed to parse account: "));
-                    stop();
-                    return;
-                }
-                auto account_redis = account_redis_r.move_as_ok();
-                std::stringstream state_buffer;
-                msgpack::pack(state_buffer, account_redis);
-                auto addr_raw = std::to_string(addr.workchain) + ":" + addr.addr.to_hex();
-
-                std::stringstream if_buffer;
-                auto interfaces = trace_.committed_interfaces.find(addr);
-                if (interfaces != trace_.committed_interfaces.end()) {
-                    auto interfaces_redis = parse_interfaces(interfaces->second);
-                    msgpack::pack(if_buffer, interfaces_redis);
-                }
-                
-                const std::string script = R"(
-                    local cur = redis.call('HGET', KEYS[1], 'lt')
-                    local cur_num = tonumber(cur)
-                    local new_num = tonumber(ARGV[1])
-                    if (not cur_num) or (new_num > cur_num) then
-                        redis.call('HSET', KEYS[1], 'lt', ARGV[1], 'state', ARGV[2], 'interfaces', ARGV[3])
-                        redis.call('PUBLISH', 'new_account_state', KEYS[1])
-                    end
-                    redis.call('EXPIRE', KEYS[1], 60)
-                    return 1
-                )";
-                std::string key_prefix;
-                switch (trace_.root->finality_state) {
-                    case FinalityState::Finalized:
-                        key_prefix = "account_finalized:";
-                        break;
-                    case FinalityState::Confirmed:
-                        key_prefix = "account_confirmed:";
-                        break;
-                    default:
-                        UNREACHABLE();
-                }
-                auto key = key_prefix + addr_raw;
-                transaction_.eval(script, {key}, {std::to_string(account.last_trans_lt_), state_buffer.str(), if_buffer.str()});
-            }
-
-            if (has_commited_txs) {
-                if (trace_.root->finality_state == FinalityState::Finalized) {
-                    transaction_.publish("new_finalized_txs", commited_txs_hashes);
-                } else {
-                    transaction_.publish("new_confirmed_txs", commited_txs_hashes);
-                }
-            }
-
-            if (has_commited_txs) {
-                transaction_.publish("new_commited_txs", commited_txs_hashes);
-            }
-
-            if (trace_.root) {
-                auto it = trace_.emulated_accounts.find(trace_.root->address);
-                if (it != trace_.emulated_accounts.end()) {
-                    const auto& [address, account] = *it;
-                    if (account.code.not_null()) {
-                        trace_fields_to_set.emplace_back(
-                            "root_account_code_hash",
-                            td::base64_encode(account.code->get_hash().as_slice()));
-                    }
-                }
-            }
-            if (trace_.root) {
-                measurement_->set_finality(finality_name(trace_.root->finality_state));
-                measurement_->set_operation(trace_emulator_operation(trace_.root->finality_state));
-            }
-            measurement_->set_out_channel(kNewTraceChannel);
-            trace_fields_to_set.emplace_back("root_node", td::base64_encode(trace_.ext_in_msg_hash.as_slice()));
-            trace_fields_to_set.emplace_back("depth_limit_exceeded", trace_.tx_limit_exceeded ? "1" : "0");
-            auto otel_fields = measurement_->otel_propagation_fields();
-            trace_fields_to_set.reserve(trace_fields_to_set.size() + otel_fields.size());
-            for (const auto& [field, value] : otel_fields) {
-                trace_fields_to_set.emplace_back(field, value);
-            }
-            if (!trace_fields_to_set.empty()) {
-                transaction_.hset(trace_key_, trace_fields_to_set.begin(), trace_fields_to_set.end());
-            }
-            
-            transaction_.set("tr_in_msg:" + td::base64_encode(trace_.ext_in_msg_hash.as_slice()), trace_key_);
-            transaction_.expire("tr_in_msg:" + td::base64_encode(trace_.ext_in_msg_hash.as_slice()), 600);
-
-            if (has_pending_txs) {
-                transaction_.publish(kNewPendingTraceChannel, trace_key_);
-            }
-            transaction_.publish(kNewTraceChannel, trace_key_);
-            
-            transaction_.exec();
-
-            promise_.set_value(td::Unit());
-        } catch (const vm::VmError &e) {
-            promise_.set_error(td::Status::Error("Got VmError while inserting trace: " + std::string(e.get_msg())));
-        } catch (const std::exception &e) {
-            promise_.set_error(td::Status::Error("Got exception while inserting trace: " + std::string(e.what())));
+        } catch (const std::exception& error) {
+            status = td::Status::Error("Failed to write trace to Redis: " +
+                                       std::string(error.what()));
+        } catch (...) {
+            status = td::Status::Error("Failed to write trace to Redis: unknown error");
         }
-        g_statistics.record_time(INSERT_TRACE, timer.elapsed() * 1e3);
+        g_statistics.record_time(INSERT_TRACE, timer_.elapsed() * 1e3);
+        completion_(std::move(status), std::move(batch_));
         stop();
-    }
-    void delete_db_subtree(std::string key,
-                           std::vector<std::string>& tx_keys,
-                           std::vector<std::pair<std::string, std::string>>& addr_keys,
-                           const RedisTraceNode* cached_node = nullptr) {
-        struct Frame {
-            std::string key;
-            std::optional<RedisTraceNode> node;
-            bool expanded{false};
-        };
-
-        std::vector<Frame> stack;
-        stack.push_back(Frame{std::move(key), std::nullopt, false});
-        if (cached_node) {
-            stack.back().node = *cached_node;
-        }
-
-        while (!stack.empty()) {
-            auto& frame = stack.back();
-
-            if (!frame.node.has_value()) {
-                auto node_raw = transaction_.redis().hget(trace_key_, frame.key);
-                if (!node_raw) {
-                    stack.pop_back();
-                    continue;
-                }
-                msgpack::unpacked result;
-                msgpack::unpack(result, node_raw->data(), node_raw->size());
-                frame.node.emplace();
-                result.get().convert(*frame.node);
-            }
-
-            if (!frame.expanded) {
-                frame.expanded = true;
-                std::vector<std::string> child_keys;
-                child_keys.reserve(frame.node->transaction.out_msgs.size());
-                for (const auto& out_msg : frame.node->transaction.out_msgs) {
-                    child_keys.push_back(td::base64_encode(out_msg.hash.as_slice()));
-                }
-                // Reverse order keeps child processing equivalent to recursive DFS.
-                for (auto it = child_keys.rbegin(); it != child_keys.rend(); ++it) {
-                    stack.push_back(Frame{std::move(*it), std::nullopt, false});
-                }
-                continue;
-            }
-
-            tx_keys.push_back(frame.key);
-            auto addr_raw = std::to_string(frame.node->transaction.account.workchain) + ":" + frame.node->transaction.account.addr.to_hex();
-            auto by_addr_key = trace_key_ + ":" + td::base64_encode(frame.node->transaction.in_msg.value().hash.as_slice());
-            addr_keys.push_back(std::make_pair(addr_raw, by_addr_key));
-
-            stack.pop_back();
-        }
-    }
-
-    std::optional<RedisTraceNode> load_existing_node(const std::string& trace_key, const std::string& node_key) {
-        auto existing = transaction_.redis().hget(trace_key, node_key);
-        if (!existing) {
-            return std::nullopt;
-        }
-        try {
-            RedisTraceNode node;
-            msgpack::unpacked result;
-            msgpack::unpack(result, existing->data(), existing->size());
-            result.get().convert(node);
-            return node;
-        } catch (const std::exception& e) {
-            LOG(ERROR) << "Failed to parse existing trace node for " << node_key << ": " << e.what();
-            return std::nullopt;
-        }
     }
 };
 
-void RedisInsertManager::insert(Trace trace, td::Promise<td::Unit> promise, MeasurementPtr measurement) {
-    td::actor::create_actor<TraceInserter>(
-        "TraceInserter",
-        redis_.transaction(kPipelineTransactionCommands, kCreateDedicatedTransactionConnection),
-        std::move(trace),
-        std::move(promise),
-        measurement).release();
+}  // namespace
+
+struct RedisInsertManager::Impl {
+    explicit Impl(const std::string& redis_dsn)
+        : redis(create_redis(redis_dsn)) {
+    }
+
+    sw::redis::Redis redis;
+    std::unordered_map<std::string, TraceSlot> traces;
+    std::deque<std::string> ready_traces;
+    std::size_t queued_updates{0};
+    std::size_t active_writes{0};
+};
+
+RedisInsertManager::RedisInsertManager(const std::string& redis_dsn)
+    : impl_(std::make_unique<Impl>(redis_dsn)) {
+}
+
+RedisInsertManager::~RedisInsertManager() = default;
+
+void RedisInsertManager::start_up() {
+    alarm_timestamp() = td::Timestamp::in(kEvictionIntervalSeconds);
+}
+
+void RedisInsertManager::schedule_trace(const std::string& trace_key) {
+    auto it = impl_->traces.find(trace_key);
+    if (it == impl_->traces.end()) {
+        return;
+    }
+    auto& slot = it->second;
+    if (slot.scheduled || slot.in_flight || slot.queued.empty()) {
+        return;
+    }
+    slot.scheduled = true;
+    impl_->ready_traces.push_back(trace_key);
+}
+
+void RedisInsertManager::insert(Trace trace,
+                                td::Promise<td::Unit> promise,
+                                MeasurementPtr measurement) {
+    auto trace_key = td::base64_encode(trace.ext_in_msg_hash_norm.as_slice());
+    if (impl_->queued_updates >= kMaxQueuedTraceUpdates) {
+        promise.set_error(td::Status::Error(
+            "Redis trace writer queue is full (" + std::to_string(kMaxQueuedTraceUpdates) + ")"));
+        return;
+    }
+
+    auto& slot = impl_->traces[trace_key];
+    if (!slot.deadline) {
+        slot.deadline = td::Timestamp::in(kTraceStateRetentionSeconds);
+    }
+    slot.queued.push_back(InsertRequest{
+        .trace = std::move(trace),
+        .promise = std::move(promise),
+        .measurement = std::move(measurement),
+        .timer = td::Timer(),
+    });
+    ++impl_->queued_updates;
+    schedule_trace(trace_key);
+    start_next_writes();
+}
+
+void RedisInsertManager::start_next_writes() {
+    while (impl_->active_writes < kMaxConcurrentWrites && !impl_->ready_traces.empty()) {
+        auto trace_key = std::move(impl_->ready_traces.front());
+        impl_->ready_traces.pop_front();
+
+        auto slot_it = impl_->traces.find(trace_key);
+        if (slot_it == impl_->traces.end()) {
+            continue;
+        }
+        auto& slot = slot_it->second;
+        slot.scheduled = false;
+        if (slot.in_flight || slot.queued.empty()) {
+            continue;
+        }
+
+        auto request = std::move(slot.queued.front());
+        slot.queued.pop_front();
+        --impl_->queued_updates;
+
+        td::Result<PreparedTraceUpdate> prepared_result;
+        try {
+            prepared_result =
+                prepare_trace_update(slot.current, request.trace, trace_key, request.measurement);
+        } catch (const vm::VmError& error) {
+            prepared_result = td::Status::Error(
+                "Got VmError while preparing trace: " + std::string(error.get_msg()));
+        } catch (const std::exception& error) {
+            prepared_result = td::Status::Error(
+                "Got exception while preparing trace: " + std::string(error.what()));
+        }
+
+        if (prepared_result.is_error()) {
+            request.promise.set_error(prepared_result.move_as_error());
+            g_statistics.record_time(INSERT_TRACE, request.timer.elapsed() * 1e3);
+            schedule_trace(trace_key);
+            continue;
+        }
+
+        auto prepared = prepared_result.move_as_ok();
+        if (!prepared.needs_redis_write) {
+            request.promise.set_value(td::Unit());
+            g_statistics.record_time(INSERT_TRACE, request.timer.elapsed() * 1e3);
+            schedule_trace(trace_key);
+            continue;
+        }
+
+        if (request.measurement) {
+            request.measurement->set_otel_attribute(
+                "ton.trace_state.carried_redis_writes_count",
+                static_cast<std::int64_t>(slot.dirty.plans.size()));
+        }
+        RedisWriteBatch batch = std::move(slot.dirty);
+        batch.plans.push_back(std::move(prepared.redis));
+
+        std::optional<sw::redis::Transaction> transaction;
+        try {
+            transaction.emplace(impl_->redis.transaction(kPipelineTransactionCommands,
+                                                         kCreateDedicatedTransactionConnection));
+        } catch (const std::exception& error) {
+            auto status = td::Status::Error(
+                "Failed to create Redis transaction for trace " + trace_key + ": " + error.what());
+            LOG(ERROR) << status;
+
+            remember_failed_write(
+                slot, std::move(prepared.next_trace), std::move(batch));
+            request.promise.set_error(std::move(status));
+            g_statistics.record_time(INSERT_TRACE, request.timer.elapsed() * 1e3);
+            schedule_trace(trace_key);
+            continue;
+        }
+
+        auto completion =
+            [self = actor_id(this), trace_key](td::Status status, RedisWriteBatch finished_batch) mutable {
+                td::actor::send_closure(self,
+                                        &RedisInsertManager::write_finished,
+                                        std::move(trace_key),
+                                        std::move(status),
+                                        std::move(finished_batch));
+            };
+
+        slot.in_flight.emplace(InFlightUpdate{
+            .next_trace = std::move(prepared.next_trace),
+            .promise = std::move(request.promise),
+        });
+        ++impl_->active_writes;
+
+        td::actor::create_actor<RedisTraceWriter>("RedisTraceWriter",
+                                                   std::move(*transaction),
+                                                   std::move(batch),
+                                                   std::move(completion),
+                                                   request.timer)
+            .release();
+    }
+}
+
+void RedisInsertManager::write_finished(std::string trace_key,
+                                        td::Status status,
+                                        RedisWriteBatch batch) {
+    auto slot_it = impl_->traces.find(trace_key);
+    if (slot_it == impl_->traces.end() || !slot_it->second.in_flight) {
+        LOG(FATAL) << "Got completion for unknown trace write " << trace_key;
+    }
+    --impl_->active_writes;
+
+    auto& slot = slot_it->second;
+    auto in_flight = std::move(*slot.in_flight);
+    slot.in_flight.reset();
+
+    if (status.is_error()) {
+        auto error = status.to_string();
+        LOG(ERROR) << "Redis write failed for trace " << trace_key
+                   << "; carrying its data changes into the next patch: " << error;
+        remember_failed_write(
+            slot, std::move(in_flight.next_trace), std::move(batch));
+        in_flight.promise.set_error(std::move(status));
+    } else {
+        slot.current = std::move(in_flight.next_trace);
+        slot.deadline = td::Timestamp::in(kTraceStateRetentionSeconds);
+        in_flight.promise.set_value(td::Unit());
+    }
+
+    schedule_trace(trace_key);
+    start_next_writes();
+}
+
+void RedisInsertManager::alarm() {
+    auto now = td::Timestamp::now();
+    for (auto it = impl_->traces.begin(); it != impl_->traces.end();) {
+        auto& slot = it->second;
+        if (!slot.in_flight && slot.queued.empty() && !slot.scheduled && slot.deadline &&
+            slot.deadline.is_in_past(now)) {
+            it = impl_->traces.erase(it);
+        } else {
+            ++it;
+        }
+    }
+    alarm_timestamp() = td::Timestamp::in(kEvictionIntervalSeconds);
+}
+
+void RedisInsertManager::tear_down() {
+    for (auto& [_, slot] : impl_->traces) {
+        if (slot.in_flight) {
+            slot.in_flight->promise.set_error(
+                td::Status::Error("RedisInsertManager stopped during trace write"));
+        }
+        for (auto& request : slot.queued) {
+            request.promise.set_error(
+                td::Status::Error("RedisInsertManager stopped before trace write"));
+        }
+    }
+    impl_->traces.clear();
+    impl_->ready_traces.clear();
+    impl_->queued_updates = 0;
 }
