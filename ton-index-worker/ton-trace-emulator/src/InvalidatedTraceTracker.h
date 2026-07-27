@@ -7,6 +7,8 @@
 #include "ton/ton-types.h"
 #include "IndexData.h"
 
+class ITraceInsertManager;
+
 struct BlockIdHasher {
     std::size_t operator()(const ton::BlockId& k) const {
         std::size_t seed = 0;
@@ -52,7 +54,7 @@ struct PendingInvalidation {
 
 class InvalidatedTraceTracker : public td::actor::Actor {
   private:
-    std::string redis_dsn_;
+    td::actor::ActorId<ITraceInsertManager> insert_manager_;
     std::unordered_map<ton::BlockId, std::vector<PendingConfirmedBlock>, BlockIdHasher, BlockIdEq> pending_confirmed_blocks_;
     std::unordered_map<ton::BlockId, FinalizedBlockTraces, BlockIdHasher, BlockIdEq> finalized_block_traces_;
     std::unordered_map<ton::ShardIdFull, PendingInvalidation, ShardIdHasher, ShardIdEq> deferred_invalidations_;
@@ -62,7 +64,8 @@ class InvalidatedTraceTracker : public td::actor::Actor {
     void process_finalized_block(const ton::BlockId& block_id);
 
   public:
-    explicit InvalidatedTraceTracker(std::string redis_dsn) : redis_dsn_(std::move(redis_dsn)) {}
+    explicit InvalidatedTraceTracker(td::actor::ActorId<ITraceInsertManager> insert_manager)
+        : insert_manager_(insert_manager) {}
 
     void register_pending_block(ton::BlockIdExt block_id_ext);
     void add_confirmed_trace(ton::BlockIdExt block_id_ext, td::Bits256 ext_in_hash_norm);

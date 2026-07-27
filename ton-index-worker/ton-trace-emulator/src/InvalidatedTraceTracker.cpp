@@ -1,31 +1,7 @@
 #include "InvalidatedTraceTracker.h"
-#include <sw/redis++/redis++.h>
+#include "TraceInserter.h"
+
 #include <algorithm>
-#include "td/utils/base64.h"
-
-namespace {
-class InvalidatedTracePublisher : public td::actor::Actor {
-private:
-    std::string redis_dsn_;
-    std::vector<td::Bits256> hashes_;
-public:
-    InvalidatedTracePublisher(std::string redis_dsn, std::vector<td::Bits256> hashes)
-        : redis_dsn_(std::move(redis_dsn)), hashes_(std::move(hashes)) {}
-
-    void start_up() override {
-        try {
-            sw::redis::Redis redis(redis_dsn_);
-            for (const auto& hash : hashes_) {
-                LOG(ERROR) << "Publishing invalidated trace: " << td::base64_encode(hash.as_slice());
-                redis.publish("invalidated_traces", td::base64_encode(hash.as_slice()));
-            }
-        } catch (const std::exception& e) {
-            LOG(ERROR) << "Failed to publish invalidated traces: " << e.what();
-        }
-        stop();
-    }
-};
-} // namespace
 
 void InvalidatedTraceTracker::register_pending_block(ton::BlockIdExt block_id_ext) {
     auto& entries = pending_confirmed_blocks_[block_id_ext.id];
@@ -85,7 +61,7 @@ void InvalidatedTraceTracker::process_finalized_block(const ton::BlockId& block_
             }
         }
         if (!to_publish.empty()) {
-            td::actor::create_actor<InvalidatedTracePublisher>("InvalidatedTracePublisher", redis_dsn_, std::move(to_publish)).release();
+            publish_invalidated_traces(std::move(to_publish));
         }
         deferred_invalidations_.erase(candidate_it);
     }
@@ -122,5 +98,6 @@ void InvalidatedTraceTracker::publish_invalidated_traces(std::vector<td::Bits256
     if (traces.empty()) {
         return;
     }
-    td::actor::create_actor<InvalidatedTracePublisher>("InvalidatedTracePublisher", redis_dsn_, std::move(traces)).release();
+    td::actor::send_closure(
+        insert_manager_, &ITraceInsertManager::invalidate, std::move(traces));
 }

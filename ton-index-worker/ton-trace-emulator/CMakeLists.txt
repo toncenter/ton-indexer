@@ -2,6 +2,7 @@ cmake_minimum_required(VERSION 3.16)
 
 add_library(ton-trace-state STATIC
     src/TraceState.cpp
+    src/TraceLifecycle.cpp
 )
 target_include_directories(ton-trace-state PUBLIC src)
 target_compile_features(ton-trace-state PUBLIC cxx_std_20)
@@ -59,6 +60,7 @@ install(TARGETS ton-trace-emulator RUNTIME DESTINATION bin)
 
 add_executable(test-ton-trace-state
     test/TraceStateTest.cpp
+    test/TraceLifecycleTest.cpp
 )
 target_link_libraries(test-ton-trace-state PRIVATE ton-trace-state tdutils td-test-main)
 target_compile_features(test-ton-trace-state PRIVATE cxx_std_20)

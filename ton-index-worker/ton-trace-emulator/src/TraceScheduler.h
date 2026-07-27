@@ -110,7 +110,8 @@ class TraceEmulatorScheduler : public td::actor::Actor {
         td::actor::send_closure(insert_manager, &ITraceInsertManager::insert, std::move(trace), std::move(promise), measurement);
       };
       external_message_admission_ = std::make_shared<ExternalMessageAdmission>();
-      invalidated_trace_tracker_ = td::actor::create_actor<InvalidatedTraceTracker>("InvalidatedTraceTracker", redis_dsn_);
+      invalidated_trace_tracker_ = td::actor::create_actor<InvalidatedTraceTracker>(
+          "InvalidatedTraceTracker", insert_manager_.get());
     };
 
     virtual void start_up() override;

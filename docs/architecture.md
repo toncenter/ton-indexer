@@ -131,8 +131,11 @@ Emulation API принимает external message и эмулирует трей
 
 ### Streaming API
 
-Streaming API позволяет подписаться на pending -> confirmed -> finalized транзакции и actions. TTL tracker очищает временные и завершённые pending
-traces в соответствии с настроенной политикой хранения.
+Streaming API позволяет подписаться на pending -> confirmed -> finalized
+транзакции и actions. `ton-trace-emulator` хранит активные traces в памяти и
+очищает их временное представление в Redis по настроенной политике хранения.
+Перед запуском обработки emulator очищает выбранную логическую Redis DB через
+`FLUSHDB`; сохранение pending state между рестартами не поддерживается.
 Документация: https://gist.github.com/dungeon-master-666/98db8d73e9cd9a1b7802bc06ded5b155
 
 ## Масштабирование и отказоустойчивость
