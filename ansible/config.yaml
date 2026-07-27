@@ -40,7 +40,7 @@ services:
     additional_args: --emulated-trace-tasks --emulated-traces-redis-channel classifierchannel
     environment: ton_indexer_redis_dsn=redis://localhost:6379
   trace_emulator:
-    additional_args: --working-dir /var/ton-trace-emulator --db /var/ton-work/db --threads 16 --redis "redis://{{ pendings_redis_password }}@localhost:6379" --addr "{{ host_addr }}" --global-config /var/ton-work/etc/global.config.json 2>&1
+    additional_args: --working-dir /var/ton-trace-emulator --db /var/ton-work/db --threads 16 --redis "redis://{{ pendings_redis_password }}@localhost:6379" --trace-root-pending-ttl 30 --trace-open-ttl 300 --trace-completed-ttl 30 --addr "{{ host_addr }}" --global-config /var/ton-work/etc/global.config.json 2>&1
     workdir: "{{ deploy_path }}"
   pendings_action_classifier:
     additional_args: --emulated-traces --batch-time-window=0.2
@@ -50,7 +50,5 @@ services:
     environment:
       - "TON_INDEXER_REDIS_DSN=redis://127.0.0.1:6379"
       - "TON_INDEXER_PG_DSN=postgresql+asyncpg://{{ pg_master_user }}:{{ pg_master_password }}@{{ pg_master_host }}:5432/{{ pg_database }}?application_name={{ stack_name }}__index_classifier"
-  trace_ttl_tracker:
-    additional_args: --ttl 1m "--redis-dsn=redis://:{{ pendings_redis_password }}@localhost:6379" --synthetic-ttl=30s --completed-ttl=30s --enable-cleanup --cleanup-interval=1h
   streaming_api:
     additional_args: -testnet -redis "redis://:{{ pendings_redis_password }}@localhost:6379" -pg "postgresql://{{ pg_readonly_user }}:{{ pg_readonly_password }}@localhost:5432/{{ pg_database }}"

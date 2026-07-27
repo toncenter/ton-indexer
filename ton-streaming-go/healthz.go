@@ -15,12 +15,10 @@ import (
 const (
 	healthKeyTraceEmulator   = "health:ton-trace-emulator"
 	healthKeyEventClassifier = "health:event-classifier"
-	healthKeyTTLTracker      = "health:ton-trace-ttl-tracker"
 
 	finalizedMaxAge    = 15 * time.Second
 	confirmedMaxAge    = 15 * time.Second
 	classifierMaxAge   = 15 * time.Second
-	ttlTrackerMaxAge   = 15 * time.Second
 	healthRedisTimeout = 2 * time.Second
 )
 
@@ -137,7 +135,6 @@ func healthzHandler(rdb *redis.Client) fiber.Handler {
 		pipe := rdb.Pipeline()
 		emulatorCmd := pipe.HGetAll(ctx, healthKeyTraceEmulator)
 		classifierCmd := pipe.HGetAll(ctx, healthKeyEventClassifier)
-		ttlTrackerCmd := pipe.HGetAll(ctx, healthKeyTTLTracker)
 		_, _ = pipe.Exec(ctx)
 
 		now := time.Now().Unix()
@@ -158,12 +155,6 @@ func healthzHandler(rdb *redis.Client) fiber.Handler {
 		applyHeartbeat(&classifierStatus, classifierValues, now, classifierMaxAge)
 		response.OK = response.OK && classifierStatus.OK
 		response.Components["event-classifier"] = classifierStatus
-
-		// ton-trace-ttl-tracker
-		ttlTrackerStatus, ttlTrackerValues := statusFromCmd(ttlTrackerCmd)
-		applyHeartbeat(&ttlTrackerStatus, ttlTrackerValues, now, ttlTrackerMaxAge)
-		response.OK = response.OK && ttlTrackerStatus.OK
-		response.Components["ton-trace-ttl-tracker"] = ttlTrackerStatus
 
 		if response.OK {
 			return c.Status(fiber.StatusOK).JSON(response)
