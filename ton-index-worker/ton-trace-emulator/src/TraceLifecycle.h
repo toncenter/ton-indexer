@@ -17,6 +17,7 @@ enum class TraceLifecycle {
 
 struct TraceRetentionConfig {
     double root_pending_seconds{30.0};
+    double root_replaced_confirmed_seconds{30.0};
     double open_seconds{300.0};
     double completed_seconds{30.0};
 };

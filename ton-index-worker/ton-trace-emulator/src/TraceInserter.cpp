@@ -21,6 +21,7 @@
 #include <string>
 #include <unordered_map>
 #include <utility>
+#include <variant>
 #include <vector>
 
 struct AccountStateWrite {
@@ -100,6 +101,11 @@ TraceStateFinality to_state_finality(FinalityState finality) {
 
 bool is_more_final(FinalityState left, FinalityState right) {
     return static_cast<std::uint8_t>(left) > static_cast<std::uint8_t>(right);
+}
+
+bool contains_real_root(const Trace& trace) {
+    return trace.contains_root_transaction() &&
+           trace.root->finality_state != FinalityState::Emulated;
 }
 
 std::string node_key(const TraceNode& node) {
@@ -186,7 +192,14 @@ struct InsertRequest {
     td::Promise<td::Unit> promise;
     MeasurementPtr measurement;
     td::Timer timer;
+    bool contains_real_root{false};
 };
+
+struct ConfirmedRootReplacedRequest {
+};
+
+using TraceRequest =
+    std::variant<InsertRequest, ConfirmedRootReplacedRequest>;
 
 enum class InFlightKind {
     Update,
@@ -198,13 +211,14 @@ struct InFlightWork {
     ActiveTrace next_trace;
     td::Promise<td::Unit> promise;
     TraceCleanupMode cleanup_mode{TraceCleanupMode::Retention};
+    bool contains_real_root{false};
 };
 
 struct TraceSlot {
     ActiveTrace current;
     RedisWriteBatch dirty;
 
-    std::deque<InsertRequest> queued;
+    std::deque<TraceRequest> queued;
     std::optional<InFlightWork> in_flight;
     bool scheduled{false};
     bool cleanup_requested{false};
@@ -213,6 +227,14 @@ struct TraceSlot {
     td::Timestamp deadline;
     TraceCleanupMode cleanup_mode{TraceCleanupMode::Retention};
 };
+
+void real_root_applied(TraceSlot& slot) {
+    if (slot.cleanup_mode != TraceCleanupMode::ReplacedConfirmedTimeout) {
+        return;
+    }
+    slot.cleanup_requested = false;
+    slot.cleanup_mode = TraceCleanupMode::Retention;
+}
 
 void remember_failed_write(TraceSlot& slot,
                            ActiveTrace next_trace,
@@ -414,7 +436,6 @@ td::Result<TraceTransition> prepare_trace_transition(const ActiveTrace& current,
     if (node_update.state_update.root_key == transition.raw_external_message_hash) {
         transition.next_trace.root_account = std::move(root_account);
     }
-
     auto root_account_it = trace.emulated_accounts.find(trace.root->address);
     if (root_account_it != trace.emulated_accounts.end() && root_account_it->second.code.not_null()) {
         add_metadata_change(
@@ -652,6 +673,7 @@ std::vector<TraceStateIndexRef> collect_cleanup_index_refs(const TraceSlot& slot
 
 bool publishes_invalidation(TraceCleanupMode mode) {
     return mode == TraceCleanupMode::PendingTimeout ||
+           mode == TraceCleanupMode::ReplacedConfirmedTimeout ||
            mode == TraceCleanupMode::Invalidation;
 }
 
@@ -863,19 +885,33 @@ void RedisInsertManager::update_lifecycle(const std::string& trace_key) {
         return;
     }
 
+    if (slot.current.root_account) {
+        impl_->candidates.forget(*slot.current.root_account, trace_key);
+    }
+
     const auto code_hash =
         metadata_value(slot.current, "root_account_code_hash")
             .value_or(std::string{});
+
+    // Continuation patches do not make a replaced root real again. Keep the
+    // dedicated deadline until another confirmed/finalized root patch arrives.
+    if (slot.cleanup_mode == TraceCleanupMode::ReplacedConfirmedTimeout) {
+        if (slot.current.root_account &&
+            wallet_external_messages_compete(code_hash)) {
+            impl_->candidates.remember(*slot.current.root_account, trace_key);
+        }
+        // The serialized root is kept during the grace period, but for
+        // lifecycle transitions it is unresolved until another block accepts it.
+        slot.lifecycle = TraceLifecycle::UnknownRoot;
+        return;
+    }
+
     const bool competing_candidate =
         slot.lifecycle == TraceLifecycle::RootPending &&
         slot.current.root_account.has_value() &&
         wallet_external_messages_compete(code_hash);
 
     std::vector<std::string> traces_to_invalidate;
-    if (slot.current.root_account) {
-        impl_->candidates.forget(*slot.current.root_account, trace_key);
-    }
-
     if (competing_candidate) {
         impl_->candidates.remember(*slot.current.root_account, trace_key);
     } else if (trace_root_became_real(previous_lifecycle, slot.lifecycle) &&
@@ -911,6 +947,7 @@ void RedisInsertManager::insert(Trace trace,
                                 td::Promise<td::Unit> promise,
                                 MeasurementPtr measurement) {
     auto trace_key = td::base64_encode(trace.ext_in_msg_hash_norm.as_slice());
+    const bool real_root = contains_real_root(trace);
     auto slot_it = impl_->traces.find(trace_key);
     if (slot_it != impl_->traces.end() &&
         cleanup_is_terminal(slot_it->second.cleanup_mode)) {
@@ -924,11 +961,19 @@ void RedisInsertManager::insert(Trace trace,
     }
 
     auto& slot = impl_->traces[trace_key];
+    if (real_root &&
+        slot.cleanup_mode == TraceCleanupMode::ReplacedConfirmedTimeout &&
+        (!slot.in_flight || slot.in_flight->kind != InFlightKind::Cleanup)) {
+        // Let the root patch run before an expiry that was only queued by the
+        // periodic sweep.
+        slot.cleanup_requested = false;
+    }
     slot.queued.push_back(InsertRequest{
         .trace = std::move(trace),
         .promise = std::move(promise),
         .measurement = std::move(measurement),
         .timer = td::Timer(),
+        .contains_real_root = real_root,
     });
     ++impl_->queued_updates;
     schedule_trace(trace_key);
@@ -994,8 +1039,15 @@ void RedisInsertManager::start_next_writes() {
             continue;
         }
 
-        auto request = std::move(slot.queued.front());
+        auto work = std::move(slot.queued.front());
         slot.queued.pop_front();
+        if (std::holds_alternative<ConfirmedRootReplacedRequest>(work)) {
+            start_replaced_confirmed_root_ttl(trace_key);
+            schedule_trace(trace_key);
+            continue;
+        }
+
+        auto request = std::move(std::get<InsertRequest>(work));
         --impl_->queued_updates;
 
         td::Result<PreparedTraceUpdate> prepared_result;
@@ -1019,6 +1071,10 @@ void RedisInsertManager::start_next_writes() {
 
         auto prepared = prepared_result.move_as_ok();
         if (!prepared.needs_redis_write) {
+            if (request.contains_real_root) {
+                real_root_applied(slot);
+                update_lifecycle(trace_key);
+            }
             request.promise.set_value(td::Unit());
             g_statistics.record_time(INSERT_TRACE, request.timer.elapsed() * 1e3);
             schedule_trace(trace_key);
@@ -1044,6 +1100,9 @@ void RedisInsertManager::start_next_writes() {
 
             remember_failed_write(
                 slot, std::move(prepared.next_trace), std::move(batch));
+            if (request.contains_real_root) {
+                real_root_applied(slot);
+            }
             update_lifecycle(trace_key);
             request.promise.set_error(std::move(status));
             g_statistics.record_time(INSERT_TRACE, request.timer.elapsed() * 1e3);
@@ -1064,6 +1123,7 @@ void RedisInsertManager::start_next_writes() {
             .kind = InFlightKind::Update,
             .next_trace = std::move(prepared.next_trace),
             .promise = std::move(request.promise),
+            .contains_real_root = request.contains_real_root,
         });
         ++impl_->active_writes;
 
@@ -1100,7 +1160,8 @@ void RedisInsertManager::write_finished(std::string trace_key,
                 schedule_trace(trace_key);
             }
         } else {
-            if (publishes_invalidation(slot.cleanup_mode) &&
+            if (slot.cleanup_requested &&
+                publishes_invalidation(slot.cleanup_mode) &&
                 !publishes_invalidation(in_flight.cleanup_mode)) {
                 // Invalidation can arrive while a normal retention cleanup is
                 // already in Redis. Run one small follow-up cleanup so its
@@ -1112,12 +1173,16 @@ void RedisInsertManager::write_finished(std::string trace_key,
             auto queued = std::move(slot.queued);
             if (cleanup_is_terminal(slot.cleanup_mode)) {
                 while (!queued.empty()) {
-                    auto request = std::move(queued.front());
+                    auto work = std::move(queued.front());
                     queued.pop_front();
+                    auto* request = std::get_if<InsertRequest>(&work);
+                    if (!request) {
+                        continue;
+                    }
                     --impl_->queued_updates;
                     g_statistics.record_time(
-                        INSERT_TRACE, request.timer.elapsed() * 1e3);
-                    request.promise.set_value(td::Unit());
+                        INSERT_TRACE, request->timer.elapsed() * 1e3);
+                    request->promise.set_value(td::Unit());
                 }
             }
 
@@ -1140,11 +1205,17 @@ void RedisInsertManager::write_finished(std::string trace_key,
                    << "; carrying its data changes into the next patch: " << error;
         remember_failed_write(
             slot, std::move(in_flight.next_trace), std::move(batch));
+        if (in_flight.contains_real_root) {
+            real_root_applied(slot);
+        }
         update_lifecycle(trace_key);
         in_flight.promise.set_error(std::move(status));
     } else {
         slot.current = std::move(in_flight.next_trace);
         slot.dirty = RedisWriteBatch{};
+        if (in_flight.contains_real_root) {
+            real_root_applied(slot);
+        }
         update_lifecycle(trace_key);
         in_flight.promise.set_value(td::Unit());
     }
@@ -1183,15 +1254,70 @@ void RedisInsertManager::invalidate(std::vector<td::Bits256> trace_hashes) {
     start_next_writes();
 }
 
+void RedisInsertManager::start_replaced_confirmed_root_ttl(
+    const std::string& trace_key) {
+    auto it = impl_->traces.find(trace_key);
+    if (it == impl_->traces.end()) {
+        return;
+    }
+    auto& slot = it->second;
+    const auto root_key =
+        metadata_value(slot.current, "root_node").value_or(std::string{});
+    const auto* root = slot.current.nodes.find(root_key);
+    const bool already_waiting =
+        slot.cleanup_mode == TraceCleanupMode::ReplacedConfirmedTimeout;
+    if (cleanup_is_terminal(slot.cleanup_mode) ||
+        (root &&
+         root->finality != TraceStateFinality::Confirmed &&
+         !already_waiting)) {
+        return;
+    }
+
+    if (slot.current.root_account) {
+        impl_->candidates.forget(*slot.current.root_account, trace_key);
+    }
+    slot.cleanup_mode = TraceCleanupMode::ReplacedConfirmedTimeout;
+    if (!already_waiting) {
+        slot.deadline = td::Timestamp::in(
+            impl_->retention.root_replaced_confirmed_seconds);
+    }
+    slot.cleanup_requested = false;
+    update_lifecycle(trace_key);
+    LOG(INFO) << "Confirmed root of trace " << trace_key
+              << " was replaced; waiting "
+              << impl_->retention.root_replaced_confirmed_seconds
+              << "s for another inclusion";
+}
+
+void RedisInsertManager::mark_confirmed_roots_replaced(
+    std::vector<td::Bits256> trace_hashes) {
+    for (const auto& trace_hash : trace_hashes) {
+        auto trace_key = td::base64_encode(trace_hash.as_slice());
+        auto& slot = impl_->traces[trace_key];
+        if (cleanup_is_terminal(slot.cleanup_mode)) {
+            continue;
+        }
+        // The marker is ordered with trace updates. Old confirmed patches run
+        // first; a later real root runs after it and cancels the grace period.
+        slot.queued.emplace_back(ConfirmedRootReplacedRequest{});
+        schedule_trace(trace_key);
+    }
+    start_next_writes();
+}
+
 void RedisInsertManager::tear_down() {
     for (auto& [_, slot] : impl_->traces) {
         if (slot.in_flight && slot.in_flight->kind == InFlightKind::Update) {
             slot.in_flight->promise.set_error(
                 td::Status::Error("RedisInsertManager stopped during trace write"));
         }
-        for (auto& request : slot.queued) {
-            request.promise.set_error(
-                td::Status::Error("RedisInsertManager stopped before trace write"));
+        for (auto& work : slot.queued) {
+            auto* request = std::get_if<InsertRequest>(&work);
+            if (request) {
+                request->promise.set_error(
+                    td::Status::Error(
+                        "RedisInsertManager stopped before trace write"));
+            }
         }
     }
     impl_->traces.clear();

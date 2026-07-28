@@ -18,6 +18,7 @@ struct RedisWriteBatch;
 enum class TraceCleanupMode {
     Retention,
     PendingTimeout,
+    ReplacedConfirmedTimeout,
     Invalidation,
 };
 
@@ -28,6 +29,8 @@ class ITraceInsertManager : public td::actor::Actor {
 public:
     virtual void insert(Trace trace, td::Promise<td::Unit> promise, MeasurementPtr measurement) = 0;
     virtual void invalidate(std::vector<td::Bits256> trace_hashes) = 0;
+    virtual void mark_confirmed_roots_replaced(
+        std::vector<td::Bits256> trace_hashes) = 0;
 };
 
 class RedisInsertManager : public ITraceInsertManager {
@@ -37,6 +40,7 @@ class RedisInsertManager : public ITraceInsertManager {
     void start_next_writes();
     void schedule_trace(const std::string& trace_key);
     void request_cleanup(const std::string& trace_key, TraceCleanupMode mode);
+    void start_replaced_confirmed_root_ttl(const std::string& trace_key);
     void update_lifecycle(const std::string& trace_key);
     void start_up() override;
     void alarm() override;
@@ -48,5 +52,7 @@ public:
 
     void insert(Trace trace, td::Promise<td::Unit> promise, MeasurementPtr measurement) override;
     void invalidate(std::vector<td::Bits256> trace_hashes) override;
+    void mark_confirmed_roots_replaced(
+        std::vector<td::Bits256> trace_hashes) override;
     void write_finished(std::string trace_key, td::Status status, RedisWriteBatch batch);
 };

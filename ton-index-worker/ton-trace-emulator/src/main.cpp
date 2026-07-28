@@ -99,6 +99,18 @@ int main(int argc, char *argv[]) {
         value, "trace-root-pending-ttl", trace_retention.root_pending_seconds);
   });
 
+  p.add_checked_option(
+      '\0',
+      "trace-root-replaced-confirmed-ttl",
+      "Seconds to wait for a confirmed root replaced by a finalized fork "
+      "(default: 30)",
+      [&](td::Slice value) {
+        return parse_positive_seconds(
+            value,
+            "trace-root-replaced-confirmed-ttl",
+            trace_retention.root_replaced_confirmed_seconds);
+      });
+
   p.add_checked_option('\0', "trace-open-ttl",
                        "Seconds to retain a real trace with a pending tail (default: 300)",
                        [&](td::Slice value) {

@@ -3,6 +3,7 @@
 #include <ton/ton-types.h>
 #include <emulator/transaction-emulator.h>
 #include "IndexData.h"
+#include "Measurement.h"
 #include "TraceEmulator.h"
 
 
@@ -44,13 +45,28 @@ struct ShardStateSnapshot {
     td::Ref<vm::Cell> state;
 };
 
+struct EmulatedTracePatch {
+    Trace trace;
+    MeasurementPtr measurement;
+};
+
+struct FinalizedBlockResult {
+    ton::BlockSeqno mc_seqno;
+    std::vector<ton::BlockIdExt> finalized_blocks;
+    std::vector<EmulatedTracePatch> traces;
+    // Committed transaction cells lazily read from these blocks. Keep their
+    // backing StaticBagOfCellsDb alive until every trace has been prepared.
+    std::vector<td::Ref<ton::validator::BlockData>> block_data_owners;
+};
+
 class McBlockEmulator: public td::actor::Actor {
 private:
     schema::MasterchainBlockDataState mc_data_state_;
-    std::function<void(Trace, td::Promise<td::Unit>, MeasurementPtr)> trace_processor_;
-    td::Promise<> promise_;
+    std::function<void(ton::BlockSeqno)> trace_ids_resolved_;
+    td::Promise<FinalizedBlockResult> promise_;
     size_t blocks_left_to_parse_;
     std::vector<TransactionInfo> txs_;
+    std::vector<EmulatedTracePatch> traces_;
 
     std::vector<td::Ref<vm::Cell>> shard_states_;
 
@@ -64,10 +80,11 @@ private:
     bool finished_{false};
 
     td::Timestamp start_time_;
+    MeasurementPtr measurement_;
 
     void parse_error(ton::BlockId blkid, td::Status error, MeasurementPtr);
-    void block_parsed(ton::BlockId, std::vector<TransactionInfo> txs, MeasurementPtr measurement);
-    void process_txs(MeasurementPtr measurement);
+    void block_parsed(ton::BlockId, std::vector<TransactionInfo> txs);
+    void resolve_trace_ids();
     void emulate_traces(MeasurementPtr measurement);
     std::unique_ptr<TraceNode> construct_commited_trace(const TransactionInfo& tx, std::vector<EmuRequest>& reqs, MeasurementPtr, size_t depth = 1);
     void children_emulated(std::unique_ptr<TraceNode> parent_node,
@@ -79,13 +96,12 @@ private:
     void trace_error(td::Bits256 tx_hash, td::Bits256 trace_root_tx_hash, td::Status error, MeasurementPtr measurement);
     void trace_interfaces_error(td::Bits256 trace_root_tx_hash, td::Status error, MeasurementPtr measurement);
     void trace_emulated(Trace trace, MeasurementPtr measurement);
-    void trace_finished(td::Bits256, MeasurementPtr measurement);
     void finish_block_if_done();
 
 public:
     McBlockEmulator(schema::MasterchainBlockDataState mc_data_state,
-                    std::function<void(Trace, td::Promise<td::Unit>, MeasurementPtr)> trace_processor,
-                    td::Promise<> promise);
+                    std::function<void(ton::BlockSeqno)> trace_ids_resolved,
+                    td::Promise<FinalizedBlockResult> promise);
 
     virtual void start_up() override;
 };
@@ -97,6 +113,7 @@ private:
     std::shared_ptr<block::ConfigInfo> config_;
     std::vector<ShardStateSnapshot> shard_states_snapshot_;
     std::function<void(Trace, td::Promise<td::Unit>, MeasurementPtr)> trace_processor_;
+    std::function<void(ton::BlockIdExt)> head_finished_;
     td::Promise<> promise_;
     std::vector<TransactionInfo> txs_;
     std::unordered_map<td::Bits256, TransactionInfo> tx_by_in_msg_hash_;
@@ -109,7 +126,7 @@ private:
     void start_up() override;
     void block_parsed(std::vector<TransactionInfo> txs, MeasurementPtr measurement);
     void parse_error(td::Status error, MeasurementPtr);
-    void process_txs(MeasurementPtr measurement);
+    void resolve_trace_ids(MeasurementPtr measurement);
     void emulate_traces(MeasurementPtr measurement);
     std::unique_ptr<TraceNode> construct_confirmed_trace(const TransactionInfo& tx, std::vector<EmuRequest>& reqs, MeasurementPtr, size_t depth = 1);
     void children_emulated(std::unique_ptr<TraceNode> parent_node,
@@ -140,11 +157,13 @@ public:
                            std::shared_ptr<block::ConfigInfo> config,
                            std::vector<ShardStateSnapshot> shard_states_snapshot,
                            std::function<void(Trace, td::Promise<td::Unit>, MeasurementPtr)> trace_processor,
+                           std::function<void(ton::BlockIdExt)> head_finished,
                            td::Promise<> promise)
         : finality_(finality),
           block_data_state_(std::move(block_data_state)),
           config_(std::move(config)),
           shard_states_snapshot_(std::move(shard_states_snapshot)),
           trace_processor_(std::move(trace_processor)),
+          head_finished_(std::move(head_finished)),
           promise_(std::move(promise)) {}
 };
