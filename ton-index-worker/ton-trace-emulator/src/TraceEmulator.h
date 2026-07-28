@@ -146,6 +146,10 @@ struct Trace {
     // final committed state of accounts in trace (no emulated accounts)
     std::unordered_map<block::StdAddress, block::Account> committed_accounts;
 
+    bool contains_root_transaction() const {
+        return root && root->node_id == ext_in_msg_hash;
+    }
+
     int depth() const {
         if (!root) {
             return 0;
