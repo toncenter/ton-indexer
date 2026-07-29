@@ -155,11 +155,13 @@ public:
 McBlockEmulator::McBlockEmulator(schema::MasterchainBlockDataState mc_data_state,
                                  std::function<void(ton::BlockSeqno)>
                                      trace_ids_resolved,
+                                 bool reuse_confirmed_state,
                                  td::Promise<FinalizedBlockResult> promise)
     : mc_data_state_(std::move(mc_data_state)),
       trace_ids_resolved_(std::move(trace_ids_resolved)),
       promise_(std::move(promise)),
-      blocks_left_to_parse_(mc_data_state_.shard_blocks_diff_.size()) {
+      blocks_left_to_parse_(mc_data_state_.shard_blocks_diff_.size()),
+      reuse_confirmed_state_(reuse_confirmed_state) {
 }
 
 void McBlockEmulator::start_up() {
@@ -251,6 +253,24 @@ void McBlockEmulator::resolve_trace_ids() {
     auto mc_seqno =
         mc_data_state_.shard_blocks_[0].handle->id().seqno();
     trace_ids_resolved_(mc_seqno);
+    if (reuse_confirmed_state_) {
+        const auto has_masterchain_trace =
+            std::any_of(txs_.begin(), txs_.end(), [](const auto& tx) {
+                return tx.block_id.is_masterchain() &&
+                       tx.trace_ids.has_value();
+            });
+        if (!has_masterchain_trace) {
+            LOG(INFO) << "Reusing confirmed shard state for mc block "
+                      << mc_seqno
+                      << "; finalized trace emulation is not needed";
+            finish_block_if_done();
+            return;
+        }
+        LOG(INFO) << "Cannot fully reuse confirmed shard state for mc block "
+                  << mc_seqno
+                  << " because the masterchain block contributes to a trace";
+        reuse_confirmed_state_ = false;
+    }
     emulate_traces(measurement_);
 }
 
@@ -458,6 +478,7 @@ void McBlockEmulator::finish_block_if_done() {
         .mc_seqno = blkid.seqno,
         .finalized_blocks = std::move(finalized_blocks),
         .traces = std::move(traces_),
+        .reused_confirmed_state = reuse_confirmed_state_,
         .block_data_owners = std::move(block_data_owners),
     });
     stop();
@@ -519,6 +540,7 @@ void ConfirmedBlockEmulator::resolve_trace_ids(MeasurementPtr measurement) {
                 tx.trace_ids = cached_ids;
             } else {
                 LOG(WARNING) << "Couldn't get ext_in_msg_hash_norm for confirmed tx " << tx.hash.to_hex() << ". Skipping.";
+                reusable_ = false;
             }
         }
 
@@ -563,6 +585,7 @@ void ConfirmedBlockEmulator::emulate_traces(MeasurementPtr measurement) {
 
         if (!config_ || shard_states_snapshot_.empty()) {
             LOG(ERROR) << "Missing config or shard state snapshot for " << finality_label() << " block tails";
+            reusable_ = false;
             children_emulated(std::move(parent_node), {}, tx.trace_ids.value(), {}, nullptr, tx_measurement);
             continue;
         }
@@ -606,7 +629,10 @@ void ConfirmedBlockEmulator::emulate_traces(MeasurementPtr measurement) {
 
     if (in_progress_cnt_ == 0) {
         LOG(DEBUG) << "No " << finality_label() << " traces built for block " << block_data_state_.block_data->block_id().to_str();
-        promise_.set_value(td::Unit());
+        promise_.set_value(ConfirmedBlockResult{
+            .reusable = reusable_,
+            .snapshots = std::move(snapshots_),
+        });
         stop();
     }
 }
@@ -628,6 +654,7 @@ std::unique_ptr<TraceNode> ConfirmedBlockEmulator::construct_confirmed_trace(con
         }
         if (destination_r.is_error()) {
             LOG(ERROR) << "Failed to fetch destination address for out_msg " << out_msg.hash.to_hex();
+            reusable_ = false;
             continue;
         }
 
@@ -711,7 +738,7 @@ void ConfirmedBlockEmulator::trace_error(td::Bits256 tx_hash, td::Bits256 trace_
                << " from tx " << tx_hash.to_hex() << ": " << error;
     measurement->mark_otel_error("trace_emulator.processing_error", error.to_string());
     measurement->end_otel_child_span("emulate_tail");
-    trace_finished(trace_root_tx_hash, measurement);
+    trace_finished(trace_root_tx_hash, {}, false, measurement);
 }
 
 void ConfirmedBlockEmulator::trace_interfaces_error(td::Bits256 trace_root_tx_hash, td::Status error, MeasurementPtr measurement) {
@@ -719,32 +746,51 @@ void ConfirmedBlockEmulator::trace_interfaces_error(td::Bits256 trace_root_tx_ha
                << td::base64_encode(trace_root_tx_hash.as_slice()) << ": " << error;
     measurement->mark_otel_error("trace_emulator.interface_error", error.to_string());
     measurement->end_otel_child_span("detect_interfaces");
-    trace_finished(trace_root_tx_hash, measurement);
+    trace_finished(trace_root_tx_hash, {}, false, measurement);
 }
 
 void ConfirmedBlockEmulator::trace_emulated(Trace trace, MeasurementPtr measurement) {
     measurement->end_otel_child_span("detect_interfaces");
     measurement->start_otel_child_span("insert_trace");
     auto root_hash = trace.root_tx_hash;
-    auto P = td::PromiseCreator::lambda([SelfId = actor_id(this), root_hash, label = std::string(finality_label()), measurement](td::Result<td::Unit> R) {
+    auto P = td::PromiseCreator::lambda([SelfId = actor_id(this), root_hash, label = std::string(finality_label()), measurement](td::Result<ConfirmedTraceSnapshot> R) {
+        bool success = true;
+        ConfirmedTraceSnapshot snapshot;
         if (R.is_error()) {
+            success = false;
             auto error = R.move_as_error();
             LOG(ERROR) << "Failed to insert " << label << " trace " << td::base64_encode(root_hash.as_slice()) << ": " << error;
             measurement->mark_otel_error("trace_emulator.insert_error", error.to_string());
         } else {
+            snapshot = R.move_as_ok();
+            success = snapshot != nullptr;
             LOG(DEBUG) << "Processed " << label << " trace "
                        << td::base64_encode(root_hash.as_slice());
         }
         measurement->end_otel_child_span("insert_trace");
-        td::actor::send_closure(SelfId, &ConfirmedBlockEmulator::trace_finished, root_hash, measurement);
+        td::actor::send_closure(
+            SelfId,
+            &ConfirmedBlockEmulator::trace_finished,
+            root_hash,
+            std::move(snapshot),
+            success,
+            measurement);
     });
 
     trace_processor_(std::move(trace), std::move(P), measurement);
 }
 
-void ConfirmedBlockEmulator::trace_finished(td::Bits256, MeasurementPtr measurement) {
+void ConfirmedBlockEmulator::trace_finished(
+    td::Bits256,
+    ConfirmedTraceSnapshot snapshot,
+    bool success,
+    MeasurementPtr measurement) {
     if (in_progress_cnt_ == 0) {
         return;
+    }
+    reusable_ = reusable_ && success;
+    if (snapshot) {
+        snapshots_.push_back(std::move(snapshot));
     }
     in_progress_cnt_--;
     traces_cnt_++;
@@ -754,7 +800,10 @@ void ConfirmedBlockEmulator::trace_finished(td::Bits256, MeasurementPtr measurem
         LOG(INFO) << "Finished " << finality_label() << " block " << block_data_state_.block_data->block_id().to_str()
                   << ": " << traces_cnt_ << " traces in "
                   << (td::Timestamp::now().at() - start_time_.at()) * 1000 << " ms";
-        promise_.set_value(td::Unit());
+        promise_.set_value(ConfirmedBlockResult{
+            .reusable = reusable_,
+            .snapshots = std::move(snapshots_),
+        });
         stop();
     }
 }

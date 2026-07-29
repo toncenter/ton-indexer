@@ -270,12 +270,39 @@ void TraceEmulatorScheduler::start_next_finalized_block() {
         return;
     }
 
-    LOG(INFO) << "Emulating mc block " << seqno;
     finalized_blocks_in_pipeline_++;
     finalized_trace_ids_in_progress_ = seqno;
+    bool reuse_confirmed_state = false;
+    bool has_shard_blocks = false;
     for (const auto& block : it->second.shard_blocks_diff_) {
-        close_confirmed_block(block.block_data->block_id().id);
+        const auto block_id = block.block_data->block_id();
+        close_confirmed_block(block_id.id);
+        if (block_id.is_masterchain()) {
+            continue;
+        }
+        if (!has_shard_blocks) {
+            reuse_confirmed_state = true;
+            has_shard_blocks = true;
+        }
+        if (confirmed_block_snapshots_.count(block_id) == 0) {
+            reuse_confirmed_state = false;
+        }
     }
+
+    start_finalized_emulator(seqno, reuse_confirmed_state);
+}
+
+void TraceEmulatorScheduler::start_finalized_emulator(
+    ton::BlockSeqno seqno,
+    bool reuse_confirmed_state) {
+    auto it = blocks_to_emulate_.find(seqno);
+    if (it == blocks_to_emulate_.end()) {
+        LOG(FATAL) << "Missing mc block selected for emulation " << seqno;
+    }
+    LOG(INFO) << "Emulating mc block " << seqno
+              << (reuse_confirmed_state
+                      ? " with reusable confirmed shard state"
+                      : "");
 
     auto trace_ids_resolved = [
         SelfId = actor_id(this)
@@ -302,6 +329,7 @@ void TraceEmulatorScheduler::start_next_finalized_block() {
         actor_name,
         std::move(block),
         std::move(trace_ids_resolved),
+        reuse_confirmed_state,
         std::move(P))
         .release();
 
@@ -330,6 +358,23 @@ void TraceEmulatorScheduler::finalized_block_emulated(
     }
 
     auto block = result.move_as_ok();
+    if (block.reused_confirmed_state) {
+        for (const auto& block_id : block.finalized_blocks) {
+            if (block_id.is_masterchain()) {
+                continue;
+            }
+            auto snapshots =
+                confirmed_block_snapshots_.find(block_id);
+            if (snapshots == confirmed_block_snapshots_.end()) {
+                LOG(FATAL) << "Reusable confirmed block snapshot disappeared: "
+                           << block_id.to_str();
+            }
+            block.confirmed_snapshots.insert(
+                block.confirmed_snapshots.end(),
+                snapshots->second.begin(),
+                snapshots->second.end());
+        }
+    }
     LOG(INFO) << "Mc block " << seqno
               << " finished computation with " << block.traces.size()
               << " trace patches";
@@ -359,7 +404,10 @@ void TraceEmulatorScheduler::commit_finalized_block(
     finalized_commit_.emplace(FinalizedCommitState{
         .seqno = seqno,
         .finalized_blocks = result.finalized_blocks,
-        .pending_writes = result.traces.size(),
+        .pending_writes =
+            result.reused_confirmed_state
+                ? 1
+                : result.traces.size(),
         .block_data_owners = std::move(result.block_data_owners),
     });
 
@@ -414,6 +462,28 @@ void TraceEmulatorScheduler::commit_finalized_block(
             std::move(patch.trace), std::move(P), std::move(measurement));
     }
 
+    if (result.reused_confirmed_state) {
+        auto P = td::PromiseCreator::lambda([
+            SelfId = actor_id(this),
+            seqno
+        ](td::Result<td::Unit> result) mutable {
+            if (result.is_error()) {
+                LOG(ERROR) << "Failed to materialize reused confirmed state for mc block "
+                           << seqno << ": " << result.move_as_error();
+            }
+            td::actor::send_closure(
+                SelfId,
+                &TraceEmulatorScheduler::finalized_trace_write_finished,
+                seqno);
+        });
+        td::actor::send_closure(
+            insert_manager_,
+            &ITraceInsertManager::promote_confirmed,
+            std::move(result.confirmed_snapshots),
+            seqno,
+            std::move(P));
+    }
+
     if (finalized_commit_->pending_writes == 0) {
         finish_finalized_commit();
     }
@@ -435,6 +505,8 @@ void TraceEmulatorScheduler::finalized_trace_write_finished(
 void TraceEmulatorScheduler::finish_finalized_commit() {
     auto commit = std::move(*finalized_commit_);
     finalized_commit_.reset();
+
+    discard_confirmed_snapshots(commit.finalized_blocks);
 
     std::vector<td::Bits256> replaced_roots;
     for (auto& block : commit.finalized_blocks) {
@@ -482,6 +554,24 @@ void TraceEmulatorScheduler::close_confirmed_block(
 bool TraceEmulatorScheduler::confirmed_block_is_closed(
     const ton::BlockIdExt& block_id) const {
     return closed_confirmed_blocks_.count(block_id.id) != 0;
+}
+
+void TraceEmulatorScheduler::discard_confirmed_snapshots(
+    const std::vector<ton::BlockIdExt>& finalized_blocks) {
+    std::set<ton::BlockId> logical_blocks;
+    for (const auto& block : finalized_blocks) {
+        if (!block.is_masterchain()) {
+            logical_blocks.insert(block.id);
+        }
+    }
+    for (auto it = confirmed_block_snapshots_.begin();
+         it != confirmed_block_snapshots_.end();) {
+        if (logical_blocks.count(it->first.id) != 0) {
+            it = confirmed_block_snapshots_.erase(it);
+        } else {
+            ++it;
+        }
+    }
 }
 
 void TraceEmulatorScheduler::enqueue_signed_block(ton::BlockIdExt block_id) {
@@ -612,11 +702,15 @@ void TraceEmulatorScheduler::process_signed_blocks() {
                 &TraceEmulatorScheduler::confirmed_block_head_finished,
                 finished_block_id);
         };
-        auto P = td::PromiseCreator::lambda([SelfId = actor_id(this), block_id](td::Result<> R) mutable {
-            if (R.is_error()) {
-                LOG(ERROR) << "Error processing signed shard block " << block_id.to_str() << ": " << R.move_as_error();
-            }
-            td::actor::send_closure(SelfId, &TraceEmulatorScheduler::confirmed_block_finished, block_id);
+        auto P = td::PromiseCreator::lambda([
+            SelfId = actor_id(this),
+            block_id
+        ](td::Result<ConfirmedBlockResult> result) mutable {
+            td::actor::send_closure(
+                SelfId,
+                &TraceEmulatorScheduler::confirmed_block_finished,
+                block_id,
+                std::move(result));
         });
         auto actor_name = PSLICE() << "SignedBlockEmulator" << block_id.seqno();
         auto trace_processor = make_signed_trace_processor(block_id);
@@ -640,7 +734,26 @@ void TraceEmulatorScheduler::confirmed_block_head_finished(
     process_signed_blocks();
 }
 
-void TraceEmulatorScheduler::confirmed_block_finished(ton::BlockIdExt) {
+void TraceEmulatorScheduler::confirmed_block_finished(
+    ton::BlockIdExt block_id,
+    td::Result<ConfirmedBlockResult> result) {
+    if (result.is_error()) {
+        LOG(ERROR) << "Error processing signed shard block "
+                   << block_id.to_str() << ": "
+                   << result.move_as_error();
+    } else {
+        auto completed = result.move_as_ok();
+        if (completed.reusable &&
+            !confirmed_block_is_closed(block_id)) {
+            auto [_, inserted] =
+                confirmed_block_snapshots_.emplace(
+                    block_id, std::move(completed.snapshots));
+            if (!inserted) {
+                LOG(FATAL) << "Confirmed block snapshot was stored twice: "
+                           << block_id.to_str();
+            }
+        }
+    }
     if (confirmed_blocks_inflight_ > 0) {
         confirmed_blocks_inflight_--;
     }
@@ -650,10 +763,10 @@ void TraceEmulatorScheduler::confirmed_block_finished(ton::BlockIdExt) {
 void TraceEmulatorScheduler::process_confirmed_trace(
     ton::BlockIdExt block_id,
     Trace trace,
-    td::Promise<td::Unit> promise,
+    td::Promise<ConfirmedTraceSnapshot> promise,
     MeasurementPtr measurement) {
     if (confirmed_block_is_closed(block_id)) {
-        promise.set_value(td::Unit());
+        promise.set_value(ConfirmedTraceSnapshot{});
         return;
     }
 
@@ -662,8 +775,12 @@ void TraceEmulatorScheduler::process_confirmed_trace(
             block_id, trace.ext_in_msg_hash_norm);
     }
 
-    insert_trace_(
-        std::move(trace), std::move(promise), std::move(measurement));
+    td::actor::send_closure(
+        insert_manager_,
+        &ITraceInsertManager::insert_confirmed,
+        std::move(trace),
+        std::move(promise),
+        std::move(measurement));
 }
 
 bool TraceEmulatorScheduler::remember_seen_signed_block(ton::BlockIdExt block_id) {
@@ -678,12 +795,17 @@ bool TraceEmulatorScheduler::remember_seen_signed_block(ton::BlockIdExt block_id
     return true;
 }
 
-std::function<void(Trace, td::Promise<td::Unit>, MeasurementPtr)> TraceEmulatorScheduler::make_signed_trace_processor(const ton::BlockIdExt& block_id_ext) {
+std::function<void(
+    Trace,
+    td::Promise<ConfirmedTraceSnapshot>,
+    MeasurementPtr)>
+TraceEmulatorScheduler::make_signed_trace_processor(
+    const ton::BlockIdExt& block_id_ext) {
     return [
         SelfId = actor_id(this),
         block_id_ext
     ](Trace trace,
-      td::Promise<td::Unit> promise,
+      td::Promise<ConfirmedTraceSnapshot> promise,
       MeasurementPtr measurement) mutable {
         td::actor::send_closure(
             SelfId,
