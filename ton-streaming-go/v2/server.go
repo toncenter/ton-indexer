@@ -6,14 +6,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"sort"
 	"strconv"
-	"strings"
 	"sync"
 	"time"
 
 	"github.com/toncenter/ton-indexer/ton-index-go/index/crud"
-	"github.com/toncenter/ton-indexer/ton-index-go/index/detect"
 	indexModels "github.com/toncenter/ton-indexer/ton-index-go/index/models"
 	"github.com/toncenter/ton-indexer/ton-index-go/index/parse"
 
@@ -22,7 +19,6 @@ import (
 	"github.com/gofiber/websocket/v2"
 	"github.com/redis/go-redis/v9"
 	"github.com/valyala/fasthttp"
-	"github.com/vmihailenco/msgpack/v5"
 
 	"github.com/toncenter/ton-indexer/ton-emulate-go/models"
 	"github.com/toncenter/ton-indexer/ton-index-go/index/emulated"
@@ -54,6 +50,9 @@ func InitConfig(cfg Config) {
 const (
 	classifiedTraceSpanName = "ton.streaming_api.process_classified_trace"
 	rawTraceSpanName        = "ton.streaming_api.process_raw_trace"
+
+	streamingWorkerCount        = 16
+	streamingQueueSizePerWorker = 64
 )
 
 type TraceProcessingStage struct {
@@ -326,6 +325,11 @@ type Notification interface {
 	AdjustForClient(client *Client) any
 }
 
+type notificationDelivery struct {
+	notification Notification
+	targets      clientSet // nil means all connected clients
+}
+
 type Client struct {
 	ID                             string
 	LimitingKey                    string
@@ -335,6 +339,7 @@ type Client struct {
 	SendEvent                      func([]byte) error
 	sendChan                       chan []byte
 	mu                             sync.Mutex
+	writeMu                        sync.Mutex
 }
 
 func disconnectClient(manager *ClientManager, client *Client) {
@@ -352,13 +357,17 @@ func disconnectClient(manager *ClientManager, client *Client) {
 func (c *Client) startSender(manager *ClientManager) {
 	go func() {
 		for msg := range c.sendChan {
+			c.writeMu.Lock()
 			c.mu.Lock()
 			if !c.Connected {
 				c.mu.Unlock()
+				c.writeMu.Unlock()
 				break
 			}
-			err := c.SendEvent(msg)
 			c.mu.Unlock()
+
+			err := c.SendEvent(msg)
+			c.writeMu.Unlock()
 			if err != nil {
 				disconnectClient(manager, c)
 				break
@@ -368,21 +377,27 @@ func (c *Client) startSender(manager *ClientManager) {
 }
 
 type ClientManager struct {
-	clients     map[string]*Client
-	register    chan *Client
-	unregister  chan *Client
-	broadcast   chan Notification
-	rateLimiter *RateLimiter
-	mu          sync.RWMutex
+	clients            map[string]*Client
+	eventSubscribers   map[EventType]clientSet
+	addressSubscribers map[EventType]map[indexModels.AccountAddress]clientSet
+	traceSubscribers   map[indexModels.HashType]clientSet
+	register           chan *Client
+	unregister         chan *Client
+	broadcast          chan notificationDelivery
+	rateLimiter        *RateLimiter
+	mu                 sync.RWMutex
 }
 
 func NewClientManager() *ClientManager {
 	return &ClientManager{
-		clients:     make(map[string]*Client),
-		register:    make(chan *Client, 128),
-		unregister:  make(chan *Client, 128),
-		broadcast:   make(chan Notification),
-		rateLimiter: NewRateLimiter(),
+		clients:            make(map[string]*Client),
+		eventSubscribers:   make(map[EventType]clientSet),
+		addressSubscribers: make(map[EventType]map[indexModels.AccountAddress]clientSet),
+		traceSubscribers:   make(map[indexModels.HashType]clientSet),
+		register:           make(chan *Client, 128),
+		unregister:         make(chan *Client, 128),
+		broadcast:          make(chan notificationDelivery),
+		rateLimiter:        NewRateLimiter(),
 	}
 }
 
@@ -391,65 +406,34 @@ func NewClientManager() *ClientManager {
 // - AND has IncludeAddressBook / IncludeMetadata true
 // AND will actually receive this event with given finality.
 func (manager *ClientManager) shouldFetchAddressBookAndMetadata(eventTypes []EventType, eventFinality indexModels.FinalityState, addressesToNotify []indexModels.AccountAddress) (bool, bool) {
-	shouldFetchAddressBook := false
-	shouldFetchMetadata := false
-
-	manager.mu.RLock()
-	clients := make([]*Client, 0, len(manager.clients))
-	for _, c := range manager.clients {
-		clients = append(clients, c)
+	targets := make(clientSet)
+	for _, eventType := range eventTypes {
+		mergeClientSets(targets, manager.subscribersForAddresses(eventType, addressesToNotify, eventFinality))
 	}
-	manager.mu.RUnlock()
-
-	for _, client := range clients {
-		client.mu.Lock()
-		if client.Connected && client.Subscription.MinFinality <= eventFinality {
-			for _, eventType := range eventTypes {
-				if client.Subscription.InterestedIn(eventType, addressesToNotify) {
-					shouldFetchAddressBook = shouldFetchAddressBook || client.Subscription.IncludeAddressBook
-					shouldFetchMetadata = shouldFetchMetadata || client.Subscription.IncludeMetadata
-				}
-			}
-		}
-		client.mu.Unlock()
-
-		if shouldFetchAddressBook && shouldFetchMetadata {
-			break
-		}
-	}
-
-	return shouldFetchAddressBook, shouldFetchMetadata
+	return manager.enrichmentNeeds(targets)
 }
 
 // shouldFetchAddressBookAndMetadataForTrace checks if any connected client
 // subscribed to the trace will receive this event and needs address book or metadata.
 func (manager *ClientManager) shouldFetchAddressBookAndMetadataForTrace(eventFinality indexModels.FinalityState, traceExternalHashNorm indexModels.HashType) (bool, bool) {
-	shouldFetchAddressBook := false
-	shouldFetchMetadata := false
+	return manager.enrichmentNeeds(manager.subscribersForTrace(traceExternalHashNorm, eventFinality))
+}
 
-	manager.mu.RLock()
-	clients := make([]*Client, 0, len(manager.clients))
-	for _, c := range manager.clients {
-		clients = append(clients, c)
+// needsClassifiedTrace reports whether a classified trace can produce an event
+// for at least one connected client. Action addresses are not known until the
+// trace is loaded, so any non-empty actions subscription is considered relevant.
+func (manager *ClientManager) needsClassifiedTrace(traceExternalHashNorm indexModels.HashType) bool {
+	return manager.hasEventSubscribers(EventActions) || manager.hasTraceSubscribers(traceExternalHashNorm)
+}
+
+func (manager *ClientManager) sendNotification(notification Notification, targets clientSet) {
+	if targets != nil && len(targets) == 0 {
+		return
 	}
-	manager.mu.RUnlock()
-
-	for _, client := range clients {
-		client.mu.Lock()
-		if client.Connected && client.Subscription.MinFinality <= eventFinality {
-			if client.Subscription.InterestedInTrace(EventTrace, traceExternalHashNorm) {
-				shouldFetchAddressBook = shouldFetchAddressBook || client.Subscription.IncludeAddressBook
-				shouldFetchMetadata = shouldFetchMetadata || client.Subscription.IncludeMetadata
-			}
-		}
-		client.mu.Unlock()
-
-		if shouldFetchAddressBook && shouldFetchMetadata {
-			break
-		}
+	manager.broadcast <- notificationDelivery{
+		notification: notification,
+		targets:      targets,
 	}
-
-	return shouldFetchAddressBook, shouldFetchMetadata
 }
 
 func (manager *ClientManager) Run() {
@@ -457,8 +441,18 @@ func (manager *ClientManager) Run() {
 		select {
 		case client := <-manager.register:
 			manager.mu.Lock()
+			client.mu.Lock()
+			if !client.Connected {
+				manager.removeSubscriptionFromIndexesLocked(client.ID, &client.Subscription)
+				client.mu.Unlock()
+				manager.rateLimiter.UnregisterConnection(client.LimitingKey, client.ID)
+				manager.mu.Unlock()
+				continue
+			}
 			client.sendChan = make(chan []byte, 64)
 			manager.clients[client.ID] = client
+			manager.addSubscriptionToIndexesLocked(client.ID, &client.Subscription)
+			client.mu.Unlock()
 			manager.mu.Unlock()
 			client.startSender(manager)
 			log.Printf("[v2] Client %s connected", client.ID)
@@ -466,18 +460,38 @@ func (manager *ClientManager) Run() {
 		case client := <-manager.unregister:
 			manager.mu.Lock()
 			if _, ok := manager.clients[client.ID]; ok {
+				client.mu.Lock()
+				manager.removeSubscriptionFromIndexesLocked(client.ID, &client.Subscription)
+				if client.sendChan != nil {
+					close(client.sendChan)
+				}
+				client.mu.Unlock()
 				delete(manager.clients, client.ID)
 				manager.rateLimiter.UnregisterConnection(client.LimitingKey, client.ID)
 				log.Printf("[v2] Client %s disconnected", client.ID)
 			}
 			manager.mu.Unlock()
 
-		case notification := <-manager.broadcast:
+		case delivery := <-manager.broadcast:
 			manager.mu.RLock()
-			for _, client := range manager.clients {
+			clients := make([]*Client, 0, len(manager.clients))
+			if delivery.targets == nil {
+				for _, client := range manager.clients {
+					clients = append(clients, client)
+				}
+			} else {
+				for clientID := range delivery.targets {
+					if client := manager.clients[clientID]; client != nil {
+						clients = append(clients, client)
+					}
+				}
+			}
+			manager.mu.RUnlock()
+
+			for _, client := range clients {
 				client.mu.Lock()
 				if client.Connected {
-					if event := notification.AdjustForClient(client); event != nil {
+					if event := delivery.notification.AdjustForClient(client); event != nil {
 						msgBytes, err := json.Marshal(event)
 						if err != nil {
 							log.Printf("[v2] Error marshalling event: %v", err)
@@ -493,7 +507,6 @@ func (manager *ClientManager) Run() {
 				}
 				client.mu.Unlock()
 			}
-			manager.mu.RUnlock()
 		}
 	}
 }
@@ -852,487 +865,6 @@ func (n *JettonsNotification) AdjustForClient(client *Client) any {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// Redis subscription: trace updates.
-// The producer publishes every trace insertion/update to this channel, so this
-// path must extract only pending transactions before broadcasting.
-////////////////////////////////////////////////////////////////////////////////
-
-func SubscribeToTraces(ctx context.Context, rdb *redis.Client, manager *ClientManager, channel string) {
-	pubsub := rdb.Subscribe(ctx, channel)
-	defer pubsub.Close()
-
-	log.Printf("[v2] Subscribed to Redis channel (trace updates): %s", channel)
-
-	for {
-		msg, err := pubsub.ReceiveMessage(ctx)
-		if err != nil {
-			log.Printf("[v2] Error receiving trace update message: %v", err)
-			continue
-		}
-		traceExternalHashNorm := indexModels.HashType(msg.Payload)
-		go ProcessNewTrace(ctx, rdb, traceExternalHashNorm, manager, channel)
-	}
-}
-
-// ProcessNewTrace broadcasts pending transactions from a generic trace update.
-func ProcessNewTrace(ctx context.Context, rdb *redis.Client, traceExternalHashNorm indexModels.HashType, manager *ClientManager, channel string) {
-	startTimeUnix := observability.NowUnixNano()
-	repository := &emulated.EmulatedTracesRepository{Rdb: rdb}
-	rawTraces, err := repository.LoadRawTraces([]string{traceExternalHashNorm.String()})
-	if err != nil {
-		log.Printf("[v2] Error loading raw traces (pending): %v, trace key: %s", err, traceExternalHashNorm)
-		return
-	}
-	stage := NewTraceProcessingStage(
-		startTimeUnix,
-		rawTraceSpanName,
-		rawTraces[traceExternalHashNorm.String()],
-		traceExternalHashNorm.String(),
-		channel,
-	)
-
-	emulatedContext := crud.NewEmptyContext(false)
-	err = emulatedContext.FillFromRawData(rawTraces)
-	if err != nil {
-		log.Printf("[v2] Error filling context from raw data (pending): %v, trace key: %s", err, traceExternalHashNorm)
-		stage.EmitOtelError("streaming_api.fill_context_error", err.Error())
-		return
-	}
-	if emulatedContext.GetTraceCount() > 1 {
-		log.Printf("[v2] More than 1 trace in context (pending), trace key: %s", traceExternalHashNorm)
-		stage.EmitOtelError("streaming_api.invalid_trace_count", "more than one trace in emulated context")
-		return
-	}
-	if emulatedContext.GetTraceCount() == 0 {
-		log.Printf("[v2] No traces in context (pending), trace key: %s", traceExternalHashNorm)
-		stage.EmitOtelError("streaming_api.invalid_trace_count", "no traces in emulated context")
-		return
-	}
-
-	var txs []indexModels.Transaction
-	txsMap := map[indexModels.HashType]int{}
-	totalTxs := 0
-	{
-		emulatedTxs := emulatedContext.GetTransactions()
-		for _, tx := range emulatedTxs {
-			totalTxs++
-			if tx.Finality != indexModels.FinalityStatePending {
-				continue
-			}
-			txs = append(txs, *tx)
-			txsMap[tx.Hash] = len(txs) - 1
-			if stage.RootTxHash == "-" && tx.TraceId != nil {
-				stage.SetRootTxHash(*tx.TraceId)
-			}
-		}
-	}
-	if len(txs) == 0 {
-		stage.Span.AddAttr("ton.trace.finality", indexModels.FinalityStatePending.String())
-		stage.Span.AddAttr("ton.transactions.count", 0)
-		stage.Span.AddAttr("ton.transactions.total_count", totalTxs)
-		stage.Span.AddAttr("ton.streaming.skipped", true)
-		stage.Span.AddAttr("ton.streaming.skip_reason", "no_pending_transactions")
-		stage.Emit()
-		return
-	}
-
-	allAddresses := []indexModels.AccountAddress{}
-	var txHashes []string
-	for _, t := range txs {
-		txHashes = append(txHashes, string(t.Hash))
-		allAddresses = append(allAddresses, t.Account)
-	}
-
-	if len(txHashes) > 0 {
-		emulatedMsgs := emulatedContext.GetMessages(txHashes)
-		msgPtrs := make([]*indexModels.Message, 0, len(emulatedMsgs))
-		for _, msg := range emulatedMsgs {
-			msgPtrs = append(msgPtrs, msg)
-			if msg.Direction == "in" {
-				txs[txsMap[msg.TxHash]].InMsg = msg
-				if msg.Source != nil {
-					allAddresses = append(allAddresses, *msg.Source)
-				}
-			} else {
-				txs[txsMap[msg.TxHash]].OutMsgs = append(txs[txsMap[msg.TxHash]].OutMsgs, msg)
-				if msg.Destination != nil {
-					allAddresses = append(allAddresses, *msg.Destination)
-				}
-			}
-		}
-		if err := detect.MarkMessagesByPtr(msgPtrs); err != nil {
-			hashes := make([]string, len(msgPtrs))
-			for i, msg := range msgPtrs {
-				hashes[i] = string(msg.MsgHash)
-			}
-			log.Printf("[v2] Error marking messages (pending) with hashes %v: %v", hashes, err)
-		}
-	}
-
-	for idx := range txs {
-		sort.SliceStable(txs[idx].OutMsgs, func(i, j int) bool {
-			if txs[idx].OutMsgs[i].CreatedLt == nil {
-				return true
-			}
-			if txs[idx].OutMsgs[j].CreatedLt == nil {
-				return false
-			}
-			return *txs[idx].OutMsgs[i].CreatedLt < *txs[idx].OutMsgs[j].CreatedLt
-		})
-	}
-	var addressBook *indexModels.AddressBook
-	var metadata *indexModels.Metadata
-	shouldFetchAddressBook, shouldFetchMetadata := manager.shouldFetchAddressBookAndMetadata(
-		[]EventType{EventTransactions},
-		indexModels.FinalityStatePending,
-		allAddresses,
-	)
-	if shouldFetchAddressBook || shouldFetchMetadata {
-		addressBook, metadata = fetchAddressBookAndMetadata(
-			ctx,
-			allAddresses,
-			allAddresses,
-			shouldFetchAddressBook,
-			shouldFetchMetadata,
-		)
-	}
-
-	// Sort transactions by Lt descending
-	sort.Slice(txs, func(i, j int) bool {
-		return txs[i].Lt > txs[j].Lt
-	})
-	stage.Span.AddAttr("ton.trace.finality", indexModels.FinalityStatePending.String())
-	stage.Span.AddAttr("ton.transactions.count", len(txs))
-	stage.Span.AddAttr("ton.transactions.total_count", totalTxs)
-
-	manager.broadcast <- &TransactionsNotification{
-		Type:                  EventTransactions,
-		Finality:              indexModels.FinalityStatePending,
-		TraceExternalHashNorm: traceExternalHashNorm,
-		Transactions:          txs,
-		AddressBook:           addressBook,
-		Metadata:              metadata,
-	}
-	stage.Emit()
-}
-
-////////////////////////////////////////////////////////////////////////////////
-// Redis subscription: confirmed & finalized txs
-////////////////////////////////////////////////////////////////////////////////
-
-// SubscribeToConfirmedTransactions listens for txs that reached "confirmed" state.
-// Channel format is assumed to be: "<trace_external_hash_norm>:txhash1,txhash2,..."
-func SubscribeToConfirmedTransactions(ctx context.Context, rdb *redis.Client, manager *ClientManager, channel string) {
-	pubsub := rdb.Subscribe(ctx, channel)
-	defer pubsub.Close()
-
-	log.Printf("[v2] Subscribed to Redis channel (confirmed txs): %s", channel)
-
-	for {
-		msg, err := pubsub.ReceiveMessage(ctx)
-		if err != nil {
-			log.Printf("[v2] Error receiving confirmed txs message: %v", err)
-			continue
-		}
-
-		parts := strings.Split(msg.Payload, ":")
-		if len(parts) != 2 {
-			log.Printf("[v2] Invalid confirmed txs message format: %s", msg.Payload)
-			continue
-		}
-		traceExternalHashNorm := indexModels.HashType(parts[0])
-		txHashStrings := strings.Split(parts[1], ",")
-		txHashes := make([]indexModels.HashType, 0, len(txHashStrings))
-
-		for _, txHashString := range txHashStrings {
-			txHashes = append(txHashes, indexModels.HashType(txHashString))
-		}
-
-		if len(txHashes) == 0 {
-			log.Printf("[v2] No transaction hashes found in confirmed txs message: %s", msg.Payload)
-			continue
-		}
-
-		go ProcessNewConfirmedTxs(ctx, rdb, traceExternalHashNorm, txHashes, manager, channel)
-	}
-}
-
-// SubscribeToFinalizedTransactions listens for txs that reached "finalized" state
-// (this replaces the old "committed" notion).
-// Channel format is assumed to be: "<trace_external_hash_norm>:txhash1,txhash2,..."
-func SubscribeToFinalizedTransactions(ctx context.Context, rdb *redis.Client, manager *ClientManager, channel string) {
-	pubsub := rdb.Subscribe(ctx, channel)
-	defer pubsub.Close()
-
-	log.Printf("[v2] Subscribed to Redis channel (finalized txs): %s", channel)
-
-	for {
-		msg, err := pubsub.ReceiveMessage(ctx)
-		if err != nil {
-			log.Printf("[v2] Error receiving finalized txs message: %v", err)
-			continue
-		}
-
-		parts := strings.Split(msg.Payload, ":")
-		if len(parts) != 2 {
-			log.Printf("[v2] Invalid finalized txs message format: %s", msg.Payload)
-			continue
-		}
-		traceExternalHashNorm := indexModels.HashType(parts[0])
-		txHashStrings := strings.Split(parts[1], ",")
-		txHashes := make([]indexModels.HashType, 0, len(txHashStrings))
-
-		for _, txHashString := range txHashStrings {
-			txHashes = append(txHashes, indexModels.HashType(txHashString))
-		}
-
-		if len(txHashes) == 0 {
-			log.Printf("[v2] No transaction hashes found in finalized txs message: %s", msg.Payload)
-			continue
-		}
-
-		go ProcessNewFinalizedTxs(ctx, rdb, traceExternalHashNorm, txHashes, manager, channel)
-	}
-}
-
-// ProcessNewConfirmedTxs now emits a FULL TRACE SNAPSHOT (not a fragment).
-// txHashes is ignored for payload building; it only serves as a "trace changed" signal.
-func ProcessNewConfirmedTxs(ctx context.Context, rdb *redis.Client, traceExternalHashNorm indexModels.HashType, txHashes []indexModels.HashType, manager *ClientManager, channel string) {
-	processTransactionsTraceSnapshot(
-		ctx,
-		rdb,
-		traceExternalHashNorm,
-		manager,
-		"confirmed",
-		channel,
-	)
-}
-
-func ProcessNewFinalizedTxs(ctx context.Context, rdb *redis.Client, traceExternalHashNorm indexModels.HashType, txHashes []indexModels.HashType, manager *ClientManager, channel string) {
-	processTransactionsTraceSnapshot(
-		ctx,
-		rdb,
-		traceExternalHashNorm,
-		manager,
-		"finalized",
-		channel,
-	)
-}
-
-// processTransactionsTraceSnapshot loads the entire trace from Redis,
-// attaches messages, sorts, computes TRACE-level finality (min tx finality),
-// fetches address_book/metadata only if at least one eligible client needs them,
-// and broadcasts a single TransactionsNotification snapshot.
-// channelHint is only used for logging/debugging.
-func processTransactionsTraceSnapshot(
-	ctx context.Context,
-	rdb *redis.Client,
-	traceExternalHashNorm indexModels.HashType,
-	manager *ClientManager,
-	channelHint string,
-	channel string,
-) {
-	startTimeUnix := observability.NowUnixNano()
-	repository := &emulated.EmulatedTracesRepository{Rdb: rdb}
-	rawTraces, err := repository.LoadRawTraces([]string{traceExternalHashNorm.String()})
-	if err != nil {
-		log.Printf("[v2] Error loading raw traces (%s): %v, trace key: %s", channelHint, err, traceExternalHashNorm)
-		return
-	}
-	stage := NewTraceProcessingStage(
-		startTimeUnix,
-		rawTraceSpanName,
-		rawTraces[traceExternalHashNorm.String()],
-		traceExternalHashNorm.String(),
-		channel,
-	)
-
-	emulatedContext := crud.NewEmptyContext(false)
-	if err := emulatedContext.FillFromRawData(rawTraces); err != nil {
-		log.Printf("[v2] Error filling context from raw data (%s): %v, trace key: %s", channelHint, err, traceExternalHashNorm)
-		stage.EmitOtelError("streaming_api.fill_context_error", err.Error())
-		return
-	}
-	if emulatedContext.GetTraceCount() > 1 {
-		log.Printf("[v2] More than 1 trace in context (%s), trace key: %s", channelHint, traceExternalHashNorm)
-		stage.EmitOtelError("streaming_api.invalid_trace_count", "more than one trace in emulated context")
-		return
-	}
-	if emulatedContext.GetTraceCount() == 0 {
-		log.Printf("[v2] No traces in context (%s), trace key: %s", channelHint, traceExternalHashNorm)
-		stage.EmitOtelError("streaming_api.invalid_trace_count", "no traces in emulated context")
-		return
-	}
-
-	// Build FULL snapshot of all transactions in this trace.
-	var txs []indexModels.Transaction
-	txsMap := map[indexModels.HashType]int{} // txHash -> index in txs slice
-
-	// Compute trace-level finality as min(tx.Finality).
-	// Start from the highest state.
-	traceFinality := indexModels.FinalityStateFinalized
-
-	emulatedTxs := emulatedContext.GetTransactions()
-	for _, tx := range emulatedTxs {
-		txs = append(txs, *tx)
-		txsMap[tx.Hash] = len(txs) - 1
-		if stage.RootTxHash == "-" && tx.TraceId != nil {
-			stage.SetRootTxHash(*tx.TraceId)
-		}
-
-		if tx.Finality < traceFinality {
-			traceFinality = tx.Finality
-		}
-	}
-
-	if len(txs) == 0 {
-		log.Printf("[v2] No transactions found for trace %s (%s)", traceExternalHashNorm, channelHint)
-		stage.EmitOtelError("streaming_api.empty_trace", "no transactions found in trace snapshot")
-		return
-	}
-
-	// Collect tx hashes & initial addresses (accounts).
-	hashes := make([]string, 0, len(txs))
-	allAddresses := make([]indexModels.AccountAddress, 0, len(txs)*3)
-
-	for _, t := range txs {
-		hashes = append(hashes, string(t.Hash))
-		allAddresses = append(allAddresses, t.Account)
-	}
-
-	// Attach messages for ALL transactions in snapshot.
-	if len(hashes) > 0 {
-		emulatedMsgs := emulatedContext.GetMessages(hashes)
-		for _, msg := range emulatedMsgs {
-			txIdx, ok := txsMap[msg.TxHash]
-			if !ok {
-				log.Printf("[v2] Message for unknown transaction (%s), tx hash: %s", channelHint, msg.TxHash)
-				continue
-			}
-
-			if msg.Direction == "in" {
-				txs[txIdx].InMsg = msg
-				if msg.Source != nil {
-					allAddresses = append(allAddresses, *msg.Source)
-				}
-			} else {
-				txs[txIdx].OutMsgs = append(txs[txIdx].OutMsgs, msg)
-				if msg.Destination != nil {
-					allAddresses = append(allAddresses, *msg.Destination)
-				}
-			}
-		}
-	}
-
-	// Sort OutMsgs by CreatedLt ascending
-	for idx := range txs {
-		sort.SliceStable(txs[idx].OutMsgs, func(i, j int) bool {
-			if txs[idx].OutMsgs[i].CreatedLt == nil {
-				return true
-			}
-			if txs[idx].OutMsgs[j].CreatedLt == nil {
-				return false
-			}
-			return *txs[idx].OutMsgs[i].CreatedLt < *txs[idx].OutMsgs[j].CreatedLt
-		})
-	}
-	// Sort transactions by Lt descending (as documented).
-	sort.Slice(txs, func(i, j int) bool {
-		return txs[i].Lt > txs[j].Lt
-	})
-
-	// Fetch address_book/metadata only if at least one eligible client needs it,
-	// and only if that client will receive this event with traceFinality.
-	var addressBook *indexModels.AddressBook
-	var metadata *indexModels.Metadata
-
-	shouldFetchAddressBook, shouldFetchMetadata := manager.shouldFetchAddressBookAndMetadata(
-		[]EventType{EventTransactions},
-		traceFinality,
-		allAddresses,
-	)
-	if shouldFetchAddressBook || shouldFetchMetadata {
-		addressBook, metadata = fetchAddressBookAndMetadata(
-			ctx,
-			allAddresses,
-			allAddresses,
-			shouldFetchAddressBook,
-			shouldFetchMetadata,
-		)
-	}
-	stage.Span.AddAttr("ton.trace.finality", traceFinality.String())
-	stage.Span.AddAttr("ton.transactions.count", len(txs))
-
-	manager.broadcast <- &TransactionsNotification{
-		Type:                  EventTransactions,
-		Finality:              traceFinality,
-		TraceExternalHashNorm: traceExternalHashNorm,
-		Transactions:          txs,
-		AddressBook:           addressBook,
-		Metadata:              metadata,
-	}
-	stage.Emit()
-}
-
-////////////////////////////////////////////////////////////////////////////////
-// Account state updates
-////////////////////////////////////////////////////////////////////////////////
-
-func SubscribeToAccountStateUpdates(ctx context.Context, rdb *redis.Client, manager *ClientManager, channel string) {
-	pubsub := rdb.Subscribe(ctx, channel)
-	defer pubsub.Close()
-
-	log.Printf("[v2] Subscribed to Redis channel (account state updates): %s", channel)
-
-	for {
-		msg, err := pubsub.ReceiveMessage(ctx)
-		if err != nil {
-			log.Printf("[v2] Error receiving account state update message: %v", err)
-			continue
-		}
-
-		finality, addr, err := parseAccountStateChannelPayload(msg.Payload)
-		if err != nil {
-			log.Printf("[v2] Invalid account state payload %q: %v", msg.Payload, err)
-			continue
-		}
-
-		go ProcessNewAccountStates(ctx, rdb, addr, finality, manager)
-	}
-}
-
-func parseAccountStateChannelPayload(payload string) (indexModels.FinalityState, indexModels.AccountAddress, error) {
-	parts := strings.SplitN(payload, ":", 2)
-	if len(parts) != 2 {
-		return 0, "", fmt.Errorf("unexpected payload format")
-	}
-
-	var finality indexModels.FinalityState
-	switch parts[0] {
-	case "account_confirmed":
-		finality = indexModels.FinalityStateConfirmed
-	case "account_finalized":
-		finality = indexModels.FinalityStateFinalized
-	default:
-		return 0, "", fmt.Errorf("unknown prefix %q", parts[0])
-	}
-
-	if parts[1] == "" {
-		return 0, "", fmt.Errorf("missing address")
-	}
-
-	addr, err := indexModels.ParseAccountAddress(parts[1])
-	if err != nil {
-		return 0, "", fmt.Errorf("invalid address format: %v", err)
-	}
-	if addr == nil || !addr.IsAddressStd() {
-		return 0, "", fmt.Errorf("standard address required, got: %v", err)
-	}
-
-	return finality, *addr, nil
-}
-
-////////////////////////////////////////////////////////////////////////////////
 // Classified traces (actions)
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -1342,19 +874,38 @@ func SubscribeToClassifiedTraces(ctx context.Context, rdb *redis.Client, manager
 
 	log.Printf("[v2] Subscribed to Redis channel (classified traces): %s", channel)
 
+	pool := newKeyedWorkerPool(ctx, "classified traces", streamingWorkerCount, streamingQueueSizePerWorker,
+		func(ctx context.Context, traceKey indexModels.HashType) {
+			ProcessNewClassifiedTrace(ctx, rdb, traceKey, manager, channel)
+		})
+
 	for {
 		msg, err := pubsub.ReceiveMessage(ctx)
 		if err != nil {
+			if ctx.Err() != nil {
+				return
+			}
 			log.Printf("[v2] Error receiving classified trace message: %v", err)
 			continue
 		}
 
 		traceExternalHashNorm := indexModels.HashType(msg.Payload)
-		go ProcessNewClassifiedTrace(ctx, rdb, traceExternalHashNorm, manager, channel)
+		if !manager.needsClassifiedTrace(traceExternalHashNorm) {
+			continue
+		}
+		if !pool.Enqueue(ctx, traceExternalHashNorm.String(), traceExternalHashNorm.String(), normalPriority, traceExternalHashNorm) {
+			return
+		}
 	}
 }
 
 func ProcessNewClassifiedTrace(ctx context.Context, rdb *redis.Client, traceExternalHashNorm indexModels.HashType, manager *ClientManager, channel string) {
+	// The subscription may have disappeared while this job was waiting in the
+	// queue. Avoid an expensive HGETALL when nobody can receive the result.
+	if !manager.needsClassifiedTrace(traceExternalHashNorm) {
+		return
+	}
+
 	startTimeUnix := observability.NowUnixNano()
 
 	repository := &emulated.EmulatedTracesRepository{Rdb: rdb}
@@ -1471,21 +1022,12 @@ func ProcessNewClassifiedTrace(ctx context.Context, rdb *redis.Client, traceExte
 	// Fetch address_book/metadata only if at least one eligible client needs it,
 	// and only if that client will receive this event with traceFinality.
 	shouldFetchAddressBook, shouldFetchMetadata := manager.shouldFetchAddressBookAndMetadata(
-		[]EventType{EventActions},
-		traceFinality,
-		allAddresses,
-	)
+		[]EventType{EventActions}, traceFinality, allAddresses)
 	if shouldFetchAddressBook || shouldFetchMetadata {
-		addressBook, metadata = fetchAddressBookAndMetadata(
-			ctx,
-			allAddresses,
-			allAddresses,
-			shouldFetchAddressBook,
-			shouldFetchMetadata,
-		)
+		addressBook, metadata = fetchAddressBookAndMetadata(ctx, allAddresses, allAddresses, shouldFetchAddressBook, shouldFetchMetadata)
 	}
-	// Pending actions
-	manager.broadcast <- &ActionsNotification{
+	actionTargets := manager.subscribersForAddresses(EventActions, allAddresses, traceFinality)
+	manager.sendNotification(&ActionsNotification{
 		Type:                  EventActions,
 		Finality:              traceFinality,
 		TraceExternalHashNorm: traceExternalHashNorm,
@@ -1493,6 +1035,12 @@ func ProcessNewClassifiedTrace(ctx context.Context, rdb *redis.Client, traceExte
 		ActionAddresses:       actionsAddresses,
 		AddressBook:           addressBook,
 		Metadata:              metadata,
+	}, actionTargets)
+
+	traceTargets := manager.subscribersForTrace(traceExternalHashNorm, traceFinality)
+	if len(traceTargets) == 0 {
+		stage.Emit()
+		return
 	}
 
 	txs, err := crud.QueryPendingTransactionsImpl(emulatedContext, nil, indexModels.RequestSettings{}, false)
@@ -1535,17 +1083,10 @@ func ProcessNewClassifiedTrace(ctx context.Context, rdb *redis.Client, traceExte
 	var traceAddressBook *indexModels.AddressBook
 	var traceMetadata *indexModels.Metadata
 	shouldFetchTraceAddressBook, shouldFetchTraceMetadata := manager.shouldFetchAddressBookAndMetadataForTrace(
-		traceFinality,
-		traceExternalHashNorm,
-	)
+		traceFinality, traceExternalHashNorm)
 	if shouldFetchTraceAddressBook || shouldFetchTraceMetadata {
 		traceAddressBook, traceMetadata = fetchAddressBookAndMetadata(
-			ctx,
-			traceAddresses,
-			traceAddresses,
-			shouldFetchTraceAddressBook,
-			shouldFetchTraceMetadata,
-		)
+			ctx, traceAddresses, traceAddresses, shouldFetchTraceAddressBook, shouldFetchTraceMetadata)
 	}
 
 	var traceActionsPtr *[]*indexModels.Action
@@ -1553,7 +1094,7 @@ func ProcessNewClassifiedTrace(ctx context.Context, rdb *redis.Client, traceExte
 		traceActionsPtr = &actions
 	}
 
-	manager.broadcast <- &TraceNotification{
+	manager.sendNotification(&TraceNotification{
 		Type:                  EventTrace,
 		Finality:              traceFinality,
 		TraceExternalHashNorm: traceExternalHashNorm,
@@ -1562,7 +1103,7 @@ func ProcessNewClassifiedTrace(ctx context.Context, rdb *redis.Client, traceExte
 		Actions:               traceActionsPtr,
 		AddressBook:           traceAddressBook,
 		Metadata:              traceMetadata,
-	}
+	}, traceTargets)
 	stage.Emit()
 }
 
@@ -1584,91 +1125,11 @@ func SubscribeToInvalidatedTraces(ctx context.Context, rdb *redis.Client, manage
 		}
 
 		traceExternalHashNorm := indexModels.HashType(msg.Payload)
-		manager.broadcast <- &TraceInvalidatedNotification{
+		manager.sendNotification(&TraceInvalidatedNotification{
 			Type:                  EventTraceInvalidated,
 			TraceExternalHashNorm: traceExternalHashNorm,
-		}
+		}, nil)
 	}
-}
-
-////////////////////////////////////////////////////////////////////////////////
-// Account state & jettons (confirmed & finalized, no pending)
-////////////////////////////////////////////////////////////////////////////////
-
-func ProcessNewAccountStates(ctx context.Context, rdb *redis.Client, addr indexModels.AccountAddress, finality indexModels.FinalityState, manager *ClientManager) {
-	var key string
-	switch finality {
-	case indexModels.FinalityStateConfirmed:
-		key = fmt.Sprintf("account_confirmed:%s", addr)
-	case indexModels.FinalityStateFinalized:
-		key = fmt.Sprintf("account_finalized:%s", addr)
-	default:
-		log.Printf("[v2] Unsupported finality %d for account state processing for %s", finality, addr)
-		return
-	}
-	acctData, err := rdb.HGetAll(ctx, key).Result()
-	if err != nil {
-		log.Printf("[v2] Error fetching account state for %s: %v", addr, err)
-		return
-	}
-	var accountState models.AccountState
-	err = msgpack.Unmarshal([]byte(acctData["state"]), &accountState)
-	if err != nil {
-		log.Printf("[v2] Error unmarshalling account state finality %v for %s: %v (%s)", finality, addr, err, acctData["state"])
-		return
-	}
-
-	manager.broadcast <- &AccountStateNotification{
-		Type:     EventAccountStateChange,
-		Finality: finality,
-		Account:  addr,
-		State:    models.MsgPackAccountStateToIndexAccountState(accountState),
-	}
-
-	interfacesData := acctData["interfaces"]
-	if interfacesData == "" {
-		return
-	}
-	var addrInterfaces models.AddressInterfaces
-	err = msgpack.Unmarshal([]byte(interfacesData), &addrInterfaces)
-	if err != nil {
-		log.Printf("[v2] Error unmarshalling address interfaces for %s: %v (%s)", addr, err, interfacesData)
-		return
-	}
-
-	var notification *JettonsNotification
-
-	for _, iface := range addrInterfaces.Interfaces {
-		switch val := iface.Value.(type) {
-		case *models.JettonWalletInterface:
-			notification = &JettonsNotification{
-				Type:     EventJettonsChange,
-				Finality: finality,
-				Jetton:   MsgPackJettonWalletToModel(*val, int64(*accountState.LastTransLt), models.ConvertHashToIndex(accountState.CodeHash), models.ConvertHashToIndex(accountState.DataHash)),
-			}
-		}
-	}
-	if notification == nil {
-		return
-	}
-
-	addrBookAddresses := []indexModels.AccountAddress{notification.Jetton.Address, notification.Jetton.Owner, notification.Jetton.Jetton}
-	metadataAddresses := []indexModels.AccountAddress{notification.Jetton.Owner, notification.Jetton.Jetton}
-	shouldFetchAddressBook, shouldFetchMetadata := manager.shouldFetchAddressBookAndMetadata(
-		[]EventType{EventJettonsChange},
-		finality,
-		addrBookAddresses,
-	)
-	if shouldFetchAddressBook || shouldFetchMetadata {
-		notification.AddressBook, notification.Metadata = fetchAddressBookAndMetadata(
-			ctx,
-			addrBookAddresses,
-			metadataAddresses,
-			shouldFetchAddressBook,
-			shouldFetchMetadata,
-		)
-	}
-	manager.broadcast <- notification
 }
 
 func MsgPackJettonWalletToModel(j models.JettonWalletInterface, lastTransLt int64, codeHash *indexModels.HashType, dataHash *indexModels.HashType) indexModels.JettonWallet {
@@ -1857,14 +1318,16 @@ func writeWSMessage(c *websocket.Conn, client *Client, msg []byte) error {
 		return c.WriteMessage(websocket.TextMessage, msg)
 	}
 
+	client.writeMu.Lock()
+	defer client.writeMu.Unlock()
+
 	client.mu.Lock()
 	if !client.Connected {
 		client.mu.Unlock()
 		return nil
 	}
-	err := client.SendEvent(msg)
 	client.mu.Unlock()
-	return err
+	return client.SendEvent(msg)
 }
 
 func sendWSJSONErr(c *websocket.Conn, client *Client, id *string, err error) {
@@ -2165,7 +1628,10 @@ func WebSocketHandler(manager *ClientManager) func(*websocket.Conn) {
 						}
 						if !cnv.IsAddressStd() {
 							addrsValid = false
-							err := indexModels.IndexError{422, "address is not standard"}
+							err := indexModels.IndexError{
+								Code:    422,
+								Message: "address is not standard",
+							}
 							sendWSJSONErr(c, client, env.Id, err)
 							break
 						}
@@ -2182,14 +1648,15 @@ func WebSocketHandler(manager *ClientManager) func(*websocket.Conn) {
 					continue
 				}
 
-				client.mu.Lock()
-				if len(cnvAddrs) > 0 {
-					client.Subscription.Unsubscribe(cnvAddrs)
-				}
-				if len(traceExternalHashNorms) > 0 {
-					client.Subscription.UnsubscribeTraces(traceExternalHashNorms)
-				}
-				client.mu.Unlock()
+				_ = manager.updateSubscription(client, func(subscription *Subscription) error {
+					if len(cnvAddrs) > 0 {
+						subscription.Unsubscribe(cnvAddrs)
+					}
+					if len(traceExternalHashNorms) > 0 {
+						subscription.UnsubscribeTraces(traceExternalHashNorms)
+					}
+					return nil
+				})
 				ack, _ := json.Marshal(StatusResponse{Id: env.Id, Status: "unsubscribed"})
 				_ = writeWSMessage(c, client, ack)
 
@@ -2231,37 +1698,38 @@ func WebSocketHandler(manager *ClientManager) func(*websocket.Conn) {
 					continue
 				}
 
-				minFin := client.Subscription.MinFinality
-				if req.MinFinality != nil {
-					minFin = *req.MinFinality
-				}
+				err = manager.updateSubscription(client, func(subscription *Subscription) error {
+					if err := checkAddressLimit(client, len(cnvAddrs), manager.rateLimiter, true); err != nil {
+						return err
+					}
 
-				client.mu.Lock()
-				err = checkAddressLimit(client, len(cnvAddrs), manager.rateLimiter, true)
+					minFinality := subscription.MinFinality
+					if req.MinFinality != nil {
+						minFinality = *req.MinFinality
+					}
+
+					subscription.Replace(cnvAddrs, req.Types)
+					subscription.ReplaceTraces(traceExternalHashNorms)
+					subscription.MinFinality = minFinality
+
+					if req.IncludeAddressBook != nil {
+						subscription.IncludeAddressBook = *req.IncludeAddressBook
+					}
+					if req.IncludeMetadata != nil {
+						subscription.IncludeMetadata = *req.IncludeMetadata
+					}
+					if len(req.SupportedActionTypes) > 0 {
+						subscription.SupportedActionTypes = indexModels.ExpandActionTypeShortcuts(req.SupportedActionTypes)
+					}
+					if len(req.ActionTypes) > 0 {
+						subscription.ActionTypes = req.ActionTypes
+					}
+					return nil
+				})
 				if err != nil {
-					client.mu.Unlock()
 					sendWSJSONErr(c, client, env.Id, err)
 					continue
 				}
-
-				client.Subscription.Replace(cnvAddrs, req.Types)
-				client.Subscription.ReplaceTraces(traceExternalHashNorms)
-				client.Subscription.MinFinality = minFin
-
-				if req.IncludeAddressBook != nil {
-					client.Subscription.IncludeAddressBook = *req.IncludeAddressBook
-				}
-				if req.IncludeMetadata != nil {
-					client.Subscription.IncludeMetadata = *req.IncludeMetadata
-				}
-				if len(req.SupportedActionTypes) > 0 {
-					client.Subscription.SupportedActionTypes = indexModels.ExpandActionTypeShortcuts(req.SupportedActionTypes)
-				}
-				if len(req.ActionTypes) > 0 {
-					client.Subscription.ActionTypes = req.ActionTypes
-				}
-
-				client.mu.Unlock()
 
 				ack, _ := json.Marshal(StatusResponse{Id: env.Id, Status: "subscribed"})
 				_ = writeWSMessage(c, client, ack)
