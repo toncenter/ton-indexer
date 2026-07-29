@@ -763,7 +763,8 @@ void ConfirmedBlockEmulator::trace_emulated(Trace trace, MeasurementPtr measurem
             measurement->mark_otel_error("trace_emulator.insert_error", error.to_string());
         } else {
             snapshot = R.move_as_ok();
-            success = snapshot != nullptr;
+            // An empty successful snapshot means that this trace was
+            // intentionally skipped and does not make the block unusable.
             LOG(DEBUG) << "Processed " << label << " trace "
                        << td::base64_encode(root_hash.as_slice());
         }

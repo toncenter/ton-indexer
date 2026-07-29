@@ -284,6 +284,40 @@ struct ConfirmedRootReplacedRequest {
 using TraceRequest =
     std::variant<InsertRequest, PromoteConfirmedRequest, ConfirmedRootReplacedRequest>;
 
+std::deque<TraceRequest> resolve_terminal_queue(
+    std::deque<TraceRequest> queued,
+    std::size_t& queued_updates,
+    TraceCleanupMode mode) {
+    std::deque<TraceRequest> surviving;
+    while (!queued.empty()) {
+        auto work = std::move(queued.front());
+        queued.pop_front();
+
+        if (auto* request = std::get_if<InsertRequest>(&work)) {
+            --queued_updates;
+            g_statistics.record_time(INSERT_TRACE, request->timer.elapsed() * 1e3);
+            if (mode == TraceCleanupMode::Invalidation && request->completion.confirmed) {
+                request->completion.set_error(td::Status::Error("Confirmed trace was invalidated before insertion"));
+            } else {
+                if (mode == TraceCleanupMode::Oversized && request->measurement) {
+                    request->measurement->set_otel_attribute("ton.trace_state.oversized", true);
+                }
+                request->completion.set_value();
+            }
+            continue;
+        }
+
+        if (auto* promotion = std::get_if<PromoteConfirmedRequest>(&work)) {
+            if (mode == TraceCleanupMode::Invalidation) {
+                surviving.push_back(std::move(work));
+            } else {
+                promotion->promise.set_value(td::Unit());
+            }
+        }
+    }
+    return surviving;
+}
+
 enum class InFlightKind {
     Update,
     Cleanup,
@@ -499,11 +533,6 @@ td::Result<TraceTransition> prepare_trace_transition(const ActiveTrace& current,
     }
 
     auto state_change = current.nodes.prepare(node_update.state_update);
-    if (state_change.resulting_nodes.size() > kMaxCachedTraceNodes) {
-        return td::Status::Error("Trace contains more than " + std::to_string(kMaxCachedTraceNodes) +
-                                 " cached nodes");
-    }
-
     transition.node_delta = std::move(state_change.delta);
     transition.next_trace.nodes.apply(std::move(state_change));
     transition.next_trace.metadata = current.metadata;
@@ -999,7 +1028,7 @@ std::vector<TraceStateIndexRef> collect_cleanup_index_refs(const TraceSlot& slot
     return {refs.begin(), refs.end()};
 }
 
-bool publishes_invalidation(TraceCleanupMode mode) {
+constexpr bool publishes_invalidation(TraceCleanupMode mode) {
     return mode == TraceCleanupMode::PendingTimeout ||
            mode == TraceCleanupMode::ReplacedConfirmedTimeout ||
            mode == TraceCleanupMode::Invalidation;
@@ -1021,13 +1050,17 @@ RedisWriteBatch build_cleanup_batch(const std::string& trace_key,
     return RedisWriteBatch{.plans = {std::move(plan)}};
 }
 
-bool cleanup_is_terminal(TraceCleanupMode mode) {
-    return mode == TraceCleanupMode::Invalidation;
+constexpr bool cleanup_is_terminal(TraceCleanupMode mode) {
+    return mode == TraceCleanupMode::Invalidation ||
+           mode == TraceCleanupMode::Oversized;
 }
 
-bool cleanup_waits_for_current_updates(TraceCleanupMode mode) {
-    return mode != TraceCleanupMode::Invalidation;
+constexpr bool cleanup_waits_for_current_updates(TraceCleanupMode mode) {
+    return !cleanup_is_terminal(mode);
 }
+
+static_assert(cleanup_is_terminal(TraceCleanupMode::Oversized));
+static_assert(!publishes_invalidation(TraceCleanupMode::Oversized));
 
 void append_redis_commands(sw::redis::Transaction& transaction, const RedisWritePlan& plan) {
     if (plan.erase_trace) {
@@ -1146,6 +1179,7 @@ struct RedisInsertManager::Impl {
     sw::redis::Redis redis;
     TraceRetentionConfig retention;
     std::unordered_map<std::string, TraceSlot> traces;
+    std::unordered_map<std::string, td::Timestamp> oversized_traces;
     CompetingTraceSet candidates;
     std::deque<std::string> ready_traces;
     std::size_t queued_updates{0};
@@ -1161,6 +1195,16 @@ RedisInsertManager::~RedisInsertManager() = default;
 
 void RedisInsertManager::start_up() {
     alarm_timestamp() = td::Timestamp::in(kExpirySweepSeconds);
+}
+
+bool RedisInsertManager::touch_oversized_trace(
+    const std::string& trace_key) {
+    auto it = impl_->oversized_traces.find(trace_key);
+    if (it == impl_->oversized_traces.end()) {
+        return false;
+    }
+    it->second = td::Timestamp::in(impl_->retention.open_seconds);
+    return true;
 }
 
 void RedisInsertManager::schedule_trace(const std::string& trace_key) {
@@ -1185,11 +1229,8 @@ void RedisInsertManager::request_cleanup(const std::string& trace_key,
         impl_->candidates.forget(*slot.current->root_account, trace_key);
     }
 
-    if (!slot.cleanup_requested ||
-        mode == TraceCleanupMode::Invalidation) {
-        // Invalidation always wins over a normal TTL cleanup. If the normal
-        // cleanup is already in Redis, its completion starts one small
-        // follow-up operation which publishes the invalidation.
+    if (!slot.cleanup_requested || cleanup_is_terminal(mode)) {
+        // Terminal cleanup always wins over a normal TTL cleanup.
         slot.cleanup_mode = mode;
     }
 
@@ -1210,8 +1251,8 @@ void RedisInsertManager::update_lifecycle(const std::string& trace_key) {
     slot.lifecycle =
         classify_trace_lifecycle(slot.current->nodes, root_node);
 
-    // An invalidated trace is already on its way out. Updating its deadline or
-    // registering it as a pending candidate would leave stale state behind.
+    // A terminally dropped trace is already on its way out. Updating its
+    // lifecycle would leave stale retention state behind.
     if (cleanup_is_terminal(slot.cleanup_mode)) {
         return;
     }
@@ -1309,6 +1350,15 @@ void RedisInsertManager::insert_impl(
         .confirmed_promise = std::move(confirmed_promise),
     };
     auto trace_key = td::base64_encode(trace.ext_in_msg_hash_norm.as_slice());
+    if (touch_oversized_trace(trace_key)) {
+        if (measurement) {
+            measurement->set_otel_attribute(
+                "ton.trace_state.oversized", true);
+        }
+        completion.set_value();
+        return;
+    }
+
     const bool real_root = contains_real_root(trace);
     auto slot_it = impl_->traces.find(trace_key);
     if (slot_it != impl_->traces.end() &&
@@ -1491,6 +1541,32 @@ void RedisInsertManager::start_next_writes() {
         }
 
         auto prepared = prepared_result.move_as_ok();
+        const auto resulting_nodes =
+            prepared.needs_redis_write
+                ? prepared.next_trace.nodes.nodes().size()
+                : slot.current->nodes.nodes().size();
+        if (resulting_nodes > kMaxCachedTraceNodes) {
+            LOG(WARNING) << "Dropping oversized trace " << trace_key
+                         << " with " << resulting_nodes
+                         << " nodes; limit is " << kMaxCachedTraceNodes;
+            if (request_measurement) {
+                request_measurement->set_otel_attribute(
+                    "ton.trace_state.oversized", true);
+            }
+            impl_->oversized_traces.insert_or_assign(
+                trace_key,
+                td::Timestamp::in(impl_->retention.open_seconds));
+            slot.queued = resolve_terminal_queue(
+                std::move(slot.queued),
+                impl_->queued_updates,
+                TraceCleanupMode::Oversized);
+            request_cleanup(trace_key, TraceCleanupMode::Oversized);
+            insert_completion.set_value();
+            g_statistics.record_time(
+                INSERT_TRACE, request_timer.elapsed() * 1e3);
+            continue;
+        }
+
         std::optional<CachedConfirmedTrace> confirmed_trace;
         if (insert_completion.confirmed) {
             const auto& resulting_trace =
@@ -1621,29 +1697,10 @@ void RedisInsertManager::write_finished(std::string trace_key,
             }
             auto queued = std::move(slot.queued);
             if (cleanup_is_terminal(slot.cleanup_mode)) {
-                std::deque<TraceRequest> surviving;
-                while (!queued.empty()) {
-                    auto work = std::move(queued.front());
-                    queued.pop_front();
-                    auto* request = std::get_if<InsertRequest>(&work);
-                    if (request) {
-                        --impl_->queued_updates;
-                        g_statistics.record_time(
-                            INSERT_TRACE, request->timer.elapsed() * 1e3);
-                        if (request->completion.confirmed) {
-                            request->completion.set_error(td::Status::Error(
-                                "Confirmed trace was invalidated before insertion"));
-                        } else {
-                            request->completion.set_value();
-                        }
-                        continue;
-                    }
-                    if (std::holds_alternative<PromoteConfirmedRequest>(
-                            work)) {
-                        surviving.push_back(std::move(work));
-                    }
-                }
-                queued = std::move(surviving);
+                queued = resolve_terminal_queue(
+                    std::move(queued),
+                    impl_->queued_updates,
+                    slot.cleanup_mode);
             }
 
             if (queued.empty()) {
@@ -1706,6 +1763,9 @@ void RedisInsertManager::promote_confirmed(
         if (!snapshot || !snapshot->state) {
             LOG(FATAL) << "Got an empty confirmed snapshot for mc "
                        << mc_seqno;
+        }
+        if (touch_oversized_trace(snapshot->trace_key)) {
+            continue;
         }
         auto& promotion = promotions[snapshot->trace_key];
         if (!promotion.fallback_state ||
@@ -1776,6 +1836,17 @@ void RedisInsertManager::alarm() {
     for (const auto& [trace_key, mode] : expired) {
         request_cleanup(trace_key, mode);
     }
+
+    for (auto it = impl_->oversized_traces.begin();
+         it != impl_->oversized_traces.end();) {
+        if (it->second.is_in_past(now) &&
+            impl_->traces.count(it->first) == 0) {
+            it = impl_->oversized_traces.erase(it);
+        } else {
+            ++it;
+        }
+    }
+
     alarm_timestamp() = td::Timestamp::in(kExpirySweepSeconds);
     start_next_writes();
 }
@@ -1860,6 +1931,7 @@ void RedisInsertManager::tear_down() {
         }
     }
     impl_->traces.clear();
+    impl_->oversized_traces.clear();
     impl_->ready_traces.clear();
     impl_->queued_updates = 0;
 }
