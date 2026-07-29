@@ -14,35 +14,32 @@ import (
 	"github.com/gofiber/websocket/v2"
 	"github.com/redis/go-redis/v9"
 
-	streamingv1 "github.com/toncenter/ton-indexer/ton-streaming-go/v1"
 	streamingv2 "github.com/toncenter/ton-indexer/ton-streaming-go/v2"
 )
 
 var (
-	redisAddr               = flag.String("redis", "localhost:6379", "Redis server dsn")
-	tracesChannel           = flag.String("traces-channel", "new_pending_trace", "Redis channel for pending trace updates")
-	commitedTxsChannel      = flag.String("commited-txs-channel", "new_finalized_txs", "Redis channel for committed transactions")
-	confirmedTxsChannel     = flag.String("confirmed-txs-channel", "new_confirmed_txs", "Redis channel for confirmed transactions")
-	classifiedTracesChannel = flag.String("classified-traces-channel", "classified_trace", "Redis channel for classified traces")
-	redisPoolSize           = flag.Int("redis-pool-size", 0, "Connection pool size of redis client")
-	redisMinIdleConns       = flag.Int("redis-min-idle-conns", 0, "Minimum amount of idle connections to keep in pool for redis client")
-	redisMaxIdleConns       = flag.Int("redis-max-idle-conns", 0, "Maximum amount of idle connections to keep in pool for redis client")
-	redisMaxActiveConns     = flag.Int("redis-max-active-conns", 0, "Maximum active redis connections")
-	serverPort              = flag.Int("port", 8085, "Server port")
-	prefork                 = flag.Bool("prefork", false, "Use prefork")
-	testnet                 = flag.Bool("testnet", false, "Use testnet")
-	pg                      = flag.String("pg", "", "PostgreSQL connection string")
-	kvrocksAddr             = flag.String("kvrocks", "", "Kvrocks address or Redis URL for enrichment reads")
-	kvrocksSentinels        = flag.String("kvrocks-sentinels", "", "Comma-separated Kvrocks Sentinel addresses")
-	kvrocksSentinelMaster   = flag.String("kvrocks-sentinel-master", "", "Kvrocks Sentinel master name")
-	kvrocksUser             = flag.String("kvrocks-user", "", "Kvrocks username")
-	kvrocksPassword         = flag.String("kvrocks-password", "", "Kvrocks password")
-	kvrocksDB               = flag.Int("kvrocks-db", 0, "Kvrocks database number")
-	kvrocksReplicaReads     = flag.Bool("kvrocks-replica-reads", false, "Read from Kvrocks replicas discovered via Sentinel")
-	kvrocksStalenessBlocks  = flag.Int64("kvrocks-staleness-blocks", 5, "Max watermark lag in masterchain blocks for a Kvrocks replica to serve reads")
-	kvrocksReplicaRefreshMS = flag.Int64("kvrocks-replica-refresh-ms", 300, "Kvrocks replica discovery and freshness poll interval in milliseconds")
-	imgProxyBaseUrl         = flag.String("imgproxy-baseurl", "", "Image proxy base URL")
-	enableV1                = flag.Bool("enable-v1", false, "Enable deprecated v1 streaming endpoints and Redis consumers")
+	redisAddr                = flag.String("redis", "localhost:6379", "Redis server dsn")
+	classifiedTracesChannel  = flag.String("classified-traces-channel", "classified_trace", "Redis channel for classified traces")
+	transactionHintsChannel  = flag.String("transaction-hints-channel", "streaming_transactions", "Redis channel for v2 transaction hints")
+	accountStateHintsChannel = flag.String("account-state-hints-channel", "streaming_account_states", "Redis channel for v2 account state hints")
+	redisPoolSize            = flag.Int("redis-pool-size", 0, "Connection pool size of redis client")
+	redisMinIdleConns        = flag.Int("redis-min-idle-conns", 0, "Minimum amount of idle connections to keep in pool for redis client")
+	redisMaxIdleConns        = flag.Int("redis-max-idle-conns", 0, "Maximum amount of idle connections to keep in pool for redis client")
+	redisMaxActiveConns      = flag.Int("redis-max-active-conns", 0, "Maximum active redis connections")
+	serverPort               = flag.Int("port", 8085, "Server port")
+	prefork                  = flag.Bool("prefork", false, "Use prefork")
+	testnet                  = flag.Bool("testnet", false, "Use testnet")
+	pg                       = flag.String("pg", "", "PostgreSQL connection string")
+	kvrocksAddr              = flag.String("kvrocks", "", "Kvrocks address or Redis URL for enrichment reads")
+	kvrocksSentinels         = flag.String("kvrocks-sentinels", "", "Comma-separated Kvrocks Sentinel addresses")
+	kvrocksSentinelMaster    = flag.String("kvrocks-sentinel-master", "", "Kvrocks Sentinel master name")
+	kvrocksUser              = flag.String("kvrocks-user", "", "Kvrocks username")
+	kvrocksPassword          = flag.String("kvrocks-password", "", "Kvrocks password")
+	kvrocksDB                = flag.Int("kvrocks-db", 0, "Kvrocks database number")
+	kvrocksReplicaReads      = flag.Bool("kvrocks-replica-reads", false, "Read from Kvrocks replicas discovered via Sentinel")
+	kvrocksStalenessBlocks   = flag.Int64("kvrocks-staleness-blocks", 5, "Max watermark lag in masterchain blocks for a Kvrocks replica to serve reads")
+	kvrocksReplicaRefreshMS  = flag.Int64("kvrocks-replica-refresh-ms", 300, "Kvrocks replica discovery and freshness poll interval in milliseconds")
+	imgProxyBaseUrl          = flag.String("imgproxy-baseurl", "", "Image proxy base URL")
 )
 
 func main() {
@@ -105,25 +102,6 @@ func main() {
 		log.Printf("AddressBook and Metadata will not be available")
 	}
 
-	var manager *streamingv1.ClientManager
-	if *enableV1 {
-		streamingv1.InitConfig(streamingv1.Config{
-			EnrichmentReader: enrichmentReader,
-			Testnet:          *testnet,
-			ImgProxyBaseURL:  *imgProxyBaseUrl,
-		})
-
-		manager = streamingv1.NewClientManager()
-		go manager.Run()
-
-		go streamingv1.SubscribeToTraces(ctx, rdb, manager, *tracesChannel)
-		go streamingv1.SubscribeToCommittedTransactions(ctx, rdb, manager, *commitedTxsChannel)
-		go streamingv1.SubscribeToClassifiedTraces(ctx, rdb, manager, *classifiedTracesChannel)
-		go streamingv1.SubscribeToInvalidatedTraces(ctx, rdb, manager)
-	} else {
-		log.Printf("v1 streaming API disabled; pass --enable-v1 to enable it")
-	}
-
 	streamingv2.InitConfig(streamingv2.Config{
 		EnrichmentReader: enrichmentReader,
 		Testnet:          *testnet,
@@ -133,11 +111,9 @@ func main() {
 	v2Manager := streamingv2.NewClientManager()
 	go v2Manager.Run()
 
-	go streamingv2.SubscribeToTraces(ctx, rdb, v2Manager, *tracesChannel)
-	go streamingv2.SubscribeToConfirmedTransactions(ctx, rdb, v2Manager, *confirmedTxsChannel) // "new_confirmed_txs"
-	go streamingv2.SubscribeToFinalizedTransactions(ctx, rdb, v2Manager, *commitedTxsChannel)  // "new_finalized_txs"
+	go streamingv2.SubscribeToTransactionHints(ctx, rdb, v2Manager, *transactionHintsChannel)
 	go streamingv2.SubscribeToClassifiedTraces(ctx, rdb, v2Manager, *classifiedTracesChannel)
-	go streamingv2.SubscribeToAccountStateUpdates(ctx, rdb, v2Manager, "new_account_state")
+	go streamingv2.SubscribeToAccountStateHints(ctx, rdb, v2Manager, *accountStateHintsChannel)
 	go streamingv2.SubscribeToInvalidatedTraces(ctx, rdb, v2Manager, "invalidated_traces")
 
 	app := fiber.New(fiber.Config{
@@ -152,19 +128,6 @@ func main() {
 	api := app.Group("/api/streaming")
 
 	api.Get("/healthz", healthzHandler(rdb))
-
-	if *enableV1 {
-		api.Post("/v1/sse", streamingv1.SSEHandler(manager))
-
-		api.Use("/v1/ws", func(c *fiber.Ctx) error {
-			if websocket.IsWebSocketUpgrade(c) {
-				c.Locals("allowed", true)
-				return c.Next()
-			}
-			return fiber.ErrUpgradeRequired
-		})
-		api.Get("/v1/ws", websocket.New(streamingv1.WebSocketHandler(manager)))
-	}
 
 	api.Post("/v2/sse", streamingv2.SSEHandler(v2Manager))
 

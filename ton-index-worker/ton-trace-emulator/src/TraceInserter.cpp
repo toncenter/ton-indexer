@@ -2,6 +2,7 @@
 
 #include "Serializer.hpp"
 #include "Statistics.h"
+#include "StreamingHints.h"
 #include "TraceLifecycle.h"
 #include "TraceState.h"
 #include "td/utils/Timer.h"
@@ -19,17 +20,29 @@
 #include <sstream>
 #include <stdexcept>
 #include <string>
-#include <string_view>
 #include <unordered_map>
 #include <utility>
 #include <variant>
 #include <vector>
 
 struct AccountStateWrite {
-    std::string key;
-    std::string lt;
+    std::string account;
+    std::uint64_t lt{0};
+    FinalityState finality{FinalityState::Confirmed};
     std::string state;
     std::string interfaces;
+
+    std::string redis_key() const {
+        switch (finality) {
+            case FinalityState::Confirmed:
+                return "account_confirmed:" + account;
+            case FinalityState::Finalized:
+                return "account_finalized:" + account;
+            case FinalityState::Emulated:
+                throw std::logic_error("Emulated account state cannot be written to Redis");
+        }
+        throw std::logic_error("Unknown account state finality");
+    }
 };
 
 struct RedisWritePlan {
@@ -65,8 +78,8 @@ constexpr double kCleanupRetrySeconds = 1.0;
 constexpr double kExpirySweepSeconds = 1.0;
 
 constexpr const char* kNewTraceChannel = "new_trace";
-constexpr const char* kNewPendingTraceChannel = "new_pending_trace";
 constexpr const char* kInvalidatedTraceChannel = "invalidated_traces";
+constexpr const char* kStreamingTransactionsChannel = "streaming_transactions";
 
 constexpr const char* kUpdateAccountStateScript = R"(
     local cur = redis.call('HGET', KEYS[1], 'lt')
@@ -74,7 +87,7 @@ constexpr const char* kUpdateAccountStateScript = R"(
     local new_num = tonumber(ARGV[1])
     if (not cur_num) or (new_num > cur_num) then
         redis.call('HSET', KEYS[1], 'lt', ARGV[1], 'state', ARGV[2], 'interfaces', ARGV[3])
-        redis.call('PUBLISH', 'new_account_state', KEYS[1])
+        redis.call('PUBLISH', 'streaming_account_states', ARGV[4])
     end
     redis.call('EXPIRE', KEYS[1], 60)
     return 1
@@ -164,7 +177,6 @@ sw::redis::Redis create_redis(const std::string& redis_dsn) {
 struct AcceptedNode {
     std::string key;
     FinalityState finality{FinalityState::Emulated};
-    std::string transaction_hash;
 };
 
 using TraceMetadata = std::map<std::string, std::string>;
@@ -176,6 +188,54 @@ struct ActiveTrace {
     std::optional<std::string> root_account;
     FinalityState finality{FinalityState::Emulated};
 };
+
+std::uint8_t trace_finality(const ActiveTrace& trace) {
+    auto finality = TraceStateFinality::Finalized;
+    if (trace.nodes.nodes().empty()) {
+        return static_cast<std::uint8_t>(trace.finality);
+    }
+    for (const auto& [_, node] : trace.nodes.nodes()) {
+        finality = std::min(finality, node.finality);
+    }
+    return static_cast<std::uint8_t>(finality);
+}
+
+std::vector<std::string> transaction_accounts(
+    const ActiveTrace& trace, std::optional<TraceStateFinality> only_finality = std::nullopt) {
+    std::set<std::string> accounts;
+    for (const auto& [_, node] : trace.nodes.nodes()) {
+        if (only_finality && node.finality != *only_finality) {
+            continue;
+        }
+        for (const auto& index : node.index_refs) {
+            accounts.insert(index.index_key);
+        }
+    }
+    return {accounts.begin(), accounts.end()};
+}
+
+void append_streaming_transaction_hint(
+    RedisWritePlan& plan, const ActiveTrace& trace, const std::string& trace_key, StreamingTransactionKind kind) {
+    const auto only_finality = kind == StreamingTransactionKind::Pending
+                                   ? std::optional{TraceStateFinality::Emulated}
+                                   : std::nullopt;
+    auto accounts = transaction_accounts(trace, only_finality);
+    if (accounts.empty()) {
+        return;
+    }
+    const auto finality = kind == StreamingTransactionKind::Pending
+                              ? static_cast<std::uint8_t>(TraceStateFinality::Emulated)
+                              : trace_finality(trace);
+    plan.publications.emplace_back(
+        kStreamingTransactionsChannel,
+        pack_streaming_hint(StreamingTransactionHint{
+            .trace_key = trace_key,
+            .update_seq = trace.update_seq,
+            .kind = static_cast<std::uint8_t>(kind),
+            .finality = finality,
+            .accounts = std::move(accounts),
+        }));
+}
 
 struct TraceTransition {
     bool needs_redis_write{false};
@@ -201,13 +261,8 @@ struct PreparedTraceUpdate {
     std::vector<AcceptedNode> accepted_nodes;
 };
 
-struct CachedConfirmedNode {
-    TraceStateNode state;
-    std::string transaction_hash;
-};
-
 struct CachedConfirmedTrace {
-    std::map<std::string, CachedConfirmedNode> nodes;
+    std::map<std::string, TraceStateNode> nodes;
     std::vector<AccountStateWrite> account_states;
 };
 
@@ -502,7 +557,6 @@ td::Result<PreparedNodeUpdate> prepare_node_update(const ActiveTrace& current,
         prepared.accepted_nodes.push_back(AcceptedNode{
             .key = key,
             .finality = node->finality_state,
-            .transaction_hash = td::base64_encode(node->transaction_root->get_hash().as_slice()),
         });
 
         for (auto& child : node->children) {
@@ -580,7 +634,7 @@ td::Result<TraceTransition> prepare_trace_transition(const ActiveTrace& current,
     if (is_more_final(current.finality, transition.next_trace.finality)) {
         transition.next_trace.finality = current.finality;
     }
-    // Exact duplicates still refresh legacy TTLs and notifications.
+    // Exact duplicates still refresh Redis TTLs and notifications.
     transition.needs_redis_write = true;
     return transition;
 }
@@ -601,20 +655,19 @@ td::Status append_account_state_writes(RedisWritePlan& plan, const Trace& trace)
             msgpack::pack(interfaces_buffer, parse_interfaces(interfaces->second));
         }
 
-        std::string prefix;
         switch (trace.root->finality_state) {
             case FinalityState::Finalized:
-                prefix = "account_finalized:";
                 break;
             case FinalityState::Confirmed:
-                prefix = "account_confirmed:";
                 break;
             case FinalityState::Emulated:
                 return td::Status::Error("Emulated trace contains committed account states");
         }
+        auto account_address = account_key(address);
         plan.account_states.push_back(AccountStateWrite{
-            .key = prefix + account_key(address),
-            .lt = std::to_string(account.last_trans_lt_),
+            .account = std::move(account_address),
+            .lt = account.last_trans_lt_,
+            .finality = trace.root->finality_state,
             .state = state_buffer.str(),
             .interfaces = interfaces_buffer.str(),
         });
@@ -626,7 +679,6 @@ void append_publications(RedisWritePlan& plan,
                          const TraceTransition& transition,
                          const Trace& trace,
                          const std::string& trace_key) {
-    std::string committed_transactions = trace_key + ":";
     bool has_committed_transactions = false;
     bool has_pending_transactions = false;
     for (const auto& accepted : transition.accepted_nodes) {
@@ -634,22 +686,16 @@ void append_publications(RedisWritePlan& plan,
             has_pending_transactions = true;
             continue;
         }
-        if (has_committed_transactions) {
-            committed_transactions += ",";
-        }
-        committed_transactions += accepted.transaction_hash;
         has_committed_transactions = true;
     }
 
     if (has_committed_transactions) {
-        auto channel = trace.root->finality_state == FinalityState::Finalized
-                           ? "new_finalized_txs"
-                           : "new_confirmed_txs";
-        plan.publications.emplace_back(channel, committed_transactions);
-        plan.publications.emplace_back("new_commited_txs", committed_transactions);
+        const auto finalized = trace.root->finality_state == FinalityState::Finalized;
+        auto kind = finalized ? StreamingTransactionKind::Finalized : StreamingTransactionKind::Confirmed;
+        append_streaming_transaction_hint(plan, transition.next_trace, trace_key, kind);
     }
     if (has_pending_transactions) {
-        plan.publications.emplace_back(kNewPendingTraceChannel, trace_key);
+        append_streaming_transaction_hint(plan, transition.next_trace, trace_key, StreamingTransactionKind::Pending);
     }
     plan.publications.emplace_back(kNewTraceChannel, trace_key);
 }
@@ -787,12 +833,7 @@ td::Result<CachedConfirmedTrace> collect_confirmed_data(
             return td::Status::Error(
                 "Prepared confirmed node is missing from trace state");
         }
-        confirmed.nodes.insert_or_assign(
-            accepted.key,
-            CachedConfirmedNode{
-                .state = *node,
-                .transaction_hash = accepted.transaction_hash,
-            });
+        confirmed.nodes.insert_or_assign(accepted.key, *node);
     }
     for (const auto& account : prepared.redis.account_states) {
         confirmed.account_states.push_back(account);
@@ -813,9 +854,9 @@ ConfirmedTraceSnapshot make_confirmed_snapshot(
 }
 
 td::Result<TraceStateNode> finalize_cached_node(
-    const CachedConfirmedNode& cached,
+    const TraceStateNode& cached,
     ton::BlockSeqno mc_seqno) {
-    if (!cached.state.serialized) {
+    if (!cached.serialized) {
         return td::Status::Error(
             "Cached confirmed node has no serialized payload");
     }
@@ -823,8 +864,8 @@ td::Result<TraceStateNode> finalize_cached_node(
     try {
         RedisTraceNode redis_node;
         msgpack::unpack(
-            cached.state.serialized->data(),
-            cached.state.serialized->size())
+            cached.serialized->data(),
+            cached.serialized->size())
             .get()
             .convert(redis_node);
         redis_node.emulated = false;
@@ -834,7 +875,7 @@ td::Result<TraceStateNode> finalize_cached_node(
         std::stringstream buffer;
         msgpack::pack(buffer, redis_node);
 
-        auto finalized = cached.state;
+        auto finalized = cached;
         finalized.finality = TraceStateFinality::Finalized;
         finalized.fingerprint = node_fingerprint(redis_node);
         finalized.serialized =
@@ -854,9 +895,7 @@ td::Result<std::vector<TraceStateNode>> prepare_finalized_nodes(
     std::vector<TraceStateNode> finalized_nodes;
     finalized_nodes.reserve(cached.nodes.size());
     for (const auto& [key, cached_node] : cached.nodes) {
-        if (cached_node.state.finality !=
-                TraceStateFinality::Confirmed ||
-            !cached_node.state.serialized) {
+        if (cached_node.finality != TraceStateFinality::Confirmed || !cached_node.serialized) {
             return td::Status::Error(
                 "Snapshot contains an invalid confirmed node");
         }
@@ -871,19 +910,13 @@ td::Result<std::vector<TraceStateNode>> prepare_finalized_nodes(
     return finalized_nodes;
 }
 
-td::Status append_promoted_account_states(
-    RedisWritePlan& plan,
-    const CachedConfirmedTrace& cached) {
-    constexpr std::string_view confirmed_prefix = "account_confirmed:";
+td::Status append_promoted_account_states(RedisWritePlan& plan, const CachedConfirmedTrace& cached) {
     for (const auto& cached_account : cached.account_states) {
-        if (!cached_account.key.starts_with(confirmed_prefix)) {
-            return td::Status::Error(
-                "Cached account state is not confirmed");
+        if (cached_account.finality != FinalityState::Confirmed) {
+            return td::Status::Error("Cached account state is not confirmed");
         }
         auto account = cached_account;
-        account.key =
-            "account_finalized:" +
-            account.key.substr(confirmed_prefix.size());
+        account.finality = FinalityState::Finalized;
         plan.account_states.push_back(std::move(account));
     }
     return td::Status::OK();
@@ -894,20 +927,8 @@ void append_promoted_publications(
     const CachedConfirmedTrace& cached,
     const ActiveTrace& next_trace,
     const std::string& trace_key) {
-    std::string finalized_transactions = trace_key + ":";
-    bool has_finalized_transactions = false;
-    for (const auto& [_, node] : cached.nodes) {
-        if (has_finalized_transactions) {
-            finalized_transactions += ",";
-        }
-        finalized_transactions += node.transaction_hash;
-        has_finalized_transactions = true;
-    }
-    if (has_finalized_transactions) {
-        plan.publications.emplace_back(
-            "new_finalized_txs", finalized_transactions);
-        plan.publications.emplace_back(
-            "new_commited_txs", finalized_transactions);
+    if (!cached.nodes.empty()) {
+        append_streaming_transaction_hint(plan, next_trace, trace_key, StreamingTransactionKind::Finalized);
     }
     const auto has_pending_nodes = std::any_of(
         next_trace.nodes.nodes().begin(),
@@ -916,8 +937,7 @@ void append_promoted_publications(
             return entry.second.finality == TraceStateFinality::Emulated;
         });
     if (has_pending_nodes) {
-        plan.publications.emplace_back(
-            kNewPendingTraceChannel, trace_key);
+        append_streaming_transaction_hint(plan, next_trace, trace_key, StreamingTransactionKind::Pending);
     }
     plan.publications.emplace_back(kNewTraceChannel, trace_key);
 }
@@ -1094,9 +1114,13 @@ void append_redis_commands(sw::redis::Transaction& transaction, const RedisWrite
                          plan.fields_to_set.end());
     }
     for (const auto& account : plan.account_states) {
-        transaction.eval(kUpdateAccountStateScript,
-                         {account.key},
-                         {account.lt, account.state, account.interfaces});
+        auto hint = pack_streaming_hint(StreamingAccountStateHint{
+            .account = account.account,
+            .lt = account.lt,
+            .finality = static_cast<std::uint8_t>(account.finality),
+        });
+        transaction.eval(kUpdateAccountStateScript, {account.redis_key()},
+                         {std::to_string(account.lt), account.state, account.interfaces, std::move(hint)});
     }
 
     auto message_key = "tr_in_msg:" + plan.raw_external_message_hash;

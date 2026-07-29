@@ -74,6 +74,7 @@ add_executable(test-ton-trace-state
     test/TraceLifecycleTest.cpp
     test/ConfirmedRootTrackerTest.cpp
     test/OrderedResultBufferTest.cpp
+    test/StreamingHintsTest.cpp
 )
 target_link_libraries(
     test-ton-trace-state
@@ -83,5 +84,6 @@ target_link_libraries(
         ton_crypto_core
         tdutils
         td-test-main
+        msgpack-cxx
 )
 target_compile_features(test-ton-trace-state PRIVATE cxx_std_20)
