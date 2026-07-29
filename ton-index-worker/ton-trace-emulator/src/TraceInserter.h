@@ -21,6 +21,7 @@ enum class TraceCleanupMode {
     PendingTimeout,
     ReplacedConfirmedTimeout,
     Invalidation,
+    Oversized,
 };
 
 // Clears the entire logical Redis database selected by redis_dsn.
@@ -51,6 +52,7 @@ class RedisInsertManager : public ITraceInsertManager {
     void request_cleanup(const std::string& trace_key, TraceCleanupMode mode);
     void start_replaced_confirmed_root_ttl(const std::string& trace_key);
     void update_lifecycle(const std::string& trace_key);
+    bool touch_oversized_trace(const std::string& trace_key);
     void insert_impl(
         Trace trace,
         bool confirmed,
