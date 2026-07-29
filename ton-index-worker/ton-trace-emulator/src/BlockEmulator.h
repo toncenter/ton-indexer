@@ -2,6 +2,7 @@
 #include <td/actor/actor.h>
 #include <ton/ton-types.h>
 #include <emulator/transaction-emulator.h>
+#include "ConfirmedTraceSnapshot.h"
 #include "IndexData.h"
 #include "Measurement.h"
 #include "TraceEmulator.h"
@@ -50,10 +51,17 @@ struct EmulatedTracePatch {
     MeasurementPtr measurement;
 };
 
+struct ConfirmedBlockResult {
+    bool reusable{false};
+    std::vector<ConfirmedTraceSnapshot> snapshots;
+};
+
 struct FinalizedBlockResult {
     ton::BlockSeqno mc_seqno;
     std::vector<ton::BlockIdExt> finalized_blocks;
     std::vector<EmulatedTracePatch> traces;
+    std::vector<ConfirmedTraceSnapshot> confirmed_snapshots;
+    bool reused_confirmed_state{false};
     // Committed transaction cells lazily read from these blocks. Keep their
     // backing StaticBagOfCellsDb alive until every trace has been prepared.
     std::vector<td::Ref<ton::validator::BlockData>> block_data_owners;
@@ -78,6 +86,7 @@ private:
 
     int traces_cnt_{0};
     bool finished_{false};
+    bool reuse_confirmed_state_{false};
 
     td::Timestamp start_time_;
     MeasurementPtr measurement_;
@@ -101,6 +110,7 @@ private:
 public:
     McBlockEmulator(schema::MasterchainBlockDataState mc_data_state,
                     std::function<void(ton::BlockSeqno)> trace_ids_resolved,
+                    bool reuse_confirmed_state,
                     td::Promise<FinalizedBlockResult> promise);
 
     virtual void start_up() override;
@@ -112,14 +122,19 @@ private:
     schema::BlockDataState block_data_state_;
     std::shared_ptr<block::ConfigInfo> config_;
     std::vector<ShardStateSnapshot> shard_states_snapshot_;
-    std::function<void(Trace, td::Promise<td::Unit>, MeasurementPtr)> trace_processor_;
+    std::function<void(
+        Trace,
+        td::Promise<ConfirmedTraceSnapshot>,
+        MeasurementPtr)> trace_processor_;
     std::function<void(ton::BlockIdExt)> head_finished_;
-    td::Promise<> promise_;
+    td::Promise<ConfirmedBlockResult> promise_;
+    std::vector<ConfirmedTraceSnapshot> snapshots_;
     std::vector<TransactionInfo> txs_;
     std::unordered_map<td::Bits256, TransactionInfo> tx_by_in_msg_hash_;
     std::unordered_map<td::Bits256, TransactionInfo> tx_by_out_msg_hash_;
     size_t in_progress_cnt_{0};
     int traces_cnt_{0};
+    bool reusable_{true};
 
     td::Timestamp start_time_;
 
@@ -138,7 +153,11 @@ private:
     void trace_error(td::Bits256 tx_hash, td::Bits256 trace_root_tx_hash, td::Status error, MeasurementPtr measurement);
     void trace_interfaces_error(td::Bits256 trace_root_tx_hash, td::Status error, MeasurementPtr measurement);
     void trace_emulated(Trace trace, MeasurementPtr measurement);
-    void trace_finished(td::Bits256, MeasurementPtr measurement);
+    void trace_finished(
+        td::Bits256,
+        ConfirmedTraceSnapshot snapshot,
+        bool success,
+        MeasurementPtr measurement);
 
     const char* finality_label() const {
         switch (finality_) {
@@ -156,9 +175,12 @@ public:
                            schema::BlockDataState block_data_state,
                            std::shared_ptr<block::ConfigInfo> config,
                            std::vector<ShardStateSnapshot> shard_states_snapshot,
-                           std::function<void(Trace, td::Promise<td::Unit>, MeasurementPtr)> trace_processor,
+                           std::function<void(
+                               Trace,
+                               td::Promise<ConfirmedTraceSnapshot>,
+                               MeasurementPtr)> trace_processor,
                            std::function<void(ton::BlockIdExt)> head_finished,
-                           td::Promise<> promise)
+                           td::Promise<ConfirmedBlockResult> promise)
         : finality_(finality),
           block_data_state_(std::move(block_data_state)),
           config_(std::move(config)),

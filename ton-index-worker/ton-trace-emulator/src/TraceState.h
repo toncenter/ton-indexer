@@ -61,6 +61,10 @@ public:
     // Prepares an update without changing the current in-memory state.
     TraceStateChange prepare(const TraceStateUpdate& update) const;
 
+    // Inserts or replaces only the given nodes without touching descendants
+    // or sibling branches.
+    TraceStateChange upsert_nodes(std::vector<TraceStateNode> nodes) const;
+
     // Replaces this object with the resulting state of a prepared change.
     void apply(TraceStateChange&& change) noexcept;
 

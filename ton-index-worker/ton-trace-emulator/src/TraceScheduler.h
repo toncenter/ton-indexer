@@ -88,6 +88,8 @@ class TraceEmulatorScheduler : public td::actor::Actor {
     OrderedResultBuffer<FinalizedBlockResult> finalized_results_;
     std::optional<FinalizedCommitState> finalized_commit_;
 
+    std::map<ton::BlockIdExt, std::vector<ConfirmedTraceSnapshot>>
+        confirmed_block_snapshots_;
     std::set<ton::BlockId> closed_confirmed_blocks_;
     std::deque<ton::BlockId> closed_confirmed_block_order_;
 
@@ -105,6 +107,9 @@ class TraceEmulatorScheduler : public td::actor::Actor {
     void fetch_error(std::uint32_t seqno, td::Status error);
     void seqno_fetched(std::uint32_t seqno, schema::MasterchainBlockDataState mc_data_state);
     void start_next_finalized_block();
+    void start_finalized_emulator(
+        ton::BlockSeqno seqno,
+        bool reuse_confirmed_state);
     void finalized_trace_ids_resolved(ton::BlockSeqno seqno);
     void finalized_block_emulated(
         ton::BlockSeqno seqno,
@@ -123,14 +128,22 @@ class TraceEmulatorScheduler : public td::actor::Actor {
     void signed_block_error(ton::BlockIdExt block_id, td::Status error);
     void process_signed_blocks();
     void confirmed_block_head_finished(ton::BlockIdExt block_id);
-    void confirmed_block_finished(ton::BlockIdExt block_id);
+    void confirmed_block_finished(
+        ton::BlockIdExt block_id,
+        td::Result<ConfirmedBlockResult> result);
     void process_confirmed_trace(
         ton::BlockIdExt block_id,
         Trace trace,
-        td::Promise<td::Unit> promise,
+        td::Promise<ConfirmedTraceSnapshot> promise,
         MeasurementPtr measurement);
     bool remember_seen_signed_block(ton::BlockIdExt block_id);
-    std::function<void(Trace, td::Promise<td::Unit>, MeasurementPtr)> make_signed_trace_processor(const ton::BlockIdExt& block_id_ext);
+    std::function<void(
+        Trace,
+        td::Promise<ConfirmedTraceSnapshot>,
+        MeasurementPtr)> make_signed_trace_processor(
+            const ton::BlockIdExt& block_id_ext);
+    void discard_confirmed_snapshots(
+        const std::vector<ton::BlockIdExt>& finalized_blocks);
     void publish_health();
 
     void alarm() override;

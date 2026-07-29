@@ -96,33 +96,24 @@ NodeMap merge_update(const NodeMap& current, const TraceStateUpdate& update) {
     return result;
 }
 
-}  // namespace
-
-bool TraceStateDelta::empty() const {
-    return removed_node_keys.empty() && upserted_nodes.empty() && removed_index_refs.empty() &&
-           added_index_refs.empty();
-}
-
-TraceStateChange TraceState::prepare(const TraceStateUpdate& update) const {
+TraceStateChange make_change(const NodeMap& current, NodeMap resulting) {
     TraceStateChange change;
-    change.resulting_nodes = merge_update(nodes_, update);
+    change.resulting_nodes = std::move(resulting);
     auto& delta = change.delta;
 
-    for (const auto& entry : nodes_) {
-        const auto& key = entry.first;
-        auto resulting_it = change.resulting_nodes.find(key);
-        if (resulting_it == change.resulting_nodes.end()) {
+    for (const auto& [key, _] : current) {
+        if (change.resulting_nodes.count(key) == 0) {
             delta.removed_node_keys.push_back(key);
         }
     }
     for (const auto& [key, resulting_node] : change.resulting_nodes) {
-        auto cached_it = nodes_.find(key);
-        if (cached_it == nodes_.end() || cached_it->second != resulting_node) {
+        auto cached = current.find(key);
+        if (cached == current.end() || cached->second != resulting_node) {
             delta.upserted_nodes.push_back(resulting_node);
         }
     }
 
-    const auto cached_refs = collect_index_refs(nodes_);
+    const auto cached_refs = collect_index_refs(current);
     const auto resulting_refs = collect_index_refs(change.resulting_nodes);
     std::set_difference(cached_refs.begin(), cached_refs.end(),
                         resulting_refs.begin(), resulting_refs.end(),
@@ -131,6 +122,32 @@ TraceStateChange TraceState::prepare(const TraceStateUpdate& update) const {
                         cached_refs.begin(), cached_refs.end(),
                         std::back_inserter(delta.added_index_refs));
     return change;
+}
+
+}  // namespace
+
+bool TraceStateDelta::empty() const {
+    return removed_node_keys.empty() && upserted_nodes.empty() && removed_index_refs.empty() &&
+           added_index_refs.empty();
+}
+
+TraceStateChange TraceState::prepare(const TraceStateUpdate& update) const {
+    return make_change(nodes_, merge_update(nodes_, update));
+}
+
+TraceStateChange TraceState::upsert_nodes(
+    std::vector<TraceStateNode> nodes) const {
+    NodeMap result = nodes_;
+    std::set<std::string> seen;
+    for (auto node : nodes) {
+        node = normalize_node(std::move(node));
+        if (!seen.insert(node.key).second) {
+            throw std::invalid_argument(
+                "TraceState upsert contains duplicate node keys");
+        }
+        result.insert_or_assign(node.key, std::move(node));
+    }
+    return make_change(nodes_, std::move(result));
 }
 
 void TraceState::apply(TraceStateChange&& change) noexcept {

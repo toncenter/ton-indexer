@@ -194,3 +194,39 @@ TEST(TraceState, changed_index_score_emits_exact_remove_and_add) {
     ASSERT_EQ(index_for("root", 100), delta.removed_index_refs[0]);
     ASSERT_EQ(index_for("root", 200), delta.added_index_refs[0]);
 }
+
+TEST(TraceState, finalizing_known_nodes_keeps_pending_descendants) {
+    TraceState state;
+    apply(state, update("A", {
+        node("A", Finality::Confirmed, {"B"}, "A-confirmed"),
+        node("B", Finality::Confirmed, {"C"}, "B-confirmed"),
+        node("C", Finality::Emulated, {}, "C-pending"),
+    }));
+
+    auto finalized_a = node(
+        "A", Finality::Finalized, {"B"}, "A-finalized");
+    auto change = state.upsert_nodes({finalized_a});
+
+    ASSERT_TRUE(change.delta.removed_node_keys.empty());
+    ASSERT_EQ(1u, change.delta.upserted_nodes.size());
+    ASSERT_TRUE(change.delta.removed_index_refs.empty());
+    ASSERT_TRUE(change.delta.added_index_refs.empty());
+    state.apply(std::move(change));
+
+    ASSERT_EQ(Finality::Finalized, state.find("A")->finality);
+    ASSERT_EQ(Finality::Confirmed, state.find("B")->finality);
+    ASSERT_EQ(Finality::Emulated, state.find("C")->finality);
+}
+
+TEST(TraceState, finalized_snapshot_can_restore_an_evicted_node) {
+    TraceState state;
+    auto finalized = node(
+        "A", Finality::Finalized, {}, "A-finalized");
+
+    auto change = state.upsert_nodes({finalized});
+
+    ASSERT_TRUE(change.delta.removed_node_keys.empty());
+    ASSERT_EQ(1u, change.delta.upserted_nodes.size());
+    state.apply(std::move(change));
+    ASSERT_EQ(Finality::Finalized, state.find("A")->finality);
+}
