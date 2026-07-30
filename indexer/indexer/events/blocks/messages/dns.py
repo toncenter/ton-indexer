@@ -50,6 +50,7 @@ class ChangeDnsRecordMessage:
                 chunks_count -= 1
                 if chunks_count > 0:
                     value_slice = value_slice.load_ref()
+            dns_text = dns_text.replace("\u0000", "")
             self.value = {
                 'schema': 'DNSText',
                 'dns_text': dns_text

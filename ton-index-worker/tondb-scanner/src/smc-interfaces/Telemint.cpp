@@ -2,6 +2,7 @@
 #include "convert-utils.h"
 #include "execute-smc.h"
 #include "tokens-tlb.h"
+#include "td/utils/utf8.h"
 
 
 TelemintContract::TelemintContract(block::StdAddress address,
@@ -46,7 +47,13 @@ void TelemintContract::start_up()
     stop();
     return;
   }
-  data.token_name = token_name_result.move_as_ok();
+  auto token_name = token_name_result.move_as_ok();
+  if (!td::check_utf8(token_name)) {
+    promise_.set_error(td::Status::Error("get_telemint_token_name returned invalid UTF-8"));
+    stop();
+    return;
+  }
+  data.token_name = std::move(token_name);
 
   // if (!tlb::csr_unpack(token_name_slice, str)) {
   //   LOG(INFO) << "Unable to parse token";
