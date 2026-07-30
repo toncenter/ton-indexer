@@ -629,6 +629,12 @@ func GetAccountStates(c *fiber.Ctx) error {
 	// 	return index.IndexError{Code: 404, Message: "account states not found"}
 	// }
 	crud.SubstituteImgproxyBaseUrl(&metadata, settings.ImgProxyBaseUrl)
+	now := time.Now().Unix()
+	for i := range res {
+		if res[i].AccountAddress != nil {
+			res[i].Suspended = models.IsSuspendedAddress(*res[i].AccountAddress, now, request_settings.IsTestnet)
+		}
+	}
 
 	resp := models.AccountStatesResponse{Accounts: res, AddressBook: book, Metadata: metadata}
 	return c.JSON(resp)
@@ -664,6 +670,10 @@ func GetWalletStates(c *fiber.Ctx) error {
 		return models.IndexError{Code: 422, Message: err.Error()}
 	}
 	crud.SubstituteImgproxyBaseUrl(&metadata, settings.ImgProxyBaseUrl)
+	now := time.Now().Unix()
+	for i := range res {
+		res[i].Suspended = models.IsSuspendedAddress(res[i].AccountAddress, now, request_settings.IsTestnet)
+	}
 
 	resp := models.WalletStatesResponse{Wallets: res, AddressBook: book, Metadata: metadata}
 	return c.JSON(resp)
@@ -1581,6 +1591,7 @@ func GetV2WalletInformation(c *fiber.Ctx) error {
 		res = loc
 	}
 
+	res.Suspended = models.IsSuspendedAddress(acc_req.AccountAddress, time.Now().Unix(), request_settings.IsTestnet)
 	return c.Status(200).JSON(res)
 }
 
@@ -1643,6 +1654,7 @@ func GetV2AddressInformation(c *fiber.Ctx) error {
 		}
 	}
 
+	res.Suspended = models.IsSuspendedAddress(acc_req.AccountAddress, time.Now().Unix(), request_settings.IsTestnet)
 	return c.Status(200).JSON(res)
 }
 

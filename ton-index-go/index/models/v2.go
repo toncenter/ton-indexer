@@ -8,6 +8,7 @@ type V2AddressInformation struct {
 	LastTransactionHash *string `json:"last_transaction_hash"`
 	FrozenHash          *string `json:"frozen_hash"`
 	Status              string  `json:"status"`
+	Suspended           bool    `json:"suspended,omitempty"`
 } // @name V2AddressInformation
 
 type V2WalletInformation struct {
@@ -18,6 +19,7 @@ type V2WalletInformation struct {
 	LastTransactionLt   string  `json:"last_transaction_lt"`
 	LastTransactionHash string  `json:"last_transaction_hash"`
 	Status              string  `json:"status"`
+	Suspended           bool    `json:"suspended,omitempty"`
 } // @name V2WalletInformation
 
 type V2SendMessageResult struct {

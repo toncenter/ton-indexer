@@ -34,6 +34,7 @@ type AccountStateFull struct {
 	Balance                *string           `json:"balance"`
 	BalanceExtraCurrencies map[string]string `json:"extra_currencies"`
 	AccountStatus          *string           `json:"status"`
+	Suspended              bool              `json:"suspended,omitempty"`
 	FrozenHash             *HashType         `json:"frozen_hash,omitempty"`
 	LastTransactionHash    *HashType         `json:"last_transaction_hash"`
 	LastTransactionLt      *int64            `json:"last_transaction_lt,string"`
@@ -55,6 +56,7 @@ type WalletState struct {
 	BalanceExtraCurrencies map[string]string `json:"extra_currencies,omitempty"`
 	IsSignatureAllowed     *bool             `json:"is_signature_allowed,omitempty"`
 	AccountStatus          *string           `json:"status,omitempty"`
+	Suspended              bool              `json:"suspended,omitempty"`
 	CodeHash               *HashType         `json:"code_hash,omitempty"`
 	LastTransactionHash    *HashType         `json:"last_transaction_hash"`
 	LastTransactionLt      *int64            `json:"last_transaction_lt,string"`
