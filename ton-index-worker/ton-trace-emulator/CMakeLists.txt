@@ -74,6 +74,7 @@ add_executable(test-ton-trace-state
     test/TraceLifecycleTest.cpp
     test/ConfirmedRootTrackerTest.cpp
     test/OrderedResultBufferTest.cpp
+    test/RedisMaterializerTest.cpp
     test/StreamingHintsTest.cpp
 )
 target_link_libraries(

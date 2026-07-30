@@ -1,5 +1,6 @@
 #include "TraceInserter.h"
 
+#include "RedisMaterializer.h"
 #include "Serializer.hpp"
 #include "Statistics.h"
 #include "StreamingHints.h"
@@ -69,9 +70,8 @@ struct RedisWriteBatch {
 
 namespace {
 
-constexpr bool kPipelineTransactionCommands = false;
-constexpr bool kCreateDedicatedTransactionConnection = false;
-constexpr std::size_t kMaxConcurrentWrites = 4;
+constexpr bool kCreateDedicatedPipelineConnection = false;
+constexpr std::size_t kMaxConcurrentWrites = 16;
 constexpr std::size_t kMaxQueuedTraceUpdates = 10000;
 constexpr std::size_t kMaxCachedTraceNodes = 1000;
 constexpr double kCleanupRetrySeconds = 1.0;
@@ -1082,36 +1082,51 @@ constexpr bool cleanup_waits_for_current_updates(TraceCleanupMode mode) {
 static_assert(cleanup_is_terminal(TraceCleanupMode::Oversized));
 static_assert(!publishes_invalidation(TraceCleanupMode::Oversized));
 
-void append_redis_commands(sw::redis::Transaction& transaction, const RedisWritePlan& plan) {
+void append_redis_data_commands(sw::redis::Pipeline& pipeline,
+                                const RedisWritePlan& plan) {
+    // Group one chronological plan at a time. Combining carried retry plans
+    // could reorder a delete followed by a later reinsert of the same member.
+    auto index_writes =
+        group_redis_index_writes(plan.indexes_to_remove,
+                                 plan.indexes_to_add);
+
     if (plan.erase_trace) {
-        for (const auto& index : plan.indexes_to_remove) {
-            transaction.zrem(index.index_key, index.member);
+        for (const auto& index : index_writes) {
+            if (index.members_to_remove.empty()) {
+                continue;
+            }
+            pipeline.zrem(index.index_key,
+                          index.members_to_remove.begin(),
+                          index.members_to_remove.end());
         }
-        transaction.unlink(plan.trace_key);
+        pipeline.unlink(plan.trace_key);
         if (!plan.raw_external_message_hash.empty()) {
-            transaction.del("tr_in_msg:" + plan.raw_external_message_hash);
-        }
-        for (const auto& [channel, message] : plan.publications) {
-            transaction.publish(channel, message);
+            pipeline.del("tr_in_msg:" + plan.raw_external_message_hash);
         }
         return;
     }
 
     if (!plan.node_fields_to_delete.empty()) {
-        transaction.hdel(plan.trace_key,
-                         plan.node_fields_to_delete.begin(),
-                         plan.node_fields_to_delete.end());
+        pipeline.hdel(plan.trace_key,
+                      plan.node_fields_to_delete.begin(),
+                      plan.node_fields_to_delete.end());
     }
-    for (const auto& index : plan.indexes_to_remove) {
-        transaction.zrem(index.index_key, index.member);
-    }
-    for (const auto& index : plan.indexes_to_add) {
-        transaction.zadd(index.index_key, index.member, index.score);
+    for (const auto& index : index_writes) {
+        if (!index.members_to_remove.empty()) {
+            pipeline.zrem(index.index_key,
+                          index.members_to_remove.begin(),
+                          index.members_to_remove.end());
+        }
+        if (!index.members_to_add.empty()) {
+            pipeline.zadd(index.index_key,
+                          index.members_to_add.begin(),
+                          index.members_to_add.end());
+        }
     }
     if (!plan.fields_to_set.empty()) {
-        transaction.hset(plan.trace_key,
-                         plan.fields_to_set.begin(),
-                         plan.fields_to_set.end());
+        pipeline.hset(plan.trace_key,
+                      plan.fields_to_set.begin(),
+                      plan.fields_to_set.end());
     }
     for (const auto& account : plan.account_states) {
         auto hint = pack_streaming_hint(StreamingAccountStateHint{
@@ -1119,16 +1134,31 @@ void append_redis_commands(sw::redis::Transaction& transaction, const RedisWrite
             .lt = account.lt,
             .finality = static_cast<std::uint8_t>(account.finality),
         });
-        transaction.eval(kUpdateAccountStateScript, {account.redis_key()},
-                         {std::to_string(account.lt), account.state, account.interfaces, std::move(hint)});
+        pipeline.eval(kUpdateAccountStateScript, {account.redis_key()},
+                      {std::to_string(account.lt), account.state, account.interfaces, std::move(hint)});
     }
 
     auto message_key = "tr_in_msg:" + plan.raw_external_message_hash;
-    transaction.set(message_key, plan.trace_key);
-    transaction.expire(message_key, 600);
+    pipeline.setex(message_key, 600, plan.trace_key);
+}
 
-    for (const auto& [channel, message] : plan.publications) {
-        transaction.publish(channel, message);
+bool append_redis_publications(sw::redis::Pipeline& pipeline,
+                               const RedisWriteBatch& batch) {
+    bool appended = false;
+    for (const auto& plan : batch.plans) {
+        for (const auto& [channel, message] : plan.publications) {
+            pipeline.publish(channel, message);
+            appended = true;
+        }
+    }
+    return appended;
+}
+
+void execute_pipeline(sw::redis::Pipeline& pipeline) {
+    auto replies = pipeline.exec();
+    for (std::size_t index = 0; index < replies.size(); ++index) {
+        // Accessing each reply makes redis-plus-plus surface command errors.
+        replies.get(index);
     }
 }
 
@@ -1136,18 +1166,18 @@ class RedisTraceWriter : public td::actor::Actor {
 public:
     using Completion = std::function<void(td::Status, RedisWriteBatch)>;
 
-    RedisTraceWriter(sw::redis::Transaction&& transaction,
+    RedisTraceWriter(sw::redis::Pipeline&& pipeline,
                      RedisWriteBatch batch,
                      Completion completion,
                      td::Timer timer)
-        : transaction_(std::move(transaction))
+        : pipeline_(std::move(pipeline))
         , batch_(std::move(batch))
         , completion_(std::move(completion))
         , timer_(timer) {
     }
 
 private:
-    sw::redis::Transaction transaction_;
+    sw::redis::Pipeline pipeline_;
     RedisWriteBatch batch_;
     Completion completion_;
     td::Timer timer_;
@@ -1156,14 +1186,16 @@ private:
         auto status = td::Status::OK();
         try {
             for (const auto& plan : batch_.plans) {
-                append_redis_commands(transaction_, plan);
+                append_redis_data_commands(pipeline_, plan);
             }
+            execute_pipeline(pipeline_);
 
-            auto replies = transaction_.exec();
-            for (std::size_t index = 0; index < replies.size(); ++index) {
-                // Accessing each reply makes redis-plus-plus surface errors
-                // returned by individual commands inside EXEC.
-                replies.get(index);
+            // Trace notifications use a second phase, so no client can
+            // observe a trace hint before every data command has succeeded.
+            // Account-state hints stay atomic with their HSET in the Lua
+            // command above.
+            if (append_redis_publications(pipeline_, batch_)) {
+                execute_pipeline(pipeline_);
             }
         } catch (const std::exception& error) {
             status = td::Status::Error("Failed to write trace to Redis: " +
@@ -1440,13 +1472,12 @@ void RedisInsertManager::start_next_writes() {
         if (slot.cleanup_requested) {
             auto batch =
                 build_cleanup_batch(trace_key, slot, slot.cleanup_mode);
-            std::optional<sw::redis::Transaction> transaction;
+            std::optional<sw::redis::Pipeline> pipeline;
             try {
-                transaction.emplace(impl_->redis.transaction(
-                    kPipelineTransactionCommands,
-                    kCreateDedicatedTransactionConnection));
+                pipeline.emplace(impl_->redis.pipeline(
+                    kCreateDedicatedPipelineConnection));
             } catch (const std::exception& error) {
-                LOG(ERROR) << "Failed to create Redis cleanup transaction for trace "
+                LOG(ERROR) << "Failed to create Redis cleanup pipeline for trace "
                            << trace_key << ": " << error.what();
                 slot.cleanup_requested = false;
                 slot.deadline = td::Timestamp::in(kCleanupRetrySeconds);
@@ -1472,7 +1503,7 @@ void RedisInsertManager::start_next_writes() {
             ++impl_->active_writes;
             td::actor::create_actor<RedisTraceWriter>(
                 "RedisTraceCleanup",
-                std::move(*transaction),
+                std::move(*pipeline),
                 std::move(batch),
                 std::move(completion),
                 td::Timer())
@@ -1636,13 +1667,13 @@ void RedisInsertManager::start_next_writes() {
         RedisWriteBatch batch = std::move(slot.dirty);
         batch.plans.push_back(std::move(prepared.redis));
 
-        std::optional<sw::redis::Transaction> transaction;
+        std::optional<sw::redis::Pipeline> pipeline;
         try {
-            transaction.emplace(impl_->redis.transaction(kPipelineTransactionCommands,
-                                                         kCreateDedicatedTransactionConnection));
+            pipeline.emplace(impl_->redis.pipeline(
+                kCreateDedicatedPipelineConnection));
         } catch (const std::exception& error) {
             auto status = td::Status::Error(
-                "Failed to create Redis transaction for trace " + trace_key + ": " + error.what());
+                "Failed to create Redis pipeline for trace " + trace_key + ": " + error.what());
             LOG(ERROR) << status;
 
             remember_failed_write(
@@ -1677,7 +1708,7 @@ void RedisInsertManager::start_next_writes() {
         ++impl_->active_writes;
 
         td::actor::create_actor<RedisTraceWriter>("RedisTraceWriter",
-                                                   std::move(*transaction),
+                                                   std::move(*pipeline),
                                                    std::move(batch),
                                                    std::move(completion),
                                                    request_timer)
