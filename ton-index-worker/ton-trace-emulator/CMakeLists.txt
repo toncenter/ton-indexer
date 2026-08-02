@@ -63,6 +63,7 @@ target_link_libraries(
     ton-trace-emulator-core
     ton-trace-state
     ton-confirmed-root-tracker
+    mch-emu-bridge
     redis++_static
     msgpack-cxx
 )
@@ -88,3 +89,24 @@ target_link_libraries(
         msgpack-cxx
 )
 target_compile_features(test-ton-trace-state PRIVATE cxx_std_20)
+
+# White-box coverage for TraceInserter's translation-unit-local prepare helpers.
+add_executable(test-ton-trace-inserter
+    test/TraceInserterTest.cpp
+)
+target_include_directories(test-ton-trace-inserter
+    PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/../external/redis-plus-plus/src
+)
+target_compile_features(test-ton-trace-inserter PRIVATE cxx_std_20)
+target_compile_definitions(test-ton-trace-inserter PRIVATE -DMSGPACK_USE_DEFINE_MAP)
+target_link_libraries(
+    test-ton-trace-inserter
+    PRIVATE
+        ton-trace-emulator-core
+        ton-trace-state
+        ton-confirmed-root-tracker
+        mch-emu-bridge
+        redis++_static
+        msgpack-cxx
+        td-test-main
+)

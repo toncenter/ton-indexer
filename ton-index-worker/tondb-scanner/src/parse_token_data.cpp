@@ -6,7 +6,7 @@
 
 
 td::Result<std::string> parse_snake_data(td::Ref<vm::CellSlice> data) {
-  size_t bsize = 1024 * 8;
+  constexpr size_t bsize = 1024 * 8;
   unsigned char buffer[bsize];
   td::BitPtr bw{buffer};
 
@@ -34,11 +34,11 @@ td::Result<std::string> parse_chunks_data(td::Ref<vm::CellSlice> data) {
   try {
     vm::Dictionary dict(data, 32);
     
-    size_t bsize = 1024 * 8;
+    constexpr size_t bsize = 1024 * 8;
     unsigned char buffer[bsize];
     td::BitPtr bw{buffer};
 
-    uint c = 0;
+    uint32_t c = 0;
     while (dict.uint_key_exists(c)) {
       auto value = dict.lookup_ref(td::BitArray<32>(c));
       if (value.not_null()) {

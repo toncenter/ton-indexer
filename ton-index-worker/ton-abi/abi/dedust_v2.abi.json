@@ -1,0 +1,496 @@
+{
+  "abi_schema_version": "1.0",
+  "contract_name": "DedustV2",
+  "unique_types": [
+    {
+      "kind": "void"
+    },
+    {
+      "kind": "int"
+    },
+    {
+      "kind": "slice"
+    },
+    {
+      "kind": "cell"
+    },
+    {
+      "kind": "builder"
+    },
+    {
+      "kind": "bool"
+    },
+    {
+      "kind": "coins"
+    },
+    {
+      "kind": "address"
+    },
+    {
+      "kind": "intN",
+      "n": 32
+    },
+    {
+      "kind": "uintN",
+      "n": 32
+    },
+    {
+      "kind": "intN",
+      "n": 64
+    },
+    {
+      "kind": "uintN",
+      "n": 64
+    },
+    {
+      "kind": "StructRef",
+      "struct_name": "ClaimRewardMessage"
+    },
+    {
+      "kind": "uintN",
+      "n": 2
+    },
+    {
+      "kind": "StructRef",
+      "struct_name": "PayoutRewardMessage"
+    },
+    {
+      "kind": "StructRef",
+      "struct_name": "PayoutMessage"
+    },
+    {
+      "kind": "nullable",
+      "inner_ty_idx": 3
+    },
+    {
+      "kind": "StructRef",
+      "struct_name": "DedustV2PayNative"
+    },
+    {
+      "kind": "bitsN",
+      "n": 64
+    },
+    {
+      "kind": "StructRef",
+      "struct_name": "DedustV2SwapEvent"
+    },
+    {
+      "kind": "bitsN",
+      "n": 1
+    },
+    {
+      "kind": "StructRef",
+      "struct_name": "DedustV2PayoutPositionFees"
+    },
+    {
+      "kind": "addressAny"
+    },
+    {
+      "kind": "StructRef",
+      "struct_name": "DedustV2Withdraw"
+    },
+    {
+      "kind": "StructRef",
+      "struct_name": "DedustV2WithdrawalEvent"
+    },
+    {
+      "kind": "StructRef",
+      "struct_name": "DedustV2CreditAsset"
+    },
+    {
+      "kind": "StructRef",
+      "struct_name": "DedustV2JoinLiquidity"
+    },
+    {
+      "kind": "StructRef",
+      "struct_name": "DedustV2DepositEvent"
+    },
+    {
+      "kind": "StructRef",
+      "struct_name": "Storage"
+    },
+    {
+      "kind": "uintN",
+      "n": 1
+    }
+  ],
+  "struct_instantiations": [],
+  "alias_instantiations": [],
+  "declarations": [
+    {
+      "kind": "struct",
+      "name": "ClaimRewardMessage",
+      "ty_idx": 12,
+      "prefix": {
+        "prefix_num": 2426395493,
+        "prefix_len": 32
+      },
+      "fields": [
+        {
+          "name": "queryId",
+          "ty_idx": 11
+        },
+        {
+          "name": "rewardIndex",
+          "ty_idx": 13
+        },
+        {
+          "name": "excessesTo",
+          "ty_idx": 7
+        }
+      ]
+    },
+    {
+      "kind": "struct",
+      "name": "PayoutRewardMessage",
+      "ty_idx": 14,
+      "prefix": {
+        "prefix_num": 2652371902,
+        "prefix_len": 32
+      },
+      "fields": [
+        {
+          "name": "queryId",
+          "ty_idx": 11
+        },
+        {
+          "name": "amount",
+          "ty_idx": 6
+        },
+        {
+          "name": "rewardIndex",
+          "ty_idx": 13
+        },
+        {
+          "name": "ownerAddress",
+          "ty_idx": 7
+        },
+        {
+          "name": "excessesTo",
+          "ty_idx": 7
+        }
+      ]
+    },
+    {
+      "kind": "struct",
+      "name": "PayoutMessage",
+      "ty_idx": 15,
+      "prefix": {
+        "prefix_num": 840354313,
+        "prefix_len": 32
+      },
+      "fields": [
+        {
+          "name": "queryId",
+          "ty_idx": 11
+        },
+        {
+          "name": "amount",
+          "ty_idx": 6
+        },
+        {
+          "name": "exitCode",
+          "ty_idx": 8
+        },
+        {
+          "name": "payload",
+          "ty_idx": 16
+        }
+      ]
+    },
+    {
+      "kind": "struct",
+      "name": "DedustV2PayNative",
+      "ty_idx": 17,
+      "prefix": {
+        "prefix_num": 2779237368,
+        "prefix_len": 32
+      },
+      "fields": [
+        {
+          "name": "_query_id",
+          "ty_idx": 18
+        },
+        {
+          "name": "amount",
+          "ty_idx": 6
+        },
+        {
+          "name": "payment_payload",
+          "ty_idx": 3
+        }
+      ]
+    },
+    {
+      "kind": "struct",
+      "name": "DedustV2SwapEvent",
+      "ty_idx": 19,
+      "prefix": {
+        "prefix_num": 2028444580,
+        "prefix_len": 32
+      },
+      "fields": [
+        {
+          "name": "_x_to_y",
+          "ty_idx": 20
+        },
+        {
+          "name": "amount_in",
+          "ty_idx": 6
+        },
+        {
+          "name": "amount_out",
+          "ty_idx": 6
+        }
+      ]
+    },
+    {
+      "kind": "struct",
+      "name": "DedustV2PayoutPositionFees",
+      "ty_idx": 21,
+      "prefix": {
+        "prefix_num": 704584655,
+        "prefix_len": 32
+      },
+      "fields": [
+        {
+          "name": "query_id",
+          "ty_idx": 11
+        },
+        {
+          "name": "x_fees",
+          "ty_idx": 6
+        },
+        {
+          "name": "y_fees",
+          "ty_idx": 6
+        },
+        {
+          "name": "owner",
+          "ty_idx": 22
+        }
+      ]
+    },
+    {
+      "kind": "struct",
+      "name": "DedustV2Withdraw",
+      "ty_idx": 23,
+      "prefix": {
+        "prefix_num": 548794249,
+        "prefix_len": 32
+      },
+      "fields": [
+        {
+          "name": "_query_id",
+          "ty_idx": 18
+        },
+        {
+          "name": "liquidity",
+          "ty_idx": 6
+        },
+        {
+          "name": "_minimal_x_out",
+          "ty_idx": 6
+        },
+        {
+          "name": "_minimal_y_out",
+          "ty_idx": 6
+        },
+        {
+          "name": "auto_claim_fees",
+          "ty_idx": 5
+        },
+        {
+          "name": "_payout_config",
+          "ty_idx": 3
+        }
+      ]
+    },
+    {
+      "kind": "struct",
+      "name": "DedustV2WithdrawalEvent",
+      "ty_idx": 24,
+      "prefix": {
+        "prefix_num": 3235347284,
+        "prefix_len": 32
+      },
+      "fields": [
+        {
+          "name": "liquidity",
+          "ty_idx": 6
+        },
+        {
+          "name": "_amount_x_out",
+          "ty_idx": 6
+        },
+        {
+          "name": "_amount_y_out",
+          "ty_idx": 6
+        },
+        {
+          "name": "_initiator",
+          "ty_idx": 22
+        },
+        {
+          "name": "_recipient",
+          "ty_idx": 22
+        },
+        {
+          "name": "_next_state",
+          "ty_idx": 3
+        }
+      ]
+    },
+    {
+      "kind": "struct",
+      "name": "DedustV2CreditAsset",
+      "ty_idx": 25,
+      "prefix": {
+        "prefix_num": 3697138593,
+        "prefix_len": 32
+      },
+      "fields": [
+        {
+          "name": "_query_id",
+          "ty_idx": 18
+        },
+        {
+          "name": "is_x",
+          "ty_idx": 5
+        },
+        {
+          "name": "amount",
+          "ty_idx": 6
+        }
+      ]
+    },
+    {
+      "kind": "struct",
+      "name": "DedustV2JoinLiquidity",
+      "ty_idx": 26,
+      "prefix": {
+        "prefix_num": 623189728,
+        "prefix_len": 32
+      },
+      "fields": [
+        {
+          "name": "_query_id",
+          "ty_idx": 18
+        },
+        {
+          "name": "_config",
+          "ty_idx": 3
+        },
+        {
+          "name": "amount_x",
+          "ty_idx": 6
+        },
+        {
+          "name": "amount_y",
+          "ty_idx": 6
+        },
+        {
+          "name": "initiator",
+          "ty_idx": 22
+        }
+      ]
+    },
+    {
+      "kind": "struct",
+      "name": "DedustV2DepositEvent",
+      "ty_idx": 27,
+      "prefix": {
+        "prefix_num": 903818770,
+        "prefix_len": 32
+      },
+      "fields": [
+        {
+          "name": "amount_x_in",
+          "ty_idx": 6
+        },
+        {
+          "name": "amount_y_in",
+          "ty_idx": 6
+        },
+        {
+          "name": "liquidity",
+          "ty_idx": 6
+        },
+        {
+          "name": "_initiator",
+          "ty_idx": 22
+        },
+        {
+          "name": "_recipient",
+          "ty_idx": 22
+        },
+        {
+          "name": "_next_state",
+          "ty_idx": 3
+        }
+      ]
+    },
+    {
+      "kind": "struct",
+      "name": "Storage",
+      "ty_idx": 28,
+      "fields": [
+        {
+          "name": "dummy",
+          "ty_idx": 29
+        }
+      ]
+    }
+  ],
+  "storage": {
+    "storage_ty_idx": 28
+  },
+  "incoming_messages": [
+    {
+      "body_ty_idx": 12
+    },
+    {
+      "body_ty_idx": 14
+    },
+    {
+      "body_ty_idx": 15
+    },
+    {
+      "body_ty_idx": 17
+    },
+    {
+      "body_ty_idx": 19
+    },
+    {
+      "body_ty_idx": 21
+    },
+    {
+      "body_ty_idx": 23
+    },
+    {
+      "body_ty_idx": 24
+    },
+    {
+      "body_ty_idx": 25
+    },
+    {
+      "body_ty_idx": 26
+    },
+    {
+      "body_ty_idx": 27
+    }
+  ],
+  "incoming_external": [],
+  "outgoing_messages": [],
+  "emitted_events": [],
+  "get_methods": [],
+  "thrown_errors": [
+    {
+      "kind": "plain_int",
+      "err_code": 65535
+    }
+  ],
+  "compiler_name": "tolk",
+  "compiler_version": "1.4.1",
+  "code_boc64": "te6ccgECBQEAARsAART/APSkE/S88sgLAQP40/iR8kAg1ywkhP7bLJFb4NcsJPC/3fSeMdM/MfoAMIQPAcL/8vTg1ywhkLZQTI4RMdM/MfoAMdcKH4QPAcL/8vTg1ywlLT5fxJ4x0z8x+gAwhA8Bwv/y9ODXLCPHPN0knjHTADH6ADCEDwHC//L04NcsIU/43nzjAonXJwIDBAAcMdM/MfoAMIQPAcL/8vQACCC174kA6p4x0z8x+gAwhA8Bwv/y9ODXLCYGu9qkmzH6ADCEDwHC//L04NcsJuLu3QyeMdNAMfoAMIQPAcL/8vTg1ywhKSj3BJ4x0z8x+gAwhA8Bwv/y9ODXLCGu+XCUjhEx+gAx+gAx+gAwhA8Bwv/y9OAwhA8BxwDy9A=="
+}

@@ -1,0 +1,86 @@
+cases:
+  "DNS purchase 1":
+    trace-id: -02fS1r1ED0E0KV9ZwwRfYp3HBDPOiZIFgUaXav1I-I=
+    expected-actions:
+      - type: dns_purchase
+        values:
+          success: true
+          destination: "0:2681FA1135CDB32B5B96981E60BB7E453960F33541237DD7167CB6AEBA21F69F"
+          asset: "0:B774D95EB20543F186C06B371AB88AD704F7E256130CAF96189368A7D0CB6CCF"
+          asset_secondary: "0:F5B723D37639A0DB817EAA9A36F753AD4157817C4C5D11871FA54127DC66222E"
+          nft_transfer_data.query_id: 1773269958
+          nft_transfer_data.is_purchase: true
+          nft_transfer_data.price: 51478118866
+          nft_transfer_data.payout_amount: 51478118866
+          nft_transfer_data.nft_item_index: 4.453984487505368e+76
+      - type: nft_transfer
+        selector: "{{ value.destination == '0:A70628DD7CE4FBF4AB2492C419A7ABA95DDD82E8C088A46482AF835C6EEE517E' }}"
+        values:
+          source: "0:2681FA1135CDB32B5B96981E60BB7E453960F33541237DD7167CB6AEBA21F69F"
+  "DNS purchase 2":
+    trace-id: 0aN2lM_7jGXPgg4Dg4wCRqm2ClpeVUWmjG2lzOOfyZw=
+    expected-actions:
+      - type: dns_purchase
+        values:
+          success: true
+          destination: "0:11F70D0E9D8A34A10AF6BDD003BC9B0843DDCC41AB1D321772BF00131997074F"
+          asset: "0:B774D95EB20543F186C06B371AB88AD704F7E256130CAF96189368A7D0CB6CCF"
+          asset_secondary: "0:1D93BFF473AD8AB80FA77DEDCED103D28742DF5E51163DE276DB13017F767B6D"
+          nft_transfer_data.query_id: 8549106353659686877
+          nft_transfer_data.price: 8981124331
+          nft_transfer_data.payout_amount: 8981124331
+          nft_transfer_data.nft_item_index: 7.116650061747917e+76
+  "DNS purchase 3":
+    trace-id: 0_cGqTo2WPRltXjqtcPZX6rnDw6epyzggddM4XvTv8Y=
+    expected-actions:
+      - type: dns_purchase
+        values:
+          success: true
+          destination: "0:2681FA1135CDB32B5B96981E60BB7E453960F33541237DD7167CB6AEBA21F69F"
+          asset: "0:B774D95EB20543F186C06B371AB88AD704F7E256130CAF96189368A7D0CB6CCF"
+          asset_secondary: "0:73B3C1B14F2AA24D378D10FA2F758EADD6EC0551CF33EA1E910F471DE649201B"
+          nft_transfer_data.query_id: 1773672722
+          nft_transfer_data.price: 24323257
+          nft_transfer_data.payout_amount: 24323257
+          nft_transfer_data.nft_item_index: 2.3165594964569254e+76
+  "DNS release 1":
+    trace-id: 9KOVZ1QzXhyT1yO6OsUTvBwkV9pZoG2YVBkCCKN6zi0=
+    expected-actions:
+      - type: dns_release
+        values:
+          success: true
+          source: "0:D4E26CD9935EC8F42D5A4218C35680F65DC5EB7F7995ACF1FA6073FBB3C4D415"
+          destination: "0:8967297A3F7FD14D0AF321B4E1C91A15879D87E299E4CC172D4E04C3D820896C"
+          asset: "0:B774D95EB20543F186C06B371AB88AD704F7E256130CAF96189368A7D0CB6CCF"
+          value: 1000000000
+          nft_transfer_data.query_id: 0
+          nft_transfer_data.nft_item_index: 7.63595537142043e+76
+      - type: call_contract
+        selector: "{{ value.destination == '0:1B33B862C1A3FAFE9B676350AE40FED6C451D1185FE4389C0C834A5D05D22CCA' }}"
+        values:
+          source: "0:8967297A3F7FD14D0AF321B4E1C91A15879D87E299E4CC172D4E04C3D820896C"
+          value: 24456081
+  "DNS release 2":
+    trace-id: gNfX_4fYaOs7VuQEOcQiQdMuG6ndQfESNuQ2Og9UkRo=
+    expected-actions:
+      - type: dns_release
+        values:
+          success: true
+          source: "0:1F00019339E0D0A100FBB145D137510527498C05B78C9B3370044BD3C7E7AEBA"
+          destination: "0:5F8657C294E92BB79156C999F2A01425E9EC863D6AFCCFD4CD755B35258243D2"
+          asset: "0:B774D95EB20543F186C06B371AB88AD704F7E256130CAF96189368A7D0CB6CCF"
+          value: 1000000000
+          nft_transfer_data.query_id: 13
+          nft_transfer_data.nft_item_index: 9.48062659334362e+76
+  "DNS release 3":
+    trace-id: ioq-WKX2gMsHeK0oNTMWtXQuUfkraOo7-g-4CXvdV9s=
+    expected-actions:
+      - type: dns_release
+        values:
+          success: true
+          source: "0:87C961A878D6D03899A2462A32FB60084DB3BBD0E043DA54ED3CED9CE6989862"
+          destination: "0:6A1509C27C1C40DBDED8739EA968F2709829B3E6EDAF3088ADC33C7C91EAF8D3"
+          asset: "0:B774D95EB20543F186C06B371AB88AD704F7E256130CAF96189368A7D0CB6CCF"
+          value: 5000000000
+          nft_transfer_data.query_id: 1785441283542
+          nft_transfer_data.nft_item_index: 3.863535223717986e+76

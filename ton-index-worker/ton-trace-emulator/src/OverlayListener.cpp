@@ -209,6 +209,14 @@ void OverlayListener::trace_interfaces_error(td::Bits256 ext_in_msg_hash_norm, t
 }
 
 void OverlayListener::finish_processing(Trace trace, MeasurementPtr measurement) {
+    // The same states TraceInterfaceDetector just ran against (trace_received
+    // builds the identical vector), carried on for the classifier's tier-2
+    // lookups on the pending-trace path.
+    trace.shard_states.reserve(mc_data_state_.shard_blocks_.size());
+    for (const auto& shard_state : mc_data_state_.shard_blocks_) {
+        trace.shard_states.push_back(shard_state.block_state);
+    }
+    trace.config = mc_data_state_.config_;
     measurement->end_otel_child_span("detect_interfaces");
     measurement->start_otel_child_span("insert_trace");
     auto P = td::PromiseCreator::lambda([ext_in_msg_hash_norm = trace.ext_in_msg_hash_norm, measurement](td::Result<td::Unit> R) {

@@ -13,6 +13,7 @@
 #include <cstdint>
 #include <deque>
 #include <functional>
+#include <iterator>
 #include <limits>
 #include <map>
 #include <optional>
@@ -21,6 +22,7 @@
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <utility>
 #include <variant>
@@ -80,6 +82,10 @@ constexpr double kExpirySweepSeconds = 1.0;
 constexpr const char* kNewTraceChannel = "new_trace";
 constexpr const char* kInvalidatedTraceChannel = "invalidated_traces";
 constexpr const char* kStreamingTransactionsChannel = "streaming_transactions";
+constexpr const char* kActionsStateField = "mch_classify_state";
+constexpr const char* kActionsField = "actions";
+constexpr const char* kActionsFinalityField = "actions_finality";
+constexpr const char* kAaiPrefix = "_aai:";
 
 constexpr const char* kUpdateAccountStateScript = R"(
     local cur = redis.call('HGET', KEYS[1], 'lt')
@@ -181,8 +187,21 @@ struct AcceptedNode {
 
 using TraceMetadata = std::map<std::string, std::string>;
 
+struct ActionState {
+    // Opaque, cell-free action data retained for confirmed promotion.
+    std::optional<std::string> blob;
+    std::optional<std::string> classify_state;
+    // Finality of the last *blob-bearing* write. nullopt means no blob has ever
+    // been written for this trace, so the finality guard passes unconditionally.
+    std::optional<std::uint8_t> blob_finality;
+    // Sorted, deterministic snapshot of every _aai:<account> index ref currently
+    // believed to be in Redis for this trace's actions.
+    std::vector<TraceStateIndexRef> aai_refs;
+};
+
 struct ActiveTrace {
     TraceState nodes;
+    ActionState actions;
     TraceMetadata metadata;
     std::uint64_t update_seq{0};
     std::optional<std::string> root_account;
@@ -254,6 +273,13 @@ struct PreparedNodeUpdate {
     std::size_t reused_serializations{0};
 };
 
+struct PreparedActionUpdate {
+    ActionState state;
+    std::vector<std::pair<std::string, std::string>> fields_to_set;
+    std::vector<TraceStateIndexRef> removed_index_refs;
+    std::vector<TraceStateIndexRef> added_index_refs;
+};
+
 struct PreparedTraceUpdate {
     bool needs_redis_write{false};
     ActiveTrace next_trace;
@@ -300,6 +326,7 @@ struct InsertCompletion {
 
 struct InsertRequest {
     Trace trace;
+    mch::EmuActionPayload payload;
     InsertCompletion completion;
     MeasurementPtr measurement;
     td::Timer timer;
@@ -568,6 +595,146 @@ td::Result<PreparedNodeUpdate> prepare_node_update(const ActiveTrace& current,
     return prepared;
 }
 
+PreparedActionUpdate prepare_action_update(
+    const ActionState& current,
+    const mch::EmuActionPayload& payload,
+    const std::string& trace_key) {
+    PreparedActionUpdate prepared;
+    prepared.state = current;
+    if (payload.state == nullptr) {
+        return prepared;
+    }
+    if (current.blob_finality && *current.blob_finality > payload.finality) {
+        LOG(DEBUG) << "skipping stale actions write for " << trace_key
+                   << ": stored finality "
+                   << static_cast<int>(*current.blob_finality)
+                   << " > emission finality " << static_cast<int>(payload.finality);
+        return prepared;
+    }
+
+    prepared.fields_to_set.emplace_back(kActionsStateField, payload.state);
+    prepared.state.classify_state = payload.state;
+    if (payload.actions_blob.empty()) {
+        return prepared;
+    }
+
+    prepared.fields_to_set.emplace_back(kActionsField, payload.actions_blob);
+    prepared.fields_to_set.emplace_back(
+        kActionsFinalityField, std::to_string(static_cast<int>(payload.finality)));
+    prepared.state.blob = payload.actions_blob;
+
+    std::vector<TraceStateIndexRef> resulting_refs;
+    resulting_refs.reserve(payload.aai.size());
+    for (const auto& [account, member] : payload.aai) {
+        resulting_refs.push_back(TraceStateIndexRef{
+            .index_key = std::string(kAaiPrefix) + account,
+            .member = member,
+            .score = static_cast<std::uint64_t>(payload.aai_score),
+        });
+    }
+    std::sort(resulting_refs.begin(), resulting_refs.end());
+    resulting_refs.erase(
+        std::unique(resulting_refs.begin(), resulting_refs.end()),
+        resulting_refs.end());
+
+    std::set_difference(current.aai_refs.begin(), current.aai_refs.end(),
+                        resulting_refs.begin(), resulting_refs.end(),
+                        std::back_inserter(prepared.removed_index_refs));
+    std::set_difference(resulting_refs.begin(), resulting_refs.end(),
+                        current.aai_refs.begin(), current.aai_refs.end(),
+                        std::back_inserter(prepared.added_index_refs));
+    prepared.state.blob_finality = payload.finality;
+    prepared.state.aai_refs = std::move(resulting_refs);
+    return prepared;
+}
+
+td::Result<std::string> rewrite_actions_finality(
+    std::string_view blob,
+    std::uint8_t finality) {
+    try {
+        auto unpacked = msgpack::unpack(blob.data(), blob.size());
+        const auto& actions = unpacked.get();
+        if (actions.type != msgpack::type::ARRAY) {
+            return td::Status::Error("Actions payload is not a msgpack array");
+        }
+
+        for (std::uint32_t row_index = 0;
+             row_index < actions.via.array.size;
+             ++row_index) {
+            auto& row = actions.via.array.ptr[row_index];
+            if (row.type != msgpack::type::MAP) {
+                return td::Status::Error(
+                    "Actions payload row is not a msgpack map");
+            }
+
+            bool found_finality = false;
+            for (std::uint32_t field_index = 0;
+                 field_index < row.via.map.size;
+                 ++field_index) {
+                auto& field = row.via.map.ptr[field_index];
+                if (field.key.type != msgpack::type::STR ||
+                    std::string_view(field.key.via.str.ptr,
+                                     field.key.via.str.size) != "finality") {
+                    continue;
+                }
+                if (field.val.type != msgpack::type::POSITIVE_INTEGER &&
+                    field.val.type != msgpack::type::NEGATIVE_INTEGER) {
+                    return td::Status::Error(
+                        "Actions payload finality is not a msgpack integer");
+                }
+                field.val = msgpack::object(finality);
+                found_finality = true;
+            }
+            if (!found_finality) {
+                return td::Status::Error(
+                    "Actions payload row has no finality field");
+            }
+        }
+
+        std::stringstream buffer;
+        msgpack::pack(buffer, actions);
+        return buffer.str();
+    } catch (const std::exception& error) {
+        return td::Status::Error(
+            "Failed to rewrite actions finality: " +
+            std::string(error.what()));
+    }
+}
+
+struct PreparedActionPromotion {
+    std::vector<std::pair<std::string, std::string>> fields_to_set;
+};
+
+td::Result<PreparedActionPromotion> prepare_promoted_action_update(
+    const ActionState& current,
+    ActionState& next,
+    std::uint8_t finality,
+    const std::string& trace_key) {
+    PreparedActionPromotion prepared;
+    if (!current.blob_finality) {
+        return prepared;
+    }
+    if (*current.blob_finality > finality) {
+        LOG(DEBUG) << "skipping stale promoted actions write for " << trace_key
+                   << ": stored finality "
+                   << static_cast<int>(*current.blob_finality)
+                   << " > promoted trace finality "
+                   << static_cast<int>(finality);
+        return prepared;
+    }
+    if (!current.blob) {
+        return prepared;
+    }
+
+    TRY_RESULT(rewritten, rewrite_actions_finality(*current.blob, finality));
+    prepared.fields_to_set.emplace_back(kActionsField, rewritten);
+    prepared.fields_to_set.emplace_back(
+        kActionsFinalityField, std::to_string(static_cast<int>(finality)));
+    next.blob = std::move(rewritten);
+    next.blob_finality = finality;
+    return prepared;
+}
+
 td::Result<TraceTransition> prepare_trace_transition(const ActiveTrace& current,
                                                      const Trace& trace,
                                                      const std::string& trace_key) {
@@ -589,6 +756,7 @@ td::Result<TraceTransition> prepare_trace_transition(const ActiveTrace& current,
     auto state_change = current.nodes.prepare(node_update.state_update);
     transition.node_delta = std::move(state_change.delta);
     transition.next_trace.nodes.apply(std::move(state_change));
+    transition.next_trace.actions = current.actions;
     transition.next_trace.metadata = current.metadata;
     transition.next_trace.update_seq = current.update_seq;
     transition.next_trace.root_account = current.root_account;
@@ -701,6 +869,7 @@ void append_publications(RedisWritePlan& plan,
 }
 
 td::Result<RedisWritePlan> build_redis_plan(const TraceTransition& transition,
+                                            const PreparedActionUpdate& action_update,
                                             const Trace& trace,
                                             const std::string& trace_key) {
     RedisWritePlan plan;
@@ -708,10 +877,17 @@ td::Result<RedisWritePlan> build_redis_plan(const TraceTransition& transition,
     plan.node_fields_to_delete = transition.node_delta.removed_node_keys;
     plan.indexes_to_remove = transition.node_delta.removed_index_refs;
     plan.indexes_to_add = transition.node_delta.added_index_refs;
+    plan.indexes_to_remove.insert(plan.indexes_to_remove.end(),
+                                  action_update.removed_index_refs.begin(),
+                                  action_update.removed_index_refs.end());
+    plan.indexes_to_add.insert(plan.indexes_to_add.end(),
+                               action_update.added_index_refs.begin(),
+                               action_update.added_index_refs.end());
     plan.raw_external_message_hash = transition.raw_external_message_hash;
 
     plan.fields_to_set.reserve(transition.node_delta.upserted_nodes.size() +
-                               transition.metadata_patch.size() + 1);
+                               transition.metadata_patch.size() +
+                               action_update.fields_to_set.size() + 1);
     for (const auto& node : transition.node_delta.upserted_nodes) {
         if (!node.serialized) {
             return td::Status::Error("Cannot materialize trace node without serialized payload");
@@ -725,6 +901,9 @@ td::Result<RedisWritePlan> build_redis_plan(const TraceTransition& transition,
         plan.fields_to_set.emplace_back(
             "update_seq", std::to_string(transition.next_trace.update_seq));
     }
+    plan.fields_to_set.insert(plan.fields_to_set.end(),
+                              action_update.fields_to_set.begin(),
+                              action_update.fields_to_set.end());
 
     auto account_states_status = append_account_state_writes(plan, trace);
     if (account_states_status.is_error()) {
@@ -782,6 +961,7 @@ void append_otel_propagation(const MeasurementPtr& measurement, RedisWritePlan& 
 
 td::Result<PreparedTraceUpdate> prepare_trace_update(const ActiveTrace& current,
                                                      const Trace& trace,
+                                                     const mch::EmuActionPayload& payload,
                                                      const std::string& trace_key,
                                                      const MeasurementPtr& measurement) {
     auto transition_result = prepare_trace_transition(current, trace, trace_key);
@@ -790,12 +970,19 @@ td::Result<PreparedTraceUpdate> prepare_trace_update(const ActiveTrace& current,
     }
     auto transition = transition_result.move_as_ok();
     fill_measurement(transition, trace, measurement);
+    if (payload.state != nullptr && measurement) {
+        measurement->set_otel_attribute(
+            "ton.actions.count",
+            static_cast<std::int64_t>(payload.action_count));
+    }
 
     if (!transition.needs_redis_write) {
         return PreparedTraceUpdate{};
     }
 
-    auto redis_result = build_redis_plan(transition, trace, trace_key);
+    auto action_update = prepare_action_update(current.actions, payload, trace_key);
+    transition.next_trace.actions = action_update.state;
+    auto redis_result = build_redis_plan(transition, action_update, trace, trace_key);
     if (redis_result.is_error()) {
         return redis_result.move_as_error();
     }
@@ -995,6 +1182,13 @@ td::Result<PreparedTraceUpdate> prepare_confirmed_promotion(
         }
     }
 
+    const auto promoted_finality = trace_finality(prepared.next_trace);
+    TRY_RESULT(action_update,
+               prepare_promoted_action_update(current.actions,
+                                              prepared.next_trace.actions,
+                                              promoted_finality,
+                                              trace_key));
+
     auto& plan = prepared.redis;
     plan.trace_key = trace_key;
     plan.raw_external_message_hash =
@@ -1008,6 +1202,13 @@ td::Result<PreparedTraceUpdate> prepare_confirmed_promotion(
     if (materialize_full_state) {
         TRY_STATUS(append_full_trace_state(
             plan, prepared.next_trace));
+        if (current.actions.classify_state) {
+            plan.fields_to_set.emplace_back(
+                kActionsStateField, *current.actions.classify_state);
+        }
+        plan.indexes_to_add.insert(plan.indexes_to_add.end(),
+                                   current.actions.aai_refs.begin(),
+                                   current.actions.aai_refs.end());
     } else {
         plan.node_fields_to_delete = node_delta.removed_node_keys;
         plan.indexes_to_remove = node_delta.removed_index_refs;
@@ -1025,6 +1226,9 @@ td::Result<PreparedTraceUpdate> prepare_confirmed_promotion(
                 std::to_string(prepared.next_trace.update_seq));
         }
     }
+    plan.fields_to_set.insert(plan.fields_to_set.end(),
+                              action_update.fields_to_set.begin(),
+                              action_update.fields_to_set.end());
 
     TRY_STATUS(append_promoted_account_states(plan, cached));
     append_promoted_publications(
@@ -1038,6 +1242,8 @@ std::vector<TraceStateIndexRef> collect_cleanup_index_refs(const TraceSlot& slot
     for (const auto& [_, node] : slot.current->nodes.nodes()) {
         refs.insert(node.index_refs.begin(), node.index_refs.end());
     }
+    refs.insert(slot.current->actions.aai_refs.begin(),
+                slot.current->actions.aai_refs.end());
     // A failed patch may have removed an index only from the logical state.
     // Redis still contains that old member until the dirty batch is replayed,
     // so expiry must clean both sides of every carried delta.
@@ -1372,10 +1578,12 @@ void RedisInsertManager::update_lifecycle(const std::string& trace_key) {
 }
 
 void RedisInsertManager::insert(Trace trace,
+                                mch::EmuActionPayload payload,
                                 td::Promise<td::Unit> promise,
                                 MeasurementPtr measurement) {
     insert_impl(
         std::move(trace),
+        std::move(payload),
         false,
         std::move(promise),
         {},
@@ -1384,10 +1592,12 @@ void RedisInsertManager::insert(Trace trace,
 
 void RedisInsertManager::insert_confirmed(
     Trace trace,
+    mch::EmuActionPayload payload,
     td::Promise<ConfirmedTraceSnapshot> promise,
     MeasurementPtr measurement) {
     insert_impl(
         std::move(trace),
+        std::move(payload),
         true,
         {},
         std::move(promise),
@@ -1396,6 +1606,7 @@ void RedisInsertManager::insert_confirmed(
 
 void RedisInsertManager::insert_impl(
     Trace trace,
+    mch::EmuActionPayload payload,
     bool confirmed,
     td::Promise<td::Unit> regular_promise,
     td::Promise<ConfirmedTraceSnapshot> confirmed_promise,
@@ -1443,6 +1654,7 @@ void RedisInsertManager::insert_impl(
     }
     slot.queued.push_back(InsertRequest{
         .trace = std::move(trace),
+        .payload = std::move(payload),
         .completion = std::move(completion),
         .measurement = std::move(measurement),
         .timer = td::Timer(),
@@ -1536,6 +1748,7 @@ void RedisInsertManager::start_next_writes() {
                 prepared_result = prepare_trace_update(
                     *slot.current,
                     request->trace,
+                    request->payload,
                     trace_key,
                     request_measurement);
             } catch (const vm::VmError& error) {

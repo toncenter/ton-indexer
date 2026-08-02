@@ -177,6 +177,9 @@ void RedisListener::trace_interfaces_error(td::Bits256 ext_in_msg_hash_norm, td:
 }
 
 void RedisListener::finish_processing(Trace trace, MeasurementPtr measurement) {
+  // Carry the detector's states into tier-2 lookups for untouched accounts.
+  trace.shard_states = shard_states_;
+  trace.config = mc_data_state_.config_;
   measurement->end_otel_child_span("detect_interfaces");
   measurement->start_otel_child_span("insert_trace");
   auto P = td::PromiseCreator::lambda([ext_in_msg_hash_norm = trace.ext_in_msg_hash_norm, measurement](td::Result<td::Unit> R) {

@@ -1,0 +1,59 @@
+// TL-B schema for the MCH engine's message-parsing layer (MsgParse.cpp).
+//
+// IMPORTANT: these constructors mirror EXACTLY what the Python reference
+// parsers in indexer/events/blocks/messages/jettons.py READ, not the
+// standard TEP-74 declarations:
+//  - constructors are UNTAGGED ($_) with an explicit `opcode:uint32` field,
+//    because the Python parsers skip 32 bits without validating the opcode
+//    (a parse of the "wrong" body type can succeed — that leniency is part
+//    of the soft-parse first-success-wins semantics we must reproduce);
+//  - each message is its own result type (one constructor per type), so the
+//    generated unpack never dispatches on a tag;
+//  - fields stop where the Python parser stops reading (e.g. burn has no
+//    custom_payload; transfer's forward_payload tail is hand-read in
+//    MsgParse.cpp because Python's handling of it is quirky).
+//
+// Prelude types copied from tondb-scanner/src/tlb/tokens.tlb.
+
+nothing$0 {X:Type} = Maybe X;
+just$1 {X:Type} value:X = Maybe X;
+var_uint$_ {n:#} len:(#< n) value:(uint (len * 8))
+         = VarUInteger n;
+
+addr_none$00 = MsgAddressExt;
+addr_extern$01 len:(## 9) external_address:(bits len)
+             = MsgAddressExt;
+anycast_info$_ depth:(#<= 30) { depth >= 1 }
+   rewrite_pfx:(bits depth) = Anycast;
+addr_std$10 anycast:(Maybe Anycast)
+   workchain_id:int8 address:bits256  = MsgAddressInt;
+addr_var$11 anycast:(Maybe Anycast) addr_len:(## 9)
+   workchain_id:int32 address:(bits addr_len) = MsgAddressInt;
+_ _:MsgAddressInt = MsgAddress;
+_ _:MsgAddressExt = MsgAddress;
+
+// JettonTransfer (opcode 0x0f8a7ea5). forward_payload tail hand-read.
+jetton_transfer$_ opcode:uint32 query_id:uint64 amount:(VarUInteger 16)
+    destination:MsgAddress response:MsgAddress custom_payload:(Maybe ^Cell)
+    forward_amount:(VarUInteger 16) = MchJettonTransfer;
+
+// JettonInternalTransfer (opcode 0x178d4519). Python reads no forward_payload.
+jetton_internal_transfer$_ opcode:uint32 query_id:uint64 amount:(VarUInteger 16)
+    from_address:MsgAddress response_address:MsgAddress
+    forward_ton_amount:(VarUInteger 16) = MchJettonInternalTransfer;
+
+// JettonBurn (opcode 0x595f07bc). Python reads no custom_payload.
+jetton_burn$_ opcode:uint32 query_id:uint64 amount:(VarUInteger 16)
+    response_destination:MsgAddress = MchJettonBurn;
+
+// JettonNotify (opcode 0x7362d09c). forward_payload tail hand-read.
+jetton_notify$_ opcode:uint32 query_id:uint64 jetton_amount:(VarUInteger 16)
+    from_user:MsgAddress = MchJettonNotify;
+
+// JettonMint (opcode 0x642b7d07). Python reads no master_msg.
+jetton_mint$_ opcode:uint32 query_id:uint64 to_address:MsgAddress
+    ton_amount:(VarUInteger 16) = MchJettonMint;
+
+// MinterJettonMint (opcode 0x00000015). Nested master_msg fields hand-read.
+minter_jetton_mint$_ opcode:uint32 query_id:uint64 to_address:MsgAddress
+    ton_amount:(VarUInteger 16) master_msg:^Cell = MchMinterJettonMint;

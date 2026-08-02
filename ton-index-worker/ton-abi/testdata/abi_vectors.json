@@ -1,0 +1,427 @@
+{
+  "header": {
+    "pkg_version": "0.5.0",
+    "tolk_js_version": "1.4.1",
+    "core_version": "0.62.0",
+    "compiler_version": "1.4.1",
+    "abi_schema_version": "1.0"
+  },
+  "vectors": [
+    {
+      "fixture": "tolk_counter",
+      "struct": "IncreaseCounter",
+      "value": {
+        "$": "IncreaseCounter",
+        "queryId": "0",
+        "increaseBy": "1"
+      },
+      "golden_hex": "x{7E8764EF000000000000000000000001}"
+    },
+    {
+      "fixture": "tolk_counter",
+      "struct": "IncreaseCounter",
+      "value": {
+        "$": "IncreaseCounter",
+        "queryId": "123456789",
+        "increaseBy": "4294967295"
+      },
+      "golden_hex": "x{7E8764EF00000000075BCD15FFFFFFFF}"
+    },
+    {
+      "fixture": "tolk_counter",
+      "struct": "ResetCounter",
+      "value": {
+        "$": "ResetCounter",
+        "queryId": "0"
+      },
+      "golden_hex": "x{3A752F060000000000000000}"
+    },
+    {
+      "fixture": "tolk_counter",
+      "struct": "ResetCounter",
+      "value": {
+        "$": "ResetCounter",
+        "queryId": "18446744073709551615"
+      },
+      "golden_hex": "x{3A752F06FFFFFFFFFFFFFFFF}"
+    },
+    {
+      "fixture": "lots-of-messages",
+      "struct": "IncreaseBy",
+      "value": {
+        "$": "IncreaseBy",
+        "counter_id": "0",
+        "inc_by": "1"
+      },
+      "golden_hex": "x{123456780000000000000001}"
+    },
+    {
+      "fixture": "lots-of-messages",
+      "struct": "IncreaseBy",
+      "value": {
+        "$": "IncreaseBy",
+        "counter_id": "-5",
+        "inc_by": "100"
+      },
+      "golden_hex": "x{12345678FFFFFFFB00000064}"
+    },
+    {
+      "fixture": "lots-of-messages",
+      "struct": "EmptyMsg",
+      "value": {
+        "$": "EmptyMsg"
+      },
+      "golden_hex": "x{34567890}"
+    },
+    {
+      "fixture": "lots-of-wrappers",
+      "struct": "MsgSinglePrefix32",
+      "value": {
+        "$": "MsgSinglePrefix32",
+        "amount1": "80",
+        "amount2": "800000000"
+      },
+      "golden_hex": "x{8765432115042FAF0800}",
+      "source": "LotsOfWrappers.spec.ts literal gold"
+    },
+    {
+      "fixture": "lots-of-wrappers",
+      "struct": "CounterIncrement",
+      "value": {
+        "$": "CounterIncrement",
+        "counter_id": "123",
+        "inc_by": "78"
+      },
+      "golden_hex": "x{123456787B0000004E}",
+      "source": "LotsOfWrappers.spec.ts literal gold"
+    },
+    {
+      "fixture": "lots-of-wrappers",
+      "struct": "CounterDecrement",
+      "value": {
+        "$": "CounterDecrement",
+        "counter_id": "0",
+        "dec_by": "-38"
+      },
+      "golden_hex": "x{2345678900FFFFFFDA}",
+      "source": "LotsOfWrappers.spec.ts literal gold"
+    },
+    {
+      "fixture": "lots-of-wrappers",
+      "struct": "CounterReset0",
+      "value": {
+        "$": "CounterReset0",
+        "counter_id": "0"
+      },
+      "golden_hex": "x{3456789000}",
+      "source": "LotsOfWrappers.spec.ts literal gold"
+    },
+    {
+      "fixture": "lots-of-wrappers",
+      "struct": "CounterResetTo",
+      "value": {
+        "$": "CounterResetTo",
+        "counter_id": "0",
+        "initial_value": "29874329774732"
+      },
+      "golden_hex": "x{001843000000001B2BA8D06A8C}",
+      "source": "LotsOfWrappers.spec.ts literal gold"
+    },
+    {
+      "fixture": "lots-of-wrappers",
+      "struct": "JustAddress",
+      "value": {
+        "$": "JustAddress",
+        "addr": "0:1111111111111111111111111111111111111111111111111111111111111111"
+      },
+      "golden_hex": "x{8002222222222222222222222222222222222222222222222222222222222222223_}"
+    },
+    {
+      "fixture": "lots-of-wrappers",
+      "struct": "JustMaybeInt32",
+      "value": {
+        "$": "JustMaybeInt32",
+        "value": "5"
+      },
+      "golden_hex": "x{80000002C_}"
+    },
+    {
+      "fixture": "lots-of-wrappers",
+      "struct": "JustMaybeInt32",
+      "value": {
+        "$": "JustMaybeInt32",
+        "value": null
+      },
+      "golden_hex": "x{4_}"
+    },
+    {
+      "fixture": "lots-of-wrappers",
+      "struct": "TwoInts32AndRef64",
+      "value": {
+        "$": "TwoInts32AndRef64",
+        "op": "5",
+        "query_id_ref": {
+          "ref": "5"
+        }
+      },
+      "golden_hex": "x{00000005}\n x{0000000000000005}"
+    },
+    {
+      "fixture": "lots-of-wrappers",
+      "struct": "WithArrays2",
+      "value": {
+        "$": "WithArrays2",
+        "a": [
+          [
+            "5"
+          ]
+        ]
+      },
+      "golden_hex": "x{01C_}\n x{00E_}\n  x{02C_}"
+    },
+    {
+      "fixture": "lots-of-wrappers",
+      "struct": "WithLispLists1",
+      "value": {
+        "$": "WithLispLists1",
+        "lInt8_1": [
+          "5"
+        ],
+        "lInt8_2": [
+          "5"
+        ],
+        "lPoint_1": [
+          {
+            "$": "Point",
+            "x": "5",
+            "y": "5"
+          }
+        ],
+        "lPoint_2": [
+          {
+            "$": "Point",
+            "x": "5",
+            "y": "5"
+          }
+        ]
+      },
+      "golden_hex": "x{}\n x{05}\n  x{}\n x{05}\n  x{}\n x{0505}\n  x{}\n x{0505}\n  x{}"
+    },
+    {
+      "fixture": "lots-of-wrappers",
+      "struct": "TransferParams2",
+      "value": {
+        "$": "TransferParams2",
+        "intVector": [
+          "5",
+          "5",
+          "5"
+        ],
+        "needs_more": {
+          "ref": true
+        }
+      },
+      "golden_hex": "x{9000000058828000000000000002C_}\n x{C_}"
+    },
+    {
+      "fixture": "lots-of-wrappers",
+      "struct": "WithMaps0",
+      "value": {
+        "$": "WithMaps0",
+        "m1": [
+          [
+            "7",
+            "5"
+          ]
+        ],
+        "m2": [
+          [
+            "7",
+            [
+              "5",
+              "5"
+            ]
+          ]
+        ],
+        "m3": [
+          [
+            "7",
+            "none"
+          ]
+        ],
+        "m4": [
+          [
+            "0:3333333333333333333333333333333333333333333333333333333333333333",
+            {
+              "bits": "10101011",
+              "refs": []
+            }
+          ]
+        ]
+      },
+      "golden_hex": "x{F}\n x{A0000E0000000B_}\n x{A0000E0A0B_}\n x{A0000E4_}\n x{A17000CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCEAE_}"
+    },
+    {
+      "fixture": "lots-of-wrappers",
+      "struct": "WithEnums",
+      "value": {
+        "$": "WithEnums",
+        "e1": "5",
+        "e2": "1",
+        "rem": "5"
+      },
+      "golden_hex": "x{0585}"
+    },
+    {
+      "fixture": "lots-of-wrappers",
+      "struct": "WithAnyAddress",
+      "value": {
+        "$": "WithAnyAddress",
+        "a1": "none",
+        "a2": "none",
+        "a3": {
+          "$": "any_address",
+          "value": "none"
+        },
+        "a4": {
+          "$": "address",
+          "value": "0:1111111111111111111111111111111111111111111111111111111111111111"
+        },
+        "a5": {
+          "$": "MaybeNothing"
+        },
+        "a6": {
+          "ref": "none"
+        },
+        "a7": {
+          "ref": null
+        }
+      },
+      "golden_hex": "x{2040011111111111111111111111111111111111111111111111111111111111111116_}\n x{2_}\n x{4_}"
+    },
+    {
+      "fixture": "lots-of-wrappers",
+      "struct": "StorWithStr",
+      "value": {
+        "$": "StorWithStr",
+        "a": "5",
+        "str": {
+          "bits": "0110100001100101011011000110110001101111",
+          "refs": []
+        },
+        "b": "5"
+      },
+      "golden_hex": "x{000000050568656C6C6F00000005}"
+    },
+    {
+      "fixture": "lots-of-wrappers",
+      "struct": "PointWithCustomInt",
+      "value": {
+        "$": "PointWithCustomInt",
+        "a": "42",
+        "b": "5"
+      },
+      "golden_hex": "x{2A05}"
+    },
+    {
+      "fixture": "lots-of-wrappers",
+      "struct": "CustomPoint",
+      "value": {
+        "$": "CustomPoint",
+        "x": "3",
+        "y": "4"
+      },
+      "golden_hex": "x{0304}"
+    },
+    {
+      "fixture": "generic-union-labels",
+      "struct": "MsgPair",
+      "value": {
+        "$": "MsgPair",
+        "value": {
+          "$": "GenericPair",
+          "value": {
+            "$": "T1",
+            "value": "5"
+          }
+        }
+      },
+      "golden_hex": "x{1000000100000002C_}"
+    },
+    {
+      "fixture": "generic-union-labels",
+      "struct": "MsgPair",
+      "value": {
+        "$": "MsgPair",
+        "value": {
+          "$": "GenericPair",
+          "value": {
+            "$": "T2",
+            "value": "9"
+          }
+        }
+      },
+      "golden_hex": "x{100000018000000000000004C_}"
+    },
+    {
+      "fixture": "generic-union-labels",
+      "struct": "MsgOrInt16",
+      "value": {
+        "$": "MsgOrInt16",
+        "value": {
+          "$": "GenericOrInt8",
+          "value": {
+            "$": "T",
+            "value": "5"
+          }
+        }
+      },
+      "golden_hex": "x{100000030002C_}"
+    },
+    {
+      "fixture": "generic-union-labels",
+      "struct": "MsgAliasInt16",
+      "value": {
+        "$": "MsgAliasInt16",
+        "value": {
+          "$": "T",
+          "value": "5"
+        }
+      },
+      "golden_hex": "x{100000050002C_}"
+    },
+    {
+      "fixture": "lots-of-wrappers",
+      "struct": "WithStrings1",
+      "value": {
+        "$": "WithStrings1",
+        "s1": "A���B",
+        "s2": null
+      },
+      "golden_hex": "x{4_}\n x{41E0808042}",
+      "unpack_only": true,
+      "source": "hand-built malformed-UTF8 wire bytes (E0 80 80 overlong), golden value = Node Buffer.toString(utf8) oracle decode"
+    },
+    {
+      "fixture": "tolk_counter",
+      "struct": "IncreaseCounter",
+      "expect_error": true,
+      "golden_hex": "x{7E8764EF0000000000000000000000}",
+      "source": "per-field truncation: IncreaseCounter with its last byte dropped"
+    },
+    {
+      "fixture": "tolk_counter",
+      "struct": "IncreaseCounter",
+      "expect_error": true,
+      "golden_hex": "x{7E8764E0000000000000000000000001}",
+      "source": "prefix mismatch: IncreaseCounter opcode nibble flipped"
+    },
+    {
+      "fixture": "w8-hand-union",
+      "struct": "Holder",
+      "expect_error": true,
+      "golden_hex": "x{0C}",
+      "source": "hand-authored ABI (not tolk-compiled): explicit-prefix union with a deliberate dispatch gap"
+    }
+  ]
+}

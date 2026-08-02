@@ -23,15 +23,13 @@ private:
                             const block::gen::BlockExtra::Record& extra, const td::optional<schema::Block> &mc_block);
   schema::MasterchainBlockShard parse_shard_state(const schema::Block& mc_block, const ton::BlockIdExt& shard_blk_id);
   static td::Result<schema::CurrencyCollection> parse_currency_collection(td::Ref<vm::CellSlice> csr);
-  td::Result<schema::Message> parse_message(td::Ref<vm::Cell> msg_cell);
-  td::Result<schema::TrStoragePhase> parse_tr_storage_phase(vm::CellSlice& cs);
-  td::Result<schema::TrCreditPhase> parse_tr_credit_phase(vm::CellSlice& cs);
-  td::Result<schema::TrComputePhase> parse_tr_compute_phase(vm::CellSlice& cs);
-  td::Result<schema::StorageUsed> parse_storage_used(vm::CellSlice& cs);
-  td::Result<schema::TrActionPhase> parse_tr_action_phase(vm::CellSlice& cs);
-  td::Result<schema::TrBouncePhase> parse_tr_bounce_phase(vm::CellSlice& cs);
-  td::Result<schema::SplitMergeInfo> parse_split_merge_info(td::Ref<vm::CellSlice>& cs);
-  td::Result<schema::TransactionDescr> process_transaction_descr(vm::CellSlice& td_cs);
+  static td::Result<schema::TrStoragePhase> parse_tr_storage_phase(vm::CellSlice& cs);
+  static td::Result<schema::TrCreditPhase> parse_tr_credit_phase(vm::CellSlice& cs);
+  static td::Result<schema::TrComputePhase> parse_tr_compute_phase(vm::CellSlice& cs);
+  static td::Result<schema::StorageUsed> parse_storage_used(vm::CellSlice& cs);
+  static td::Result<schema::TrActionPhase> parse_tr_action_phase(vm::CellSlice& cs);
+  static td::Result<schema::TrBouncePhase> parse_tr_bounce_phase(vm::CellSlice& cs);
+  static td::Result<schema::SplitMergeInfo> parse_split_merge_info(td::Ref<vm::CellSlice>& cs);
 
   struct AccountStateShort {
     td::Bits256 account_cell_hash;
@@ -43,6 +41,13 @@ private:
                                 std::map<td::Bits256, AccountStateShort> &account_states);
   td::Result<std::vector<schema::AccountState>> parse_account_states_new(ton::WorkchainId workchain_id, uint32_t gen_utime, std::map<td::Bits256, AccountStateShort> &account_states);
   td::Result<schema::AccountState> parse_none_account(td::Ref<vm::Cell> account_root, block::StdAddress address, uint32_t gen_utime, td::Bits256 last_trans_hash, uint64_t last_trans_lt);
+
+public: // Pure TLB-to-schema parsers reusable outside the actor pipeline.
+  // `global_version` is the only piece of ParseQuery state these need: it selects
+  // extra_flags vs legacy ihr_fee in int_msg_info.
+  static td::Result<schema::Message> parse_message(td::Ref<vm::Cell> msg_cell, int global_version);
+  static td::Result<schema::TransactionDescr> process_transaction_descr(vm::CellSlice& td_cs);
+  static td::Result<schema::Transaction> parse_transaction(td::Ref<vm::Cell> tx_root, ton::WorkchainId workchain, int global_version);
 
 public: //TODO: refactor
   static td::Result<schema::AccountState> parse_account(td::Ref<vm::Cell> account_root, uint32_t gen_utime, td::Bits256 last_trans_hash, uint64_t last_trans_lt);

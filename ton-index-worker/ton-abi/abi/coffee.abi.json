@@ -1,0 +1,628 @@
+{
+  "abi_schema_version": "1.0",
+  "contract_name": "CoffeeMessages",
+  "unique_types": [
+    {
+      "kind": "void"
+    },
+    {
+      "kind": "int"
+    },
+    {
+      "kind": "slice"
+    },
+    {
+      "kind": "cell"
+    },
+    {
+      "kind": "builder"
+    },
+    {
+      "kind": "bool"
+    },
+    {
+      "kind": "coins"
+    },
+    {
+      "kind": "address"
+    },
+    {
+      "kind": "intN",
+      "n": 32
+    },
+    {
+      "kind": "uintN",
+      "n": 32
+    },
+    {
+      "kind": "intN",
+      "n": 64
+    },
+    {
+      "kind": "uintN",
+      "n": 64
+    },
+    {
+      "kind": "StructRef",
+      "struct_name": "CoffeeCreateVault"
+    },
+    {
+      "kind": "AliasRef",
+      "alias_name": "Asset"
+    },
+    {
+      "kind": "StructRef",
+      "struct_name": "AssetTon"
+    },
+    {
+      "kind": "StructRef",
+      "struct_name": "AssetJetton"
+    },
+    {
+      "kind": "uintN",
+      "n": 8
+    },
+    {
+      "kind": "bitsN",
+      "n": 256
+    },
+    {
+      "kind": "union",
+      "variants": [
+        {
+          "variant_ty_idx": 14,
+          "prefix_num": 0,
+          "prefix_len": 2,
+          "stack_type_id": 129,
+          "stack_width": 0
+        },
+        {
+          "variant_ty_idx": 15,
+          "prefix_num": 1,
+          "prefix_len": 2,
+          "stack_type_id": 130,
+          "stack_width": 2
+        }
+      ],
+      "stack_width": 3
+    },
+    {
+      "kind": "StructRef",
+      "struct_name": "CoffeeSwapEvent"
+    },
+    {
+      "kind": "bitsN",
+      "n": 64
+    },
+    {
+      "kind": "StructRef",
+      "struct_name": "CoffeeCreateLiquidityDepositoryRequest"
+    },
+    {
+      "kind": "StructRef",
+      "struct_name": "CoffeeDepositParams"
+    },
+    {
+      "kind": "addressAny"
+    },
+    {
+      "kind": "bitsN",
+      "n": 1
+    },
+    {
+      "kind": "cellOf",
+      "inner_ty_idx": 22
+    },
+    {
+      "kind": "StructRef",
+      "struct_name": "CoffeePoolParams"
+    },
+    {
+      "kind": "bitsN",
+      "n": 3
+    },
+    {
+      "kind": "nullable",
+      "inner_ty_idx": 3
+    },
+    {
+      "kind": "cellOf",
+      "inner_ty_idx": 26
+    },
+    {
+      "kind": "StructRef",
+      "struct_name": "CoffeeDepositLiquiditySuccessfulEvent"
+    },
+    {
+      "kind": "StructRef",
+      "struct_name": "CoffeeLiquidityWithdrawalEvent"
+    },
+    {
+      "kind": "StructRef",
+      "struct_name": "CoffeeCreatePoolCreatorRequest"
+    },
+    {
+      "kind": "StructRef",
+      "struct_name": "CoffeePoolCreationParams"
+    },
+    {
+      "kind": "cellOf",
+      "inner_ty_idx": 33
+    },
+    {
+      "kind": "StructRef",
+      "struct_name": "CoffeeCreatePoolRequest"
+    },
+    {
+      "kind": "StructRef",
+      "struct_name": "CoffeeStakingClaimRewards"
+    },
+    {
+      "kind": "StructRef",
+      "struct_name": "CoffeeStakingPositionWithdraw2"
+    },
+    {
+      "kind": "StructRef",
+      "struct_name": "Storage"
+    },
+    {
+      "kind": "uintN",
+      "n": 1
+    }
+  ],
+  "struct_instantiations": [],
+  "alias_instantiations": [],
+  "declarations": [
+    {
+      "kind": "struct",
+      "name": "AssetTon",
+      "ty_idx": 14,
+      "prefix": {
+        "prefix_num": 0,
+        "prefix_len": 2
+      },
+      "fields": []
+    },
+    {
+      "kind": "struct",
+      "name": "AssetJetton",
+      "ty_idx": 15,
+      "prefix": {
+        "prefix_num": 1,
+        "prefix_len": 2
+      },
+      "fields": [
+        {
+          "name": "workchain",
+          "ty_idx": 16
+        },
+        {
+          "name": "hash",
+          "ty_idx": 17
+        }
+      ]
+    },
+    {
+      "kind": "alias",
+      "name": "Asset",
+      "ty_idx": 13,
+      "target_ty_idx": 18
+    },
+    {
+      "kind": "struct",
+      "name": "CoffeeDepositParams",
+      "ty_idx": 22,
+      "fields": [
+        {
+          "name": "_recipient",
+          "ty_idx": 23
+        },
+        {
+          "name": "_use_recipient_on_failure",
+          "ty_idx": 24
+        }
+      ]
+    },
+    {
+      "kind": "struct",
+      "name": "CoffeePoolParams",
+      "ty_idx": 26,
+      "fields": [
+        {
+          "name": "pool_first",
+          "ty_idx": 13
+        },
+        {
+          "name": "pool_second",
+          "ty_idx": 13
+        },
+        {
+          "name": "_amm",
+          "ty_idx": 27
+        },
+        {
+          "name": "_amm_settings",
+          "ty_idx": 28
+        }
+      ]
+    },
+    {
+      "kind": "struct",
+      "name": "CoffeePoolCreationParams",
+      "ty_idx": 33,
+      "fields": [
+        {
+          "name": "recipient",
+          "ty_idx": 23
+        },
+        {
+          "name": "_use_recipient_on_failure",
+          "ty_idx": 24
+        },
+        {
+          "name": "_notification_data",
+          "ty_idx": 28
+        },
+        {
+          "name": "_is_active",
+          "ty_idx": 24
+        },
+        {
+          "name": "_extra_settings",
+          "ty_idx": 28
+        }
+      ]
+    },
+    {
+      "kind": "struct",
+      "name": "CoffeeCreateVault",
+      "ty_idx": 12,
+      "prefix": {
+        "prefix_num": 3237998086,
+        "prefix_len": 32
+      },
+      "fields": [
+        {
+          "name": "query_id",
+          "ty_idx": 11
+        },
+        {
+          "name": "asset",
+          "ty_idx": 13
+        }
+      ]
+    },
+    {
+      "kind": "struct",
+      "name": "CoffeeSwapEvent",
+      "ty_idx": 19,
+      "prefix": {
+        "prefix_num": 3237998128,
+        "prefix_len": 32
+      },
+      "fields": [
+        {
+          "name": "_query_id",
+          "ty_idx": 20
+        },
+        {
+          "name": "asset",
+          "ty_idx": 13
+        },
+        {
+          "name": "amount_in",
+          "ty_idx": 6
+        },
+        {
+          "name": "amount_out",
+          "ty_idx": 6
+        }
+      ]
+    },
+    {
+      "kind": "struct",
+      "name": "CoffeeCreateLiquidityDepositoryRequest",
+      "ty_idx": 21,
+      "prefix": {
+        "prefix_num": 3237998119,
+        "prefix_len": 32
+      },
+      "fields": [
+        {
+          "name": "_query_id",
+          "ty_idx": 20
+        },
+        {
+          "name": "amount",
+          "ty_idx": 6
+        },
+        {
+          "name": "_params",
+          "ty_idx": 25
+        },
+        {
+          "name": "pool_params",
+          "ty_idx": 29
+        },
+        {
+          "name": "sender",
+          "ty_idx": 23
+        },
+        {
+          "name": "_proof",
+          "ty_idx": 3
+        }
+      ]
+    },
+    {
+      "kind": "struct",
+      "name": "CoffeeDepositLiquiditySuccessfulEvent",
+      "ty_idx": 30,
+      "prefix": {
+        "prefix_num": 3237998131,
+        "prefix_len": 32
+      },
+      "fields": [
+        {
+          "name": "_query_id",
+          "ty_idx": 20
+        },
+        {
+          "name": "_amount1",
+          "ty_idx": 6
+        },
+        {
+          "name": "_amount2",
+          "ty_idx": 6
+        },
+        {
+          "name": "lp_amount",
+          "ty_idx": 6
+        },
+        {
+          "name": "_total_supply_in",
+          "ty_idx": 6
+        },
+        {
+          "name": "_total_supply_out",
+          "ty_idx": 6
+        },
+        {
+          "name": "_reserves_in",
+          "ty_idx": 6
+        },
+        {
+          "name": "_reserves_out",
+          "ty_idx": 6
+        }
+      ]
+    },
+    {
+      "kind": "struct",
+      "name": "CoffeeLiquidityWithdrawalEvent",
+      "ty_idx": 31,
+      "prefix": {
+        "prefix_num": 3237998133,
+        "prefix_len": 32
+      },
+      "fields": [
+        {
+          "name": "_query_id",
+          "ty_idx": 20
+        },
+        {
+          "name": "amount1",
+          "ty_idx": 6
+        },
+        {
+          "name": "amount2",
+          "ty_idx": 6
+        },
+        {
+          "name": "_lp_amount",
+          "ty_idx": 6
+        },
+        {
+          "name": "_total_supply_in",
+          "ty_idx": 6
+        },
+        {
+          "name": "_total_supply_out",
+          "ty_idx": 6
+        },
+        {
+          "name": "_reserves_in",
+          "ty_idx": 6
+        },
+        {
+          "name": "_reserves_out",
+          "ty_idx": 6
+        }
+      ]
+    },
+    {
+      "kind": "struct",
+      "name": "CoffeeCreatePoolCreatorRequest",
+      "ty_idx": 32,
+      "prefix": {
+        "prefix_num": 3237998115,
+        "prefix_len": 32
+      },
+      "fields": [
+        {
+          "name": "_query_id",
+          "ty_idx": 20
+        },
+        {
+          "name": "amount",
+          "ty_idx": 6
+        },
+        {
+          "name": "pool_first",
+          "ty_idx": 13
+        },
+        {
+          "name": "pool_second",
+          "ty_idx": 13
+        },
+        {
+          "name": "_amm",
+          "ty_idx": 27
+        },
+        {
+          "name": "_amm_settings",
+          "ty_idx": 28
+        },
+        {
+          "name": "creation_params",
+          "ty_idx": 34
+        },
+        {
+          "name": "sender",
+          "ty_idx": 23
+        },
+        {
+          "name": "_proof",
+          "ty_idx": 3
+        }
+      ]
+    },
+    {
+      "kind": "struct",
+      "name": "CoffeeCreatePoolRequest",
+      "ty_idx": 35,
+      "prefix": {
+        "prefix_num": 3237998117,
+        "prefix_len": 32
+      },
+      "fields": [
+        {
+          "name": "_query_id",
+          "ty_idx": 20
+        },
+        {
+          "name": "amount1",
+          "ty_idx": 6
+        },
+        {
+          "name": "amount2",
+          "ty_idx": 6
+        },
+        {
+          "name": "tx_initiator",
+          "ty_idx": 23
+        }
+      ]
+    },
+    {
+      "kind": "struct",
+      "name": "CoffeeStakingClaimRewards",
+      "ty_idx": 36,
+      "prefix": {
+        "prefix_num": 3003937552,
+        "prefix_len": 32
+      },
+      "fields": [
+        {
+          "name": "_query_id",
+          "ty_idx": 20
+        },
+        {
+          "name": "jetton_wallet",
+          "ty_idx": 23
+        },
+        {
+          "name": "jetton_amount",
+          "ty_idx": 6
+        },
+        {
+          "name": "receiver",
+          "ty_idx": 23
+        }
+      ]
+    },
+    {
+      "kind": "struct",
+      "name": "CoffeeStakingPositionWithdraw2",
+      "ty_idx": 37,
+      "prefix": {
+        "prefix_num": 3406020527,
+        "prefix_len": 32
+      },
+      "fields": [
+        {
+          "name": "_query_id",
+          "ty_idx": 20
+        },
+        {
+          "name": "nft_id",
+          "ty_idx": 11
+        },
+        {
+          "name": "owner",
+          "ty_idx": 23
+        },
+        {
+          "name": "points",
+          "ty_idx": 6
+        }
+      ]
+    },
+    {
+      "kind": "struct",
+      "name": "Storage",
+      "ty_idx": 38,
+      "fields": [
+        {
+          "name": "dummy",
+          "ty_idx": 39
+        }
+      ]
+    }
+  ],
+  "storage": {
+    "storage_ty_idx": 38
+  },
+  "incoming_messages": [
+    {
+      "body_ty_idx": 12
+    },
+    {
+      "body_ty_idx": 19
+    },
+    {
+      "body_ty_idx": 21
+    },
+    {
+      "body_ty_idx": 30
+    },
+    {
+      "body_ty_idx": 31
+    },
+    {
+      "body_ty_idx": 32
+    },
+    {
+      "body_ty_idx": 35
+    },
+    {
+      "body_ty_idx": 36
+    },
+    {
+      "body_ty_idx": 37
+    }
+  ],
+  "incoming_external": [],
+  "outgoing_messages": [],
+  "emitted_events": [],
+  "get_methods": [],
+  "thrown_errors": [
+    {
+      "kind": "plain_int",
+      "err_code": 65535
+    }
+  ],
+  "compiler_name": "tolk",
+  "compiler_version": "1.4.1",
+  "code_boc64": "te6ccgEBBAEAuwABFP8A9KQT9LzyyAsBAvjT+JHyQCDXLCYH/3A0mDCEDwHHAPL04NcsJgf/cYSYMIQPAccA8vTg1ywmB/9xPJgwhA8BxwDy9ODXLCYH/3GcmDCEDwHHAPL04NcsJgf/cayYMIQPAccA8vTg1ywmB/9xHJgwhA8BxwDy9ODXLCYH/3Es4wLXLCWYY5iEAgMAEDCEDwHHAPL0AESYMIQPAccA8vTg1ywmWB39fDGXhA8BxwDy9OCEDwHHAPL0"
+}

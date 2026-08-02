@@ -172,3 +172,45 @@ cases:
             master: 0:BCAD466A47FA565750729565253CD073CA24D856804499090C2100D95C809F9E
             asset_id: "0x1a4219fe5e60d63af2a3cc7dce6fec69b45c6b5718497a6148e7c232ac87bd8a"
           asset: null
+  EVAA liquidation unsatisfied (unknown error 1):
+    trace-id: ADMo80jSlcAWGOudmITAHQEX13l9VKWYF5w80Fd2pPs=
+    expected-actions:
+      - type: evaa_liquidate
+        values:
+          success: false
+          source: 0:FED2DAE52C20DFFA3089FEBB3F95DAB0D6CF1D656DB6611A40F8B444FF970A91
+          destination: null
+          destination_secondary: 0:CBB3B4378D1DC4CF7D80D9B33C8F50D80C4D20DBE96F0902DB78627300CE5E11
+          amount: 0
+          evaa_liquidate_data:
+            asset_id: "0x117c66cb95754d4"
+            fail_reason: unknown
+            debt_amount: 3774186907836329050
+  EVAA liquidation unsatisfied (unknown error 2):
+    trace-id: f4J1gD7fmSBUMJy47G3qmk7CvXa1O8Ofr7Ehw-Ttd2Y=
+    expected-actions:
+      - type: evaa_liquidate
+        values:
+          success: false
+          source: 0:FED2DAE52C20DFFA3089FEBB3F95DAB0D6CF1D656DB6611A40F8B444FF970A91
+          destination: null
+          destination_secondary: 0:CBB3B4378D1DC4CF7D80D9B33C8F50D80C4D20DBE96F0902DB78627300CE5E11
+          amount: 0
+          evaa_liquidate_data:
+            asset_id: "0x1c1163e125ce481"
+            fail_reason: unknown
+            debt_amount: 12142081103633125532
+  EVAA liquidation unsatisfied (unknown error 3):
+    trace-id: Fj6hSkHT6F-PyFB1F3-hq2alVtEYB0BkAzPQCGUp3BI=
+    expected-actions:
+      - type: evaa_liquidate
+        values:
+          success: false
+          source: 0:FED2DAE52C20DFFA3089FEBB3F95DAB0D6CF1D656DB6611A40F8B444FF970A91
+          destination: null
+          destination_secondary: 0:CBB3B4378D1DC4CF7D80D9B33C8F50D80C4D20DBE96F0902DB78627300CE5E11
+          amount: 0
+          evaa_liquidate_data:
+            asset_id: "0x1c1163e125ce481"
+            fail_reason: unknown
+            debt_amount: 12142081103633125532

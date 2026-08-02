@@ -80,9 +80,6 @@ from indexer.events.blocks.messages.coffee import (
     CoffeePayout,
     CoffeePayoutInternal,
     CoffeeServiceFee,
-    PoolCreationParams,
-    PoolParams,
-    PublicPoolCreationParams,
     CoffeeCreatePoolRequest,
 )
 from indexer.events.blocks.utils import AccountId, Amount, Asset
@@ -107,15 +104,25 @@ class DedustDepositLiquidityPartial(Block):
         return f"dedust_deposit_liquidity_partial {self.data}"
 
 
-async def _get_provision_data(
-    block: Block | CallContractBlock, other_blocks: list[Block | CallContractBlock]
+async def build_dedust_deposit_liquidity_core(
+    block: Block | CallContractBlock,
+    deposit: CallContractBlock,
+    transfer_lp_call: CallContractBlock | None,
+    reject: CallContractBlock | None,
+    jetton_transfer_calls: list[CallContractBlock],
+    ton_excesses: list[CallContractBlock],
+    jetton_excesses: list[JettonTransferBlock],
 ) -> dict:
+    """Shared build core for the dedust final-deposit data. `block` is the
+    DedustDepositLiquidityToPool anchor; the remaining arguments are the label
+    roles of the legacy matcher, passed explicitly (the mch builder derives
+    them structurally instead). `jetton_transfer_calls` are the raw
+    JettonTransfer-opcode call candidates for the user's deposit transfers.
+    Raises to reject the match. Does NOT merge consumed blocks."""
     deposit_info = DedustDepositLiquidityToPool(block.get_body())
     sender = AccountId(deposit_info.owner_addr)
     deposit_contract = block.get_message().source
 
-    transfer_lp_call = get_labeled('lp_transfer', other_blocks, CallContractBlock)
-    reject = get_labeled('rejection', other_blocks, CallContractBlock)
     if transfer_lp_call:
         transfer_lp_call = JettonInternalTransfer(transfer_lp_call.get_body())
 
@@ -133,12 +140,8 @@ async def _get_provision_data(
     # there are 0-2 deposit jetton transfers (from user)
     # (well, may be more in trace, but we gonna use them only to find jwallets)
     jetton_deposits: list[CallContractBlock] = []
-    for b in other_blocks:
-        if (
-            isinstance(b, CallContractBlock)
-            and b.opcode == JettonTransfer.opcode
-            and b.get_message().source.upper() == sender.as_str()
-        ):
+    for b in jetton_transfer_calls:
+        if b.get_message().source.upper() == sender.as_str():
             jetton_deposits.append(b)
 
     # if jetton_deposits is empty -
@@ -155,7 +158,6 @@ async def _get_provision_data(
         a1_jetton_master = str(deposit_info.asset1.jetton_address).upper()
 
 
-    deposit = get_labeled('deposit', other_blocks, CallContractBlock)
     if deposit.opcode == DedustDepositTONToVault.opcode:
         actual_asset = Asset(is_ton=True, jetton_address=None)
         body = DedustDepositTONToVault(deposit.get_body())
@@ -181,11 +183,11 @@ async def _get_provision_data(
             user_jetton_wallet_0 = jwallet_str
 
     excesses = []
-    for ton_excess in get_multiple_labeled('ton_excess', other_blocks, CallContractBlock):
+    for ton_excess in ton_excesses:
         if ton_excess and ton_excess.get_message().destination == sender.as_str():
             excesses.append((Asset(is_ton=True, jetton_address=None), Amount(ton_excess.get_message().value)))
 
-    for jetton_excess in get_multiple_labeled('jetton_excess', other_blocks, JettonTransferBlock):
+    for jetton_excess in jetton_excesses:
         if jetton_excess.data['receiver'] == sender.as_str():
             excesses.append((jetton_excess.data['asset'],
                              jetton_excess.data['amount']))
@@ -212,19 +214,32 @@ async def _get_provision_data(
     return data
 
 
-async def _get_deposit_one_data(
-    block: Block | CallContractBlock, all_blocks: list[Block | CallContractBlock]
+async def _get_provision_data(
+    block: Block | CallContractBlock, other_blocks: list[Block | CallContractBlock]
 ) -> dict:
-    # its either TON deposit to vault or jetton transfer request to wallet
-    # block:
-    # user -> vault -> factory *-> deposit
-    # or
-    # user -> wallet -> wallet -> vault -> factory *-> deposit
-    vault_call = block.previous_block.previous_block  # :
-    # user *-> vault -> factory -> deposit
-    # or
-    # user -> wallet -> wallet -*> vault -> factory -> deposit
+    return await build_dedust_deposit_liquidity_core(
+        block,
+        get_labeled('deposit', other_blocks, CallContractBlock),
+        get_labeled('lp_transfer', other_blocks, CallContractBlock),
+        get_labeled('rejection', other_blocks, CallContractBlock),
+        [b for b in other_blocks
+         if isinstance(b, CallContractBlock) and b.opcode == JettonTransfer.opcode],
+        get_multiple_labeled('ton_excess', other_blocks, CallContractBlock),
+        get_multiple_labeled('jetton_excess', other_blocks, JettonTransferBlock),
+    )
 
+
+async def build_dedust_deposit_partial_core(
+    block: Block | CallContractBlock,
+    vault_call: Block | CallContractBlock,
+    all_blocks: list[Block | CallContractBlock],
+) -> dict:
+    """Shared build core for the dedust first-asset (partial) deposit data.
+    `block` is the DedustTopUpLiquidityDepositContract anchor; `vault_call` is
+    the deposit-leg head (legacy: block.previous_block.previous_block — the
+    DedustDepositTONToVault call or the raw JettonNotify call). Raises to
+    reject the match, including the final-deposit-opcodes-after-topup guard.
+    Does NOT merge consumed blocks."""
     deposit_contract_address = block.get_message().destination
     actual_asset = Asset(is_ton=True, jetton_address=None)
     actual_amount = None
@@ -293,6 +308,21 @@ async def _get_deposit_one_data(
         "target_amount_2": Amount(asset1_amount or 0),
     }
     return data
+
+
+async def _get_deposit_one_data(
+    block: Block | CallContractBlock, all_blocks: list[Block | CallContractBlock]
+) -> dict:
+    # its either TON deposit to vault or jetton transfer request to wallet
+    # block:
+    # user -> vault -> factory *-> deposit
+    # or
+    # user -> wallet -> wallet -> vault -> factory *-> deposit
+    vault_call = block.previous_block.previous_block  # :
+    # user *-> vault -> factory -> deposit
+    # or
+    # user -> wallet -> wallet -*> vault -> factory -> deposit
+    return await build_dedust_deposit_partial_core(block, vault_call, all_blocks)
 
 
 class DedustDepositBlockMatcher(BlockMatcher):
@@ -476,11 +506,18 @@ async def post_process_dedust_liquidity(blocks: list[Block]) -> list[Block]:
     final_deposits = []
     used_deposit_contracts = defaultdict(int)
 
+    # Dispatch supports both implementations: the legacy pair tags its output
+    # with the DedustDepositLiquidity[Partial] subclasses; the declarative mch build
+    # (specs/dedust_deposit.mch) emits generic Block(btype
+    # dedust_deposit_liquidity[_partial]). The distinct btypes carry the same
+    # final/partial split, so match either form.
     for b in blocks:
-        if isinstance(b, DedustDepositLiquidityPartial):
+        if isinstance(b, DedustDepositLiquidityPartial) or \
+                b.btype == "dedust_deposit_liquidity_partial":
             first_deposits.append(b)
             used_deposit_contracts[b.data['deposit_contract']] += 1
-        elif isinstance(b, DedustDepositLiquidity):
+        elif isinstance(b, DedustDepositLiquidity) or \
+                b.btype == "dedust_deposit_liquidity":
             final_deposits.append(b)
             used_deposit_contracts[b.data['deposit_contract']] += 1
 
@@ -571,6 +608,79 @@ def combine_deposits(first_deposit, final_deposit):
     return result
 
 
+async def build_dedust_withdraw_core(block: Block, payouts: list[Block | None]) -> Block | None:
+    """Shared build core for dedust dex_withdraw_liquidity. Returns None to
+    reject the match. `block` is the JettonBurn anchor; `payouts` are the two
+    payout terminal blocks (a DedustPayout call or a jetton_transfer block), in
+    children-set consumption order (payout_1 first). Does NOT merge consumed
+    blocks — the caller is responsible for merge_blocks."""
+    sender = block.get_message().source
+    sender_wallet = block.get_message().destination
+    burn_data = JettonBurn(block.get_body())
+
+    burn_notify_call = block.next_blocks[0]
+    pool = burn_notify_call.get_message().destination
+
+    lp_wallet_info = await context.interface_repository.get().get_jetton_wallet(sender_wallet.upper())
+    if not lp_wallet_info: return None
+
+    lp_asset = Asset(is_ton=False, jetton_address=lp_wallet_info.jetton)
+
+    assets = []
+    amounts = []
+    dex_wallets = []
+    dex_vaults = []
+    user_wallets = []
+    for payout in payouts:
+        call_from_vault = payout
+        payout_request = payout.previous_block if payout else None
+
+        if not payout_request:
+            continue
+
+        if isinstance(call_from_vault, CallContractBlock) and call_from_vault.opcode == DedustPayout.opcode:
+            asset = Asset(is_ton=True, jetton_address=None)
+            dex_wallets.append(None)
+            user_wallets.append(None)
+            dex_vaults.append(AccountId(call_from_vault.get_message().source))
+        elif isinstance(call_from_vault, JettonTransferBlock):
+            dex_wallet = call_from_vault.data['sender_wallet']
+            dex_wallets.append(dex_wallet)
+            asset = call_from_vault.data['asset']
+            user_wallets.append(call_from_vault.data['receiver_wallet'])
+            dex_vaults.append(call_from_vault.data['sender'])
+
+        else:
+            # unexpected opcode
+            return None
+
+        payout_data = DedustPayoutFromPool(payout_request.get_body())
+        amounts.append(payout_data.amount)
+        assets.append(asset)
+
+    new_block = Block('dex_withdraw_liquidity', [])
+    new_block.data = {
+        'dex': 'dedust',
+        'sender': AccountId(sender),
+        'sender_wallet': AccountId(sender_wallet),
+        'pool': AccountId(pool),
+        'asset': lp_asset,
+        'lp_tokens_burnt': Amount(burn_data.amount),
+        'is_refund': False,
+        'amount1_out': Amount(amounts[0]),
+        'asset1_out': assets[0],
+        'dex_wallet_1': dex_vaults[0],
+        'dex_jetton_wallet_1': dex_wallets[0],
+        'wallet1': user_wallets[0],
+        'amount2_out': Amount(amounts[1]),
+        'asset2_out': assets[1],
+        'dex_wallet_2': dex_vaults[1],
+        'dex_jetton_wallet_2': dex_wallets[1],
+        'wallet2': user_wallets[1]
+    }
+    return new_block
+
+
 class DedustWithdrawBlockMatcher(BlockMatcher):
     def __init__(self):
         # start at JettonBurn
@@ -613,76 +723,239 @@ class DedustWithdrawBlockMatcher(BlockMatcher):
         )
 
     async def build_block(self, block: Block, other_blocks: list[Block]) -> list[Block]:
-        sender = block.get_message().source
-        sender_wallet = block.get_message().destination
-        burn_data = JettonBurn(block.get_body())
-
-        burn_notify_call = block.next_blocks[0]
-        pool = burn_notify_call.get_message().destination
-
-        lp_wallet_info = await context.interface_repository.get().get_jetton_wallet(sender_wallet.upper())
-        if not lp_wallet_info: return []
-
-        lp_asset = Asset(is_ton=False, jetton_address=lp_wallet_info.jetton)
-
         payouts = [
             get_labeled('payout_1', other_blocks, Block),
             get_labeled('payout_2', other_blocks, Block)
         ]
-        assets = []
-        amounts = []
-        dex_wallets = []
-        dex_vaults = []
-        user_wallets = []
-        for payout in payouts:
-            call_from_vault = payout
-            payout_request = payout.previous_block if payout else None
-
-            if not payout_request:
-                continue
-
-            if isinstance(call_from_vault, CallContractBlock) and call_from_vault.opcode == DedustPayout.opcode:
-                asset = Asset(is_ton=True, jetton_address=None)
-                dex_wallets.append(None)
-                user_wallets.append(None)
-                dex_vaults.append(AccountId(call_from_vault.get_message().source))
-            elif isinstance(call_from_vault, JettonTransferBlock):
-                dex_wallet = call_from_vault.data['sender_wallet']
-                dex_wallets.append(dex_wallet)
-                asset = call_from_vault.data['asset']
-                user_wallets.append(call_from_vault.data['receiver_wallet'])
-                dex_vaults.append(call_from_vault.data['sender'])
-
-            else:
-                # unexpected opcode
-                return []
-
-            payout_data = DedustPayoutFromPool(payout_request.get_body())
-            amounts.append(payout_data.amount)
-            assets.append(asset)
-
-        new_block = Block('dex_withdraw_liquidity', [])
+        new_block = await build_dedust_withdraw_core(block, payouts)
+        if new_block is None:
+            return []
         new_block.merge_blocks([block] + other_blocks)
-        new_block.data = {
-            'dex': 'dedust',
-            'sender': AccountId(sender),
-            'sender_wallet': AccountId(sender_wallet),
-            'pool': AccountId(pool),
-            'asset': lp_asset,
-            'lp_tokens_burnt': Amount(burn_data.amount),
-            'is_refund': False,
-            'amount1_out': Amount(amounts[0]),
-            'asset1_out': assets[0],
-            'dex_wallet_1': dex_vaults[0],
-            'dex_jetton_wallet_1': dex_wallets[0],
-            'wallet1': user_wallets[0],
-            'amount2_out': Amount(amounts[1]),
-            'asset2_out': assets[1],
-            'dex_wallet_2': dex_vaults[1],
-            'dex_jetton_wallet_2': dex_wallets[1],
-            'wallet2': user_wallets[1]
-        }
         return [new_block]
+
+
+class StonfiV2DepositLiquidity(Block):
+    """Stonfi v2 provide-liquidity leg that carries the pool callback
+    (cb_add_liquidity -> LP mint or refund). Same btype as the legacy
+    matcher's output; the class tag exists for
+    post_process_stonfi_v2_liquidity dispatch."""
+
+    def __init__(self, data):
+        super().__init__("dex_deposit_liquidity", [], data)
+
+
+class StonfiV2DepositLiquidityPartial(Block):
+    """Stonfi v2 provide-liquidity leg without the pool callback — the
+    deposit that waits for its pair. Same btype as the legacy matcher's
+    output; class tag for post_process_stonfi_v2_liquidity dispatch."""
+
+    def __init__(self, data):
+        super().__init__("dex_deposit_liquidity", [], data)
+
+
+def build_stonfi_v2_provide_core(
+    block: Block,
+    in_transfer: Block | None,
+    lp_token_transfer: Block | None,
+) -> dict:
+    """Shared single-leg data build for stonfi_v2 dex_deposit_liquidity.
+    `block` is the provide-liquidity (0x37c096df) anchor, `in_transfer` the
+    incoming transfer (a JettonTransferBlock, or the raw pTON 0x01f3835d call
+    for a TON leg), `lp_token_transfer` the LP-mint JettonInternalTransfer
+    call if the leg carried the pool callback."""
+    lp_tokens_minted = None
+    if lp_token_transfer:
+        msg = JettonInternalTransfer(lp_token_transfer.get_body())
+        lp_tokens_minted = Amount(msg.amount)
+
+    if isinstance(in_transfer, JettonTransferBlock):
+        asset = in_transfer.data['asset']
+    else:
+        asset = Asset(is_ton=True, jetton_address=None)
+    provide_liquidity_msg = StonfiV2ProvideLiquidity(block.get_body())
+    amount = provide_liquidity_msg.amount1 if provide_liquidity_msg.amount1 and provide_liquidity_msg.amount1 > 0 else provide_liquidity_msg.amount2
+    return {
+        'dex': 'stonfi_v2',
+        'amount_1': Amount(amount),
+        'asset_1': asset,
+        'sender': AccountId(provide_liquidity_msg.from_user),
+        'sender_wallet_1': (in_transfer.data['sender_wallet']
+                            if isinstance(in_transfer, JettonTransferBlock) else None),
+        'amount_2': None,
+        'asset_2': None,
+        'sender_wallet_2': None,
+        'pool': AccountId(block.event_nodes[0].message.destination),
+        'lp_tokens_minted': lp_tokens_minted
+    }
+
+
+_STONFI_V2_DEPOSIT_CLASSES = (StonfiV2DepositLiquidity, StonfiV2DepositLiquidityPartial)
+
+
+def _is_stonfi_v2_provide_leg(b: Block) -> bool:
+    """Dual dispatch for the pairing pass: the legacy matcher tags
+    its produced legs with the StonfiV2DepositLiquidity[Partial] subclasses,
+    while the declarative mch build (specs/stonfi_v2_provide.mch) emits a
+    generic Block(btype dex_deposit_liquidity) carrying dex == 'stonfi_v2'.
+    Both are the same single-leg deposit the pass pairs; match either form."""
+    if isinstance(b, _STONFI_V2_DEPOSIT_CLASSES):
+        return True
+    return (b.btype == "dex_deposit_liquidity"
+            and isinstance(b.data, dict)
+            and b.data.get("dex") == "stonfi_v2")
+
+
+def _stonfi_v2_provide_fire_order(block: Block) -> tuple[int, int]:
+    """Legacy fire order for a produced provide-liquidity block: the legacy
+    matcher is a single BFS pass, so the leg whose 0x37c096df anchor sits
+    shallower in the tree fired first. Internal previous_block pointers are
+    preserved by merge_blocks, so the anchor's depth is still the match-time
+    depth. Same-depth ties are set-order nondeterministic in the legacy
+    pipeline (compact_connections rebuilds sibling lists as list(set(...)));
+    min_lt is the deterministic stand-in."""
+    anchor = next(b for b in block.children_blocks
+                  if isinstance(b, CallContractBlock)
+                  and b.opcode == StonfiV2ProvideLiquidity.opcode)
+    depth = 0
+    cur = anchor
+    while cur.previous_block is not None:
+        cur = cur.previous_block
+        depth += 1
+    return depth, block.min_lt
+
+
+def _stonfi_v2_leg_head(block: Block, proxied: Block) -> Block:
+    """The consumed in-leg head (pTON call or jetton_transfer block) — the
+    unique child of the produced block whose previous_block is still the
+    shared parent. This is the block the legacy matcher labels 'in_transfer'
+    for the proxy insertion."""
+    return next(c for c in block.children_blocks if c.previous_block is proxied)
+
+
+def _stonfi_v2_merge_paired(final: Block, partial: Block) -> None:
+    """Replays the legacy pairing branch on already-built blocks: EmptyBlock
+    proxy insertion between the shared parent and [partial, in_transfer]
+    (liquidity.py legacy surgery), then absorption of the partial exactly as
+    the legacy single merge_blocks call would have produced it."""
+    proxied = partial.previous_block
+    in_transfer = _stonfi_v2_leg_head(final, proxied)
+    proxy = EmptyBlock()
+
+    # proxied.insert_between([partial, in_transfer], proxy), replayed against
+    # the current tree (in_transfer already sits inside `final`).
+    for child in proxied.children_blocks:
+        for nb in (partial, in_transfer):
+            if nb in child.next_blocks:
+                child.next_blocks.remove(nb)
+                child.next_blocks.append(proxy)
+    proxied.next_blocks = [n for n in proxied.next_blocks
+                           if n is not partial and n is not in_transfer]
+    for nb in (partial, in_transfer):
+        for child in nb.children_blocks:
+            if child.previous_block is nb:
+                child.previous_block = proxy
+    proxied.connect(proxy)
+    proxy.connect(partial)
+    proxy.connect(in_transfer)
+
+    # Absorption: in legacy both the partial (`another_deposit`) and the proxy
+    # are part of the one merge_blocks call; the proxy is the earliest common
+    # block, so the merged block's initiating_event_node is the proxy's (None).
+    final.children_blocks.append(partial)
+    final.children_blocks.append(proxy)
+    partial.parent = final
+    proxy.parent = final
+    final.event_nodes.extend(partial.event_nodes)
+    final.value_flow.merge(partial.value_flow)
+    final.contract_deployments = final.contract_deployments.union(partial.contract_deployments)
+    for nb in list(partial.next_blocks):
+        nb.previous_block = final
+        final.next_blocks.append(nb)
+    final.previous_block = proxied
+    final.initiating_event_node = proxy.initiating_event_node
+    final.calculate_min_max_lt()
+    proxied.compact_connections()
+
+    final.data['amount_2'] = partial.data['amount_1']
+    final.data['asset_2'] = partial.data['asset_1']
+    final.data['sender_wallet_2'] = partial.data['sender_wallet_1']
+    if final.data['lp_tokens_minted'] is None:
+        final.data['lp_tokens_minted'] = partial.data['lp_tokens_minted']
+
+
+def _stonfi_v2_absorb_unpaired(final: Block, partial: Block) -> None:
+    """Legacy condition-fail branch: the sibling walk matched (so the sibling
+    deposit AND the shared parent block are in other_blocks) but the
+    sender/pool/lp condition failed — no proxy, no data update, yet the legacy
+    merge_blocks still absorbs both. The earliest common block becomes the
+    shared parent, so the merged block takes its previous_block and
+    initiating_event_node."""
+    proxied = partial.previous_block
+    final.children_blocks.append(partial)
+    final.children_blocks.append(proxied)
+    partial.parent = final
+    proxied.parent = final
+    final.event_nodes.extend(partial.event_nodes)
+    final.event_nodes.extend(proxied.event_nodes)
+    final.value_flow.merge(partial.value_flow)
+    final.value_flow.merge(proxied.value_flow)
+    final.contract_deployments = final.contract_deployments.union(partial.contract_deployments)
+    for nb in list(proxied.next_blocks):
+        if nb is final or nb is partial:
+            continue
+        final.next_blocks.append(nb)
+        nb.previous_block = final
+        final.contract_deployments = final.contract_deployments.union(nb.contract_deployments)
+    for nb in list(partial.next_blocks):
+        final.next_blocks.append(nb)
+        nb.previous_block = final
+    # At legacy match time the shared parent's next list still holds the raw
+    # in-leg head (the absorbing block does not exist yet), and nothing
+    # compacts the absorbed parent afterwards — restore that state.
+    head = _stonfi_v2_leg_head(final, proxied)
+    proxied.next_blocks = [head if nb is final else nb for nb in proxied.next_blocks]
+    final.previous_block = proxied.previous_block
+    final.initiating_event_node = proxied.initiating_event_node
+    final.calculate_min_max_lt()
+    if proxied.previous_block is not None:
+        proxied.previous_block.compact_connections()
+
+
+async def post_process_stonfi_v2_liquidity(blocks: list[Block]) -> list[Block]:
+    """Host-side pairing pass for the R08 stonfi_v2 provide-liquidity remake
+    (merging stays host-side). The mch matchers emit one
+    class-tagged block per deposit leg; this pass replays the legacy
+    cross-branch pairing: a later-fired leg absorbs an earlier sibling leg
+    (same previous_block) — with the EmptyBlock proxy insertion and data
+    merge when the legacy sender/pool/lp condition holds, or the legacy
+    condition-fail absorption (sibling + shared parent, no data update)
+    when it does not. Deviation from legacy, documented: legacy would merge
+    ALL matched sibling deposits at once (3+ legs under one parent); this
+    pass pairs one candidate per block, latest-fired first.
+
+    NOT registered in event_processing yet — production wiring is T26."""
+    deposits = [b for b in blocks if _is_stonfi_v2_provide_leg(b)]
+    if len(deposits) < 2:
+        return blocks
+
+    deposits.sort(key=_stonfi_v2_provide_fire_order)
+    alive: list[Block] = []
+    for b in deposits:
+        candidates = [a for a in alive
+                      if a.previous_block is not None
+                      and a.previous_block is b.previous_block]
+        if candidates:
+            a = candidates[-1]
+            if a.data['sender'] == b.data['sender'] and \
+                    a.data['pool'] == b.data['pool'] and \
+                    a.data['lp_tokens_minted'] != b.data['lp_tokens_minted']:
+                _stonfi_v2_merge_paired(b, a)
+            else:
+                _stonfi_v2_absorb_unpaired(b, a)
+            blocks.remove(a)
+            alive.remove(a)
+        alive.append(b)
+    return blocks
 
 
 class StonfiV2ProvideLiquidityMatcher(BlockMatcher):
@@ -737,34 +1010,9 @@ class StonfiV2ProvideLiquidityMatcher(BlockMatcher):
                     lp_token_transfer = b.block
                 if b.label == 'deposit_part':
                     another_deposit = b.block
-        lp_tokens_minted = None
-
-        if lp_token_transfer:
-            msg = JettonInternalTransfer(lp_token_transfer.get_body())
-            lp_tokens_minted = Amount(msg.amount)
-
         new_block = Block('dex_deposit_liquidity', [])
-
-        asset = None
-        if isinstance(in_transfer, JettonTransferBlock):
-            asset = in_transfer.data['asset']
-        else:
-            asset = Asset(is_ton=True, jetton_address=None)
-        provide_liquidity_msg = StonfiV2ProvideLiquidity(block.get_body())
-        amount = provide_liquidity_msg.amount1 if provide_liquidity_msg.amount1 and provide_liquidity_msg.amount1 > 0 else provide_liquidity_msg.amount2
-        new_block.data = {
-            'dex': 'stonfi_v2',
-            'amount_1': Amount(amount),
-            'asset_1': asset,
-            'sender': AccountId(provide_liquidity_msg.from_user),
-            'sender_wallet_1': (in_transfer.data['sender_wallet']
-                              if isinstance(in_transfer, JettonTransferBlock) else None),
-            'amount_2': None,
-            'asset_2': None,
-            'sender_wallet_2': None,
-            'pool': AccountId(block.event_nodes[0].message.destination),
-            'lp_tokens_minted': lp_tokens_minted
-        }
+        new_block.data = build_stonfi_v2_provide_core(block, in_transfer, lp_token_transfer)
+        lp_tokens_minted = new_block.data['lp_tokens_minted']
 
         if another_deposit:
             if another_deposit.data['sender'] == new_block.data['sender'] and \
@@ -787,6 +1035,100 @@ class StonfiV2ProvideLiquidityMatcher(BlockMatcher):
         return [new_block]
 
 
+async def build_stonfi_v2_withdraw_core(
+    payouts: list[Block],
+    burn: Block | None,
+    refund_op: Block | None,
+) -> tuple[Block, list[Block]] | None:
+    """Shared build core for stonfi_v2 dex_withdraw_liquidity. Returns the new
+    (unmerged) block plus the extra pTON-transfer blocks discovered under the
+    payout jetton_transfers (the caller must merge them together with the
+    payouts / matched blocks). Returns None to reject the match.
+
+    `payouts` are the pool pay-to blocks (op 0x657b54f5) in consumption order
+    (payout_1 first); each carries a jetton_transfer child whose optional
+    PTonTransfer grandchild marks a TON payout. Withdraw meta comes from `burn`
+    (a JettonBurnBlock, normal withdraw) xor `refund_op` (the 0x0f98e2b8 refund
+    call, whose parent's source is the sender)."""
+    additional_blocks = []
+    amount1 = None
+    amount2 = None
+    asset1 = None
+    asset2 = None
+    dex_sender1 = None
+    dex_sender2 = None
+    dex_sender1_jetton_wallet = None
+    dex_sender2_jetton_wallet = None
+    wallet1 = None
+    wallet2 = None
+    for payout in payouts:
+        jetton_transfers = [x for x in payout.next_blocks if isinstance(x, JettonTransferBlock)]
+        if len(jetton_transfers) > 0:
+            transfer = jetton_transfers[0]
+            pton_transfer = next((x for x in transfer.next_blocks if isinstance(x, CallContractBlock)
+                                  and x.opcode == PTonTransfer.opcode), None)
+            if pton_transfer is not None:
+                pton_msg = PTonTransfer(pton_transfer.get_body())
+                amount = Amount(pton_msg.ton_amount or 0)
+                additional_blocks.append(pton_transfer)
+                asset = Asset(is_ton=True, jetton_address=None)
+            else:
+                amount = transfer.data['amount']
+                asset = transfer.data['asset']
+
+            if amount1 is None:
+                amount1 = amount
+                asset1 = asset
+                wallet1 = transfer.data['receiver_wallet']
+                dex_sender1 = transfer.data['sender']
+                dex_sender1_jetton_wallet = transfer.data['sender_wallet']
+            else:
+                amount2 = amount
+                asset2 = asset
+                wallet2 = transfer.data['receiver_wallet']
+                dex_sender2 = transfer.data['sender']
+                dex_sender2_jetton_wallet = transfer.data['sender_wallet']
+    sender = None
+    sender_wallet = None
+    asset = None
+    burned_lps = None
+    is_withdraw_refunded_liquidity = False
+
+    if refund_op is not None:
+        is_withdraw_refunded_liquidity = True
+        sender = AccountId(refund_op.previous_block.event_nodes[0].message.source)
+    if burn is not None:
+        if isinstance(burn, JettonBurnBlock):
+            sender = burn.data['owner']
+            sender_wallet = burn.data['jetton_wallet']
+            burned_lps = burn.data['amount']
+            asset = burn.data['asset']
+        else:
+            return None
+
+    new_block = Block('dex_withdraw_liquidity', [])
+    new_block.data = {
+        'dex': 'stonfi_v2',
+        'sender': sender,
+        'sender_wallet': sender_wallet,
+        'pool': AccountId(payouts[0].event_nodes[0].message.source),
+        'asset': asset,
+        'lp_tokens_burnt': burned_lps,
+        'is_refund': is_withdraw_refunded_liquidity,
+        'amount1_out': amount1,
+        'asset1_out': asset1,
+        'dex_wallet_1': dex_sender1,
+        'dex_jetton_wallet_1': dex_sender1_jetton_wallet,
+        'wallet1': wallet1,
+        'amount2_out': amount2,
+        'asset2_out': asset2,
+        'dex_wallet_2': dex_sender2,
+        'dex_jetton_wallet_2': dex_sender2_jetton_wallet,
+        'wallet2': wallet2
+    }
+    return new_block, additional_blocks
+
+
 class StonfiV2WithdrawLiquidityMatcher(BlockMatcher):
     def __init__(self):
         withdraw_refunded_liquidity = labeled('withdraw_refunded_liquidity', ContractMatcher(
@@ -804,17 +1146,7 @@ class StonfiV2WithdrawLiquidityMatcher(BlockMatcher):
 
     async def build_block(self, block: Block, other_blocks: list[Block]) -> list[Block]:
         payouts = [block]
-        additional_blocks = []
-        amount1 = None
-        amount2 = None
-        asset1 = None
-        asset2 = None
-        dex_sender1 = None
-        dex_sender2 = None
-        dex_sender1_jetton_wallet = None
-        dex_sender2_jetton_wallet = None
-        wallet1 = None
-        wallet2 = None
+        sibling_jetton_transfers = []
         for b in block.previous_block.next_blocks:
             if b == block or b in other_blocks:
                 continue
@@ -822,76 +1154,22 @@ class StonfiV2WithdrawLiquidityMatcher(BlockMatcher):
                 jetton_transfers = [x for x in b.next_blocks if isinstance(x, JettonTransferBlock)]
                 if len(jetton_transfers) > 0:
                     payouts.append(b)
-                    additional_blocks.extend(jetton_transfers)
-        for payout in payouts:
-            jetton_transfers = [x for x in payout.next_blocks if isinstance(x, JettonTransferBlock)]
-            if len(jetton_transfers) > 0:
-                transfer = jetton_transfers[0]
-                pton_transfer = next((x for x in transfer.next_blocks if isinstance(x, CallContractBlock)
-                                      and x.opcode == PTonTransfer.opcode), None)
-                if pton_transfer is not None:
-                    pton_msg = PTonTransfer(pton_transfer.get_body())
-                    amount = Amount(pton_msg.ton_amount or 0)
-                    additional_blocks.append(pton_transfer)
-                    asset = Asset(is_ton=True, jetton_address=None)
-                else:
-                    amount = transfer.data['amount']
-                    asset = transfer.data['asset']
+                    sibling_jetton_transfers.extend(jetton_transfers)
 
-                if amount1 is None:
-                    amount1 = amount
-                    asset1 = asset
-                    wallet1 = transfer.data['receiver_wallet']
-                    dex_sender1 = transfer.data['sender']
-                    dex_sender1_jetton_wallet = transfer.data['sender_wallet']
-                else:
-                    amount2 = amount
-                    asset2 = asset
-                    wallet2 = transfer.data['receiver_wallet']
-                    dex_sender2 = transfer.data['sender']
-                    dex_sender2_jetton_wallet = transfer.data['sender_wallet']
-        sender = None
-        sender_wallet = None
-        asset = None
-        burned_lps = None
-        is_withdraw_refunded_liquidity = False
-
+        burn = None
+        refund_op = None
         for b in other_blocks:
             if isinstance(b, LabelBlock):
                 if b.label == 'withdraw_refunded_liquidity':
-                    is_withdraw_refunded_liquidity = True
-                    sender = AccountId(b.block.previous_block.event_nodes[0].message.source)
+                    refund_op = b.block
                 if b.label == 'withdraw_liquidity':
                     burn = b.block.previous_block
-                    if isinstance(burn, JettonBurnBlock):
-                        sender = burn.data['owner']
-                        sender_wallet = burn.data['jetton_wallet']
-                        burned_lps = burn.data['amount']
-                        asset = burn.data['asset']
-                    else:
-                        return []
-        new_block = Block('dex_withdraw_liquidity', [])
-        new_block.merge_blocks(payouts + other_blocks + additional_blocks)
 
-        new_block.data = {
-            'dex': 'stonfi_v2',
-            'sender': sender,
-            'sender_wallet': sender_wallet,
-            'pool': AccountId(block.event_nodes[0].message.source),
-            'asset': asset,
-            'lp_tokens_burnt': burned_lps,
-            'is_refund': is_withdraw_refunded_liquidity,
-            'amount1_out': amount1,
-            'asset1_out': asset1,
-            'dex_wallet_1': dex_sender1,
-            'dex_jetton_wallet_1': dex_sender1_jetton_wallet,
-            'wallet1': wallet1,
-            'amount2_out': amount2,
-            'asset2_out': asset2,
-            'dex_wallet_2': dex_sender2,
-            'dex_jetton_wallet_2': dex_sender2_jetton_wallet,
-            'wallet2': wallet2
-        }
+        result = await build_stonfi_v2_withdraw_core(payouts, burn, refund_op)
+        if result is None:
+            return []
+        new_block, pton_blocks = result
+        new_block.merge_blocks(payouts + other_blocks + sibling_jetton_transfers + pton_blocks)
         return [new_block]
 
 
@@ -992,194 +1270,215 @@ class ToncoDepositLiquidityMatcher(BlockMatcher):
 
     async def build_block(self, block: Block, other_blocks: list[Block]) -> list[Block]:
         additional_blocks = []
-
-        add_liquidity_msg = ToncoAccountV3AddLiquidity(block.get_body())
-        is_first_asset_deposited = add_liquidity_msg.new_amount0 > 0  # to order assets
-
-        # find NFT position init call
-        position_init_msg = None
-        lp_tokens_minted = None
-        nft_index = None
-        nft_address = None
-        is_complete = False
-        position_init_call = get_labeled("nft_mint", other_blocks)
-        if position_init_call:
-            position_init_msg = ToncoPositionNftV3PositionInit(
-                position_init_call.get_body()
-            )
-            lp_tokens_minted = Amount(position_init_msg.liquidity)
-            nft_index = position_init_msg.nft_index
-            nft_address = AccountId(position_init_call.get_message().destination)
-            is_complete = True
-
-        # find the input transfer (jetton or PTon)
-        input_transfer = get_labeled("ton_input", other_blocks) or get_labeled(
-            "jetton_input", other_blocks
-        )
-
-        if not input_transfer:
-            logger.error(f"Input transfer not found for {block.get_message().source}")
-            return []
-
-        # extract data from JettonNotify - the universal approach
-        jetton_notify_block = None
-
-        if input_transfer.btype == "jetton_transfer":
-            # jetton transfer -> find JettonNotify in its children
-            jetton_notify_block = find_call_contract(
-                input_transfer.children_blocks, JettonNotify.opcode
-            )
-        else:
-            # PTonTransfer case - it should be the notify itself
-            if (
-                isinstance(input_transfer, CallContractBlock)
-                and input_transfer.opcode == JettonNotify.opcode
-            ):
-                jetton_notify_block = input_transfer
-
         addition = get_labeled("ton_input_addition", other_blocks)
         if addition:
             additional_blocks.append(addition)
-
-        if not jetton_notify_block:
-            logger.error(
-                f"JettonNotify not found in input transfer chain {block.get_message().tx_hash}"
-            )  # TODO
-            return []
-
-        try:
-            jetton_notify = JettonNotify(jetton_notify_block.get_body())
-
-            sent_amount = Amount(jetton_notify.jetton_amount or 0)
-            sender = AccountId(jetton_notify.from_user)
-
-            if not jetton_notify.forward_payload_cell:
-                logger.error(
-                    f"No forward payload in JettonNotify for {block.get_message().source}"
-                )
-                return []
-
-            payload_slice = jetton_notify.forward_payload_cell.to_slice()
-            if (
-                payload_slice.preload_uint(32)
-                != ToncoPoolV3FundAccountPayload.payload_opcode
-            ):
-                logger.error(
-                    f"Invalid payload opcode in JettonNotify for {block.get_message().source}"
-                )
-                return []
-
-            payload_data = ToncoPoolV3FundAccountPayload(payload_slice)
-            other_jetton_wallet_str = payload_data.get_other_jetton_wallet()
-
-            # determine sender jetton wallet
-            sender_wallet = None
-            if input_transfer.btype == "jetton_transfer":
-                sender_wallet = input_transfer.data.get("sender_wallet")
-
-            router_wallet_str = jetton_notify_block.get_message().source
-
-        except Exception as e:
-            logger.error(f"Failed to parse JettonNotify message: {e}")
-            return []
-
-        first_asset = None
-        try:
-            jetton_wallet = await context.interface_repository.get().get_jetton_wallet(
-                router_wallet_str
-            )
-            if jetton_wallet is not None:
-                if jetton_wallet.jetton in PTonTransferMatcher.pton_masters:
-                    first_asset = Asset(is_ton=True, jetton_address=None)
-                else:
-                    first_asset = Asset(
-                        is_ton=False, jetton_address=jetton_wallet.jetton
-                    )
-            else:
-                logger.warning(
-                    f"Jetton wallet not found for router_wallet_str={router_wallet_str}"
-                )
-                first_asset = Asset(is_ton=True, jetton_address=None)
-        except Exception as e:
-            raise_if_retryable_data_access_error(e)
-            logger.warning(f"Failed to determine first asset: {e}")
-            return []
-
-        second_asset = None
-        try:
-            jetton_wallet = await context.interface_repository.get().get_jetton_wallet(
-                other_jetton_wallet_str
-            )
-            if jetton_wallet is not None:
-                if jetton_wallet.jetton in PTonTransferMatcher.pton_masters:
-                    second_asset = Asset(is_ton=True, jetton_address=None)
-                else:
-                    second_asset = Asset(
-                        is_ton=False, jetton_address=jetton_wallet.jetton
-                    )
-        except Exception as e:
-            raise_if_retryable_data_access_error(e)
-            logger.warning(f"Error determining second asset for liquidity: {e}")
-            return []
-
-        if is_first_asset_deposited:
-            amount_1 = sent_amount
-            asset_1 = first_asset
-            amount_2 = None
-            asset_2 = second_asset
-            sender_wallet_1 = sender_wallet
-            sender_wallet_2 = None
-        else:
-            amount_1 = None
-            asset_1 = second_asset
-            amount_2 = sent_amount
-            asset_2 = first_asset
-            sender_wallet_1 = None
-            sender_wallet_2 = sender_wallet
-
-        # extract excesses
-        excesses = []
-        for i in range(2):
-            excess_transfer = get_labeled(f"excess_transfer_{i}", other_blocks)
-            if excess_transfer:
-                if isinstance(excess_transfer, JettonTransferBlock):
-                    pton_transfer = find_call_contract(
-                        excess_transfer.next_blocks, PTonTransfer.opcode
-                    )
-                    if pton_transfer is not None:
-                        pton_msg = PTonTransfer(pton_transfer.get_body())
-                        excess_amount = Amount(pton_msg.ton_amount or 0)
-                        excess_asset = Asset(is_ton=True, jetton_address=None)
-                    else:
-                        excess_amount = excess_transfer.data["amount"]
-                        excess_asset = excess_transfer.data["asset"]
-                else:
-                    continue
-                excesses.append((excess_asset, excess_amount))
-
-        data = ToncoDepositLiquidityData(
-            sender=sender,
-            pool=AccountId(block.get_message().source),
-            account_contract=AccountId(block.get_message().destination),
-            position_amount_1=Amount(add_liquidity_msg.new_enough0 or 0),
-            position_amount_2=Amount(add_liquidity_msg.new_enough1 or 0),
-            lp_tokens_minted=lp_tokens_minted,
-            tick_lower=add_liquidity_msg.tick_lower,
-            tick_upper=add_liquidity_msg.tick_upper,
-            nft_index=nft_index,
-            nft_address=nft_address,
-            amount_1=amount_1,
-            asset_1=asset_1,
-            sender_wallet_1=sender_wallet_1,
-            amount_2=amount_2,
-            asset_2=asset_2,
-            sender_wallet_2=sender_wallet_2,
-            excesses=excesses,
+        position_init_call = get_labeled("nft_mint", other_blocks)
+        input_transfer = get_labeled("ton_input", other_blocks) or get_labeled(
+            "jetton_input", other_blocks
         )
-
-        new_block = ToncoDepositLiquidityBlock(data)
+        excess_transfers = [
+            get_labeled(f"excess_transfer_{i}", other_blocks) for i in range(2)
+        ]
+        blocks = await build_tonco_deposit_liquidity_core(
+            block, position_init_call, input_transfer, excess_transfers
+        )
+        if len(blocks) == 0:
+            return []
+        new_block = blocks[0]
         new_block.merge_blocks([block] + other_blocks + additional_blocks)
         return [new_block]
+
+
+async def build_tonco_deposit_liquidity_core(
+    block: Block | CallContractBlock,
+    position_init_call: Block | None,
+    input_transfer: Block | None,
+    excess_transfers: list[Block | None],
+) -> list[Block]:
+    """Shared build core for tonco_deposit_liquidity. `block` is the
+    ToncoAccountV3AddLiquidity anchor; `position_init_call` the matched
+    nft_mint block, `input_transfer` the input jetton_transfer block or the
+    raw JettonNotify call (pton arm), `excess_transfers` the up-to-two
+    refund transfer blocks in match order (None gaps allowed). Returns []
+    to reject the match. Does NOT merge consumed blocks."""
+    add_liquidity_msg = ToncoAccountV3AddLiquidity(block.get_body())
+    is_first_asset_deposited = add_liquidity_msg.new_amount0 > 0  # to order assets
+
+    # find NFT position init call
+    position_init_msg = None
+    lp_tokens_minted = None
+    nft_index = None
+    nft_address = None
+    is_complete = False
+    if position_init_call:
+        position_init_msg = ToncoPositionNftV3PositionInit(
+            position_init_call.get_body()
+        )
+        lp_tokens_minted = Amount(position_init_msg.liquidity)
+        nft_index = position_init_msg.nft_index
+        nft_address = AccountId(position_init_call.get_message().destination)
+        is_complete = True
+
+    # find the input transfer (jetton or PTon)
+    if not input_transfer:
+        logger.error(f"Input transfer not found for {block.get_message().source}")
+        return []
+
+    # extract data from JettonNotify - the universal approach
+    jetton_notify_block = None
+
+    if input_transfer.btype == "jetton_transfer":
+        # jetton transfer -> find JettonNotify in its children
+        jetton_notify_block = find_call_contract(
+            input_transfer.children_blocks, JettonNotify.opcode
+        )
+    else:
+        # PTonTransfer case - it should be the notify itself
+        if (
+            isinstance(input_transfer, CallContractBlock)
+            and input_transfer.opcode == JettonNotify.opcode
+        ):
+            jetton_notify_block = input_transfer
+
+    if not jetton_notify_block:
+        logger.error(
+            f"JettonNotify not found in input transfer chain {block.get_message().tx_hash}"
+        )  # TODO
+        return []
+
+    try:
+        jetton_notify = JettonNotify(jetton_notify_block.get_body())
+
+        sent_amount = Amount(jetton_notify.jetton_amount or 0)
+        sender = AccountId(jetton_notify.from_user)
+
+        if not jetton_notify.forward_payload_cell:
+            logger.error(
+                f"No forward payload in JettonNotify for {block.get_message().source}"
+            )
+            return []
+
+        payload_slice = jetton_notify.forward_payload_cell.to_slice()
+        if (
+            payload_slice.preload_uint(32)
+            != ToncoPoolV3FundAccountPayload.payload_opcode
+        ):
+            logger.error(
+                f"Invalid payload opcode in JettonNotify for {block.get_message().source}"
+            )
+            return []
+
+        payload_data = ToncoPoolV3FundAccountPayload(payload_slice)
+        other_jetton_wallet_str = payload_data.get_other_jetton_wallet()
+
+        # determine sender jetton wallet
+        sender_wallet = None
+        if input_transfer.btype == "jetton_transfer":
+            sender_wallet = input_transfer.data.get("sender_wallet")
+
+        router_wallet_str = jetton_notify_block.get_message().source
+
+    except Exception as e:
+        logger.error(f"Failed to parse JettonNotify message: {e}")
+        return []
+
+    first_asset = None
+    try:
+        jetton_wallet = await context.interface_repository.get().get_jetton_wallet(
+            router_wallet_str
+        )
+        if jetton_wallet is not None:
+            if jetton_wallet.jetton in PTonTransferMatcher.pton_masters:
+                first_asset = Asset(is_ton=True, jetton_address=None)
+            else:
+                first_asset = Asset(
+                    is_ton=False, jetton_address=jetton_wallet.jetton
+                )
+        else:
+            logger.warning(
+                f"Jetton wallet not found for router_wallet_str={router_wallet_str}"
+            )
+            first_asset = Asset(is_ton=True, jetton_address=None)
+    except Exception as e:
+        raise_if_retryable_data_access_error(e)
+        logger.warning(f"Failed to determine first asset: {e}")
+        return []
+
+    second_asset = None
+    try:
+        jetton_wallet = await context.interface_repository.get().get_jetton_wallet(
+            other_jetton_wallet_str
+        )
+        if jetton_wallet is not None:
+            if jetton_wallet.jetton in PTonTransferMatcher.pton_masters:
+                second_asset = Asset(is_ton=True, jetton_address=None)
+            else:
+                second_asset = Asset(
+                    is_ton=False, jetton_address=jetton_wallet.jetton
+                )
+    except Exception as e:
+        raise_if_retryable_data_access_error(e)
+        logger.warning(f"Error determining second asset for liquidity: {e}")
+        return []
+
+    if is_first_asset_deposited:
+        amount_1 = sent_amount
+        asset_1 = first_asset
+        amount_2 = None
+        asset_2 = second_asset
+        sender_wallet_1 = sender_wallet
+        sender_wallet_2 = None
+    else:
+        amount_1 = None
+        asset_1 = second_asset
+        amount_2 = sent_amount
+        asset_2 = first_asset
+        sender_wallet_1 = None
+        sender_wallet_2 = sender_wallet
+
+    # extract excesses
+    excesses = []
+    for excess_transfer in excess_transfers:
+        if excess_transfer:
+            # The shared btype covers legacy and declarative jetton legs.
+            if excess_transfer.btype == "jetton_transfer":
+                pton_transfer = find_call_contract(
+                    excess_transfer.next_blocks, PTonTransfer.opcode
+                )
+                if pton_transfer is not None:
+                    pton_msg = PTonTransfer(pton_transfer.get_body())
+                    excess_amount = Amount(pton_msg.ton_amount or 0)
+                    excess_asset = Asset(is_ton=True, jetton_address=None)
+                else:
+                    excess_amount = excess_transfer.data["amount"]
+                    excess_asset = excess_transfer.data["asset"]
+            else:
+                continue
+            excesses.append((excess_asset, excess_amount))
+
+    data = ToncoDepositLiquidityData(
+        sender=sender,
+        pool=AccountId(block.get_message().source),
+        account_contract=AccountId(block.get_message().destination),
+        position_amount_1=Amount(add_liquidity_msg.new_enough0 or 0),
+        position_amount_2=Amount(add_liquidity_msg.new_enough1 or 0),
+        lp_tokens_minted=lp_tokens_minted,
+        tick_lower=add_liquidity_msg.tick_lower,
+        tick_upper=add_liquidity_msg.tick_upper,
+        nft_index=nft_index,
+        nft_address=nft_address,
+        amount_1=amount_1,
+        asset_1=asset_1,
+        sender_wallet_1=sender_wallet_1,
+        amount_2=amount_2,
+        asset_2=asset_2,
+        sender_wallet_2=sender_wallet_2,
+        excesses=excesses,
+    )
+
+    new_block = ToncoDepositLiquidityBlock(data)
+    return [new_block]
 
 
 TONCO_ROUTER_WTTON_WALLET_ADDR = (
@@ -1216,6 +1515,148 @@ class ToncoWithdrawLiquidityBlock(Block):
 
     def __repr__(self):
         return f"tonco_withdraw_liquidity pool={self.data.pool.address} sender={self.data.sender.address} liquidity={self.data.liquidity_burnt}"
+
+
+async def resolve_tonco_withdraw_payouts(
+    router_payout_call: CallContractBlock,
+    payout_1: Block | None,
+    payout_2: Block | None,
+) -> tuple[list[dict] | None, list[Block], bool]:
+    """Shared payout resolution for tonco_withdraw_liquidity.
+
+    Pairs the router's PayTo message (which declares the pool's asset0/asset1
+    slots) with the two actual payout transfers: a leg that has a transfer takes
+    its asset from the block (unwrapping pTON), a leg that has none falls back
+    to the router message plus a jetton-wallet interface lookup. The result is
+    reordered into the pool's asset0/asset1 order.
+
+    Returns `(processed_payouts, additional_blocks, failed)`; `processed_payouts`
+    is None to reject the match.
+
+    This is the imperative residue specs/tonco_liquidity.mch cannot express — the
+    async interface lookup, the pTON-master classification and the slot pairing —
+    so both ToncoWithdrawLiquidityMatcher.build_block and the mch host fn
+    (mch/builders/tonco.py) call it.
+    """
+    additional_blocks: list[Block] = []
+    router_payout_msg = ToncoRouterV3PayTo(router_payout_call.get_body())
+
+    # determine assets and amounts from router_payout_msg - order matters!
+    asset0_data_from_router = {
+        "amount": Amount(router_payout_msg.amount0 or 0),
+        "wallet_addr": (
+            AccountId(router_payout_msg.jetton0_address)
+            if router_payout_msg.jetton0_address
+            else None
+        ),
+        "receiver": (
+            AccountId(router_payout_msg.receiver0)
+            if router_payout_msg.receiver0
+            else None
+        ),
+    }
+
+    asset1_data_from_router = {
+        "amount": Amount(router_payout_msg.amount1 or 0),
+        "wallet_addr": (
+            AccountId(router_payout_msg.jetton1_address)
+            if router_payout_msg.jetton1_address
+            else None
+        ),
+        "receiver": (
+            AccountId(router_payout_msg.receiver1)
+            if router_payout_msg.receiver1
+            else None
+        ),
+    }
+    router_assets_info = [asset0_data_from_router, asset1_data_from_router]
+
+    # pton check
+    for i in router_assets_info:
+        if i["wallet_addr"].as_str() == TONCO_ROUTER_WTTON_WALLET_ADDR:
+            i["wallet_addr"] = None
+
+    # process actual transfers to extract definitive asset types
+    actual_payout_transfers = [payout_1, payout_2]
+    processed_payouts = []
+
+    for i, payout_transfer_block in enumerate(actual_payout_transfers):
+        temp_processed_payout = {}
+        # The shared btype covers the legacy JettonTransferBlock and
+        # the declarative jetton leg, which is a plain Block.
+        if (
+            payout_transfer_block is not None
+            and payout_transfer_block.btype == "jetton_transfer"
+        ):
+            pton_transfer_block = find_call_contract(
+                payout_transfer_block.next_blocks, PTonTransfer.opcode
+            )
+            if pton_transfer_block is not None:
+                pton_msg = PTonTransfer(pton_transfer_block.get_body())
+                temp_processed_payout["amount"] = Amount(pton_msg.ton_amount or 0)
+                temp_processed_payout["asset"] = Asset(
+                    is_ton=True, jetton_address=None
+                )
+                additional_blocks.append(pton_transfer_block)
+            else:
+                temp_processed_payout["amount"] = payout_transfer_block.data["amount"]
+                temp_processed_payout["asset"] = payout_transfer_block.data["asset"]
+
+            temp_processed_payout["dex_wallet"] = payout_transfer_block.data[
+                "sender"
+            ]  # router actually
+            temp_processed_payout["dex_jetton_wallet"] = payout_transfer_block.data[
+                "sender_wallet"
+            ]
+            temp_processed_payout["wallet"] = payout_transfer_block.data[
+                "receiver_wallet"
+            ]
+            processed_payouts.append(temp_processed_payout)
+        elif i < len(router_assets_info):  # fallback to router message data
+            router_asset_info = router_assets_info[i]
+            asset = None
+            if router_asset_info["wallet_addr"]:
+                jetton_wallet = (
+                    await context.interface_repository.get().get_jetton_wallet(
+                        router_asset_info["wallet_addr"].as_str()
+                    )
+                )
+                if (
+                    jetton_wallet
+                    and jetton_wallet.jetton in PTonTransferMatcher.pton_masters
+                ):
+                    asset = Asset(is_ton=True, jetton_address=None)
+                elif jetton_wallet:
+                    asset = Asset(is_ton=False, jetton_address=jetton_wallet.jetton)
+            processed_payouts.append(
+                {
+                    "amount": router_asset_info["amount"],
+                    "asset": asset,
+                    "dex_wallet": AccountId(router_payout_call.get_message().source),
+                    "dex_jetton_wallet": router_asset_info["wallet_addr"],
+                    "wallet": router_asset_info["receiver"],
+                }
+            )
+        else:
+            return None, additional_blocks, False
+
+    # sort processed_payouts according to the pool's asset0 and asset1
+    w1 = processed_payouts[0]["dex_jetton_wallet"]
+    w2 = router_assets_info[0]["wallet_addr"]
+    w1 = w1.as_str() if w1 else None
+    w2 = w2.as_str() if w2 else None
+    if w1 != w2:
+        processed_payouts = processed_payouts[::-1]
+        # check result
+        w1_new = processed_payouts[0]["dex_jetton_wallet"]
+        w1_new = w1_new.as_str() if w1_new else None
+        if w1_new != w2:
+            logger.warning(
+                f"Failed to sort Tonco withdraw liquidity: {w1} and {w1_new} != {w2}"
+            )
+
+    failed = router_payout_msg.exit_code != 0 and router_payout_msg.exit_code != 201
+    return processed_payouts, additional_blocks, failed
 
 
 class ToncoWithdrawLiquidityMatcher(BlockMatcher):
@@ -1313,123 +1754,14 @@ class ToncoWithdrawLiquidityMatcher(BlockMatcher):
             )
             return []
 
-        router_payout_msg = ToncoRouterV3PayTo(router_payout_call.get_body())
-
-        # determine assets and amounts from router_payout_msg - order matters!
-        asset0_data_from_router = {
-            "amount": Amount(router_payout_msg.amount0 or 0),
-            "wallet_addr": (
-                AccountId(router_payout_msg.jetton0_address)
-                if router_payout_msg.jetton0_address
-                else None
-            ),
-            "receiver": (
-                AccountId(router_payout_msg.receiver0)
-                if router_payout_msg.receiver0
-                else None
-            ),
-        }
-
-        asset1_data_from_router = {
-            "amount": Amount(router_payout_msg.amount1 or 0),
-            "wallet_addr": (
-                AccountId(router_payout_msg.jetton1_address)
-                if router_payout_msg.jetton1_address
-                else None
-            ),
-            "receiver": (
-                AccountId(router_payout_msg.receiver1)
-                if router_payout_msg.receiver1
-                else None
-            ),
-        }
-        router_assets_info = [asset0_data_from_router, asset1_data_from_router]
-
-        # pton check
-        for i in router_assets_info:
-            if i["wallet_addr"].as_str() == TONCO_ROUTER_WTTON_WALLET_ADDR:
-                i["wallet_addr"] = None
-
-        # process actual transfers to extract definitive asset types
-        actual_payout_transfers = [payout_1, payout_2]
-        processed_payouts = []
-
-        for i, payout_transfer_block in enumerate(actual_payout_transfers):
-            # if payout_transfer_block is None:
-            #     continue
-
-            temp_processed_payout = {}
-            if isinstance(payout_transfer_block, JettonTransferBlock):
-                pton_transfer_block = find_call_contract(
-                    payout_transfer_block.next_blocks, PTonTransfer.opcode
-                )
-                if pton_transfer_block is not None:
-                    pton_msg = PTonTransfer(pton_transfer_block.get_body())
-                    temp_processed_payout["amount"] = Amount(pton_msg.ton_amount or 0)
-                    temp_processed_payout["asset"] = Asset(
-                        is_ton=True, jetton_address=None
-                    )
-                    additional_blocks.append(pton_transfer_block)
-                else:
-                    temp_processed_payout["amount"] = payout_transfer_block.data[
-                        "amount"
-                    ]
-                    temp_processed_payout["asset"] = payout_transfer_block.data["asset"]
-
-                temp_processed_payout["dex_wallet"] = payout_transfer_block.data[
-                    "sender"
-                ]  # router actually
-                temp_processed_payout["dex_jetton_wallet"] = payout_transfer_block.data[
-                    "sender_wallet"
-                ]
-                temp_processed_payout["wallet"] = payout_transfer_block.data[
-                    "receiver_wallet"
-                ]
-                processed_payouts.append(temp_processed_payout)
-            elif i < len(router_assets_info):  # fallback to router message data
-                router_asset_info = router_assets_info[i]
-                asset = None
-                if router_asset_info["wallet_addr"]:
-                    jetton_wallet = (
-                        await context.interface_repository.get().get_jetton_wallet(
-                            router_asset_info["wallet_addr"].as_str()
-                        )
-                    )
-                    if (
-                        jetton_wallet
-                        and jetton_wallet.jetton in PTonTransferMatcher.pton_masters
-                    ):
-                        asset = Asset(is_ton=True, jetton_address=None)
-                    elif jetton_wallet:
-                        asset = Asset(is_ton=False, jetton_address=jetton_wallet.jetton)
-                processed_payouts.append(
-                    {
-                        "amount": router_asset_info["amount"],
-                        "asset": asset,
-                        "dex_wallet": AccountId(
-                            router_payout_call.get_message().source
-                        ),
-                        "dex_jetton_wallet": router_asset_info["wallet_addr"],
-                        "wallet": router_asset_info["receiver"],
-                    }
-                )
-            else:
-                return []
-
-        # sort processed_payouts according to the pool's asset0 and asset1
-        w1 = processed_payouts[0]["dex_jetton_wallet"]
-        w2 = router_assets_info[0]["wallet_addr"]
-        w1 = w1.as_str() if w1 else None
-        w2 = w2.as_str() if w2 else None
-        if w1 != w2:
-            processed_payouts = processed_payouts[::-1]
-            # check result
-            w1_new = processed_payouts[0]["dex_jetton_wallet"]
-            w1_new = w1_new.as_str() if w1_new else None
-            if w1_new != w2:
-                logger.warning(
-                    f"Failed to sort Tonco withdraw liquidity: {w1} and {w1_new} != {w2}"
-                )
+        processed_payouts, payout_extra_blocks, payout_failed = (
+            await resolve_tonco_withdraw_payouts(
+                router_payout_call, payout_1, payout_2
+            )
+        )
+        if processed_payouts is None:
+            return []
+        additional_blocks += payout_extra_blocks
 
         # fill output data class
         data = ToncoWithdrawLiquidityData(
@@ -1500,9 +1832,7 @@ class ToncoWithdrawLiquidityMatcher(BlockMatcher):
                 blocks_to_merge.append(call_block)
 
         new_block.merge_blocks(list(set(blocks_to_merge)))
-        new_block.failed = (
-            router_payout_msg.exit_code != 0 and router_payout_msg.exit_code != 201
-        )
+        new_block.failed = payout_failed
 
         return [new_block]
 
@@ -1991,6 +2321,25 @@ class CoffeeCreateVaultBlock(Block):
         return f"CoffeeCreateVaultBlock(data={self.data})"
 
 
+async def build_coffee_create_vault_core(
+    block: Block | CallContractBlock,
+    deploy_block: CallContractBlock | None,
+) -> CoffeeCreateVaultBlock | None:
+    """Shared build core for coffee_create_vault. `block` is the
+    CoffeeCreateVault anchor; `deploy_block` the CoffeeDeploy call. Returns
+    None to reject the match. Does NOT merge consumed blocks."""
+    deploy_data = CoffeeCreateVault(block.get_body())
+    if not deploy_block:
+        return None
+    data = CoffeeCreateVaultData(
+        sender=AccountId(block.get_message().source),
+        vault=AccountId(deploy_block.get_message().destination),
+        asset=deploy_data.asset,
+        amount=Amount(block.get_message().value)
+    )
+    return CoffeeCreateVaultBlock(data)
+
+
 class CoffeeCreateVaultMatcher(BlockMatcher):
     def __init__(self):
         super().__init__(
@@ -2015,17 +2364,10 @@ class CoffeeCreateVaultMatcher(BlockMatcher):
         )
 
     async def build_block(self, block: Block, other_blocks: list[Block]) -> list[Block]:
-        deploy_data = CoffeeCreateVault(block.get_body())
         deploy_block = get_labeled("deploy", other_blocks, CallContractBlock)
-        if not deploy_block:
+        new_block = await build_coffee_create_vault_core(block, deploy_block)
+        if new_block is None:
             return []
-        data = CoffeeCreateVaultData(
-            sender=AccountId(block.get_message().source),
-            vault=AccountId(deploy_block.get_message().destination),
-            asset=deploy_data.asset,
-            amount=Amount(block.get_message().value)
-        )
-        new_block = CoffeeCreateVaultBlock(data)
         new_block.merge_blocks([block] + other_blocks)
         return [new_block]
 
@@ -2038,8 +2380,13 @@ class CoffeeCreatePoolCreatorData:
     provided_asset: Asset
     pool_creator_contract: AccountId
     deposit_recipient: AccountId
-    pool_params: PoolParams
-    pool_creation_params: PublicPoolCreationParams
+    # The pool's declared asset order. Flat rather than the whole PoolParams
+    # parser object: these two are all any reader ever touched, and a
+    # declarative build (specs/coffee_create_pool.mch) can only emit language
+    # values. `pool_creation_params` used to sit here too and was never read —
+    # its one consumer, `.public.recipient`, already has `deposit_recipient`.
+    pool_first: Asset
+    pool_second: Asset
 
 
 class CoffeeCreatePoolCreatorBlock(Block):
@@ -2118,8 +2465,8 @@ class CoffeeCreatePoolCreatorMatcher(BlockMatcher):
             amount=amount,
             pool_creator_contract=AccountId(deploy_block.get_message().destination),
             deposit_recipient=AccountId(pool_creation_params.public.recipient),
-            pool_params=pool_params,
-            pool_creation_params=pool_creation_params.public,
+            pool_first=pool_params.first,
+            pool_second=pool_params.second,
         )
         new_block = CoffeeCreatePoolCreatorBlock(data)
         new_block.merge_blocks([block] + other_blocks)
@@ -2141,8 +2488,6 @@ class CoffeeCreatePoolData:
     amount_1: Amount
     amount_2: Amount
     lp_tokens_minted: Amount
-    pool_params: PoolParams
-    pool_creation_params: PublicPoolCreationParams
     pool_creator_contract: AccountId
 
 
@@ -2210,8 +2555,8 @@ class CoffeeCreatePoolMatcher(BlockMatcher):
         creator_block = block
         initiator_1 = creator_block.data.sender
         asset_1 = creator_block.data.provided_asset
-        pool_params = creator_block.data.pool_params
-        pool_creation_params = creator_block.data.pool_creation_params
+        pool_first = creator_block.data.pool_first
+        pool_second = creator_block.data.pool_second
 
         # find the pool request block
         pool_request_block = get_labeled(
@@ -2246,17 +2591,17 @@ class CoffeeCreatePoolMatcher(BlockMatcher):
 
         # determine asset order from pool params
         asset_2 = None
-        if str(asset_1) == str(pool_params.first):
-            asset_2 = pool_params.second
-        elif str(asset_1) == str(pool_params.second):
-            asset_2 = pool_params.first
+        if str(asset_1) == str(pool_first):
+            asset_2 = pool_second
+        elif str(asset_1) == str(pool_second):
+            asset_2 = pool_first
             # swap amounts and creators to maintain consistent ordering
             amount_1, amount_2 = amount_2, amount_1
             initiator_1, initiator_2 = initiator_2, initiator_1
         else:
             # fallback - use pool params order
-            asset_1 = pool_params.first
-            asset_2 = pool_params.second
+            asset_1 = pool_first
+            asset_2 = pool_second
 
         data = CoffeeCreatePoolData(
             source=creator_block.data.sender,
@@ -2271,8 +2616,6 @@ class CoffeeCreatePoolMatcher(BlockMatcher):
             amount_1=amount_1,
             amount_2=amount_2,
             lp_tokens_minted=lp_tokens_minted,
-            pool_params=pool_params,
-            pool_creation_params=pool_creation_params,
             pool_creator_contract=creator_block.data.pool_creator_contract,
         )
 

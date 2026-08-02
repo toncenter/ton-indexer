@@ -5,6 +5,7 @@
 #include "TraceEmulator.h"
 #include "TraceLifecycle.h"
 #include "crypto/common/bitstring.h"
+#include "emu/EmuActionPayload.h"
 #include "td/actor/actor.h"
 #include "td/utils/Status.h"
 
@@ -29,9 +30,14 @@ td::Status flush_pending_redis_database(const std::string& redis_dsn);
 
 class ITraceInsertManager : public td::actor::Actor {
 public:
-    virtual void insert(Trace trace, td::Promise<td::Unit> promise, MeasurementPtr measurement) = 0;
+    virtual void insert(
+        Trace trace,
+        mch::EmuActionPayload payload,
+        td::Promise<td::Unit> promise,
+        MeasurementPtr measurement) = 0;
     virtual void insert_confirmed(
         Trace trace,
+        mch::EmuActionPayload payload,
         td::Promise<ConfirmedTraceSnapshot> promise,
         MeasurementPtr measurement) = 0;
     virtual void promote_confirmed(
@@ -55,6 +61,7 @@ class RedisInsertManager : public ITraceInsertManager {
     bool touch_oversized_trace(const std::string& trace_key);
     void insert_impl(
         Trace trace,
+        mch::EmuActionPayload payload,
         bool confirmed,
         td::Promise<td::Unit> regular_promise,
         td::Promise<ConfirmedTraceSnapshot> confirmed_promise,
@@ -67,9 +74,14 @@ public:
     RedisInsertManager(const std::string& redis_dsn, TraceRetentionConfig retention);
     ~RedisInsertManager() override;
 
-    void insert(Trace trace, td::Promise<td::Unit> promise, MeasurementPtr measurement) override;
+    void insert(
+        Trace trace,
+        mch::EmuActionPayload payload,
+        td::Promise<td::Unit> promise,
+        MeasurementPtr measurement) override;
     void insert_confirmed(
         Trace trace,
+        mch::EmuActionPayload payload,
         td::Promise<ConfirmedTraceSnapshot> promise,
         MeasurementPtr measurement) override;
     void promote_confirmed(

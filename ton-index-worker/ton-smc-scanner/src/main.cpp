@@ -14,7 +14,13 @@
 #include <atomic>
 #include <chrono>
 #include <string>
+
+#ifdef _WIN32
+#include <process.h>
+#define getpid _getpid
+#else
 #include <unistd.h>
+#endif
 
 #if TON_USE_JEMALLOC
 #include <jemalloc/jemalloc.h>

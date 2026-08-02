@@ -24,7 +24,146 @@ constexpr std::size_t kMaxClosedConfirmedBlocks = 65536;
 constexpr std::size_t kMaxFinalizedBlocksInFlight = 2;
 constexpr std::size_t kMaxConfirmedBlocksInFlight = 8;
 constexpr std::size_t kMaxSignedBlockFetchesInFlight = 64;
+
+// Mark gate-side sheds so they remain distinct from a disabled classifier.
+mch::EmuActionPayload shed_payload(const char *state, mch::EmuFinality finality) {
+    mch::EmuActionPayload p;
+    p.state = state;
+    p.finality = static_cast<std::uint8_t>(finality);
+    return p;
+}
+
+// Returns a state string when emitter-thread admission rejects the emission.
+const char *admit(mch::EmuGate &gate, std::int64_t now_us,
+                  td::actor::ActorId<mch::EmuClassifierActor> classifier) {
+    if (gate.disabled.load(std::memory_order_relaxed)) {
+        td::actor::send_closure(classifier, &mch::EmuClassifierActor::note_shed,
+                                mch::EmuClassifyOutcome::bypassed_disabled);
+        return "disabled";
+    }
+    if (gate.in_flight.load(std::memory_order_relaxed) < mch::kMaxInFlightClassify) {
+        return nullptr;
+    }
+    // A full gate with no recent response triggers sticky fail-open. The initial
+    // response timestamp lets this detect a stall on the first request.
+    std::int64_t last = gate.last_response_us.load(std::memory_order_relaxed);
+    if (now_us - last > mch::kStallFailOpenUs &&
+        !gate.disabled.exchange(true, std::memory_order_relaxed)) {
+        LOG(ERROR) << "[mch-emu] classifier stalled (no response for " << (now_us - last) / 1000
+                   << " ms with " << mch::kMaxInFlightClassify
+                   << " requests in flight), classification DISABLED";
+    }
+    td::actor::send_closure(classifier, &mch::EmuClassifierActor::note_shed,
+                            mch::EmuClassifyOutcome::shed_admission);
+    return "shed_admission";
+}
 }  // namespace
+
+
+// Exactly-once contract for both direct routines: CLI-disabled and gate-rejected
+// emissions insert once and return; admitted emissions do not insert before
+// dispatch, and their single response continuation inserts once on success or
+// error. Actor shutdown still releases the gate slot and inserts response_lost.
+void TraceEmulatorScheduler::classify_and_insert(
+    td::actor::ActorId<mch::EmuClassifierActor> classifier,
+    std::shared_ptr<mch::EmuGate> gate,
+    td::actor::ActorId<ITraceInsertManager> insert_manager, Trace trace,
+    td::Promise<td::Unit> promise, MeasurementPtr measurement) {
+    if (classifier.empty()) {
+        td::actor::send_closure(insert_manager, &ITraceInsertManager::insert, std::move(trace),
+            mch::EmuActionPayload{}, std::move(promise), std::move(measurement));
+        return;
+    }
+
+    CHECK(gate);
+    const std::int64_t now_us = mch::emu_now_us();
+    if (const char *shed = admit(*gate, now_us, classifier)) {
+        // A shed has no view, so use the least-advanced finality.
+        td::actor::send_closure(insert_manager, &ITraceInsertManager::insert, std::move(trace),
+            shed_payload(shed, mch::EmuFinality::emulated), std::move(promise), std::move(measurement));
+        return;
+    }
+
+    // This reference and POD walk does not load cells.
+    mch::EmuTraceView view = mch::make_view(trace);
+    view.sent_us = now_us;
+    view.deadline_us = now_us + mch::kClassifyDeadlineUs;
+    const mch::EmuFinality finality = mch::view_finality(view);
+    gate->in_flight.fetch_add(1, std::memory_order_relaxed);
+
+    // The single response continuation inserts exactly once and releases
+    // in_flight, including when actor shutdown resolves the promise with an error.
+    auto P = td::PromiseCreator::lambda(
+        [gate, insert_manager, finality, trace = std::move(trace), promise = std::move(promise),
+         measurement = std::move(measurement)](td::Result<mch::EmuClassifyResult> R) mutable {
+            gate->in_flight.fetch_sub(1, std::memory_order_relaxed);
+            gate->last_response_us.store(mch::emu_now_us(), std::memory_order_relaxed);
+            // A lost classifier response still inserts blockchain data with a
+            // response_lost marker and no action blob.
+            mch::EmuActionPayload payload;
+            if (R.is_error()) {
+                LOG(WARNING) << "[mch-emu] classify response lost: " << R.move_as_error();
+                payload = shed_payload("response_lost", finality);
+            } else {
+                payload = std::move(R.move_as_ok().payload);
+            }
+            td::actor::send_closure(insert_manager, &ITraceInsertManager::insert, std::move(trace),
+                std::move(payload), std::move(promise), std::move(measurement));
+        });
+    td::actor::send_closure(classifier, &mch::EmuClassifierActor::classify,
+                            std::move(view), std::move(P));
+}
+
+void TraceEmulatorScheduler::classify_and_insert_confirmed(
+    td::actor::ActorId<mch::EmuClassifierActor> classifier,
+    std::shared_ptr<mch::EmuGate> gate,
+    td::actor::ActorId<ITraceInsertManager> insert_manager, Trace trace,
+    td::Promise<ConfirmedTraceSnapshot> promise, MeasurementPtr measurement) {
+    if (classifier.empty()) {
+        td::actor::send_closure(insert_manager, &ITraceInsertManager::insert_confirmed, std::move(trace),
+            mch::EmuActionPayload{}, std::move(promise), std::move(measurement));
+        return;
+    }
+
+    CHECK(gate);
+    const std::int64_t now_us = mch::emu_now_us();
+    if (const char *shed = admit(*gate, now_us, classifier)) {
+        // A shed has no view, so use the least-advanced finality.
+        td::actor::send_closure(insert_manager, &ITraceInsertManager::insert_confirmed, std::move(trace),
+            shed_payload(shed, mch::EmuFinality::emulated), std::move(promise), std::move(measurement));
+        return;
+    }
+
+    // This reference and POD walk does not load cells.
+    mch::EmuTraceView view = mch::make_view(trace);
+    view.sent_us = now_us;
+    view.deadline_us = now_us + mch::kClassifyDeadlineUs;
+    const mch::EmuFinality finality = mch::view_finality(view);
+    gate->in_flight.fetch_add(1, std::memory_order_relaxed);
+
+    // The single response continuation inserts exactly once and releases
+    // in_flight, including when actor shutdown resolves the promise with an error.
+    auto P = td::PromiseCreator::lambda(
+        [gate, insert_manager, finality, trace = std::move(trace), promise = std::move(promise),
+         measurement = std::move(measurement)](td::Result<mch::EmuClassifyResult> R) mutable {
+            gate->in_flight.fetch_sub(1, std::memory_order_relaxed);
+            gate->last_response_us.store(mch::emu_now_us(), std::memory_order_relaxed);
+            // A lost classifier response still inserts blockchain data with a
+            // response_lost marker and no action blob.
+            mch::EmuActionPayload payload;
+            if (R.is_error()) {
+                LOG(WARNING) << "[mch-emu] classify response lost: " << R.move_as_error();
+                payload = shed_payload("response_lost", finality);
+            } else {
+                payload = std::move(R.move_as_ok().payload);
+            }
+            td::actor::send_closure(insert_manager, &ITraceInsertManager::insert_confirmed,
+                std::move(trace), std::move(payload), std::move(promise),
+                std::move(measurement));
+        });
+    td::actor::send_closure(classifier, &mch::EmuClassifierActor::classify,
+                            std::move(view), std::move(P));
+}
 
 
 void TraceEmulatorScheduler::handle_db_event(ton::tl_object_ptr<ton::ton_api::db_Event> event) {
@@ -775,11 +914,9 @@ void TraceEmulatorScheduler::process_confirmed_trace(
             block_id, trace.ext_in_msg_hash_norm);
     }
 
-    td::actor::send_closure(
-        insert_manager_,
-        &ITraceInsertManager::insert_confirmed,
-        std::move(trace),
-        std::move(promise),
+    classify_and_insert_confirmed(
+        mch_classifier_.get(), mch_classifier_config_.gate,
+        insert_manager_.get(), std::move(trace), std::move(promise),
         std::move(measurement));
 }
 

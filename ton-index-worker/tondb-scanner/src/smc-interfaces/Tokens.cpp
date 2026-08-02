@@ -23,64 +23,13 @@ JettonWalletDetectorR::JettonWalletDetectorR(block::StdAddress address,
   : address_(std::move(address)), code_cell_(std::move(code_cell)), data_cell_(std::move(data_cell)),
     shard_states_(std::move(shard_states)), config_(std::move(config)), promise_(std::move(promise)) {}
 
-void JettonWalletDetectorR::start_up() {
-  if (code_cell_.is_null() || data_cell_.is_null()) {
-    promise_.set_error(td::Status::Error("Code or data null"));
-    stop();
-    return;
-  }
+namespace {
 
-  auto stack_r = execute_smc_method<4>(address_, code_cell_, data_cell_, config_, "get_wallet_data", {},
-    {vm::StackEntry::Type::t_int, vm::StackEntry::Type::t_slice, vm::StackEntry::Type::t_slice, vm::StackEntry::Type::t_cell});
-  if (stack_r.is_error()) {
-    promise_.set_error(stack_r.move_as_error());
-    stop();
-    return;
-  }
-  auto stack = stack_r.move_as_ok();
-  Result data;
-  data.address = address_;
-  data.balance = stack[0].as_int();
-  auto owner = convert::to_std_address(stack[1].as_slice());
-  if (owner.is_error()) {
-    promise_.set_error(owner.move_as_error());
-    stop();
-    return;
-  }
-  data.owner = owner.move_as_ok();
-  auto jetton = convert::to_std_address(stack[2].as_slice());
-  if (jetton.is_error()) {
-    promise_.set_error(jetton.move_as_error());
-    stop();
-    return;
-  }
-  data.jetton = jetton.move_as_ok();
-  
-  auto is_claimed_stack_r = execute_smc_method<1>(address_, code_cell_, data_cell_, config_, "is_claimed", {},
-    {vm::StackEntry::Type::t_int});
-  if (is_claimed_stack_r.is_ok()) {
-    auto is_claimed_stack = is_claimed_stack_r.move_as_ok();
-    data.mintless_is_claimed = is_claimed_stack[0].as_int()->to_long() != 0;
-  } else {
-    data.mintless_is_claimed = std::nullopt;
-  }
-
-  auto R = td::PromiseCreator::lambda([=, this, SelfId = actor_id(this)](td::Result<schema::AccountState> account_state_r) mutable {
-    if (account_state_r.is_error()) {
-      promise_.set_error(account_state_r.move_as_error());
-      stop();
-      return;
-    }
-    auto account_state = account_state_r.move_as_ok();
-    td::actor::send_closure(SelfId, &JettonWalletDetectorR::verify_with_master, account_state.code, account_state.data, data);
-  });
-  td::actor::create_actor<FetchAccountFromShardV2>("fetchaccountfromshard", shard_states_, data.jetton, std::move(R)).release();
-}
-
-void JettonWalletDetectorR::verify_with_master(td::Ref<vm::Cell> master_code, td::Ref<vm::Cell> master_data, Result jetton_wallet_data) {
-  ton::SmartContract smc({master_code, master_data});
-  ton::SmartContract::Args args;
-
+// The jetton master round-trip: ask the master which wallet it would derive for
+// this owner and require it to be the account under detection.
+td::Status verify_jetton_wallet_with_master(td::Ref<vm::Cell> master_code, td::Ref<vm::Cell> master_data,
+                                            const std::shared_ptr<block::ConfigInfo>& config,
+                                            const JettonWalletDetectorR::Result& jetton_wallet_data) {
   vm::CellBuilder anycast_cb;
   anycast_cb.store_bool_bool(false);
   auto anycast_cell = anycast_cb.finalize();
@@ -90,27 +39,49 @@ void JettonWalletDetectorR::verify_with_master(td::Ref<vm::Cell> master_code, td
   block::gen::t_MsgAddressInt.pack_addr_std(cb, anycast_cs, jetton_wallet_data.owner.workchain, jetton_wallet_data.owner.addr);
   auto owner_address_cell = cb.finalize();
 
-  auto stack_r = execute_smc_method<1>(jetton_wallet_data.jetton, master_code, master_data, config_, "get_wallet_address", 
-    {vm::StackEntry(vm::load_cell_slice_ref(owner_address_cell))}, {vm::StackEntry::Type::t_slice});
-  if (stack_r.is_error()) {
-    promise_.set_error(stack_r.move_as_error());
-    stop();
-    return;
-  }
-  auto stack = stack_r.move_as_ok();
+  TRY_RESULT(stack, execute_smc_method<1>(jetton_wallet_data.jetton, master_code, master_data, config, "get_wallet_address",
+    {vm::StackEntry(vm::load_cell_slice_ref(owner_address_cell))}, {vm::StackEntry::Type::t_slice}));
 
-  auto wallet_address = convert::to_std_address(stack[0].as_slice());
-  if (wallet_address.is_error()) {
-    promise_.set_error(wallet_address.move_as_error());
-    stop();
-    return;
+  TRY_RESULT(wallet_address, convert::to_std_address(stack[0].as_slice()));
+  if (!(jetton_wallet_data.address == wallet_address)) {
+    return td::Status::Error("Jetton Master returned wrong address");
+  }
+  return td::Status::OK();
+}
+
+}  // namespace
+
+td::Result<JettonWalletDetectorR::Result> JettonWalletDetectorR::detect(
+    const block::StdAddress& address, const td::Ref<vm::Cell>& code_cell, const td::Ref<vm::Cell>& data_cell,
+    const AllShardStates& shard_states, const std::shared_ptr<block::ConfigInfo>& config) {
+  if (code_cell.is_null() || data_cell.is_null()) {
+    return td::Status::Error("Code or data null");
   }
 
-  if (jetton_wallet_data.address == wallet_address.ok_ref()) {
-    promise_.set_value(std::move(jetton_wallet_data));
+  TRY_RESULT(stack, execute_smc_method<4>(address, code_cell, data_cell, config, "get_wallet_data", {},
+    {vm::StackEntry::Type::t_int, vm::StackEntry::Type::t_slice, vm::StackEntry::Type::t_slice, vm::StackEntry::Type::t_cell}));
+  Result data;
+  data.address = address;
+  data.balance = stack[0].as_int();
+  TRY_RESULT_ASSIGN(data.owner, convert::to_std_address(stack[1].as_slice()));
+  TRY_RESULT_ASSIGN(data.jetton, convert::to_std_address(stack[2].as_slice()));
+
+  auto is_claimed_stack_r = execute_smc_method<1>(address, code_cell, data_cell, config, "is_claimed", {},
+    {vm::StackEntry::Type::t_int});
+  if (is_claimed_stack_r.is_ok()) {
+    auto is_claimed_stack = is_claimed_stack_r.move_as_ok();
+    data.mintless_is_claimed = is_claimed_stack[0].as_int()->to_long() != 0;
   } else {
-    promise_.set_error(td::Status::Error("Jetton Master returned wrong address"));
+    data.mintless_is_claimed = std::nullopt;
   }
+
+  TRY_RESULT(master, lookup_account(shard_states, data.jetton));
+  TRY_STATUS(verify_jetton_wallet_with_master(master.code, master.data, config, data));
+  return data;
+}
+
+void JettonWalletDetectorR::start_up() {
+  promise_.set_result(detect(address_, code_cell_, data_cell_, shard_states_, config_));
   stop();
 }
 
@@ -595,182 +566,9 @@ DedustPoolDetector::DedustPoolDetector(block::StdAddress address,
   address_(std::move(address)), code_cell_(std::move(code_cell)), data_cell_(std::move(data_cell)),
   shard_states_(std::move(shard_states)), config_(std::move(config)), promise_(std::move(promise)) {}
 
-void DedustPoolDetector::start_up() {
-  if (code_cell_.is_null() || data_cell_.is_null()) {
-    promise_.set_error(td::Status::Error("Code or data null"));
-    stop();
-    return;
-  }
+namespace {
 
-  const auto code_hash = code_cell_->get_hash().to_hex();
-  const bool is_v1 = DEDUST_POOL_CODE_HASHES.contains(code_hash);
-  const bool is_v2 = DEDUST_V2_POOL_CODE_HASHES.contains(code_hash);
-  if (!is_v1 && !is_v2) {
-    promise_.set_error(td::Status::Error("Code hash mismatch"));
-    stop();
-    return;
-  }
-
-  if (is_v2) {
-    // get_pool_data returns 19 entries, only first 11 checked. No factory verification for V2
-    auto stack_r = execute_smc_method_nullable<11>(address_, code_cell_, data_cell_, config_, "get_pool_data", {}, {
-                                            vm::StackEntry::Type::t_int, vm::StackEntry::Type::t_int, vm::StackEntry::Type::t_int,
-                                            vm::StackEntry::Type::t_slice, vm::StackEntry::Type::t_slice,
-                                            vm::StackEntry::Type::t_cell, vm::StackEntry::Type::t_cell, nullable(vm::StackEntry::Type::t_cell),
-                                            vm::StackEntry::Type::t_int, vm::StackEntry::Type::t_int, vm::StackEntry::Type::t_int
-                                          });
-    if (stack_r.is_error()) {
-      promise_.set_error(stack_r.move_as_error());
-      stop();
-      return;
-    }
-    auto stack = stack_r.move_as_ok();
-
-    Result data;
-    data.asset_1_slice = stack[3].as_slice();
-    data.asset_2_slice = stack[4].as_slice();
-    if (!get_asset_v2(stack[3].as_slice(), data.asset_1) || !get_asset_v2(stack[4].as_slice(), data.asset_2)) {
-      promise_.set_error(td::Status::Error("Unsupported V2 asset encoding"));
-      stop();
-      return;
-    }
-
-    data.is_stable = false;
-    auto base_fee_bps = stack[8].as_int()->to_long();
-    data.fee = base_fee_bps / 10000.0;
-    data.reserve_1 = stack[9].as_int();
-    data.reserve_2 = stack[10].as_int();
-
-    promise_.set_value(std::move(data));
-    stop();
-    return;
-  }
-
-  Result data;
-
-  {
-    auto stack_r = execute_smc_method<2>(address_, code_cell_, data_cell_, config_, "get_assets", {}, {
-                                           vm::StackEntry::Type::t_slice, vm::StackEntry::Type::t_slice
-                                         });
-    if (stack_r.is_error()) {
-      promise_.set_error(stack_r.move_as_error());
-      stop();
-      return;
-    }
-
-    auto stack = stack_r.move_as_ok();
-
-    data.asset_1_slice = stack[0].as_slice();
-    data.asset_2_slice = stack[1].as_slice();
-
-    if (!get_asset(stack[0].as_slice(), data.asset_1) || !get_asset(stack[1].as_slice(), data.asset_2)) {
-      promise_.set_error(td::Status::Error("Unsupported sum type"));
-      stop();
-      return;
-    }
-  }
-
-  {
-    auto stack_r = execute_smc_method<1>(address_, code_cell_, data_cell_, config_, "is_stable", {},
-      { vm::StackEntry::Type::t_int });
-    if (stack_r.is_error()) {
-      promise_.set_error(stack_r.move_as_error());
-      stop();
-      return;
-    }
-    auto stack = stack_r.move_as_ok();
-    data.is_stable = stack[0].as_int()->to_long();
-  }
-
-  {
-    auto stack_r = execute_smc_method<2>(address_, code_cell_, data_cell_, config_,
-      "get_reserves", {}, { vm::StackEntry::Type::t_int, vm::StackEntry::Type::t_int });
-    if (stack_r.is_error()) {
-      promise_.set_error(stack_r.move_as_error());
-      stop();
-      return;
-    }
-    auto stack = stack_r.move_as_ok();
-    data.reserve_1 = stack[0].as_int();
-    data.reserve_2 = stack[1].as_int();
-  }
-
-  {
-    auto stack_r = execute_smc_method<2>(address_, code_cell_, data_cell_, config_,
-      "get_trade_fee", {}, { vm::StackEntry::Type::t_int, vm::StackEntry::Type::t_int });
-    if (stack_r.is_error()) {
-      promise_.set_error(stack_r.move_as_error());
-      stop();
-      return;
-    }
-    auto stack = stack_r.move_as_ok();
-    auto numerator = stack[0].as_int();
-    auto denominator = stack[1].as_int();
-
-    if (numerator->sgn() == 0 || denominator->sgn() == 0) {
-      data.fee = 0.0;
-    } else {
-      data.fee = numerator->to_long() / static_cast<double>(denominator->to_long());
-    }
-  }
-
-  // Fetch factory account and validate pool
-  auto R = td::PromiseCreator::lambda([=, this, SelfId = actor_id(this)](td::Result<schema::AccountState> account_state_r) mutable {
-    if (account_state_r.is_error()) {
-      promise_.set_error(account_state_r.move_as_error());
-      stop();
-      return;
-    }
-    auto account_state = account_state_r.move_as_ok();
-    td::actor::send_closure(SelfId, &DedustPoolDetector::verify_with_factory, account_state.code, account_state.data, data);
-  });
-
-  td::actor::create_actor<FetchAccountFromShardV2>("fetchaccountfromshard", shard_states_, DEDUST_FACTORY_ADDRESS, std::move(R)).release();
-}
-
-void DedustPoolDetector::verify_with_factory(td::Ref<vm::Cell> factory_code, td::Ref<vm::Cell> factory_data, Result pool_data) {
-  auto pool_type = td::make_refint(pool_data.is_stable);
-  auto stack_r = execute_smc_method<1>(
-    DEDUST_FACTORY_ADDRESS,
-    factory_code,
-    factory_data,
-    config_,
-    "get_pool_address",
-    {vm::StackEntry(pool_type), vm::StackEntry(pool_data.asset_1_slice), vm::StackEntry(pool_data.asset_2_slice)},
-    { vm::StackEntry::Type::t_slice }
-  );
-
-  if (stack_r.is_error()) {
-    auto as_error = stack_r.move_as_error();
-    LOG(INFO) << as_error.to_string();
-    promise_.set_error(std::move(as_error));
-    stop();
-    return;
-  }
-
-  auto stack = stack_r.move_as_ok();
-  auto factory_pool_address_slice = stack[0].as_slice();
-
-  block::StdAddress valid_pool_addr;
-  block::tlb::MsgAddressInt address_int{};
-  auto ok = address_int.extract_std_address(factory_pool_address_slice, valid_pool_addr, true);
-  if (!ok) {
-    promise_.set_error(td::Status::Error("Failed to unpack pool address from factory"));
-    stop();
-    return;
-  }
-
-  if (valid_pool_addr != address_) {
-    promise_.set_error(td::Status::Error("Pool address mismatch with factory"));
-    stop();
-    return;
-  }
-
-  promise_.set_value(std::move(pool_data));
-  stop();
-}
-
-bool DedustPoolDetector::get_asset(td::Ref<vm::CellSlice> slice, std::optional<block::StdAddress> &address) {
+bool dedust_get_asset(td::Ref<vm::CellSlice> slice, std::optional<block::StdAddress> &address) {
   auto cell_slice = slice->clone();
   int sum_type;
   cell_slice.fetch_int_to(4, sum_type);
@@ -790,7 +588,7 @@ bool DedustPoolDetector::get_asset(td::Ref<vm::CellSlice> slice, std::optional<b
   return false;
 }
 
-bool DedustPoolDetector::get_asset_v2(td::Ref<vm::CellSlice> slice, std::optional<block::StdAddress> &address) {
+bool dedust_get_asset_v2(td::Ref<vm::CellSlice> slice, std::optional<block::StdAddress> &address) {
   // V2 asset is a standard MsgAddress; peek tag since extract_std_address fails on addr_none
   auto peek = slice->clone();
   unsigned tag = 0;
@@ -808,4 +606,135 @@ bool DedustPoolDetector::get_asset_v2(td::Ref<vm::CellSlice> slice, std::optiona
     return true;
   }
   return false;
+}
+
+// V1 only: ask the factory which pool address the (type, asset_1, asset_2)
+// triple derives to and require it to be the account under detection.
+td::Status verify_dedust_with_factory(td::Ref<vm::Cell> factory_code, td::Ref<vm::Cell> factory_data,
+                                      const std::shared_ptr<block::ConfigInfo> &config,
+                                      const block::StdAddress &address,
+                                      const DedustPoolDetector::Result &pool_data) {
+  auto pool_type = td::make_refint(pool_data.is_stable);
+  auto stack_r = execute_smc_method<1>(
+    DEDUST_FACTORY_ADDRESS,
+    factory_code,
+    factory_data,
+    config,
+    "get_pool_address",
+    {vm::StackEntry(pool_type), vm::StackEntry(pool_data.asset_1_slice), vm::StackEntry(pool_data.asset_2_slice)},
+    { vm::StackEntry::Type::t_slice }
+  );
+
+  if (stack_r.is_error()) {
+    auto as_error = stack_r.move_as_error();
+    LOG(INFO) << as_error.to_string();
+    return as_error;
+  }
+
+  auto stack = stack_r.move_as_ok();
+  auto factory_pool_address_slice = stack[0].as_slice();
+
+  block::StdAddress valid_pool_addr;
+  block::tlb::MsgAddressInt address_int{};
+  auto ok = address_int.extract_std_address(factory_pool_address_slice, valid_pool_addr, true);
+  if (!ok) {
+    return td::Status::Error("Failed to unpack pool address from factory");
+  }
+
+  if (valid_pool_addr != address) {
+    return td::Status::Error("Pool address mismatch with factory");
+  }
+  return td::Status::OK();
+}
+
+}  // namespace
+
+td::Result<DedustPoolDetector::Result> DedustPoolDetector::detect(
+    const block::StdAddress &address, const td::Ref<vm::Cell> &code_cell, const td::Ref<vm::Cell> &data_cell,
+    const AllShardStates &shard_states, const std::shared_ptr<block::ConfigInfo> &config) {
+  if (code_cell.is_null() || data_cell.is_null()) {
+    return td::Status::Error("Code or data null");
+  }
+
+  const auto code_hash = code_cell->get_hash().to_hex();
+  const bool is_v1 = DEDUST_POOL_CODE_HASHES.contains(code_hash);
+  const bool is_v2 = DEDUST_V2_POOL_CODE_HASHES.contains(code_hash);
+  if (!is_v1 && !is_v2) {
+    return td::Status::Error("Code hash mismatch");
+  }
+
+  Result data;
+  data.address = address;
+
+  if (is_v2) {
+    // get_pool_data returns 19 entries, only first 11 checked. No factory verification for V2
+    TRY_RESULT(stack, execute_smc_method_nullable<11>(address, code_cell, data_cell, config, "get_pool_data", {}, {
+                                            vm::StackEntry::Type::t_int, vm::StackEntry::Type::t_int, vm::StackEntry::Type::t_int,
+                                            vm::StackEntry::Type::t_slice, vm::StackEntry::Type::t_slice,
+                                            vm::StackEntry::Type::t_cell, vm::StackEntry::Type::t_cell, nullable(vm::StackEntry::Type::t_cell),
+                                            vm::StackEntry::Type::t_int, vm::StackEntry::Type::t_int, vm::StackEntry::Type::t_int
+                                          }));
+
+    data.asset_1_slice = stack[3].as_slice();
+    data.asset_2_slice = stack[4].as_slice();
+    if (!dedust_get_asset_v2(stack[3].as_slice(), data.asset_1) || !dedust_get_asset_v2(stack[4].as_slice(), data.asset_2)) {
+      return td::Status::Error("Unsupported V2 asset encoding");
+    }
+
+    data.is_stable = false;
+    auto base_fee_bps = stack[8].as_int()->to_long();
+    data.fee = base_fee_bps / 10000.0;
+    data.reserve_1 = stack[9].as_int();
+    data.reserve_2 = stack[10].as_int();
+    return data;
+  }
+
+  {
+    TRY_RESULT(stack, execute_smc_method<2>(address, code_cell, data_cell, config, "get_assets", {}, {
+                                           vm::StackEntry::Type::t_slice, vm::StackEntry::Type::t_slice
+                                         }));
+
+    data.asset_1_slice = stack[0].as_slice();
+    data.asset_2_slice = stack[1].as_slice();
+
+    if (!dedust_get_asset(stack[0].as_slice(), data.asset_1) || !dedust_get_asset(stack[1].as_slice(), data.asset_2)) {
+      return td::Status::Error("Unsupported sum type");
+    }
+  }
+
+  {
+    TRY_RESULT(stack, execute_smc_method<1>(address, code_cell, data_cell, config, "is_stable", {},
+      { vm::StackEntry::Type::t_int }));
+    data.is_stable = stack[0].as_int()->to_long();
+  }
+
+  {
+    TRY_RESULT(stack, execute_smc_method<2>(address, code_cell, data_cell, config,
+      "get_reserves", {}, { vm::StackEntry::Type::t_int, vm::StackEntry::Type::t_int }));
+    data.reserve_1 = stack[0].as_int();
+    data.reserve_2 = stack[1].as_int();
+  }
+
+  {
+    TRY_RESULT(stack, execute_smc_method<2>(address, code_cell, data_cell, config,
+      "get_trade_fee", {}, { vm::StackEntry::Type::t_int, vm::StackEntry::Type::t_int }));
+    auto numerator = stack[0].as_int();
+    auto denominator = stack[1].as_int();
+
+    if (numerator->sgn() == 0 || denominator->sgn() == 0) {
+      data.fee = 0.0;
+    } else {
+      data.fee = numerator->to_long() / static_cast<double>(denominator->to_long());
+    }
+  }
+
+  // Fetch factory account and validate pool
+  TRY_RESULT(factory, lookup_account(shard_states, DEDUST_FACTORY_ADDRESS));
+  TRY_STATUS(verify_dedust_with_factory(factory.code, factory.data, config, address, data));
+  return data;
+}
+
+void DedustPoolDetector::start_up() {
+  promise_.set_result(detect(address_, code_cell_, data_cell_, shard_states_, config_));
+  stop();
 }

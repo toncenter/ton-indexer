@@ -1,0 +1,337 @@
+{
+  "abi_schema_version": "1.0",
+  "contract_name": "DedustMessages",
+  "unique_types": [
+    {
+      "kind": "void"
+    },
+    {
+      "kind": "int"
+    },
+    {
+      "kind": "slice"
+    },
+    {
+      "kind": "cell"
+    },
+    {
+      "kind": "builder"
+    },
+    {
+      "kind": "bool"
+    },
+    {
+      "kind": "coins"
+    },
+    {
+      "kind": "address"
+    },
+    {
+      "kind": "intN",
+      "n": 32
+    },
+    {
+      "kind": "uintN",
+      "n": 32
+    },
+    {
+      "kind": "intN",
+      "n": 64
+    },
+    {
+      "kind": "uintN",
+      "n": 64
+    },
+    {
+      "kind": "StructRef",
+      "struct_name": "DedustPayoutFromPool"
+    },
+    {
+      "kind": "StructRef",
+      "struct_name": "DedustSwapNotification"
+    },
+    {
+      "kind": "AliasRef",
+      "alias_name": "Asset"
+    },
+    {
+      "kind": "StructRef",
+      "struct_name": "AssetTon"
+    },
+    {
+      "kind": "StructRef",
+      "struct_name": "AssetJetton"
+    },
+    {
+      "kind": "uintN",
+      "n": 8
+    },
+    {
+      "kind": "bitsN",
+      "n": 256
+    },
+    {
+      "kind": "union",
+      "variants": [
+        {
+          "variant_ty_idx": 15,
+          "prefix_num": 0,
+          "prefix_len": 4,
+          "stack_type_id": 130,
+          "stack_width": 0
+        },
+        {
+          "variant_ty_idx": 16,
+          "prefix_num": 1,
+          "prefix_len": 4,
+          "stack_type_id": 131,
+          "stack_width": 2
+        }
+      ],
+      "stack_width": 3
+    },
+    {
+      "kind": "StructRef",
+      "struct_name": "DedustSwapInfo"
+    },
+    {
+      "kind": "addressAny"
+    },
+    {
+      "kind": "cellOf",
+      "inner_ty_idx": 20
+    },
+    {
+      "kind": "StructRef",
+      "struct_name": "DedustDepositLiquidityToPool"
+    },
+    {
+      "kind": "bitsN",
+      "n": 64
+    },
+    {
+      "kind": "StructRef",
+      "struct_name": "DedustDepositLiquidityAssets"
+    },
+    {
+      "kind": "cellOf",
+      "inner_ty_idx": 25
+    },
+    {
+      "kind": "StructRef",
+      "struct_name": "Storage"
+    },
+    {
+      "kind": "uintN",
+      "n": 1
+    }
+  ],
+  "struct_instantiations": [],
+  "alias_instantiations": [],
+  "declarations": [
+    {
+      "kind": "struct",
+      "name": "AssetTon",
+      "ty_idx": 15,
+      "prefix": {
+        "prefix_num": 0,
+        "prefix_len": 4
+      },
+      "fields": []
+    },
+    {
+      "kind": "struct",
+      "name": "AssetJetton",
+      "ty_idx": 16,
+      "prefix": {
+        "prefix_num": 1,
+        "prefix_len": 4
+      },
+      "fields": [
+        {
+          "name": "workchain",
+          "ty_idx": 17
+        },
+        {
+          "name": "hash",
+          "ty_idx": 18
+        }
+      ]
+    },
+    {
+      "kind": "alias",
+      "name": "Asset",
+      "ty_idx": 14,
+      "target_ty_idx": 19
+    },
+    {
+      "kind": "struct",
+      "name": "DedustSwapInfo",
+      "ty_idx": 20,
+      "fields": [
+        {
+          "name": "sender_address",
+          "ty_idx": 21
+        },
+        {
+          "name": "ref_address",
+          "ty_idx": 21
+        },
+        {
+          "name": "reserve_0",
+          "ty_idx": 6
+        },
+        {
+          "name": "reserve_1",
+          "ty_idx": 6
+        }
+      ]
+    },
+    {
+      "kind": "struct",
+      "name": "DedustDepositLiquidityAssets",
+      "ty_idx": 25,
+      "fields": [
+        {
+          "name": "asset0",
+          "ty_idx": 14
+        },
+        {
+          "name": "asset0_amount",
+          "ty_idx": 6
+        },
+        {
+          "name": "asset1",
+          "ty_idx": 14
+        },
+        {
+          "name": "asset1_amount",
+          "ty_idx": 6
+        }
+      ]
+    },
+    {
+      "kind": "struct",
+      "name": "DedustPayoutFromPool",
+      "ty_idx": 12,
+      "prefix": {
+        "prefix_num": 2907617013,
+        "prefix_len": 32
+      },
+      "fields": [
+        {
+          "name": "query_id",
+          "ty_idx": 11
+        },
+        {
+          "name": "proof",
+          "ty_idx": 3
+        },
+        {
+          "name": "amount",
+          "ty_idx": 6
+        }
+      ]
+    },
+    {
+      "kind": "struct",
+      "name": "DedustSwapNotification",
+      "ty_idx": 13,
+      "prefix": {
+        "prefix_num": 2623606243,
+        "prefix_len": 32
+      },
+      "fields": [
+        {
+          "name": "asset_in",
+          "ty_idx": 14
+        },
+        {
+          "name": "asset_out",
+          "ty_idx": 14
+        },
+        {
+          "name": "amount_in",
+          "ty_idx": 6
+        },
+        {
+          "name": "amount_out",
+          "ty_idx": 6
+        },
+        {
+          "name": "info",
+          "ty_idx": 22
+        }
+      ]
+    },
+    {
+      "kind": "struct",
+      "name": "DedustDepositLiquidityToPool",
+      "ty_idx": 23,
+      "prefix": {
+        "prefix_num": 3043726744,
+        "prefix_len": 32
+      },
+      "fields": [
+        {
+          "name": "_query_id",
+          "ty_idx": 24
+        },
+        {
+          "name": "_proof",
+          "ty_idx": 3
+        },
+        {
+          "name": "owner",
+          "ty_idx": 21
+        },
+        {
+          "name": "_min_lp",
+          "ty_idx": 6
+        },
+        {
+          "name": "field4",
+          "ty_idx": 26
+        }
+      ]
+    },
+    {
+      "kind": "struct",
+      "name": "Storage",
+      "ty_idx": 27,
+      "fields": [
+        {
+          "name": "dummy",
+          "ty_idx": 28
+        }
+      ]
+    }
+  ],
+  "storage": {
+    "storage_ty_idx": 27
+  },
+  "incoming_messages": [
+    {
+      "body_ty_idx": 12
+    },
+    {
+      "body_ty_idx": 13
+    },
+    {
+      "body_ty_idx": 23
+    }
+  ],
+  "incoming_external": [],
+  "outgoing_messages": [],
+  "emitted_events": [],
+  "get_methods": [],
+  "thrown_errors": [
+    {
+      "kind": "plain_int",
+      "err_code": 65535
+    }
+  ],
+  "compiler_name": "tolk",
+  "compiler_version": "1.4.1",
+  "code_boc64": "te6ccgEBAgEATwABFP8A9KQT9LzyyAsBAIDT+JHyQCDXLCVqdbesmDCEDwHHAPL04NcsJOMIbxyYMIQPAccA8vTg1ywlq1ysxDGXhA8BxwDy9OCEDwHHAPL0"
+}

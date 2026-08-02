@@ -1,0 +1,55 @@
+{
+  "abi_schema_version": "1.0",
+  "contract_name": "W8HandUnion",
+  "unique_types": [
+    {
+      "kind": "intN",
+      "n": 8
+    },
+    {
+      "kind": "union",
+      "variants": [
+        {
+          "variant_ty_idx": 0,
+          "prefix_num": 10,
+          "prefix_len": 8,
+          "is_prefix_implicit": false
+        },
+        {
+          "variant_ty_idx": 0,
+          "prefix_num": 11,
+          "prefix_len": 8,
+          "is_prefix_implicit": false
+        }
+      ]
+    },
+    {
+      "kind": "StructRef",
+      "struct_name": "Holder"
+    }
+  ],
+  "struct_instantiations": [],
+  "alias_instantiations": [],
+  "declarations": [
+    {
+      "kind": "struct",
+      "name": "Holder",
+      "ty_idx": 2,
+      "fields": [
+        {
+          "name": "u",
+          "ty_idx": 1
+        }
+      ]
+    }
+  ],
+  "storage": {},
+  "incoming_messages": [],
+  "incoming_external": [],
+  "outgoing_messages": [],
+  "emitted_events": [],
+  "get_methods": [],
+  "thrown_errors": [],
+  "compiler_name": "hand-authored",
+  "compiler_version": "n/a"
+}

@@ -39,7 +39,7 @@ BACKCOMPAT_API_KEY=your-key \
 
 `BACKCOMPAT_REFERENCE_BASE_URL` and `BACKCOMPAT_DEVEL_BASE_URL` may point either to the host root or directly to `/api/v3`.
 
-To write ad hoc checks directly in Python, edit [test_methods.py](/Users/ruslixag/Developer/ton-indexer/tests/backcompat/test_methods.py). It already contains examples for fixed params, param chaining from another request, and parametrized multi-input tests.
+To write ad hoc checks directly in Python, edit [test_methods.py](test_methods.py). It already contains examples for fixed params, param chaining from another request, and parametrized multi-input tests.
 
 ## Options
 
@@ -83,4 +83,4 @@ Point `--backcompat-custom-cases` at a JSON file containing an array of cases. E
 
 `ignore_paths` uses JSON Pointer syntax. Example: `/metadata/*/token_info`
 
-See [custom_cases.example.json](/Users/ruslixag/Developer/ton-indexer/tests/backcompat/custom_cases.example.json) for the expected format.
+See [custom_cases.example.json](custom_cases.example.json) for the expected format.

@@ -1,0 +1,331 @@
+{
+  "abi_schema_version": "1.0",
+  "contract_name": "JettonMessages",
+  "unique_types": [
+    {
+      "kind": "void"
+    },
+    {
+      "kind": "int"
+    },
+    {
+      "kind": "slice"
+    },
+    {
+      "kind": "cell"
+    },
+    {
+      "kind": "builder"
+    },
+    {
+      "kind": "bool"
+    },
+    {
+      "kind": "coins"
+    },
+    {
+      "kind": "address"
+    },
+    {
+      "kind": "intN",
+      "n": 32
+    },
+    {
+      "kind": "uintN",
+      "n": 32
+    },
+    {
+      "kind": "intN",
+      "n": 64
+    },
+    {
+      "kind": "uintN",
+      "n": 64
+    },
+    {
+      "kind": "StructRef",
+      "struct_name": "JettonInternalTransfer"
+    },
+    {
+      "kind": "addressAny"
+    },
+    {
+      "kind": "StructRef",
+      "struct_name": "JettonInternalTransferEthena"
+    },
+    {
+      "kind": "StructRef",
+      "struct_name": "JettonBurn"
+    },
+    {
+      "kind": "StructRef",
+      "struct_name": "JettonNotify"
+    },
+    {
+      "kind": "AliasRef",
+      "alias_name": "JettonForwardTail"
+    },
+    {
+      "kind": "StructRef",
+      "struct_name": "JettonForwardPayloadRef"
+    },
+    {
+      "kind": "StructRef",
+      "struct_name": "JettonForwardPayloadInline"
+    },
+    {
+      "kind": "remaining"
+    },
+    {
+      "kind": "union",
+      "variants": [
+        {
+          "variant_ty_idx": 18,
+          "prefix_num": 1,
+          "prefix_len": 1,
+          "stack_type_id": 132,
+          "stack_width": 1
+        },
+        {
+          "variant_ty_idx": 19,
+          "prefix_num": 0,
+          "prefix_len": 1,
+          "stack_type_id": 133,
+          "stack_width": 1
+        }
+      ],
+      "stack_width": 2
+    },
+    {
+      "kind": "StructRef",
+      "struct_name": "JettonMint"
+    },
+    {
+      "kind": "StructRef",
+      "struct_name": "Storage"
+    },
+    {
+      "kind": "uintN",
+      "n": 1
+    }
+  ],
+  "struct_instantiations": [],
+  "alias_instantiations": [],
+  "declarations": [
+    {
+      "kind": "struct",
+      "name": "JettonForwardPayloadRef",
+      "ty_idx": 18,
+      "prefix": {
+        "prefix_num": 1,
+        "prefix_len": 1
+      },
+      "fields": [
+        {
+          "name": "value",
+          "ty_idx": 3
+        }
+      ]
+    },
+    {
+      "kind": "struct",
+      "name": "JettonForwardPayloadInline",
+      "ty_idx": 19,
+      "prefix": {
+        "prefix_num": 0,
+        "prefix_len": 1
+      },
+      "fields": [
+        {
+          "name": "value",
+          "ty_idx": 20
+        }
+      ]
+    },
+    {
+      "kind": "alias",
+      "name": "JettonForwardTail",
+      "ty_idx": 17,
+      "target_ty_idx": 21
+    },
+    {
+      "kind": "struct",
+      "name": "JettonInternalTransfer",
+      "ty_idx": 12,
+      "prefix": {
+        "prefix_num": 395134233,
+        "prefix_len": 32
+      },
+      "fields": [
+        {
+          "name": "query_id",
+          "ty_idx": 11
+        },
+        {
+          "name": "amount",
+          "ty_idx": 6
+        },
+        {
+          "name": "from_address",
+          "ty_idx": 13
+        },
+        {
+          "name": "response_address",
+          "ty_idx": 13
+        },
+        {
+          "name": "forward_ton_amount",
+          "ty_idx": 6
+        }
+      ]
+    },
+    {
+      "kind": "struct",
+      "name": "JettonInternalTransferEthena",
+      "ty_idx": 14,
+      "prefix": {
+        "prefix_num": 2992127701,
+        "prefix_len": 32
+      },
+      "fields": [
+        {
+          "name": "query_id",
+          "ty_idx": 11
+        },
+        {
+          "name": "amount",
+          "ty_idx": 6
+        },
+        {
+          "name": "from_address",
+          "ty_idx": 13
+        },
+        {
+          "name": "response_address",
+          "ty_idx": 13
+        },
+        {
+          "name": "forward_ton_amount",
+          "ty_idx": 6
+        }
+      ]
+    },
+    {
+      "kind": "struct",
+      "name": "JettonBurn",
+      "ty_idx": 15,
+      "prefix": {
+        "prefix_num": 1499400124,
+        "prefix_len": 32
+      },
+      "fields": [
+        {
+          "name": "query_id",
+          "ty_idx": 11
+        },
+        {
+          "name": "amount",
+          "ty_idx": 6
+        },
+        {
+          "name": "response_destination",
+          "ty_idx": 13
+        }
+      ]
+    },
+    {
+      "kind": "struct",
+      "name": "JettonNotify",
+      "ty_idx": 16,
+      "prefix": {
+        "prefix_num": 1935855772,
+        "prefix_len": 32
+      },
+      "fields": [
+        {
+          "name": "query_id",
+          "ty_idx": 11
+        },
+        {
+          "name": "jetton_amount",
+          "ty_idx": 6
+        },
+        {
+          "name": "from_user",
+          "ty_idx": 13
+        },
+        {
+          "name": "forward_payload_cell",
+          "ty_idx": 17
+        }
+      ]
+    },
+    {
+      "kind": "struct",
+      "name": "JettonMint",
+      "ty_idx": 22,
+      "prefix": {
+        "prefix_num": 1680571655,
+        "prefix_len": 32
+      },
+      "fields": [
+        {
+          "name": "query_id",
+          "ty_idx": 11
+        },
+        {
+          "name": "to_address",
+          "ty_idx": 13
+        },
+        {
+          "name": "ton_amount",
+          "ty_idx": 6
+        }
+      ]
+    },
+    {
+      "kind": "struct",
+      "name": "Storage",
+      "ty_idx": 23,
+      "fields": [
+        {
+          "name": "dummy",
+          "ty_idx": 24
+        }
+      ]
+    }
+  ],
+  "storage": {
+    "storage_ty_idx": 23
+  },
+  "incoming_messages": [
+    {
+      "body_ty_idx": 12
+    },
+    {
+      "body_ty_idx": 14
+    },
+    {
+      "body_ty_idx": 15
+    },
+    {
+      "body_ty_idx": 16
+    },
+    {
+      "body_ty_idx": 22
+    }
+  ],
+  "incoming_external": [],
+  "outgoing_messages": [],
+  "emitted_events": [],
+  "get_methods": [],
+  "thrown_errors": [
+    {
+      "kind": "plain_int",
+      "err_code": 65535
+    }
+  ],
+  "compiler_name": "tolk",
+  "compiler_version": "1.4.1",
+  "code_boc64": "te6ccgEBAgEAcQABFP8A9KQT9LzyyAsBAMTT+JHyQCDXLCC8aijMmDCEDwHHAPL04NcsJZLB9qyYMIQPAccA8vTg1ywiyvg95JgwhA8BxwDy9ODXLCObFoTkmDCEDwHHAPL04NcsIyFb6Dwxl4QPAccA8vTghA8BxwDy9A=="
+}

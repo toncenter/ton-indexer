@@ -1,0 +1,177 @@
+{
+  "abi_schema_version": "1.0",
+  "contract_name": "TeleitemMessages",
+  "unique_types": [
+    {
+      "kind": "void"
+    },
+    {
+      "kind": "int"
+    },
+    {
+      "kind": "slice"
+    },
+    {
+      "kind": "cell"
+    },
+    {
+      "kind": "builder"
+    },
+    {
+      "kind": "bool"
+    },
+    {
+      "kind": "coins"
+    },
+    {
+      "kind": "address"
+    },
+    {
+      "kind": "intN",
+      "n": 32
+    },
+    {
+      "kind": "uintN",
+      "n": 32
+    },
+    {
+      "kind": "intN",
+      "n": 64
+    },
+    {
+      "kind": "uintN",
+      "n": 64
+    },
+    {
+      "kind": "AliasRef",
+      "alias_name": "AllowedMessage"
+    },
+    {
+      "kind": "StructRef",
+      "struct_name": "TeleitemStartAuction"
+    },
+    {
+      "kind": "bitsN",
+      "n": 64
+    },
+    {
+      "kind": "StructRef",
+      "struct_name": "TeleitemAuctionConfig"
+    },
+    {
+      "kind": "addressAny"
+    },
+    {
+      "kind": "bitsN",
+      "n": 8
+    },
+    {
+      "kind": "bitsN",
+      "n": 32
+    },
+    {
+      "kind": "cellOf",
+      "inner_ty_idx": 15
+    },
+    {
+      "kind": "StructRef",
+      "struct_name": "Storage"
+    },
+    {
+      "kind": "uintN",
+      "n": 1
+    }
+  ],
+  "struct_instantiations": [],
+  "alias_instantiations": [],
+  "declarations": [
+    {
+      "kind": "struct",
+      "name": "TeleitemAuctionConfig",
+      "ty_idx": 15,
+      "fields": [
+        {
+          "name": "beneficiary_address",
+          "ty_idx": 16
+        },
+        {
+          "name": "initial_min_bid",
+          "ty_idx": 6
+        },
+        {
+          "name": "max_bid",
+          "ty_idx": 6
+        },
+        {
+          "name": "_min_bid_step",
+          "ty_idx": 17
+        },
+        {
+          "name": "_min_extend_time",
+          "ty_idx": 18
+        },
+        {
+          "name": "_duration",
+          "ty_idx": 18
+        }
+      ]
+    },
+    {
+      "kind": "struct",
+      "name": "TeleitemStartAuction",
+      "ty_idx": 13,
+      "prefix": {
+        "prefix_num": 1215991425,
+        "prefix_len": 32
+      },
+      "fields": [
+        {
+          "name": "_query_id",
+          "ty_idx": 14
+        },
+        {
+          "name": "config",
+          "ty_idx": 19
+        }
+      ]
+    },
+    {
+      "kind": "alias",
+      "name": "AllowedMessage",
+      "ty_idx": 12,
+      "target_ty_idx": 13
+    },
+    {
+      "kind": "struct",
+      "name": "Storage",
+      "ty_idx": 20,
+      "fields": [
+        {
+          "name": "dummy",
+          "ty_idx": 21
+        }
+      ]
+    }
+  ],
+  "storage": {
+    "storage_ty_idx": 20
+  },
+  "incoming_messages": [
+    {
+      "body_ty_idx": 12
+    }
+  ],
+  "incoming_external": [],
+  "outgoing_messages": [],
+  "emitted_events": [],
+  "get_methods": [],
+  "thrown_errors": [
+    {
+      "kind": "plain_int",
+      "err_code": 65535
+    }
+  ],
+  "compiler_name": "tolk",
+  "compiler_version": "1.4.1",
+  "code_boc64": "te6ccgEBAgEALQABFP8A9KQT9LzyyAsBADzT+JHyQCDXLCJD1HQMMZeEDwHHAPL04IQPAccA8vQ="
+}

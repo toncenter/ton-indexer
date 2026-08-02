@@ -22,6 +22,7 @@
 #include "ExternalMessageAdmission.h"
 #include "auto/tl/ton_api.h"
 #include "DbEventListener.h"
+#include "emu/EmuClassifierBridge.h"
 #include <sw/redis++/redis++.h>
 
 
@@ -59,6 +60,8 @@ class TraceEmulatorScheduler : public td::actor::Actor {
     std::shared_ptr<ExternalMessageAdmission> external_message_admission_;
     td::actor::ActorOwn<ITraceInsertManager> insert_manager_;
     ConfirmedRootTracker confirmed_roots_;
+    mch::EmuClassifierConfig mch_classifier_config_;
+    td::actor::ActorOwn<mch::EmuClassifierActor> mch_classifier_;
     std::unique_ptr<sw::redis::Redis> health_redis_;
     td::Timestamp next_health_update_;
     std::uint32_t last_finalized_mc_block_time_{0};
@@ -131,6 +134,20 @@ class TraceEmulatorScheduler : public td::actor::Actor {
     void confirmed_block_finished(
         ton::BlockIdExt block_id,
         td::Result<ConfirmedBlockResult> result);
+    static void classify_and_insert(
+        td::actor::ActorId<mch::EmuClassifierActor> classifier,
+        std::shared_ptr<mch::EmuGate> gate,
+        td::actor::ActorId<ITraceInsertManager> insert_manager,
+        Trace trace,
+        td::Promise<td::Unit> promise,
+        MeasurementPtr measurement);
+    static void classify_and_insert_confirmed(
+        td::actor::ActorId<mch::EmuClassifierActor> classifier,
+        std::shared_ptr<mch::EmuGate> gate,
+        td::actor::ActorId<ITraceInsertManager> insert_manager,
+        Trace trace,
+        td::Promise<ConfirmedTraceSnapshot> promise,
+        MeasurementPtr measurement);
     void process_confirmed_trace(
         ton::BlockIdExt block_id,
         Trace trace,
@@ -152,13 +169,26 @@ class TraceEmulatorScheduler : public td::actor::Actor {
     TraceEmulatorScheduler(td::actor::ActorId<DbScanner> db_scanner, td::actor::ActorId<ITraceInsertManager> insert_manager,
                            std::string global_config_path, std::string inet_addr, 
                            std::string redis_dsn, std::string input_redis_channel, std::string working_dir,
-                           std::string db_event_fifo_path) :
+                           std::string db_event_fifo_path,
+                           mch::EmuClassifierConfig mch_classifier_config = {}) :
         db_scanner_(db_scanner), insert_manager_(insert_manager), global_config_path_(global_config_path), 
         inet_addr_(inet_addr), redis_dsn_(redis_dsn), input_redis_channel_(input_redis_channel),
-        working_dir_(std::move(working_dir)), db_event_fifo_path_(std::move(db_event_fifo_path)) {
+        working_dir_(std::move(working_dir)), db_event_fifo_path_(std::move(db_event_fifo_path)),
+        mch_classifier_config_(std::move(mch_classifier_config)) {
       health_redis_ = std::make_unique<sw::redis::Redis>(redis_dsn_);
-      insert_trace_ = [insert_manager = insert_manager_.get()](Trace trace, td::Promise<td::Unit> promise, MeasurementPtr measurement) {
-        td::actor::send_closure(insert_manager, &ITraceInsertManager::insert, std::move(trace), std::move(promise), measurement);
+      // Configure before start_up() copies the sink into listeners.
+      if (mch_classifier_config_.prep) {
+        mch_classifier_ = td::actor::create_actor<mch::EmuClassifierActor>(
+            "MchEmuClassifier", mch_classifier_config_);
+      }
+      insert_trace_ = [classifier = mch_classifier_.get(),
+                       gate = mch_classifier_config_.gate,
+                       insert_manager = insert_manager_.get()](
+                          Trace trace, td::Promise<td::Unit> promise,
+                          MeasurementPtr measurement) {
+        TraceEmulatorScheduler::classify_and_insert(
+            classifier, gate, insert_manager, std::move(trace),
+            std::move(promise), std::move(measurement));
       };
       external_message_admission_ = std::make_shared<ExternalMessageAdmission>();
     };

@@ -94,6 +94,8 @@ type RawAction struct {
 	DexWithdrawLiquidityDataUserJettonWallet2            *AccountAddress
 	DexWithdrawLiquidityDataDexJettonWallet1             *AccountAddress
 	DexWithdrawLiquidityDataDexJettonWallet2             *AccountAddress
+	DexWithdrawLiquidityDataDexWallet1                   *AccountAddress
+	DexWithdrawLiquidityDataDexWallet2                   *AccountAddress
 	DexWithdrawLiquidityDataLpTokensBurnt                *string
 	DexWithdrawLiquidityDataBurnedNFTIndex               *string
 	DexWithdrawLiquidityDataBurnedNFTAddress             *AccountAddress
@@ -629,6 +631,8 @@ type ActionDetailsDexWithdrawLiquidity struct {
 	Asset2               *AccountAddress `json:"asset_2"`
 	UserJettonWallet1    *AccountAddress `json:"user_jetton_wallet_1"`
 	UserJettonWallet2    *AccountAddress `json:"user_jetton_wallet_2"`
+	DexWallet1           *AccountAddress `json:"dex_wallet_1"`
+	DexWallet2           *AccountAddress `json:"dex_wallet_2"`
 	LpTokensBurnt        *string         `json:"lp_tokens_burnt"`
 	IsRefund             *bool           `json:"is_refund"`
 	Source               *AccountAddress `json:"source"`
