@@ -760,6 +760,12 @@ AddressInterfaces parse_interfaces(std::vector<typename Trace::Detector::Detecte
         schema.is_broken_state = arg.is_broken_state;
         schema.public_key = arg.public_key;
         result.interfaces.push_back(schema);
+      } else if constexpr (std::is_same_v<T, GetGemsNftFixPriceSaleV4::Result> ||
+                           std::is_same_v<T, DedustPoolDetector::Result> ||
+                           std::is_same_v<T, NominatorPoolContract::Result> ||
+                           std::is_same_v<T, MultisigOrder::Result>) {
+        // These variants are available to in-process lookups but are not part of
+        // the Redis `interfaces` wire format. See ../README.md#redis-wire-layout.
       } else {
         static_assert(always_false<T>, "non-exhaustive visitor!");
       }

@@ -40,6 +40,9 @@ class TestVestingActions(BaseGenericActionTest):
 class TestDedustLiquiditiesActions(BaseGenericActionTest):
     yaml_file = "dedust-liquidities.yaml"
 
+class TestDedustSwapsActions(BaseGenericActionTest):
+    yaml_file = "dedust-swaps.yaml"
+
 class TestToncoActions(BaseGenericActionTest):
     yaml_file = "tonco.yaml"
 
@@ -58,8 +61,20 @@ class TestLayerZeroActions(BaseGenericActionTest):
 class TestEthenaActions(BaseGenericActionTest):
     yaml_file = "ethena.yaml"
 
+class TestNominatorActions(BaseGenericActionTest):
+    yaml_file = "nominator.yaml"
+
 class TestCocoonActions(BaseGenericActionTest):
     yaml_file = "cocoon.yaml"
+
+class TestSubscriptionActions(BaseGenericActionTest):
+    yaml_file = "subscriptions.yaml"
+
+class TestDnsActions(BaseGenericActionTest):
+    yaml_file = "dns.yaml"
+
+class TestMultisigActions(BaseGenericActionTest):
+    yaml_file = "multisig.yaml"
 
 class TestClassificationCommon:
 

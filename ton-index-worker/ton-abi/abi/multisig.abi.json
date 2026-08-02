@@ -1,0 +1,297 @@
+{
+  "abi_schema_version": "1.0",
+  "contract_name": "MultisigMessages",
+  "unique_types": [
+    {
+      "kind": "void"
+    },
+    {
+      "kind": "int"
+    },
+    {
+      "kind": "slice"
+    },
+    {
+      "kind": "cell"
+    },
+    {
+      "kind": "builder"
+    },
+    {
+      "kind": "bool"
+    },
+    {
+      "kind": "coins"
+    },
+    {
+      "kind": "address"
+    },
+    {
+      "kind": "intN",
+      "n": 32
+    },
+    {
+      "kind": "uintN",
+      "n": 32
+    },
+    {
+      "kind": "intN",
+      "n": 64
+    },
+    {
+      "kind": "uintN",
+      "n": 64
+    },
+    {
+      "kind": "StructRef",
+      "struct_name": "MultisigNewOrder"
+    },
+    {
+      "kind": "uintN",
+      "n": 256
+    },
+    {
+      "kind": "uintN",
+      "n": 8
+    },
+    {
+      "kind": "uintN",
+      "n": 48
+    },
+    {
+      "kind": "StructRef",
+      "struct_name": "MultisigInitOrder"
+    },
+    {
+      "kind": "bitsN",
+      "n": 64
+    },
+    {
+      "kind": "bitsN",
+      "n": 8
+    },
+    {
+      "kind": "nullable",
+      "inner_ty_idx": 3
+    },
+    {
+      "kind": "bitsN",
+      "n": 48
+    },
+    {
+      "kind": "StructRef",
+      "struct_name": "MultisigApprove"
+    },
+    {
+      "kind": "StructRef",
+      "struct_name": "MultisigApproveRejected"
+    },
+    {
+      "kind": "StructRef",
+      "struct_name": "MultisigExecute"
+    },
+    {
+      "kind": "bitsN",
+      "n": 256
+    },
+    {
+      "kind": "StructRef",
+      "struct_name": "Storage"
+    },
+    {
+      "kind": "uintN",
+      "n": 1
+    }
+  ],
+  "struct_instantiations": [],
+  "alias_instantiations": [],
+  "declarations": [
+    {
+      "kind": "struct",
+      "name": "MultisigNewOrder",
+      "ty_idx": 12,
+      "prefix": {
+        "prefix_num": 4145565967,
+        "prefix_len": 32
+      },
+      "fields": [
+        {
+          "name": "query_id",
+          "ty_idx": 11
+        },
+        {
+          "name": "order_seqno",
+          "ty_idx": 13
+        },
+        {
+          "name": "is_signer",
+          "ty_idx": 5
+        },
+        {
+          "name": "singer_index",
+          "ty_idx": 14
+        },
+        {
+          "name": "expiration_date",
+          "ty_idx": 15
+        },
+        {
+          "name": "order",
+          "ty_idx": 3
+        }
+      ]
+    },
+    {
+      "kind": "struct",
+      "name": "MultisigInitOrder",
+      "ty_idx": 16,
+      "prefix": {
+        "prefix_num": 2624846754,
+        "prefix_len": 32
+      },
+      "fields": [
+        {
+          "name": "_query_id",
+          "ty_idx": 17
+        },
+        {
+          "name": "_threshold",
+          "ty_idx": 18
+        },
+        {
+          "name": "_signers",
+          "ty_idx": 19
+        },
+        {
+          "name": "_expiration_date",
+          "ty_idx": 20
+        },
+        {
+          "name": "order",
+          "ty_idx": 3
+        },
+        {
+          "name": "approve_on_init",
+          "ty_idx": 5
+        }
+      ]
+    },
+    {
+      "kind": "struct",
+      "name": "MultisigApprove",
+      "ty_idx": 21,
+      "prefix": {
+        "prefix_num": 2808226575,
+        "prefix_len": 32
+      },
+      "fields": [
+        {
+          "name": "query_id",
+          "ty_idx": 11
+        },
+        {
+          "name": "signer_index",
+          "ty_idx": 14
+        }
+      ]
+    },
+    {
+      "kind": "struct",
+      "name": "MultisigApproveRejected",
+      "ty_idx": 22,
+      "prefix": {
+        "prefix_num": 2947491902,
+        "prefix_len": 32
+      },
+      "fields": [
+        {
+          "name": "_query_id",
+          "ty_idx": 17
+        },
+        {
+          "name": "exit_code",
+          "ty_idx": 9
+        }
+      ]
+    },
+    {
+      "kind": "struct",
+      "name": "MultisigExecute",
+      "ty_idx": 23,
+      "prefix": {
+        "prefix_num": 1963556701,
+        "prefix_len": 32
+      },
+      "fields": [
+        {
+          "name": "query_id",
+          "ty_idx": 11
+        },
+        {
+          "name": "order_seqno",
+          "ty_idx": 13
+        },
+        {
+          "name": "expiration_date",
+          "ty_idx": 15
+        },
+        {
+          "name": "approvals_num",
+          "ty_idx": 14
+        },
+        {
+          "name": "signers_hash",
+          "ty_idx": 24
+        },
+        {
+          "name": "order",
+          "ty_idx": 3
+        }
+      ]
+    },
+    {
+      "kind": "struct",
+      "name": "Storage",
+      "ty_idx": 25,
+      "fields": [
+        {
+          "name": "dummy",
+          "ty_idx": 26
+        }
+      ]
+    }
+  ],
+  "storage": {
+    "storage_ty_idx": 25
+  },
+  "incoming_messages": [
+    {
+      "body_ty_idx": 12
+    },
+    {
+      "body_ty_idx": 16
+    },
+    {
+      "body_ty_idx": 21
+    },
+    {
+      "body_ty_idx": 22
+    },
+    {
+      "body_ty_idx": 23
+    }
+  ],
+  "incoming_external": [],
+  "outgoing_messages": [],
+  "emitted_events": [],
+  "get_methods": [],
+  "thrown_errors": [
+    {
+      "kind": "plain_int",
+      "err_code": 65535
+    }
+  ],
+  "compiler_name": "tolk",
+  "compiler_version": "1.4.1",
+  "code_boc64": "te6ccgEBAgEAcQABFP8A9KQT9LzyyAsBAMTT+JHyQCDXLCe4woh8mDCEDwHHAPL04NcsJOOf3RSYMIQPAccA8vTg1ywlOxEYfJgwhA8BxwDy9ODXLCV9eUH0mDCEDwHHAPL04NcsI6hL+uwxl4QPAccA8vTghA8BxwDy9A=="
+}

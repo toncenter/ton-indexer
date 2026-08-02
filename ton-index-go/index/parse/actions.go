@@ -364,6 +364,8 @@ func ParseRawAction(raw *models.RawAction) (*models.Action, error) {
 		details.Amount2 = raw.DexWithdrawLiquidityDataAmount2
 		details.UserJettonWallet1 = raw.DexWithdrawLiquidityDataUserJettonWallet1
 		details.UserJettonWallet2 = raw.DexWithdrawLiquidityDataUserJettonWallet2
+		details.DexWallet1 = raw.DexWithdrawLiquidityDataDexWallet1
+		details.DexWallet2 = raw.DexWithdrawLiquidityDataDexWallet2
 		details.LpTokensBurnt = raw.DexWithdrawLiquidityDataLpTokensBurnt
 		details.BurntNftIndex = raw.DexWithdrawLiquidityDataBurnedNFTIndex
 		details.BurntNftAddress = raw.DexWithdrawLiquidityDataBurnedNFTAddress

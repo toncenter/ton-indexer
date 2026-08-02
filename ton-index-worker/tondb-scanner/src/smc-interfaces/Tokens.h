@@ -24,9 +24,14 @@ public:
 
   void start_up() override;
 
-private:
-  void verify_with_master(td::Ref<vm::Cell> master_code, td::Ref<vm::Cell> master_data, Result jetton_wallet_data);
+  // Synchronous wallet detection verifies the master-derived wallet address.
+  static td::Result<Result> detect(const block::StdAddress& address,
+                                   const td::Ref<vm::Cell>& code_cell,
+                                   const td::Ref<vm::Cell>& data_cell,
+                                   const AllShardStates& shard_states,
+                                   const std::shared_ptr<block::ConfigInfo>& config);
 
+private:
   block::StdAddress address_;
   td::Ref<vm::Cell> code_cell_;
   td::Ref<vm::Cell> data_cell_;
@@ -172,6 +177,13 @@ public:
 
   void start_up() override;
 
+  // Synchronous pool detection verifies V1 through its factory; V2 is self-contained.
+  static td::Result<Result> detect(const block::StdAddress& address,
+                                   const td::Ref<vm::Cell>& code_cell,
+                                   const td::Ref<vm::Cell>& data_cell,
+                                   const AllShardStates& shard_states,
+                                   const std::shared_ptr<block::ConfigInfo>& config);
+
 private:
   block::StdAddress address_;
   td::Ref<vm::Cell> code_cell_;
@@ -179,8 +191,4 @@ private:
   AllShardStates shard_states_;
   std::shared_ptr<block::ConfigInfo> config_;
   td::Promise<Result> promise_;
-
-  static bool get_asset(td::Ref<vm::CellSlice> slice, std::optional<block::StdAddress>& address);
-  static bool get_asset_v2(td::Ref<vm::CellSlice> slice, std::optional<block::StdAddress>& address);
-  void verify_with_factory(td::Ref<vm::Cell> factory_code, td::Ref<vm::Cell> factory_data, Result pool_data);
 };

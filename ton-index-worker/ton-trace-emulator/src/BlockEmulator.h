@@ -77,6 +77,7 @@ private:
     std::vector<EmulatedTracePatch> traces_;
 
     std::vector<td::Ref<vm::Cell>> shard_states_;
+    std::shared_ptr<const std::vector<td::Ref<vm::Cell>>> cell_anchor_;
 
     std::unordered_map<td::Bits256, TransactionInfo> tx_by_in_msg_hash_; // mapping from msg hash to tx that processed it as in_msg
     std::unordered_map<td::Bits256, TransactionInfo> tx_by_out_msg_hash_; // mapping from msg hash to tx that created it as out_msg
@@ -122,6 +123,7 @@ private:
     schema::BlockDataState block_data_state_;
     std::shared_ptr<block::ConfigInfo> config_;
     std::vector<ShardStateSnapshot> shard_states_snapshot_;
+    std::shared_ptr<const std::vector<td::Ref<vm::Cell>>> cell_anchor_;
     std::function<void(
         Trace,
         td::Promise<ConfirmedTraceSnapshot>,

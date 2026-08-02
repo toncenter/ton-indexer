@@ -9,6 +9,8 @@
 #include "DbScanner.h"
 #include "TraceScheduler.h"
 #include "TraceInserter.h"
+#include "GenMatchers.h"
+#include "emu/EmuClassifierBridge.h"
 
 #include <cmath>
 
@@ -50,6 +52,9 @@ int main(int argc, char *argv[]) {
   std::string global_config_path;
   std::string inet_addr;
   std::string db_event_fifo_path;
+  bool mch_disable = false;
+  bool mch_no_tier2 = false;
+  mch::Tier2Budget mch_tier2_budget;
   
   td::OptionParser p;
   p.set_description("Emulate TON traces");
@@ -136,6 +141,36 @@ int main(int argc, char *argv[]) {
     db_event_fifo_path = fname.str();
   });
 
+  // This option bypasses in-process classification and inserts empty payloads.
+  p.add_option('\0', "mch-disable", "Disable in-process MCH classification", [&]() {
+    mch_disable = true;
+  });
+
+  // Tier-2 lookups are enabled by default and use configurable budgets.
+  p.add_option('\0', "mch-no-tier2", "Disable celldb tier-2 lookups (tier-1-only classification)", [&]() {
+    mch_no_tier2 = true;
+  });
+  p.add_checked_option('\0', "mch-tier2-fetches", "Celldb account reads per trace (default: 16)", [&](td::Slice value) {
+    int v;
+    try {
+      v = std::stoi(value.str());
+    } catch (...) {
+      return td::Status::Error(ton::ErrorCode::error, "bad value for --mch-tier2-fetches: not a number");
+    }
+    mch_tier2_budget.fetches = static_cast<std::size_t>(v < 0 ? 0 : v);
+    return td::Status::OK();
+  });
+  p.add_checked_option('\0', "mch-tier2-ms", "Celldb tier-2 wall-clock budget per trace, ms (default: 20)", [&](td::Slice value) {
+    int v;
+    try {
+      v = std::stoi(value.str());
+    } catch (...) {
+      return td::Status::Error(ton::ErrorCode::error, "bad value for --mch-tier2-ms: not a number");
+    }
+    mch_tier2_budget.wall_us = static_cast<std::int64_t>(v < 0 ? 0 : v) * 1000;
+    return td::Status::OK();
+  });
+
 
   auto S = p.run(argc, argv);
   if (S.is_error()) {
@@ -158,6 +193,26 @@ int main(int argc, char *argv[]) {
     std::_Exit(2);
   }
 
+  mch::EmuClassifierConfig mch_classifier_config;
+  if (mch_disable) {
+    LOG(WARNING) << "MCH classification DISABLED (--mch-disable): traces are inserted unclassified";
+  } else {
+    // Compiled matcher-table preparation must succeed when classification is enabled.
+    auto r_prep = mch::make_engine_prep();
+    if (r_prep.is_error()) {
+      LOG(FATAL) << "MCH engine prep failed: " << r_prep.move_as_error();
+    }
+    mch_classifier_config.prep = r_prep.move_as_ok();
+    mch_classifier_config.gate = std::make_shared<mch::EmuGate>();
+    mch_classifier_config.tier2 = !mch_no_tier2;
+    mch_classifier_config.tier2_budget = mch_tier2_budget;
+    LOG(INFO) << "MCH classification ENABLED (artifact sha " << mch::gen_matchers_ir_source_sha()
+              << "), insert gated on classification, celldb tier-2 "
+              << (mch_classifier_config.tier2 ? "ON" : "OFF") << " (budget "
+              << mch_classifier_config.tier2_budget.fetches << " fetches / "
+              << mch_classifier_config.tier2_budget.wall_us / 1000 << " ms per trace)";
+  }
+
   // This must happen before any actor can subscribe to events or write a trace.
   LOG(WARNING) << "Clearing pending Redis database before startup";
   auto flush_status = flush_pending_redis_database(redis_dsn);
@@ -176,7 +231,8 @@ int main(int argc, char *argv[]) {
     insert_manager = td::actor::create_actor<RedisInsertManager>(
         "RedisInsertManager", redis_dsn, trace_retention);
     td::actor::create_actor<TraceEmulatorScheduler>("integritychecker", db_scanner.get(), insert_manager.get(), 
-      global_config_path, inet_addr, redis_dsn, redis_channel, working_dir, db_event_fifo_path).release();
+      global_config_path, inet_addr, redis_dsn, redis_channel, working_dir, db_event_fifo_path,
+      mch_classifier_config).release();
   });
   
   scheduler.run();

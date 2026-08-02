@@ -132,9 +132,22 @@ struct Trace {
     td::Bits256 rand_seed;
     bool tx_limit_exceeded{false};
 
-    using Detector = InterfacesDetector<JettonWalletDetectorR, JettonMasterDetectorR, 
+    // Keeps the block's lazy cell store alive while the trace holds interior
+    // transaction cells. Listener-emulated traces do not need an anchor.
+    std::shared_ptr<const std::vector<td::Ref<vm::Cell>>> cell_anchor;
+
+    // Shared shard-state and config handles for tier-2 account lookups.
+    // Listener-emulated traces leave them empty and receive no tier-2 results.
+    AllShardStates shard_states;
+    std::shared_ptr<block::ConfigInfo> config;
+
+    // Detector results feed in-process lookups. Serializer.hpp controls which
+    // variants are also present in the Redis interface payload.
+    using Detector = InterfacesDetector<JettonWalletDetectorR, JettonMasterDetectorR,
                                         NftItemDetectorR, NftCollectionDetectorR,
-                                        GetGemsNftFixPriceSale, GetGemsNftAuction>;
+                                        GetGemsNftFixPriceSale, GetGemsNftAuction,
+                                        GetGemsNftFixPriceSaleV4, DedustPoolDetector,
+                                        NominatorPoolContract, MultisigOrder>;
 
     std::multimap<block::StdAddress, block::Account, AddrCmp> emulated_accounts;
     

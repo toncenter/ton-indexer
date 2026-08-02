@@ -96,6 +96,17 @@ def _value(amount: Amount | None):
     return amount.value
 
 
+def _dget(data, key):
+    """Read a field from a block's `data` regardless of representation: a dict
+    (the declarative-build product — a plain btype + map, matching the C++
+    engine's canonical output) or a dataclass/object (the legacy build cores).
+    Dict lookup first, attribute fallback. Used only by the `_fill_*` of
+    matchers with a declarative `.mch` build, which must serve both paths."""
+    if isinstance(data, dict):
+        return data[key]
+    return getattr(data, key)
+
+
 def _calc_action_id(block: Block) -> str:
     root_event_node = min(block.event_nodes, key=lambda n: n.get_lt())
     key = ""
@@ -151,10 +162,8 @@ def _fill_call_contract_action(block: CallContractBlock, action: Action):
 
 def _fill_ton_transfer_action(block: TonTransferBlock, action: Action):
     action.value = block.value
-    action.source = block.data['source'].as_str()
-    if block.data['destination'] is None:
-        print("Something very wrong", block.event_nodes[0].message.trace_id)
-    action.destination = block.data['destination'].as_str()
+    action.source = block.data['source'].as_str() if block.data['source'] is not None else None
+    action.destination = block.data['destination'].as_str() if block.data['destination'] is not None else None
     content = block.data['comment'].replace("\u0000", "") if block.data['comment'] is not None else None
     action.ton_transfer_data = {'content': content, 'encrypted': block.data['encrypted']}
     extra_currencies = block.data['extra_currencies'] if 'extra_currencies' in block.data else None
@@ -233,35 +242,39 @@ def _fill_nft_transfer_action(block: NftTransferBlock, action: Action):
     }
 
 def _fill_nft_purchase_action(block: NftPurchaseBlock, action: Action):
-    if block.data.prev_owner is not None:
-        action.source = _addr(block.data.prev_owner)
-    action.destination = _addr(block.data.new_owner)
-    action.asset_secondary = _addr(block.data.nft_address)
-    action.asset = _addr(block.data.collection_address)
+    # dual-access via _dget: legacy NftPurchaseData dataclass OR the declarative
+    # getgems/telegram_nft build's dict (both carry identical field names).
+    if _dget(block.data, 'prev_owner') is not None:
+        action.source = _addr(_dget(block.data, 'prev_owner'))
+    action.destination = _addr(_dget(block.data, 'new_owner'))
+    action.asset_secondary = _addr(_dget(block.data, 'nft_address'))
+    action.asset = _addr(_dget(block.data, 'collection_address'))
     action.nft_transfer_data = {
-        'query_id': block.data.query_id,
+        'query_id': _dget(block.data, 'query_id'),
         'is_purchase': True,
-        'price': _value(block.data.price),
-        'nft_item_index': block.data.nft_index,
-        'forward_amount':  _value(block.data.forward_amount),
-        'custom_payload': block.data.custom_payload,
-        'forward_payload': block.data.forward_payload,
-        'response_destination': _addr(block.data.response_destination),
-        'marketplace': block.data.marketplace,
-        'marketplace_address': _addr(block.data.marketplace_address),
-        'real_prev_owner': _addr(block.data.real_prev_owner),
-        'payout_amount': _value(block.data.payout_amount),
-        'payout_comment_encrypted': block.data.payout_comment_encrypted,
-        'payout_comment_encoded': block.data.payout_comment_encoded,
-        'payout_comment': block.data.payout_comment,
+        'price': _value(_dget(block.data, 'price')),
+        'nft_item_index': _dget(block.data, 'nft_index'),
+        'forward_amount':  _value(_dget(block.data, 'forward_amount')),
+        'custom_payload': _dget(block.data, 'custom_payload'),
+        'forward_payload': _dget(block.data, 'forward_payload'),
+        'response_destination': _addr(_dget(block.data, 'response_destination')),
+        'marketplace': _dget(block.data, 'marketplace'),
+        'marketplace_address': _addr(_dget(block.data, 'marketplace_address')),
+        'real_prev_owner': _addr(_dget(block.data, 'real_prev_owner')),
+        'payout_amount': _value(_dget(block.data, 'payout_amount')),
+        'payout_comment_encrypted': _dget(block.data, 'payout_comment_encrypted'),
+        'payout_comment_encoded': _dget(block.data, 'payout_comment_encoded'),
+        'payout_comment': _dget(block.data, 'payout_comment'),
     }
 
 def _fill_nft_discovery_action(block: NftDiscoveryBlock, action: Action):
-    action.source = _addr(block.data.sender)
-    action.asset = _addr(block.data.result_collection)
-    action.asset_secondary = _addr(block.data.nft)
+    # dual-access via _dget: legacy NftDiscoveryBlockData dataclass OR the
+    # declarative specs/nft_sale.mch out{} dict (identical key names).
+    action.source = _addr(_dget(block.data, 'sender'))
+    action.asset = _addr(_dget(block.data, 'result_collection'))
+    action.asset_secondary = _addr(_dget(block.data, 'nft'))
     action.nft_transfer_data = {
-        "nft_item_index": block.data.result_index,
+        "nft_item_index": _dget(block.data, 'result_index'),
     }
 
 def _fill_nft_mint_action(block: NftMintBlock, action: Action):
@@ -278,22 +291,24 @@ def _fill_nft_mint_action(block: NftMintBlock, action: Action):
 
 
 def _fill_nft_put_on_sale_action(block: NftPutOnSaleBlock, action: Action):
-    action.source = _addr(block.data.owner)
-    action.source_secondary = _addr(block.data.listing_address)
-    action.destination = _addr(block.data.sale_address)
+    # dual-access via _dget: legacy NftPutOnSaleBlockData dataclass OR the
+    # declarative specs/nft_sale.mch out{} dict (identical key names).
+    action.source = _addr(_dget(block.data, 'owner'))
+    action.source_secondary = _addr(_dget(block.data, 'listing_address'))
+    action.destination = _addr(_dget(block.data, 'sale_address'))
     action.nft_transfer_data = {
-        'marketplace_address': _addr(block.data.marketplace_address),
+        'marketplace_address': _addr(_dget(block.data, 'marketplace_address')),
     }
-    action.asset = _addr(block.data.nft_collection)
-    action.asset_secondary = _addr(block.data.nft_address)
+    action.asset = _addr(_dget(block.data, 'nft_collection'))
+    action.asset_secondary = _addr(_dget(block.data, 'nft_address'))
     action.nft_listing_data = {
-        'nft_item_index': block.data.nft_index,
-        'full_price': _value(block.data.full_price),
-        'marketplace_fee': _value(block.data.marketplace_fee),
-        'royalty_amount': _value(block.data.royalty_amount),
-        'marketplace_fee_address': _addr(block.data.marketplace_fee_address),
-        'marketplace': block.data.marketplace,
-        'royalty_address': _addr(block.data.royalty_address),
+        'nft_item_index': _dget(block.data, 'nft_index'),
+        'full_price': _value(_dget(block.data, 'full_price')),
+        'marketplace_fee': _value(_dget(block.data, 'marketplace_fee')),
+        'royalty_amount': _value(_dget(block.data, 'royalty_amount')),
+        'marketplace_fee_address': _addr(_dget(block.data, 'marketplace_fee_address')),
+        'marketplace': _dget(block.data, 'marketplace'),
+        'royalty_address': _addr(_dget(block.data, 'royalty_address')),
         # Auction fields set to null
         'mp_fee_factor': None,
         'mp_fee_base': None,
@@ -303,39 +318,43 @@ def _fill_nft_put_on_sale_action(block: NftPutOnSaleBlock, action: Action):
     }
 
 def _fill_sale_update_action(block: UpdateSaleBlock, action: Action):
-    action.source = _addr(block.data.sender)
-    action.destination = _addr(block.data.sale_contract)
-    action.asset_secondary = _addr(block.data.nft_address)
+    # dual-access via _dget: legacy UpdateSaleData dataclass OR the declarative
+    # specs/nft_sale.mch out{} dict (identical key names).
+    action.source = _addr(_dget(block.data, 'sender'))
+    action.destination = _addr(_dget(block.data, 'sale_contract'))
+    action.asset_secondary = _addr(_dget(block.data, 'nft_address'))
     action.nft_listing_data = {
-        'full_price': _value(block.data.new_full_price),
-        'royalty_amount': _value(block.data.new_royalty_amount),
-        'marketplace_fee': _value(block.data.new_marketplace_fee),
+        'full_price': _value(_dget(block.data, 'new_full_price')),
+        'royalty_amount': _value(_dget(block.data, 'new_royalty_amount')),
+        'marketplace_fee': _value(_dget(block.data, 'new_marketplace_fee')),
     }
     action.nft_transfer_data = {
-        'marketplace_address': _addr(block.data.marketplace_address),
+        'marketplace_address': _addr(_dget(block.data, 'marketplace_address')),
     }
     action.accounts.append(action.asset_secondary)
 
 
 def _fill_nft_put_on_auction_action(block: NftPutOnAuctionBlock, action: Action):
-    action.source = _addr(block.data.owner)
-    action.source_secondary = _addr(block.data.listing_address)
-    action.destination = _addr(block.data.auction_address)
-    action.asset = _addr(block.data.nft_collection)
-    action.asset_secondary = _addr(block.data.nft_address)
+    # dual-access via _dget: legacy NftPutOnAuctionBlockData dataclass OR the
+    # declarative specs/teleitem_auction.mch out{} dict (identical key names).
+    action.source = _addr(_dget(block.data, 'owner'))
+    action.source_secondary = _addr(_dget(block.data, 'listing_address'))
+    action.destination = _addr(_dget(block.data, 'auction_address'))
+    action.asset = _addr(_dget(block.data, 'nft_collection'))
+    action.asset_secondary = _addr(_dget(block.data, 'nft_address'))
     action.nft_transfer_data = {
-        'marketplace_address': _addr(block.data.marketplace_address),
+        'marketplace_address': _addr(_dget(block.data, 'marketplace_address')),
     }
     action.nft_listing_data = {
-        'nft_item_index': block.data.nft_index,
-        'mp_fee_factor': _value(block.data.mp_fee_factor),
-        'mp_fee_base': _value(block.data.mp_fee_base),
-        'royalty_fee_base': _value(block.data.royalty_fee_base),
-        'max_bid': _value(block.data.max_bid),
-        'min_bid': _value(block.data.min_bid),
-        'marketplace_fee_address': _addr(block.data.mp_fee_address),  # unified field
-        'marketplace': block.data.marketplace,
-        'royalty_address': _addr(block.data.royalty_fee_addr),  # unified field
+        'nft_item_index': _dget(block.data, 'nft_index'),
+        'mp_fee_factor': _value(_dget(block.data, 'mp_fee_factor')),
+        'mp_fee_base': _value(_dget(block.data, 'mp_fee_base')),
+        'royalty_fee_base': _value(_dget(block.data, 'royalty_fee_base')),
+        'max_bid': _value(_dget(block.data, 'max_bid')),
+        'min_bid': _value(_dget(block.data, 'min_bid')),
+        'marketplace_fee_address': _addr(_dget(block.data, 'mp_fee_address')),  # unified field
+        'marketplace': _dget(block.data, 'marketplace'),
+        'royalty_address': _addr(_dget(block.data, 'royalty_fee_addr')),  # unified field
         # Sale fields set to null
         'full_price': None,
         'marketplace_fee': None,
@@ -511,28 +530,30 @@ def _fill_dex_withdraw_liquidity(block: Block, action: Action):
 
 def _fill_tonco_withdraw_liquidity(block: ToncoWithdrawLiquidityBlock, action: Action):
     action.type = 'dex_withdraw_liquidity'
-    d = block.data
-    action.source = _addr(d.sender)
+    d = block.data  # dict (declarative build) or ToncoWithdrawLiquidityData (legacy)
+    amount1_out, amount2_out = _dget(d, 'amount1_out'), _dget(d, 'amount2_out')
+    liquidity_burnt = _dget(d, 'liquidity_burnt')
+    action.source = _addr(_dget(d, 'sender'))
     action.source_secondary = None # tonco uses NFT, no LP jetton wallet for sender
-    action.destination = _addr(d.pool)
+    action.destination = _addr(_dget(d, 'pool'))
     action.asset = None # lp asset is nft, not a jetton, so primary asset on action is None
     action.dex_withdraw_liquidity_data = {
         "dex": "tonco",
-        "amount1": d.amount1_out.value if d.amount1_out is not None else None,
-        "amount2": d.amount2_out.value if d.amount2_out is not None else None,
-        'asset1_out': _addr(d.asset1_out),
-        'asset2_out': _addr(d.asset2_out),
-        'user_jetton_wallet_1': _addr(d.wallet1),
-        'user_jetton_wallet_2': _addr(d.wallet2),
-        'dex_jetton_wallet_1': _addr(d.dex_jetton_wallet_1),
-        'dex_wallet_1': _addr(d.dex_wallet_1),
-        'dex_wallet_2': _addr(d.dex_wallet_2),
-        'dex_jetton_wallet_2': _addr(d.dex_jetton_wallet_2),
-        'lp_tokens_burnt': d.liquidity_burnt.value if d.liquidity_burnt is not None else None,
-        'burned_nft_index': d.burned_nft_index,
-        'burned_nft_address': _addr(d.burned_nft_address),
-        'tick_lower': d.tick_lower,
-        'tick_upper': d.tick_upper
+        "amount1": amount1_out.value if amount1_out is not None else None,
+        "amount2": amount2_out.value if amount2_out is not None else None,
+        'asset1_out': _addr(_dget(d, 'asset1_out')),
+        'asset2_out': _addr(_dget(d, 'asset2_out')),
+        'user_jetton_wallet_1': _addr(_dget(d, 'wallet1')),
+        'user_jetton_wallet_2': _addr(_dget(d, 'wallet2')),
+        'dex_jetton_wallet_1': _addr(_dget(d, 'dex_jetton_wallet_1')),
+        'dex_wallet_1': _addr(_dget(d, 'dex_wallet_1')),
+        'dex_wallet_2': _addr(_dget(d, 'dex_wallet_2')),
+        'dex_jetton_wallet_2': _addr(_dget(d, 'dex_jetton_wallet_2')),
+        'lp_tokens_burnt': liquidity_burnt.value if liquidity_burnt is not None else None,
+        'burned_nft_index': _dget(d, 'burned_nft_index'),
+        'burned_nft_address': _addr(_dget(d, 'burned_nft_address')),
+        'tick_lower': _dget(d, 'tick_lower'),
+        'tick_upper': _dget(d, 'tick_upper')
     }
 
 
@@ -581,13 +602,14 @@ def _fill_delete_dns_record_action(block: DeleteDnsRecordBlock, action: Action):
 
 def _fill_tonstakers_deposit_action(block: TONStakersDepositBlock, action: Action):
     action.type = 'stake_deposit'
-    action.source = _addr(block.data.source)
-    action.destination = _addr(block.data.pool)
-    action.amount = block.data.value.value
-    action.asset = _addr(block.data.asset)
+    action.source = _addr(_dget(block.data, 'source'))
+    action.destination = _addr(_dget(block.data, 'pool'))
+    action.amount = _dget(block.data, 'value').value
+    action.asset = _addr(_dget(block.data, 'asset'))
+    tokens_minted = _dget(block.data, 'tokens_minted')
     action.staking_data = {
         'provider': 'liquid_staking',
-        'tokens_minted': block.data.tokens_minted.value if block.data.tokens_minted else None
+        'tokens_minted': tokens_minted.value if tokens_minted else None
     }
 
 def _fill_dns_renew_action(block: DnsRenewBlock, action: Action):
@@ -596,28 +618,29 @@ def _fill_dns_renew_action(block: DnsRenewBlock, action: Action):
     action.asset = _addr(block.data['collection_address'])
 
 def _fill_tonstakers_withdraw_request_action(block: TONStakersWithdrawRequestBlock, action: Action):
-    action.source = _addr(block.data.source)
-    action.source_secondary = _addr(block.data.tsTON_wallet)
-    action.destination = _addr(block.data.pool)
-    action.amount = block.data.tokens_burnt.value
+    action.source = _addr(_dget(block.data, 'source'))
+    action.source_secondary = _addr(_dget(block.data, 'tsTON_wallet'))
+    action.destination = _addr(_dget(block.data, 'pool'))
+    action.amount = _dget(block.data, 'tokens_burnt').value
     action.type = 'stake_withdrawal_request'
-    action.asset = _addr(block.data.asset)
+    action.asset = _addr(_dget(block.data, 'asset'))
     action.staking_data = {
         'provider': 'liquid_staking',
-        'ts_nft': _addr(block.data.minted_nft)
+        'ts_nft': _addr(_dget(block.data, 'minted_nft'))
     }
 
 def _fill_tonstakers_withdraw_action(block: TONStakersWithdrawBlock, action: Action):
-    action.source = _addr(block.data.stake_holder)
-    action.destination = _addr(block.data.pool)
-    action.amount = block.data.amount.value
+    action.source = _addr(_dget(block.data, 'stake_holder'))
+    action.destination = _addr(_dget(block.data, 'pool'))
+    action.amount = _dget(block.data, 'amount').value
     action.type = 'stake_withdrawal'
+    tokens_burnt = _dget(block.data, 'tokens_burnt')
     action.staking_data = {
         'provider': 'liquid_staking',
-        'ts_nft': _addr(block.data.burnt_nft),
-        'tokens_burnt': block.data.tokens_burnt.value if block.data.tokens_burnt is not None else None,
+        'ts_nft': _addr(_dget(block.data, 'burnt_nft')),
+        'tokens_burnt': tokens_burnt.value if tokens_burnt is not None else None,
     }
-    action.asset = _addr(block.data.asset)
+    action.asset = _addr(_dget(block.data, 'asset'))
 
 def _fill_subscribe_action(block: SubscriptionBlock, action: Action):
     action.source = block.data['subscriber'].as_str()
@@ -650,27 +673,31 @@ def _fill_auction_bid_action(block: Block, action: Action):
     action.value = block.data['amount'].value
 
 def _fill_auction_outbid_action(block: AuctionOutbidBlock, action: Action):
-    action.source = _addr(block.data.auction_address)
-    action.destination = _addr(block.data.bidder)
-    action.source_secondary = _addr(block.data.new_bidder)
-    action.asset_secondary = _addr(block.data.nft)
-    action.asset = _addr(block.data.nft_collection)
+    # dual-access via _dget: legacy AuctionOutbidData dataclass OR the
+    # declarative specs/nft_sale.mch out{} dict (identical key names).
+    action.source = _addr(_dget(block.data, 'auction_address'))
+    action.destination = _addr(_dget(block.data, 'bidder'))
+    action.source_secondary = _addr(_dget(block.data, 'new_bidder'))
+    action.asset_secondary = _addr(_dget(block.data, 'nft'))
+    action.asset = _addr(_dget(block.data, 'nft_collection'))
     action.nft_transfer_data = {
-        'marketplace': block.data.auction_type
+        'marketplace': _dget(block.data, 'auction_type')
     }
-    action.amount = _value(block.data.amount)
+    action.amount = _value(_dget(block.data, 'amount'))
     action.ton_transfer_data = {
-        'comment': block.data.comment
+        'comment': _dget(block.data, 'comment')
     }
     action.accounts.append(action.asset_secondary)
 
 def _fill_cancel_nft_trade_action(block: NftCancelSaleBlock|NftFinishAuctionBlock|NftCancelAuctionBlock, action: Action):
-    action.source = _addr(block.data.owner)
-    action.destination = _addr(block.data.trade_contract)
-    action.asset_secondary = _addr(block.data.nft_address)
-    action.asset = _addr(block.data.nft_collection)
+    # dual-access via _dget: legacy NftCancelTradeData dataclass OR the
+    # declarative specs/teleitem_auction.mch out{} dict (identical key names).
+    action.source = _addr(_dget(block.data, 'owner'))
+    action.destination = _addr(_dget(block.data, 'trade_contract'))
+    action.asset_secondary = _addr(_dget(block.data, 'nft_address'))
+    action.asset = _addr(_dget(block.data, 'nft_collection'))
     action.nft_transfer_data = {
-        'marketplace_address': _addr(block.data.marketplace_address),
+        'marketplace_address': _addr(_dget(block.data, 'marketplace_address')),
     }
     action.accounts.append(action.asset_secondary)
 
@@ -729,253 +756,285 @@ def _fill_jetton_mint_action(block: JettonMintBlock, action: Action):
 
 def _fill_nominator_pool_deposit_action(block: NominatorPoolDepositBlock, action: Action):
     action.type = 'stake_deposit'
-    action.source = block.data.source.as_str()
-    action.destination = block.data.pool.as_str()
-    action.amount = block.data.value.value
+    action.source = _dget(block.data, 'source').as_str()
+    action.destination = _dget(block.data, 'pool').as_str()
+    action.amount = _dget(block.data, 'value').value
     action.staking_data = {
         'provider': 'nominator'
     }
 
 def _fill_nominator_pool_withdraw_request_action(block: NominatorPoolWithdrawRequestBlock, action: Action):
-    if block.data.payout_amount is None:
+    payout_amount = _dget(block.data, 'payout_amount')
+    if payout_amount is None:
         action.type = 'stake_withdrawal_request'
     else:
         action.type = 'stake_withdrawal'
-        action.amount = block.data.payout_amount.value
+        action.amount = payout_amount.value
     action.staking_data = {
         'provider': 'nominator'
     }
-    action.source = block.data.source.as_str()
-    action.destination = block.data.pool.as_str()
+    action.source = _dget(block.data, 'source').as_str()
+    action.destination = _dget(block.data, 'pool').as_str()
 
 def _fill_tick_tock_action(block: Block, action: Action):
     action.source = _addr(block.data['account'])
 
 def _fill_evaa_supply_action(block: EvaaSupplyBlock, action: Action):
-    action.source = _addr(block.data.sender)
-    action.source_secondary = _addr(block.data.sender_jetton_wallet)
-    action.destination = _addr(block.data.recipient)
-    action.destination_secondary = _addr(block.data.recipient_contract)
-    action.amount = block.data.amount
-    action.asset = _addr(block.data.asset)
-    action.success = block.data.is_success
+    data = block.data  # dict (declarative build) or EvaaSupplyData (legacy)
+    action.source = _addr(_dget(data, 'sender'))
+    action.source_secondary = _addr(_dget(data, 'sender_jetton_wallet'))
+    action.destination = _addr(_dget(data, 'recipient'))
+    action.destination_secondary = _addr(_dget(data, 'recipient_contract'))
+    action.amount = _dget(data, 'amount')
+    action.asset = _addr(_dget(data, 'asset'))
+    action.success = _dget(data, 'is_success')
     if block.failed:
         action.success = False
+    asset_id = _dget(data, 'asset_id')
     action.evaa_supply_data = {
-        "is_ton": block.data.is_ton,
-        "asset_id": hex(block.data.asset_id) if block.data.asset_id is not None else None,
-        "master": _addr(block.data.master),
-        "recipient_jetton_wallet": _addr(block.data.recipient_jetton_wallet) if block.data.recipient_jetton_wallet else None,
-        "master_jetton_wallet": _addr(block.data.master_jetton_wallet) if block.data.master_jetton_wallet else None
+        "is_ton": _dget(data, 'is_ton'),
+        "asset_id": hex(asset_id) if asset_id is not None else None,
+        "master": _addr(_dget(data, 'master')),
+        "recipient_jetton_wallet": _addr(_dget(data, 'recipient_jetton_wallet')) if _dget(data, 'recipient_jetton_wallet') else None,
+        "master_jetton_wallet": _addr(_dget(data, 'master_jetton_wallet')) if _dget(data, 'master_jetton_wallet') else None
     }
 
 def _fill_evaa_withdraw_action(block: EvaaWithdrawBlock, action: Action):
-    action.source = _addr(block.data.owner)
-    action.destination = _addr(block.data.recipient)
-    action.destination_secondary = _addr(block.data.owner_contract)
-    action.amount = block.data.amount
-    action.asset = _addr(block.data.asset)
-    action.success = block.data.is_success
+    data = block.data  # dict (declarative build) or EvaaWithdrawData (legacy)
+    action.source = _addr(_dget(data, 'owner'))
+    action.destination = _addr(_dget(data, 'recipient'))
+    action.destination_secondary = _addr(_dget(data, 'owner_contract'))
+    action.amount = _dget(data, 'amount')
+    action.asset = _addr(_dget(data, 'asset'))
+    action.success = _dget(data, 'is_success')
     if block.failed:
         action.success = False
+    asset_id = _dget(data, 'asset_id')
     action.evaa_withdraw_data = {
-        "is_ton": block.data.is_ton,
-        "recipient_jetton_wallet": _addr(block.data.recipient_jetton_wallet) if block.data.recipient_jetton_wallet else None,
-        "master_jetton_wallet": _addr(block.data.master_jetton_wallet) if block.data.master_jetton_wallet else None,
-        "fail_reason": block.data.fail_reason,
-        "master": _addr(block.data.master),
-        "asset_id": hex(block.data.asset_id) if block.data.asset_id is not None else None,
+        "is_ton": _dget(data, 'is_ton'),
+        "recipient_jetton_wallet": _addr(_dget(data, 'recipient_jetton_wallet')) if _dget(data, 'recipient_jetton_wallet') else None,
+        "master_jetton_wallet": _addr(_dget(data, 'master_jetton_wallet')) if _dget(data, 'master_jetton_wallet') else None,
+        "fail_reason": _dget(data, 'fail_reason'),
+        "master": _addr(_dget(data, 'master')),
+        "asset_id": hex(asset_id) if asset_id is not None else None,
     }
 
 
 def _fill_evaa_liquidate_action(block: EvaaLiquidateBlock, action: Action):
-    action.source = str(block.data.liquidator)
-    action.destination = str(block.data.borrower)
-    action.destination_secondary = str(block.data.borrower_contract) if block.data.borrower_contract else None
-    action.amount = block.data.collateral_amount
-    action.success = block.data.is_success
+    data = block.data  # dict (declarative build) or EvaaLiquidateData (legacy)
+    action.source = _addr(_dget(data, 'liquidator'))
+    action.destination = _addr(_dget(data, 'borrower'))
+    action.destination_secondary = _addr(_dget(data, 'borrower_contract'))
+    # collateral_asset_id is a 256-bit int, not a TON address; it's already
+    # stored as hex in evaa_liquidate_data.asset_id
+    action.amount = _dget(data, 'collateral_amount')
+    action.success = _dget(data, 'is_success')
+    collateral_asset_id = _dget(data, 'collateral_asset_id')
     action.evaa_liquidate_data = {
-        'asset_id': hex(block.data.collateral_asset_id) if block.data.collateral_asset_id is not None else None,
-        "fail_reason": block.data.fail_reason,
-        "debt_amount": block.data.debt_amount
+        'asset_id': hex(collateral_asset_id) if collateral_asset_id is not None else None,
+        "fail_reason": _dget(data, 'fail_reason'),
+        "debt_amount": _dget(data, 'debt_amount')
     }
+
+
 def _fill_jvault_stake(block: JVaultStakeBlock, action: Action):
-    action.source = _addr(block.data.sender)
-    action.source_secondary = _addr(block.data.sender_wallet)
-    action.asset = _addr(block.data.asset)
-    action.destination = _addr(block.data.staking_pool)
-    action.amount = block.data.staked_amount
+    action.source = _addr(_dget(block.data, 'sender'))
+    action.source_secondary = _addr(_dget(block.data, 'sender_wallet'))
+    action.asset = _addr(_dget(block.data, 'asset'))
+    action.destination = _addr(_dget(block.data, 'staking_pool'))
+    action.amount = _dget(block.data, 'staked_amount')
     action.jvault_stake_data = {
-        "period": block.data.period,
-        "stake_wallet": _addr(block.data.stake_wallet),
+        "period": _dget(block.data, 'period'),
+        "stake_wallet": _addr(_dget(block.data, 'stake_wallet')),
     }
 
 
 def _fill_jvault_unstake(block: JVaultUnstakeBlock, action: Action):
-    action.source = _addr(block.data.sender)
-    action.source_secondary = _addr(block.data.stake_wallet)
-    action.destination = _addr(block.data.staking_pool)
-    action.amount = block.data.unstaked_amount
-    action.opcode = block.data.exit_code
-    action.asset = _addr(block.data.asset)
-    action.asset2 = _addr(block.data.jvault_asset)
+    action.source = _addr(_dget(block.data, 'sender'))
+    action.source_secondary = _addr(_dget(block.data, 'stake_wallet'))
+    action.destination = _addr(_dget(block.data, 'staking_pool'))
+    action.amount = _dget(block.data, 'unstaked_amount')
+    action.opcode = _dget(block.data, 'exit_code')
+    action.asset = _addr(_dget(block.data, 'asset'))
+    action.asset2 = _addr(_dget(block.data, 'jvault_asset'))
 
 
 def _fill_jvault_claim(block: JVaultClaimBlock, action: Action):
-    action.source = _addr(block.data.sender)
-    action.source_secondary = _addr(block.data.stake_wallet)
-    action.destination = _addr(block.data.staking_pool)
+    action.source = _addr(_dget(block.data, 'sender'))
+    action.source_secondary = _addr(_dget(block.data, 'stake_wallet'))
+    action.destination = _addr(_dget(block.data, 'staking_pool'))
     action.jvault_claim_data = {
-        "claimed_jettons": list(map(_addr, block.data.claimed_jettons)),
-        "claimed_amounts": block.data.claimed_amounts,
+        "claimed_jettons": list(map(_addr, _dget(block.data, 'claimed_jettons'))),
+        "claimed_amounts": _dget(block.data, 'claimed_amounts'),
     }
 
 
 def _fill_jvault_unstake_request(block: JVaultUnstakeRequestBlock, action: Action):
-    action.source = _addr(block.data.sender)
-    action.source_secondary = _addr(block.data.stake_wallet)
-    action.destination = _addr(block.data.staking_pool)
-    action.amount = block.data.requested_amount
-    action.asset = _addr(block.data.asset)
-    action.asset2 = _addr(block.data.jvault_asset)
-    action.opcode = block.data.exit_code
+    action.source = _addr(_dget(block.data, 'sender'))
+    action.source_secondary = _addr(_dget(block.data, 'stake_wallet'))
+    action.destination = _addr(_dget(block.data, 'staking_pool'))
+    action.amount = _dget(block.data, 'requested_amount')
+    action.asset = _addr(_dget(block.data, 'asset'))
+    action.asset2 = _addr(_dget(block.data, 'jvault_asset'))
+    action.opcode = _dget(block.data, 'exit_code')
 
 
 def _fill_multisig_create_order(block: MultisigCreateOrderBlock, action: Action):
-    action.source = _addr(block.data.created_by)
-    action.destination = _addr(block.data.multisig)
-    action.destination_secondary = _addr(block.data.order_contract_address)
+    action.source = _addr(_dget(block.data, 'created_by'))
+    action.destination = _addr(_dget(block.data, 'multisig'))
+    action.destination_secondary = _addr(_dget(block.data, 'order_contract_address'))
     action.multisig_create_order_data = {
-        "query_id": block.data.query_id,
-        "order_seqno": block.data.order_seqno,
-        "is_created_by_signer": block.data.is_created_by_signer,
-        "is_signed_by_creator": block.data.creator_approved,
-        "creator_index": block.data.creator_index,
-        "expiration_date": block.data.expiration_date,
-        "order_boc": block.data.order_boc_str,
+        "query_id": _dget(block.data, 'query_id'),
+        "order_seqno": _dget(block.data, 'order_seqno'),
+        "is_created_by_signer": _dget(block.data, 'is_created_by_signer'),
+        "is_signed_by_creator": _dget(block.data, 'creator_approved'),
+        "creator_index": _dget(block.data, 'creator_index'),
+        "expiration_date": _dget(block.data, 'expiration_date'),
+        "order_boc": _dget(block.data, 'order_boc_str'),
     }
-    action.accounts.extend(block.data.signers)
+    action.accounts.extend(_dget(block.data, 'signers'))
 
 
 def _fill_multisig_approve(block: MultisigApproveBlock, action: Action):
-    action.source = _addr(block.data.signer)
-    action.destination = _addr(block.data.order)
-    action.success = block.data.success
+    action.source = _addr(_dget(block.data, 'signer'))
+    action.destination = _addr(_dget(block.data, 'order'))
+    action.success = _dget(block.data, 'success')
     action.multisig_approve_data = {
-        "signer_index": block.data.signer_index,
-        "exit_code": block.data.exit_code,
+        "signer_index": _dget(block.data, 'signer_index'),
+        "exit_code": _dget(block.data, 'exit_code'),
     }
-    action.accounts.extend(block.data.signers)
+    action.accounts.extend(_dget(block.data, 'signers'))
 
 
 def _fill_multisig_execute(block: MultisigExecuteBlock, action: Action):
-    action.source = _addr(block.data.order_contract_address)
-    action.destination = _addr(block.data.multisig)
-    action.success = block.data.success
+    action.source = _addr(_dget(block.data, 'order_contract_address'))
+    action.destination = _addr(_dget(block.data, 'multisig'))
+    action.success = _dget(block.data, 'success')
     action.multisig_execute_data = {
-        "query_id": block.data.query_id,
-        "order_seqno": block.data.order_seqno,
-        "expiration_date": block.data.expiration_date,
-        "approvals_num": block.data.approvals_num,
-        "signers_hash": block.data.signers_hash_str,
-        "order_boc": block.data.order_boc_str,
+        "query_id": _dget(block.data, 'query_id'),
+        "order_seqno": _dget(block.data, 'order_seqno'),
+        "expiration_date": _dget(block.data, 'expiration_date'),
+        "approvals_num": _dget(block.data, 'approvals_num'),
+        "signers_hash": _dget(block.data, 'signers_hash_str'),
+        "order_boc": _dget(block.data, 'order_boc_str'),
     }
-    action.accounts.extend(block.data.signers)
+    action.accounts.extend(_dget(block.data, 'signers'))
 
 
 def _fill_vesting_send_message(block: VestingSendMessageBlock, action: Action):
-    action.source = _addr(block.data.sender)
-    action.destination = _addr(block.data.vesting)
+    # dual-access via _dget: legacy VestingSendMessageData dataclass OR the
+    # declarative vesting.mch build's dict (both carry identical field names).
+    action.source = _addr(_dget(block.data, 'sender'))
+    action.destination = _addr(_dget(block.data, 'vesting'))
     action.destination_secondary = _addr(
-        block.data.message_destination
+        _dget(block.data, 'message_destination')
     )  # where the msg was sent to
-    action.amount = block.data.message_value.value  # the value of the msg
-    action.success = block.data.success  # whether the message was actually sent
+    action.amount = _dget(block.data, 'message_value').value  # the value of the msg
+    action.success = _dget(block.data, 'success')  # whether the message was actually sent
     action.vesting_send_message_data = {
-        "query_id": block.data.query_id,
-        "message_boc": block.data.message_boc_str,
+        "query_id": _dget(block.data, 'query_id'),
+        "message_boc": _dget(block.data, 'message_boc_str'),
     }
 
 
 def _fill_vesting_add_whitelist(block: VestingAddWhiteListBlock, action: Action):
-    action.source = _addr(block.data.adder)
-    action.destination = _addr(block.data.vesting)
+    # dual-access via _dget: legacy VestingAddWhiteListData dataclass OR the
+    # declarative vesting.mch build's dict (identical field names).
+    d = block.data
+    action.source = _addr(_dget(d, 'adder'))
+    action.destination = _addr(_dget(d, 'vesting'))
     action.vesting_add_whitelist_data = {
-        "query_id": block.data.query_id,
-        "accounts_added": list(map(_addr, block.data.accounts_added)),
+        "query_id": _dget(d, 'query_id'),
+        "accounts_added": list(map(_addr, _dget(d, 'accounts_added'))),
     }
 
 def _fill_tonco_deploy_pool(block: ToncoDeployPoolBlock, action: Action):
+    # dual-access via _dget: legacy ToncoDeployPoolData dataclass OR the
+    # declarative tonco_liquidity.mch build's dict (identical field names).
     d = block.data
-    action.success = d.success
-    action.source = _addr(d.deployer)
-    action.destination = _addr(d.router)
-    action.destination_secondary = _addr(d.pool)
+    action.success = _dget(d, 'success')
+    action.source = _addr(_dget(d, 'deployer'))
+    action.destination = _addr(_dget(d, 'router'))
+    action.destination_secondary = _addr(_dget(d, 'pool'))
     action.tonco_deploy_pool_data = {
-        "jetton0_router_wallet": _addr(d.jetton0_router_wallet),
-        "jetton1_router_wallet": _addr(d.jetton1_router_wallet),
-        "jetton0_minter": _addr(d.jetton0_minter),
-        "jetton1_minter": _addr(d.jetton1_minter),
-        "tick_spacing": d.tick_spacing,
-        "initial_price_x96": d.initial_price_x96,
-        "protocol_fee": d.protocol_fee,
-        "lp_fee_base": d.lp_fee_base,
-        "lp_fee_current": d.lp_fee_current,
-        "pool_active": d.pool_active,
+        "jetton0_router_wallet": _addr(_dget(d, 'jetton0_router_wallet')),
+        "jetton1_router_wallet": _addr(_dget(d, 'jetton1_router_wallet')),
+        "jetton0_minter": _addr(_dget(d, 'jetton0_minter')),
+        "jetton1_minter": _addr(_dget(d, 'jetton1_minter')),
+        "tick_spacing": _dget(d, 'tick_spacing'),
+        "initial_price_x96": _dget(d, 'initial_price_x96'),
+        "protocol_fee": _dget(d, 'protocol_fee'),
+        "lp_fee_base": _dget(d, 'lp_fee_base'),
+        "lp_fee_current": _dget(d, 'lp_fee_current'),
+        "pool_active": _dget(d, 'pool_active'),
     }
 
 def _fill_tgbtc_mint_action(block: TgBTCMintBlock, action: Action):
+    # dual-access via _dget: legacy TgBTCMintData dataclass OR the declarative
+    # tgbtc.mch build's dict (identical field names; amount stays a raw int).
     action.type = 'tgbtc_mint'
-    if block.data.crippled:
+    if _dget(block.data, 'crippled'):
         action.type += '_fallback'
-    action.source = _addr(block.data.sender)
-    action.destination = _addr(block.data.recipient)
-    action.amount = block.data.amount
-    action.asset = _addr(block.data.asset)
-    action.success = block.data.success
-    action.extra = {"btc_txid": block.data.bitcoin_txid}
-    action.source_secondary = _addr(block.data.teleport_contract)
-    action.destination_secondary = _addr(block.data.recipient_wallet)
+    action.source = _addr(_dget(block.data, 'sender'))
+    action.destination = _addr(_dget(block.data, 'recipient'))
+    action.amount = _dget(block.data, 'amount')
+    action.asset = _addr(_dget(block.data, 'asset'))
+    action.success = _dget(block.data, 'success')
+    # bitcoin txid is not a TON address — pgton tonaddr columns reject it
+    action.extra = {"btc_txid": _dget(block.data, 'bitcoin_txid')}
+    action.source_secondary = _addr(_dget(block.data, 'teleport_contract'))
+    action.destination_secondary = _addr(_dget(block.data, 'recipient_wallet'))
 
 
 def _fill_tgbtc_burn_action(block: TgBTCBurnBlock, action: Action):
+    # dual-access via _dget: legacy TgBTCBurnData dataclass OR the declarative
+    # tgbtc.mch build's dict (identical field names).
+    d = block.data
     action.type = 'tgbtc_burn'
-    if block.data.crippled:
+    if _dget(d, 'crippled'):
         action.type += '_fallback'
-    action.source = _addr(block.data.sender)
-    action.source_secondary = _addr(block.data.jetton_wallet)
-    action.destination = _addr(block.data.pegout_address)
-    action.amount = block.data.amount.value
-    action.asset = _addr(block.data.asset)
+    action.source = _addr(_dget(d, 'sender'))
+    action.source_secondary = _addr(_dget(d, 'jetton_wallet'))
+    action.destination = _addr(_dget(d, 'pegout_address'))
+    action.amount = _value(_dget(d, 'amount'))
+    action.asset = _addr(_dget(d, 'asset'))
 
 
 def _fill_tgbtc_new_key_action(block: TgBTCNewKeyBlock, action: Action):
+    d = block.data
     action.type = 'tgbtc_new_key'
-    if block.data.crippled:
+    if _dget(d, 'crippled'):
         action.type += '_fallback'
-    action.source = _addr(block.data.teleport_contract)
-    action.extra = {"pubkey": block.data.pubkey}
-    action.destination = _addr(block.data.coordinator_contract)
-    action.destination_secondary = _addr(block.data.pegout_address)
-    action.amount = block.data.amount
-    action.value = block.data.timestamp
+    action.source = _addr(_dget(d, 'teleport_contract'))
+    # raw pubkey hex is not a TON address — pgton tonaddr columns reject it
+    action.extra = {"pubkey": _dget(d, 'pubkey')}
+    action.destination = _addr(_dget(d, 'coordinator_contract'))
+    action.destination_secondary = _addr(_dget(d, 'pegout_address'))
+    # amount is a RAW int on this action type, not an Amount
+    action.amount = _dget(d, 'amount')
+    action.value = _dget(d, 'timestamp')
 
 def _fill_tgbtc_dkg_log_action(block: TgBTCDkgLogBlock, action: Action):
+    d = block.data
     action.type = 'tgbtc_dkg_log_fallback'
-    action.source = _addr(block.data.coordinator_contract)
-    action.extra = {"pubkey": block.data.internal_pubkey}
-    action.value = block.data.timestamp
+    action.source = _addr(_dget(d, 'coordinator_contract'))
+    # raw pubkey hex is not a TON address — pgton tonaddr columns reject it
+    action.extra = {"pubkey": _dget(d, 'internal_pubkey')}
+    action.value = _dget(d, 'timestamp')
 
 
 def _fill_tonco_deposit_liquidity_action(block: ToncoDepositLiquidityBlock, action: Action):
+    # `data` is the legacy ToncoDepositLiquidityData dataclass OR the declarative
+    # mch build's dict (tonco_liquidity.mch) — read both via _dget.
+    d = block.data
     action.type = 'dex_deposit_liquidity'
-    action.source = _addr(block.data.sender)
-    action.source_secondary = _addr(block.data.sender_wallet_1 or block.data.sender_wallet_2)
-    action.destination = _addr(block.data.pool)
-    action.destination_secondary = _addr(block.data.account_contract)
+    action.source = _addr(_dget(d, 'sender'))
+    action.source_secondary = _addr(_dget(d, 'sender_wallet_1') or _dget(d, 'sender_wallet_2'))
+    action.destination = _addr(_dget(d, 'pool'))
+    action.destination_secondary = _addr(_dget(d, 'account_contract'))
     vault_excesses = []
-    if block.data.excesses:
-        for excess in block.data.excesses:
+    if _dget(d, 'excesses'):
+        for excess in _dget(d, 'excesses'):
             vault_excesses.append({
                 'asset': _addr(excess[0]),
                 'amount': excess[1].value,
@@ -984,7 +1043,7 @@ def _fill_tonco_deposit_liquidity_action(block: ToncoDepositLiquidityBlock, acti
     actual_amount_1 = None
     actual_asset_2 = None
     actual_amount_2 = None
-    for (amt, asset) in [(block.data.amount_1, block.data.asset_1), (block.data.amount_2, block.data.asset_2)]:
+    for (amt, asset) in [(_dget(d, 'amount_1'), _dget(d, 'asset_1')), (_dget(d, 'amount_2'), _dget(d, 'asset_2'))]:
         if amt is None:
             continue
         if actual_amount_1 is None:
@@ -999,51 +1058,53 @@ def _fill_tonco_deposit_liquidity_action(block: ToncoDepositLiquidityBlock, acti
         "amount2": actual_amount_2.value if actual_amount_2 else None,
         "asset1": _addr(actual_asset_1),
         "asset2": _addr(actual_asset_2),
-        "user_jetton_wallet_1": _addr(block.data.sender_wallet_1),
-        "user_jetton_wallet_2": _addr(block.data.sender_wallet_2),
-        "lp_tokens_minted": block.data.lp_tokens_minted.value if block.data.lp_tokens_minted else None,
-        "tick_lower": block.data.tick_lower,
-        "tick_upper": block.data.tick_upper,
-        "nft_index": block.data.nft_index,
-        "nft_address": _addr(block.data.nft_address),
-        "target_amount_1": block.data.position_amount_1.value,
-        "target_amount_2": block.data.position_amount_2.value,
-        "target_asset_1": _addr(block.data.asset_1),
-        "target_asset_2": _addr(block.data.asset_2),
+        "user_jetton_wallet_1": _addr(_dget(d, 'sender_wallet_1')),
+        "user_jetton_wallet_2": _addr(_dget(d, 'sender_wallet_2')),
+        "lp_tokens_minted": _dget(d, 'lp_tokens_minted').value if _dget(d, 'lp_tokens_minted') else None,
+        "tick_lower": _dget(d, 'tick_lower'),
+        "tick_upper": _dget(d, 'tick_upper'),
+        "nft_index": _dget(d, 'nft_index'),
+        "nft_address": _addr(_dget(d, 'nft_address')),
+        "target_amount_1": _dget(d, 'position_amount_1').value,
+        "target_amount_2": _dget(d, 'position_amount_2').value,
+        "target_asset_1": _addr(_dget(d, 'asset_1')),
+        "target_asset_2": _addr(_dget(d, 'asset_2')),
         "vault_excesses": vault_excesses,
     }
 
 def _fill_coffee_create_vault(block: CoffeeCreateVaultBlock, action: Action):
-    action.source = _addr(block.data.sender)
-    action.destination = _addr(block.data.vault)
-    action.asset = _addr(block.data.asset)
-    action.value = block.data.amount.value
+    action.source = _addr(_dget(block.data, 'sender'))
+    action.destination = _addr(_dget(block.data, 'vault'))
+    action.asset = _addr(_dget(block.data, 'asset'))
+    action.value = _value(_dget(block.data, 'amount'))
 
 def _fill_coffee_create_pool_creator(block: CoffeeCreatePoolCreatorBlock, action: Action):
-    action.source = _addr(block.data.sender)
-    action.source_secondary = _addr(block.data.sender_jetton_wallet)
-    action.destination = _addr(block.data.deposit_recipient)
-    action.destination_secondary = _addr(block.data.pool_creator_contract)
-    action.asset = _addr(block.data.provided_asset)
-    action.asset2 = _addr(block.data.pool_params.first)
-    action.asset2_secondary = _addr(block.data.pool_params.second)
-    action.amount = block.data.amount.value
+    d = block.data
+    action.source = _addr(_dget(d, 'sender'))
+    action.source_secondary = _addr(_dget(d, 'sender_jetton_wallet'))
+    action.destination = _addr(_dget(d, 'deposit_recipient'))
+    action.destination_secondary = _addr(_dget(d, 'pool_creator_contract'))
+    action.asset = _addr(_dget(d, 'provided_asset'))
+    action.asset2 = _addr(_dget(d, 'pool_first'))
+    action.asset2_secondary = _addr(_dget(d, 'pool_second'))
+    action.amount = _dget(d, 'amount').value
 
 def _fill_coffee_create_pool(block: CoffeeCreatePoolBlock, action: Action):
-    action.source = _addr(block.data.source)
-    action.source_secondary = _addr(block.data.source_jetton_wallet)
-    action.amount = block.data.amount.value
-    action.asset = _addr(block.data.asset_1)
-    action.asset2 = _addr(block.data.asset_2)
-    action.destination = _addr(block.data.pool)
-    action.destination_secondary = _addr(block.data.pool_creator_contract)
+    d = block.data
+    action.source = _addr(_dget(d, 'source'))
+    action.source_secondary = _addr(_dget(d, 'source_jetton_wallet'))
+    action.amount = _dget(d, 'amount').value
+    action.asset = _addr(_dget(d, 'asset_1'))
+    action.asset2 = _addr(_dget(d, 'asset_2'))
+    action.destination = _addr(_dget(d, 'pool'))
+    action.destination_secondary = _addr(_dget(d, 'pool_creator_contract'))
     action.coffee_create_pool_data = {
-        "amount_1": block.data.amount_1.value if block.data.amount_1 else None,
-        "amount_2": block.data.amount_2.value if block.data.amount_2 else None,
-        "initiator_1": _addr(block.data.initiator_1),
-        "initiator_2": _addr(block.data.initiator_2),
-        "provided_asset": _addr(block.data.provided_asset),
-        "lp_tokens_minted": block.data.lp_tokens_minted.value if block.data.lp_tokens_minted else None,
+        "amount_1": _value(_dget(d, 'amount_1')),
+        "amount_2": _value(_dget(d, 'amount_2')),
+        "initiator_1": _addr(_dget(d, 'initiator_1')),
+        "initiator_2": _addr(_dget(d, 'initiator_2')),
+        "provided_asset": _addr(_dget(d, 'provided_asset')),
+        "lp_tokens_minted": _value(_dget(d, 'lp_tokens_minted')),
     }
 
 def _fill_coffee_mev_protect_hold_funds(block: Block, action: Action):
@@ -1052,316 +1113,282 @@ def _fill_coffee_mev_protect_hold_funds(block: Block, action: Action):
     action.destination = _addr(block.data['mev_contract'])
     action.destination_secondary = _addr(block.data['mev_contract_wallet'])
     action.asset = _addr(block.data['asset'])
-    action.amount = block.data['amount'].value
-
-def _fill_coffee_mev_protect_failed_swap(block: Block, action: Action):
-    action.destination = _addr(block.data['recipient'])
-    action.asset = _addr(block.data['asset'])
+    action.amount = _value(block.data['amount'])
 
 def _fill_coffee_staking_deposit(block: CoffeeStakingDepositBlock, action: Action):
-    action.source = _addr(block.data.source)
-    action.source_secondary = _addr(block.data.user_jetton_wallet)
-    action.destination = _addr(block.data.pool)
-    action.destination_secondary = _addr(block.data.pool_jetton_wallet)
-    action.asset = _addr(block.data.asset)
-    action.amount = block.data.value.value
+    d = block.data
+    action.source = _addr(_dget(d, 'source'))
+    action.source_secondary = _addr(_dget(d, 'user_jetton_wallet'))
+    action.destination = _addr(_dget(d, 'pool'))
+    action.destination_secondary = _addr(_dget(d, 'pool_jetton_wallet'))
+    action.asset = _addr(_dget(d, 'asset'))
+    action.amount = _value(_dget(d, 'value'))
     action.coffee_staking_deposit_data = {
-        "minted_item_address": _addr(block.data.minted_item_address),
-        "minted_item_index": block.data.minted_item_index,
+        "minted_item_address": _addr(_dget(d, 'minted_item_address')),
+        "minted_item_index": _dget(d, 'minted_item_index'),
     }
 
 def _fill_coffee_staking_withdraw(block: CoffeeStakingWithdrawBlock, action: Action):
-    action.source = _addr(block.data.source)
-    action.source_secondary = _addr(block.data.user_jetton_wallet)
-    action.destination = _addr(block.data.pool)
-    action.destination_secondary = _addr(block.data.pool_jetton_wallet)
-    action.asset = _addr(block.data.asset)
-    action.amount = block.data.amount.value
+    d = block.data
+    action.source = _addr(_dget(d, 'source'))
+    action.source_secondary = _addr(_dget(d, 'user_jetton_wallet'))
+    action.destination = _addr(_dget(d, 'pool'))
+    action.destination_secondary = _addr(_dget(d, 'pool_jetton_wallet'))
+    action.asset = _addr(_dget(d, 'asset'))
+    action.amount = _value(_dget(d, 'amount'))
     action.coffee_staking_withdraw_data = {
-        "nft_address": _addr(block.data.nft_address),
-        "nft_index": block.data.nft_index,
-        "points": block.data.points,
+        "nft_address": _addr(_dget(d, 'nft_address')),
+        "nft_index": _dget(d, 'nft_index'),
+        "points": _dget(d, 'points'),
     }
 
 def _fill_coffee_staking_claim_rewards(block: CoffeeStakingClaimRewardsBlock, action: Action):
     # don't store admin since it's always the same highload
     #  and we don't have a basic field for it
-    action.source = _addr(block.data.pool)
-    action.source_secondary = _addr(block.data.pool_jetton_wallet)
-    action.destination = _addr(block.data.recipient)
-    action.destination_secondary = _addr(block.data.recipient_jetton_wallet)
-    action.asset = _addr(block.data.asset)
-    action.amount = block.data.amount.value
+    d = block.data
+    action.source = _addr(_dget(d, 'pool'))
+    action.source_secondary = _addr(_dget(d, 'pool_jetton_wallet'))
+    action.destination = _addr(_dget(d, 'recipient'))
+    action.destination_secondary = _addr(_dget(d, 'recipient_jetton_wallet'))
+    action.asset = _addr(_dget(d, 'asset'))
+    action.amount = _value(_dget(d, 'amount'))
 
 
 def _fill_cocoon_worker_payout_action(block, action: Action):
-    # import here to avoid circular dependency
-    from indexer.events.blocks.cocoon import CocoonWorkerPayoutBlock
-
-    if not isinstance(block, CocoonWorkerPayoutBlock):
-        return
-
-    action.source = _addr(block.data.proxy_contract)
-    action.source_secondary = _addr(block.data.worker_contract)
-    action.destination = _addr(block.data.worker_owner)
-    action.amount = block.data.payout_amount.value
+    d = block.data
+    action.source = _addr(_dget(d, 'proxy_contract'))
+    action.source_secondary = _addr(_dget(d, 'worker_contract'))
+    action.destination = _addr(_dget(d, 'worker_owner'))
+    action.amount = _value(_dget(d, 'payout_amount'))
     action.cocoon_worker_payout_data = {
-        'payout_type': block.data.payout_type,
-        'query_id': block.data.query_id,
-        'new_tokens': block.data.new_tokens,
-        'worker_state': block.data.worker_state,
-        'worker_tokens': block.data.worker_tokens,
+        'payout_type': _dget(d, 'payout_type'),
+        'query_id': _dget(d, 'query_id'),
+        'new_tokens': _dget(d, 'new_tokens'),
+        'worker_state': _dget(d, 'worker_state'),
+        'worker_tokens': _dget(d, 'worker_tokens'),
     }
 
 
 def _fill_cocoon_proxy_payout_action(block, action: Action):
-    from indexer.events.blocks.cocoon import CocoonProxyPayoutBlock
-
-    if not isinstance(block, CocoonProxyPayoutBlock):
-        return
-
-    action.source = _addr(block.data.proxy_contract)
-    action.destination = _addr(block.data.proxy_owner)
-    action.destination_secondary = _addr(block.data.excesses_recipient)
+    d = block.data
+    action.source = _addr(_dget(d, 'proxy_contract'))
+    action.destination = _addr(_dget(d, 'proxy_owner'))
+    action.destination_secondary = _addr(_dget(d, 'excesses_recipient'))
     action.cocoon_proxy_payout_data = {
-        'query_id': block.data.query_id,
+        'query_id': _dget(d, 'query_id'),
     }
 
 
 def _fill_cocoon_proxy_charge_action(block, action: Action):
-    from indexer.events.blocks.cocoon import CocoonProxyChargeBlock
-
-    if not isinstance(block, CocoonProxyChargeBlock):
-        return
-
-    action.source = _addr(block.data.proxy_contract)
-    action.destination = _addr(block.data.client_contract)
+    d = block.data
+    action.source = _addr(_dget(d, 'proxy_contract'))
+    action.destination = _addr(_dget(d, 'client_contract'))
     action.amount = 0  # no actual transfer
     action.cocoon_proxy_charge_data = {
-        'query_id': block.data.query_id,
-        'new_tokens_used': block.data.new_tokens_used,
-        'expected_address': block.data.expected_address,
+        'query_id': _dget(d, 'query_id'),
+        'new_tokens_used': _dget(d, 'new_tokens_used'),
+        'expected_address': _dget(d, 'expected_address'),
     }
 
 
 def _fill_cocoon_client_top_up_action(block, action: Action):
-    from indexer.events.blocks.cocoon import CocoonClientTopUpBlock
-
-    if not isinstance(block, CocoonClientTopUpBlock):
-        return
-
-    action.source = _addr(block.data.sender)
-    action.destination = _addr(block.data.client_contract)
-    action.destination_secondary = _addr(block.data.proxy_contract)
-    action.amount = block.data.top_up_amount.value
+    d = block.data
+    action.source = _addr(_dget(d, 'sender'))
+    action.destination = _addr(_dget(d, 'client_contract'))
+    action.destination_secondary = _addr(_dget(d, 'proxy_contract'))
+    action.amount = _value(_dget(d, 'top_up_amount'))
     action.cocoon_client_top_up_data = {
-        'query_id': block.data.query_id,
+        'query_id': _dget(d, 'query_id'),
     }
 
 
 def _fill_cocoon_register_proxy_action(block, action: Action):
-    from indexer.events.blocks.cocoon import CocoonRegisterProxyBlock
-
-    if not isinstance(block, CocoonRegisterProxyBlock):
-        return
-
-    action.destination = _addr(block.data.root_contract)
+    d = block.data
+    action.destination = _addr(_dget(d, 'root_contract'))
     action.cocoon_register_proxy_data = {
-        'query_id': block.data.query_id,
+        'query_id': _dget(d, 'query_id'),
     }
 
 
 def _fill_cocoon_unregister_proxy_action(block, action: Action):
-    from indexer.events.blocks.cocoon import CocoonUnregisterProxyBlock
-
-    if not isinstance(block, CocoonUnregisterProxyBlock):
-        return
-
-    action.destination = _addr(block.data.root_contract)
+    d = block.data
+    action.destination = _addr(_dget(d, 'root_contract'))
     action.cocoon_unregister_proxy_data = {
-        'query_id': block.data.query_id,
-        'seqno': block.data.seqno,
+        'query_id': _dget(d, 'query_id'),
+        'seqno': _dget(d, 'seqno'),
     }
 
 
 def _fill_cocoon_client_register_action(block, action: Action):
-    from indexer.events.blocks.cocoon import CocoonClientRegisterBlock
-
-    if not isinstance(block, CocoonClientRegisterBlock):
-        return
-
-    action.source = _addr(block.data.owner)
-    action.destination = _addr(block.data.client_contract)
+    d = block.data
+    action.source = _addr(_dget(d, 'owner'))
+    action.destination = _addr(_dget(d, 'client_contract'))
     action.cocoon_client_register_data = {
-        'query_id': block.data.query_id,
-        'nonce': block.data.nonce,
+        'query_id': _dget(d, 'query_id'),
+        'nonce': _dget(d, 'nonce'),
     }
 
 
 def _fill_cocoon_client_change_secret_hash_action(block, action: Action):
-    from indexer.events.blocks.cocoon import CocoonClientChangeSecretHashBlock
-
-    if not isinstance(block, CocoonClientChangeSecretHashBlock):
-        return
-
-    action.source = _addr(block.data.owner)
-    action.destination = _addr(block.data.client_contract)
+    d = block.data
+    action.source = _addr(_dget(d, 'owner'))
+    action.destination = _addr(_dget(d, 'client_contract'))
     action.cocoon_client_change_secret_hash_data = {
-        'query_id': block.data.query_id,
-        'new_secret_hash': hex(int(block.data.new_secret_hash))[2:],
+        'query_id': _dget(d, 'query_id'),
+        'new_secret_hash': hex(int(_dget(d, 'new_secret_hash')))[2:],
     }
 
 
 def _fill_cocoon_client_request_refund_action(block, action: Action):
-    from indexer.events.blocks.cocoon import CocoonClientRequestRefundBlock
-
-    if not isinstance(block, CocoonClientRequestRefundBlock):
-        return
-
-    action.source = _addr(block.data.owner)
-    action.destination = _addr(block.data.client_contract)
+    d = block.data
+    action.source = _addr(_dget(d, 'owner'))
+    action.destination = _addr(_dget(d, 'client_contract'))
     action.cocoon_client_request_refund_data = {
-        'query_id': block.data.query_id,
-        'via_wallet': block.data.via_wallet,
+        'query_id': _dget(d, 'query_id'),
+        'via_wallet': _dget(d, 'via_wallet'),
     }
 
 
 def _fill_cocoon_grant_refund_action(block, action: Action):
-    from indexer.events.blocks.cocoon import CocoonGrantRefundBlock
-
-    if not isinstance(block, CocoonGrantRefundBlock):
-        return
-
-    action.source = _addr(block.data.proxy_contract)
-    action.source_secondary = _addr(block.data.client_contract)
-    action.destination = _addr(block.data.refund_recipient)
-    action.amount = block.data.payout_amount.value
+    d = block.data
+    action.source = _addr(_dget(d, 'proxy_contract'))
+    action.source_secondary = _addr(_dget(d, 'client_contract'))
+    action.destination = _addr(_dget(d, 'refund_recipient'))
+    action.amount = _value(_dget(d, 'payout_amount'))
     action.cocoon_grant_refund_data = {
-        'query_id': block.data.query_id,
-        'new_tokens_used': block.data.new_tokens_used,
-        'expected_address': block.data.expected_address,
+        'query_id': _dget(d, 'query_id'),
+        'new_tokens_used': _dget(d, 'new_tokens_used'),
+        'expected_address': _dget(d, 'expected_address'),
     }
 
 
 def _fill_cocoon_client_increase_stake_action(block, action: Action):
-    from indexer.events.blocks.cocoon import CocoonClientIncreaseStakeBlock
-
-    if not isinstance(block, CocoonClientIncreaseStakeBlock):
-        return
-
-    action.source = _addr(block.data.owner)
-    action.destination = _addr(block.data.client_contract)
-    action.amount = block.data.new_stake.value
+    d = block.data
+    action.source = _addr(_dget(d, 'owner'))
+    action.destination = _addr(_dget(d, 'client_contract'))
+    action.amount = _value(_dget(d, 'new_stake'))
     action.cocoon_client_increase_stake_data = {
-        'query_id': block.data.query_id,
-        'new_stake': block.data.new_stake.value,
+        'query_id': _dget(d, 'query_id'),
+        'new_stake': _value(_dget(d, 'new_stake')),
     }
 
 
 def _fill_cocoon_client_withdraw_action(block, action: Action):
-    from indexer.events.blocks.cocoon import CocoonClientWithdrawBlock
-
-    if not isinstance(block, CocoonClientWithdrawBlock):
-        return
-
-    action.source = _addr(block.data.owner)
-    action.destination = _addr(block.data.client_contract)
-    action.amount = block.data.withdraw_amount.value
+    d = block.data
+    action.source = _addr(_dget(d, 'owner'))
+    action.destination = _addr(_dget(d, 'client_contract'))
+    action.amount = _value(_dget(d, 'withdraw_amount'))
     action.cocoon_client_withdraw_data = {
-        'query_id': block.data.query_id,
-        'withdraw_amount': block.data.withdraw_amount.value,
+        'query_id': _dget(d, 'query_id'),
+        'withdraw_amount': _value(_dget(d, 'withdraw_amount')),
     }
+
+
+def _packet_dict(packet_data):
+    # Declarative build emits packet_data as a plain dict (record literal); the
+    # legacy build cores construct a LayerZeroPacketData dataclass (receive
+    # builds a dict already). Normalize to a dict.
+    if packet_data is None or isinstance(packet_data, dict):
+        return packet_data
+    return packet_data.__dict__
 
 
 def _fill_layerzero_send_action(data: LayerZeroSendData, action: Action):
     # use `data` instead of `block`, because thus `_fill_layerzero_send_action`
-    # may be easily called from `_fill_layerzero_send_tokens_action`
-    action.source = _addr(data.initiator)  # initiator goes to source
+    # may be easily called from `_fill_layerzero_send_tokens_action`.
+    # dual-access via _dget: legacy LayerZeroSendData dataclass OR the
+    # declarative build's dict.
+    action.source = _addr(_dget(data, 'initiator'))  # initiator goes to source
     action.type = 'layerzero_send'
     action.layerzero_send_data = {
-        "send_request_id": data.send_request_id,
-        "msglib_manager": data.msglib_manager,
-        "msglib": data.msglib,
-        "uln": _addr(data.uln),
-        "native_fee": data.native_fee,
-        "zro_fee": data.zro_fee,
-        "endpoint": _addr(data.endpoint),
-        "channel": _addr(data.channel)
+        "send_request_id": _dget(data, 'send_request_id'),
+        "msglib_manager": _dget(data, 'msglib_manager'),
+        "msglib": _dget(data, 'msglib'),
+        "uln": _addr(_dget(data, 'uln')),
+        "native_fee": _dget(data, 'native_fee'),
+        "zro_fee": _dget(data, 'zro_fee'),
+        "endpoint": _addr(_dget(data, 'endpoint')),
+        "channel": _addr(_dget(data, 'channel'))
     }
-    action.layerzero_packet_data = data.packet_data.__dict__ # fields names are identical and no _addr() needed
+    # fields names are identical and no _addr() needed
+    action.layerzero_packet_data = _packet_dict(_dget(data, 'packet_data'))
 
 def _fill_layerzero_send_tokens_action(block: LayerZeroSendTokensBlock, action: Action):
     # fill basic transfer data
-    action.source_secondary = _addr(block.data.sender_wallet)
-    action.destination = _addr(block.data.oapp)
-    action.destination_secondary = _addr(block.data.oapp_wallet)
-    action.amount = block.data.amount.value
-    action.asset = _addr(block.data.asset)
+    action.source_secondary = _addr(_dget(block.data, 'sender_wallet'))
+    action.destination = _addr(_dget(block.data, 'oapp'))
+    action.destination_secondary = _addr(_dget(block.data, 'oapp_wallet'))
+    action.amount = _value(_dget(block.data, 'amount'))
+    action.asset = _addr(_dget(block.data, 'asset'))
     # fill data related to basic send
-    _fill_layerzero_send_action(block.data.layerzero_send_data, action)
+    _fill_layerzero_send_action(_dget(block.data, 'layerzero_send_data'), action)
     # overwrite some fields
     action.type = 'layerzero_send_tokens'
-    action.source = _addr(block.data.sender)
+    action.source = _addr(_dget(block.data, 'sender'))
 
 def _fill_layerzero_receive_action(block: LayerZeroReceiveBlock, action: Action):
-    action.source = _addr(block.data.sender)
-    action.destination = _addr(block.data.oapp)
-    action.destination_secondary = _addr(block.data.channel)
-    action.layerzero_packet_data = block.data.packet_data.__dict__
+    action.source = _addr(_dget(block.data, 'sender'))
+    action.destination = _addr(_dget(block.data, 'oapp'))
+    action.destination_secondary = _addr(_dget(block.data, 'channel'))
+    action.layerzero_packet_data = _packet_dict(_dget(block.data, 'packet_data'))
 
 def _fill_layerzero_commit_packet_action(block: LayerZeroCommitPacketBlock, action: Action):
-    action.source = _addr(block.data.sender)
-    action.source_secondary = _addr(block.data.endpoint)
-    action.destination = _addr(block.data.uln)
-    action.destination_secondary = _addr(block.data.uln_connection)
-    action.asset = _addr(block.data.channel)
-    action.asset_secondary = _addr(block.data.msglib_connection)
-    action.layerzero_packet_data = block.data.packet_data.__dict__
+    action.source = _addr(_dget(block.data, 'sender'))
+    action.source_secondary = _addr(_dget(block.data, 'endpoint'))
+    action.destination = _addr(_dget(block.data, 'uln'))
+    action.destination_secondary = _addr(_dget(block.data, 'uln_connection'))
+    action.asset = _addr(_dget(block.data, 'channel'))
+    action.asset_secondary = _addr(_dget(block.data, 'msglib_connection'))
+    action.layerzero_packet_data = _packet_dict(_dget(block.data, 'packet_data'))
 
 def _fill_layerzero_dvn_verify_action(block: LayerZeroDvnVerifyBlock, action: Action):
-    action.source = _addr(block.data.sender)
+    action.source = _addr(_dget(block.data, 'sender'))
     action.layerzero_dvn_verify_data = {
-        "nonce": block.data.nonce,
-        "status": block.data.status,
-        "dvn": _addr(block.data.dvn),
-        "proxy": _addr(block.data.proxy),
-        "uln": _addr(block.data.uln),
-        "uln_connection": _addr(block.data.uln_connection),
+        "nonce": _dget(block.data, 'nonce'),
+        "status": _dget(block.data, 'status'),
+        "dvn": _addr(_dget(block.data, 'dvn')),
+        "proxy": _addr(_dget(block.data, 'proxy')),
+        "uln": _addr(_dget(block.data, 'uln')),
+        "uln_connection": _addr(_dget(block.data, 'uln_connection')),
     }
 
 def _fill_dns_release(block: DnsReleaseBlock, action: Action):
-    action.source = _addr(block.data.source)
-    action.destination = _addr(block.data.nft_address)
-    action.asset = _addr(block.data.nft_collection)
+    data = block.data
+    action.source = _addr(_dget(data, 'source'))
+    action.destination = _addr(_dget(data, 'nft_address'))
+    action.asset = _addr(_dget(data, 'nft_collection'))
     action.nft_transfer_data = {
-        'query_id': block.data.query_id,
-        'nft_item_index': block.data.nft_index,
+        'query_id': _dget(data, 'query_id'),
+        'nft_item_index': _dget(data, 'nft_index'),
     }
-    action.value = _value(block.data.value)
+    action.value = _value(_dget(data, 'value'))
 
 def _fill_ethena_withdrawal_request(block: EthenaWithdrawalRequestBlock, action: Action):
+    # dual-access via _dget: legacy EthenaWithdrawalRequestData dataclass OR the
+    # declarative ethena.mch build's dict (identical field names).
+    d = block.data
     action.type = 'stake_withdrawal_request'
-    action.source = _addr(block.data.source)
-    action.source_secondary = _addr(block.data.source_wallet)
-    action.destination = _addr(block.data.pool)
-    action.asset = _addr(block.data.asset)
-    action.amount = block.data.amount.value
+    action.source = _addr(_dget(d, 'source'))
+    action.source_secondary = _addr(_dget(d, 'source_wallet'))
+    action.destination = _addr(_dget(d, 'pool'))
+    action.asset = _addr(_dget(d, 'asset'))
+    action.amount = _value(_dget(d, 'amount'))
     action.staking_data = {
         "provider": "ethena",
-        "tokens_minted": _value(block.data.ts_usde_amount)
+        "tokens_minted": _value(_dget(d, 'ts_usde_amount'))
     }
 
 def _fill_ethena_deposit_action(block: EthenaDepositBlock, action: Action):
     action.type = 'stake_deposit'
-    action.source = _addr(block.data.source)
-    action.source_secondary = _addr(block.data.user_jetton_wallet)
-    action.destination = _addr(block.data.pool)
-    action.amount = block.data.value.value
-    action.asset = _addr(block.data.asset)
-    action.asset2 = _addr(block.data.source_asset)
+    action.source = _addr(_dget(block.data, 'source'))
+    action.source_secondary = _addr(_dget(block.data, 'user_jetton_wallet'))
+    action.destination = _addr(_dget(block.data, 'pool'))
+    action.amount = _value(_dget(block.data, 'value'))
+    action.asset = _addr(_dget(block.data, 'asset'))
+    action.asset2 = _addr(_dget(block.data, 'source_asset'))
     action.staking_data = {
         'provider': 'ethena',
-        'tokens_minted': _value(block.data.tokens_minted)
+        'tokens_minted': _value(_dget(block.data, 'tokens_minted'))
     }
 
 

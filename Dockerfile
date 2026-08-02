@@ -29,11 +29,13 @@ RUN apt-get update \
  && rm -rf /var/lib/apt/lists/*
 
 COPY ton-index-worker/ /app/
+# The mch engine generates its IR at build time from the indexer Python package.
+COPY indexer/indexer/ /indexer/indexer/
 
 WORKDIR /app/build
 ENV CC=clang-20
 ENV CXX=clang++-20
-RUN touch /app/suppression_mappings.txt && cmake -DPGTON=1 -DCMAKE_BUILD_TYPE=Release -DPORTABLE=1 .. && make -j$(nproc) ton-index-postgres ton-index-postgres-migrate ton-index-clickhouse ton-smc-scanner \
+RUN touch /app/suppression_mappings.txt && cmake -DPGTON=1 -DCMAKE_BUILD_TYPE=Release -DPORTABLE=1 -DMCH_INDEXER_ROOT=/indexer .. && make -j$(nproc) ton-index-postgres ton-index-postgres-migrate ton-index-clickhouse ton-smc-scanner \
      ton-integrity-checker ton-trace-emulator ton-trace-task-emulator ton-marker-cli ton-marker-core ton-marker pgton
 
 

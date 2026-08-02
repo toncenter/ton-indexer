@@ -178,6 +178,14 @@ void McBlockEmulator::start_up() {
         return;
     }
     auto mc_block_seqno = mc_data_state_.shard_blocks_[0].handle->id().seqno();
+    // The anchor keeps interior transaction cells readable after this actor stops.
+    // Build it before spawning parsers so callbacks see a complete anchor.
+    auto cell_anchor = std::make_shared<std::vector<td::Ref<vm::Cell>>>();
+    cell_anchor->reserve(mc_data_state_.shard_blocks_diff_.size());
+    for (auto& block_data : mc_data_state_.shard_blocks_diff_) {
+        cell_anchor->push_back(block_data.block_data->root_cell());
+    }
+    cell_anchor_ = std::move(cell_anchor);
     for (auto& block_data : mc_data_state_.shard_blocks_diff_) {
         LOG(INFO) << "Parsing block " << block_data.block_data->block_id().to_str();
         auto block_measurement = measurement_->clone();
@@ -449,6 +457,11 @@ void McBlockEmulator::trace_interfaces_error(td::Bits256 trace_root_tx_hash, td:
 }
 
 void McBlockEmulator::trace_emulated(Trace trace, MeasurementPtr measurement) {
+    trace.cell_anchor = cell_anchor_;
+    // The same states TraceInterfaceDetector just ran against, carried on so the
+    // classifier's tier-2 hook can read accounts the trace never touched.
+    trace.shard_states = shard_states_;
+    trace.config = mc_data_state_.config_;
     measurement->end_otel_child_span("detect_interfaces");
     traces_.push_back(EmulatedTracePatch{
         .trace = std::move(trace),
@@ -486,6 +499,10 @@ void McBlockEmulator::finish_block_if_done() {
 
 void ConfirmedBlockEmulator::start_up() {
     start_time_ = td::Timestamp::now();
+    // See McBlockEmulator::start_up: this block's traces reference interior cells
+    // of its boc, and only its root cell keeps that boc alive.
+    cell_anchor_ = std::make_shared<std::vector<td::Ref<vm::Cell>>>(
+        std::vector<td::Ref<vm::Cell>>{block_data_state_.block_data->root_cell()});
     auto measurement = std::make_shared<Measurement>();
     measurement->set_finality(finality_ == FinalityState::Confirmed ? "confirmed" : "finalized");
     measurement->set_operation("read_finalized");
@@ -750,6 +767,14 @@ void ConfirmedBlockEmulator::trace_interfaces_error(td::Bits256 trace_root_tx_ha
 }
 
 void ConfirmedBlockEmulator::trace_emulated(Trace trace, MeasurementPtr measurement) {
+    trace.cell_anchor = cell_anchor_;
+    // Same states TraceInterfaceDetector ran against (children_emulated builds
+    // the identical vector out of the snapshots), carried on for tier 2.
+    trace.shard_states.reserve(shard_states_snapshot_.size());
+    for (const auto& snapshot : shard_states_snapshot_) {
+        trace.shard_states.push_back(snapshot.state);
+    }
+    trace.config = config_;
     measurement->end_otel_child_span("detect_interfaces");
     measurement->start_otel_child_span("insert_trace");
     auto root_hash = trace.root_tx_hash;

@@ -430,7 +430,7 @@ void MasterchainBlockEmulator::error(td::Status error) {
 }
 
 void MasterchainBlockEmulator::next_mc_emulated(std::vector<std::unique_ptr<TraceNode>> children) {
-    // now we need to attach these children to correct nodes in result_
+    // Attach child traces to their parent nodes in result_.
     std::unordered_map<td::Bits256, std::unique_ptr<TraceNode>> children_map;
     for (auto& node : children) {
         children_map[node->node_id] = std::move(node);

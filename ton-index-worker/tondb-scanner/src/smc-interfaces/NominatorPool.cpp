@@ -137,28 +137,19 @@ NominatorPoolContract::NominatorPoolContract(block::StdAddress address,
       promise_(std::move(promise)) {
 }
 
-void NominatorPoolContract::start_up() {
-  if (code_cell_.is_null() || data_cell_.is_null()) {
-    promise_.set_error(td::Status::Error("Code or data null"));
-    stop();
-    return;
+td::Result<NominatorPoolContract::Result> NominatorPoolContract::detect(
+    const block::StdAddress& address, const td::Ref<vm::Cell>& code_cell,
+    const td::Ref<vm::Cell>& data_cell) {
+  if (code_cell.is_null() || data_cell.is_null()) {
+    return td::Status::Error("Code or data null");
   }
-  if (code_cell_->get_hash().to_hex() != nominator_pool::CODE_HASH) {
-    promise_.set_error(td::Status::Error("Code hash mismatch"));
-    stop();
-    return;
+  if (code_cell->get_hash().to_hex() != nominator_pool::CODE_HASH) {
+    return td::Status::Error("Code hash mismatch");
   }
 
-  auto storage = nominator_pool::parse_storage(data_cell_);
-  if (storage.is_error()) {
-    promise_.set_error(storage.move_as_error());
-    stop();
-    return;
-  }
-
-  auto parsed = storage.move_as_ok();
-  promise_.set_value({
-      .address = address_,
+  TRY_RESULT(parsed, nominator_pool::parse_storage(data_cell));
+  return Result{
+      .address = address,
       .state = parsed.state,
       .nominators_count = parsed.nominators_count,
       .stake_amount_sent = parsed.stake_amount_sent,
@@ -169,6 +160,10 @@ void NominatorPoolContract::start_up() {
       .min_validator_stake = parsed.min_validator_stake,
       .min_nominator_stake = parsed.min_nominator_stake,
       .nominators = std::move(parsed.nominators),
-  });
+  };
+}
+
+void NominatorPoolContract::start_up() {
+  promise_.set_result(detect(address_, code_cell_, data_cell_));
   stop();
 }

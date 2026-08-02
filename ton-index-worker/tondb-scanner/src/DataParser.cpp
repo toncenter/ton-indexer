@@ -199,7 +199,7 @@ td::Result<td::Bits256> ext_in_msg_get_normalized_hash(td::Ref<vm::Cell> ext_in_
   return cb.finalize()->get_hash().bits();
 }
 
-td::Result<schema::Message> ParseQuery::parse_message(td::Ref<vm::Cell> msg_cell) {
+td::Result<schema::Message> ParseQuery::parse_message(td::Ref<vm::Cell> msg_cell, int global_version) {
   schema::Message msg;
   msg.hash = msg_cell->get_hash().bits();
 
@@ -259,11 +259,11 @@ td::Result<schema::Message> ParseQuery::parse_message(td::Ref<vm::Cell> msg_cell
       TRY_RESULT_ASSIGN(msg.source, convert::to_raw_address(msg_info.src));
       TRY_RESULT_ASSIGN(msg.destination, convert::to_raw_address(msg_info.dest));
       msg.fwd_fee = block::tlb::t_Grams.as_integer_skip(msg_info.fwd_fee.write());
-      if (mc_block_.config_->get_global_version() >= 12) {
+      if (global_version >= 12) {
         msg.ihr_fee = td::RefInt256{true, 0};
         msg.extra_flags = block::tlb::t_VarUInteger_16.as_integer_skip(msg_info.extra_flags.write());
       } else {
-        // Legacy: extra_flags was previously ihr_fee
+        // This global version stores extra_flags in the former ihr_fee slot.
         msg.ihr_fee = block::tlb::t_Grams.as_integer_skip(msg_info.extra_flags.write());
         msg.extra_flags = std::nullopt;
       }
@@ -593,10 +593,61 @@ td::Result<schema::TransactionDescr> ParseQuery::process_transaction_descr(vm::C
   }
 }
 
+td::Result<schema::Transaction> ParseQuery::parse_transaction(td::Ref<vm::Cell> tx_root, ton::WorkchainId workchain, int global_version) {
+  block::gen::Transaction::Record trans;
+  if (!tlb::unpack_cell(tx_root, trans)) {
+    return td::Status::Error("Failed to unpack Transaction");
+  }
+
+  schema::Transaction schema_tx;
+
+  schema_tx.raw = tx_root;
+  schema_tx.account = block::StdAddress(workchain, trans.account_addr);
+  schema_tx.hash = tx_root->get_hash().bits();
+  schema_tx.lt = trans.lt;
+  schema_tx.prev_trans_hash = trans.prev_trans_hash;
+  schema_tx.prev_trans_lt = trans.prev_trans_lt;
+  schema_tx.now = trans.now;
+
+  schema_tx.orig_status = static_cast<schema::AccountStatus>(trans.orig_status);
+  schema_tx.end_status = static_cast<schema::AccountStatus>(trans.end_status);
+
+  TRY_RESULT_ASSIGN(schema_tx.total_fees, parse_currency_collection(trans.total_fees));
+
+  if (trans.r1.in_msg->prefetch_long(1)) {
+    TRY_RESULT_ASSIGN(schema_tx.in_msg, parse_message(trans.r1.in_msg->prefetch_ref(), global_version));
+  }
+
+  if (trans.outmsg_cnt != 0) {
+    vm::Dictionary dict{trans.r1.out_msgs, 15};
+    for (int x = 0; x < trans.outmsg_cnt; x++) {
+      TRY_RESULT(out_msg, parse_message(dict.lookup_ref(td::BitArray<15>{x}), global_version));
+      schema_tx.out_msgs.push_back(std::move(out_msg));
+    }
+  }
+
+  block::gen::HASH_UPDATE::Record state_hash_update;
+  if (!tlb::type_unpack_cell(std::move(trans.state_update), block::gen::t_HASH_UPDATE_Account, state_hash_update)) {
+    return td::Status::Error("Failed to unpack state_update");
+  }
+
+  schema_tx.account_state_hash_before = state_hash_update.old_hash;
+  schema_tx.account_state_hash_after = state_hash_update.new_hash;
+
+  auto descr_cs = vm::load_cell_slice(trans.description);
+  TRY_RESULT_ASSIGN(schema_tx.description, process_transaction_descr(descr_cs));
+
+  return schema_tx;
+}
+
 td::Result<std::vector<schema::Transaction>> ParseQuery::parse_transactions(const ton::BlockIdExt& blk_id, const block::gen::Block::Record &block, 
                               const block::gen::BlockInfo::Record &info, const block::gen::BlockExtra::Record &extra,
                               std::map<td::Bits256, AccountStateShort> &account_states) {
   std::vector<schema::Transaction> res;
+  // parse_message's only piece of ParseQuery state; read once instead of per message.
+  // parse_impl assigns config_ from the masterchain block before reaching here.
+  CHECK(mc_block_.config_);
+  const int global_version = mc_block_.config_->get_global_version();
   try {
     vm::AugmentedDictionary acc_dict{vm::load_cell_slice_ref(extra.account_blocks), 256, block::tlb::aug_ShardAccountBlocks};
 
@@ -634,50 +685,9 @@ td::Result<std::vector<schema::Transaction>> ParseQuery::parse_transactions(cons
         if (tvalue.is_null()) {
           break;
         }
-        block::gen::Transaction::Record trans;
-        if (!tlb::unpack_cell(tvalue, trans)) {
-          return td::Status::Error("Failed to unpack Transaction");
-        }
-
-        schema::Transaction schema_tx;
-
-        schema_tx.raw = tvalue;
+        TRY_RESULT(schema_tx, parse_transaction(tvalue, blk_id.id.workchain, global_version));
         schema_tx.account = block::StdAddress(blk_id.id.workchain, cur_addr);
-        schema_tx.hash = tvalue->get_hash().bits();
-        schema_tx.lt = trans.lt;
-        schema_tx.prev_trans_hash = trans.prev_trans_hash;
-        schema_tx.prev_trans_lt = trans.prev_trans_lt;
-        schema_tx.now = trans.now;
         schema_tx.mc_seqno = mc_seqno_;
-
-        schema_tx.orig_status = static_cast<schema::AccountStatus>(trans.orig_status);
-        schema_tx.end_status = static_cast<schema::AccountStatus>(trans.end_status);
-
-        TRY_RESULT_ASSIGN(schema_tx.total_fees, parse_currency_collection(trans.total_fees));
-
-        if (trans.r1.in_msg->prefetch_long(1)) {
-          auto msg = trans.r1.in_msg->prefetch_ref();
-          TRY_RESULT_ASSIGN(schema_tx.in_msg, parse_message(trans.r1.in_msg->prefetch_ref()));
-        }
-
-        if (trans.outmsg_cnt != 0) {
-          vm::Dictionary dict{trans.r1.out_msgs, 15};
-          for (int x = 0; x < trans.outmsg_cnt; x++) {
-            TRY_RESULT(out_msg, parse_message(dict.lookup_ref(td::BitArray<15>{x})));
-            schema_tx.out_msgs.push_back(std::move(out_msg));
-          }
-        }
-
-        block::gen::HASH_UPDATE::Record state_hash_update;
-        if (!tlb::type_unpack_cell(std::move(trans.state_update), block::gen::t_HASH_UPDATE_Account, state_hash_update)) {
-          return td::Status::Error("Failed to unpack state_update");
-        }
-        
-        schema_tx.account_state_hash_before = state_hash_update.old_hash;
-        schema_tx.account_state_hash_after = state_hash_update.new_hash;
-
-        auto descr_cs = vm::load_cell_slice(trans.description);
-        TRY_RESULT_ASSIGN(schema_tx.description, process_transaction_descr(descr_cs));
 
         res.push_back(schema_tx);
         

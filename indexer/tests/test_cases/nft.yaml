@@ -147,3 +147,286 @@ cases:
               marketplace: getgems
               marketplace_address: 0:9A9CB80ADFBD1662F5108766D73355AC2C03304FDA1D25A479670E34EFCD72B3
               real_prev_owner: 0:C002333C4C4873FB77E57A00A6B8E4F4874FCF76E9C73A09EB837E6990440A34
+  teleitem start auction (ab-gap):
+    trace-id: 4AAiT_8jTvxhujXOywe0zZv1sylSlAwnZV9stEG3gnM=
+    expected-actions:
+    - type: call_contract
+      values:
+        tx_hashes:
+        - 4AAiT/8jTvxhujXOywe0zZv1sylSlAwnZV9stEG3gnM=
+        - uuTlL+0W/IuSa80xAB+iFBG6OYbrKty7urmOpXCr/4Q=
+        accounts:
+        - 0:043F524D1EC52C35C7A02C7C794D88FE30F71C2FF9EEA5B50EAABF30F548B999
+        - 0:903029BAB0C3AD67CA3BE6C16C71D4B21F500B0A946015427A33B63ECD94E4F8
+        success: true
+        source: 0:903029BAB0C3AD67CA3BE6C16C71D4B21F500B0A946015427A33B63ECD94E4F8
+        destination: 0:043F524D1EC52C35C7A02C7C794D88FE30F71C2FF9EEA5B50EAABF30F548B999
+        value: 516000
+        opcode: 1215991425
+        start_lt: 93507509000017
+        end_lt: 93507509000018
+    - type: teleitem_start_auction
+      values:
+        tx_hashes:
+        - 4AAiT/8jTvxhujXOywe0zZv1sylSlAwnZV9stEG3gnM=
+        - uuTlL+0W/IuSa80xAB+iFBG6OYbrKty7urmOpXCr/4Q=
+        accounts:
+        - 0:043F524D1EC52C35C7A02C7C794D88FE30F71C2FF9EEA5B50EAABF30F548B999
+        - 0:903029BAB0C3AD67CA3BE6C16C71D4B21F500B0A946015427A33B63ECD94E4F8
+        success: true
+        source: 0:903029BAB0C3AD67CA3BE6C16C71D4B21F500B0A946015427A33B63ECD94E4F8
+        destination: 0:043F524D1EC52C35C7A02C7C794D88FE30F71C2FF9EEA5B50EAABF30F548B999
+        asset: 0:0E41DC1DC3C9067ED24248580E12B3359818D83DEE0304FABCF80845EAFAFDB2
+        asset_secondary: 0:043F524D1EC52C35C7A02C7C794D88FE30F71C2FF9EEA5B50EAABF30F548B999
+        start_lt: 93507509000017
+        end_lt: 93507509000018
+        nft_listing_data:
+          nft_item_index: "91710855142908659416955823823288895698544695192795167705337072262071919658826"
+          mp_fee_factor: 0
+          mp_fee_base: 0
+          royalty_fee_base: 0
+          max_bid: 2199000000000
+          min_bid: 2106000000000
+          marketplace_fee_address: 0:D0237ACF80EF60527BF0CC6A4EE39B59621A6FEB907E5616153CEF16C924EFFB
+          marketplace: fragment
+          royalty_address: null
+          full_price: null
+          marketplace_fee: null
+          royalty_amount: null
+        nft_transfer_data:
+          marketplace_address: null
+  teleitem cancel auction (ab-gap):
+    trace-id: rV1gzQRFXipz6XEByCTq_3Q2LZpa4i61aLsvHf1CR1A=
+    expected-actions:
+    - type: call_contract
+      selector: '{{ value.start_lt == 93508108000002 }}'
+      values:
+        tx_hashes:
+        - h3d3X/T9Z08TV9GghZ6Blbq22GTXaoy1evuR1HBl5o8=
+        - rV1gzQRFXipz6XEByCTq/3Q2LZpa4i61aLsvHf1CR1A=
+        accounts:
+        - 0:6F59E2157E96B8F0A624C1DD4298F2243EA17366AAC6E5B8E6E469F50B83E0B4
+        - 0:783E76C88CA49A5854F0CA74507A45C2D3C6A4A80FA3418091720841326F6808
+        success: true
+        source: 0:6F59E2157E96B8F0A624C1DD4298F2243EA17366AAC6E5B8E6E469F50B83E0B4
+        destination: 0:783E76C88CA49A5854F0CA74507A45C2D3C6A4A80FA3418091720841326F6808
+        value: 100000000
+        opcode: 924203182
+        start_lt: 93508108000002
+        end_lt: 93508108000003
+    - type: call_contract
+      selector: '{{ value.start_lt == 93508108000004 }}'
+      values:
+        tx_hashes:
+        - WD00yAC9NsYVsUTzBnjZSp4mcczBC0tgGuw+YH41X7k=
+        - h3d3X/T9Z08TV9GghZ6Blbq22GTXaoy1evuR1HBl5o8=
+        accounts:
+        - 0:6F59E2157E96B8F0A624C1DD4298F2243EA17366AAC6E5B8E6E469F50B83E0B4
+        - 0:783E76C88CA49A5854F0CA74507A45C2D3C6A4A80FA3418091720841326F6808
+        success: true
+        source: 0:783E76C88CA49A5854F0CA74507A45C2D3C6A4A80FA3418091720841326F6808
+        destination: 0:6F59E2157E96B8F0A624C1DD4298F2243EA17366AAC6E5B8E6E469F50B83E0B4
+        value: 99403665
+        opcode: 2742684035
+        start_lt: 93508108000004
+        end_lt: 93508108000005
+    - type: teleitem_cancel_auction
+      values:
+        tx_hashes:
+        - WD00yAC9NsYVsUTzBnjZSp4mcczBC0tgGuw+YH41X7k=
+        - h3d3X/T9Z08TV9GghZ6Blbq22GTXaoy1evuR1HBl5o8=
+        - rV1gzQRFXipz6XEByCTq/3Q2LZpa4i61aLsvHf1CR1A=
+        accounts:
+        - 0:6F59E2157E96B8F0A624C1DD4298F2243EA17366AAC6E5B8E6E469F50B83E0B4
+        - 0:783E76C88CA49A5854F0CA74507A45C2D3C6A4A80FA3418091720841326F6808
+        success: true
+        source: 0:6F59E2157E96B8F0A624C1DD4298F2243EA17366AAC6E5B8E6E469F50B83E0B4
+        destination: 0:783E76C88CA49A5854F0CA74507A45C2D3C6A4A80FA3418091720841326F6808
+        asset: 0:80D78A35F955A14B679FAA887FF4CD5BFC0F43B4A4EEA2A7E6927F3701B273C2
+        asset_secondary: 0:783E76C88CA49A5854F0CA74507A45C2D3C6A4A80FA3418091720841326F6808
+        start_lt: 93508108000002
+        end_lt: 93508108000005
+        nft_transfer_data:
+          marketplace_address: null
+  nft transfer classified as call_contract (ab-gap):
+    trace-id: 5b-KXr82wUSLIHPSHkFaW791xTyN0Rmu5h0mFm_4IdQ=
+    expected-actions:
+    - type: nft_transfer
+      values:
+        tx_hashes:
+        - 1whoASFA2pvkagxs2SOntt4XwO8HNALixgIX6ZSZs/o=
+        - 5b+KXr82wUSLIHPSHkFaW791xTyN0Rmu5h0mFm/4IdQ=
+        - AGWc7WLT1NKuICutt9x4dhIWx73DMbl5iv2ebSX6yqA=
+        - oJNqSpS2sBjCUFq1PFiq3DPFL4F+WORY2cKuA9aCieU=
+        accounts:
+        - 0:042387986C394CA4A98D96E25CAF50BAF8936B464EDDCD817FFA5E655F8A6E02
+        - 0:259DAD04E640488B70276492D9697C09D39667D15D9C51A4532811073456FB76
+        - 0:408DA3B28B6C065A593E10391269BAAA9C5F8CAEBC0C69D9F0AABBAB2A99256B
+        - 0:C07EBAC37124E575E48E2185906FACE4F6FF7EE19B8A6F34991ECA96B4AEBDBC
+        success: true
+        destination: 0:C07EBAC37124E575E48E2185906FACE4F6FF7EE19B8A6F34991ECA96B4AEBDBC
+        asset: 0:80D78A35F955A14B679FAA887FF4CD5BFC0F43B4A4EEA2A7E6927F3701B273C2
+        asset_secondary: 0:259DAD04E640488B70276492D9697C09D39667D15D9C51A4532811073456FB76
+        start_lt: 93508041000001
+        end_lt: 93508041000005
+        nft_listing_data:
+          marketplace_fee_address: 0:042387986C394CA4A98D96E25CAF50BAF8936B464EDDCD817FFA5E655F8A6E02
+          royalty_address: 0:408DA3B28B6C065A593E10391269BAAA9C5F8CAEBC0C69D9F0AABBAB2A99256B
+        nft_transfer_data:
+          query_id: 93508041000001
+          is_purchase: true
+          price: 10000000000
+          nft_item_index: "80687116043475847273716908132340291189938499005198668280813625388822962444673"
+          forward_amount: null
+          custom_payload: null
+          forward_payload: te6cckEBAQEAEAAAGzgSfeFQJUC+QAamIID4KkLsIg==
+          response_destination: null
+          marketplace: fragment
+          marketplace_address: null
+          real_prev_owner: null
+          payout_amount: 8496523073
+          payout_comment_encrypted: null
+          payout_comment_encoded: null
+          payout_comment: null
+          royalty_amount: 499933333
+
+  # --- GetGems sale/auction family (specs/nft_sale.mch port, 2026-07-30).
+  # All four traces were captured from the live A/B windows because the family
+  # had ZERO corpus coverage before this wave. Expectations are the LEGACY
+  # Python classifier's own output (run_test_case drives process_trace), so they
+  # pin Python truth and the mch engine is held to it by the twin gate.
+
+  nft cancel sale (ab-gap):
+    trace-id: EzvOGPJeJvK3MNp8HDFBvLlPmO799Xr2sw3fSFFYJWw=
+    expected-actions:
+      - type: nft_cancel_sale
+        values:
+          tx_hashes:
+            - EzvOGPJeJvK3MNp8HDFBvLlPmO799Xr2sw3fSFFYJWw=
+            - lrIBpXHxWPBzU7+AvsaHJJQxpHPPMkHAz2lRH/o55ps=
+          accounts:
+            - 0:B08F417B81F8A424A591E56691C91517B070514521FB037C9B77E33F30AB16E6
+            - 0:B2E99A9F8CE6BC3F864A0CAD0DD1F52B698AD54E625241400012E015EA9F25C4
+            - 0:E1EBAF706210F2A26C347CBBF72E039FF6ADB7217CEC75D1DFE24D79633AC8B7
+          success: true
+          # owner -> sale contract; the NFT rides in the asset pair.
+          source: 0:E1EBAF706210F2A26C347CBBF72E039FF6ADB7217CEC75D1DFE24D79633AC8B7
+          destination: 0:B08F417B81F8A424A591E56691C91517B070514521FB037C9B77E33F30AB16E6
+          asset: 0:FD3CDEDEC10323D36D809B430882D60699A511E30B27CFB5A1C3230DC33E2042
+          asset_secondary: 0:B2E99A9F8CE6BC3F864A0CAD0DD1F52B698AD54E625241400012E015EA9F25C4
+          start_lt: 93558994000011
+          end_lt: 93558994000012
+          # marketplace_address comes from the nft_sale interface lookup.
+          nft_transfer_data:
+            marketplace_address: 0:6EAE12B6CB0BE7566B822BED6114D7807910F86FAF471B04704E5B682F359048
+
+  nft cancel auction (ab-gap):
+    trace-id: LQB6Qv2acXEvPrJdr2pP6j4JK86vZQAYIihFN6XqGRg=
+    expected-actions:
+      # The anchor took the mixed anchor's TON_TRANSFER branch, on a bare
+      # "cancel" comment — that is what nft_trade_cancel_comment gates on, and
+      # what keeps this trace out of nft_finish_auction (comment set finish/stop)
+      # and out of the finish arm of the produces switch. The anchor is consumed
+      # into the cancel block, so it surfaces as the CHILD row below rather than
+      # as a standalone spine block.
+      - type: ton_transfer
+        values:
+          success: true
+          ancestor_type:
+            - nft_cancel_auction
+          ton_transfer_data:
+            content: cancel
+      - type: nft_cancel_auction
+        values:
+          tx_hashes:
+            - LQB6Qv2acXEvPrJdr2pP6j4JK86vZQAYIihFN6XqGRg=
+            - MFDHfC6srAaCifLpUwzHQWBA+ytEpfHNs6PmuYiKPYk=
+          accounts:
+            - 0:1B42F84EB283E502F3CA39C5B995342EDA3E77F23279ACCF7E6967B35D7BD9DD
+            - 0:AE3E35CA15EA9E49DA5FF279067D904A27C2829F47EBFAE54D4A888665FDA4D3
+            - 0:C6CF474F5D7A4BA2A9546C1430EB16CE50128F0580D65B663DD4EB8C69B1B0CC
+          success: true
+          source: 0:AE3E35CA15EA9E49DA5FF279067D904A27C2829F47EBFAE54D4A888665FDA4D3
+          destination: 0:C6CF474F5D7A4BA2A9546C1430EB16CE50128F0580D65B663DD4EB8C69B1B0CC
+          asset: 0:13B9419DBEB8CBBD3584E69A5514E542A94D9D9422D49CA4ECBB49F52589BD95
+          asset_secondary: 0:1B42F84EB283E502F3CA39C5B995342EDA3E77F23279ACCF7E6967B35D7BD9DD
+          start_lt: 93546677000002
+          end_lt: 93546677000003
+          # mp_addr off the nft_auction lookup (the cancel branch sets it; the
+          # finish-via-purchase matcher leaves it null).
+          nft_transfer_data:
+            marketplace_address: 0:584EE61B2DFF0837116D0FCB5078D93964BCBE9C05FD6A141B1BFCA5D6A43E18
+
+  nft put on auction (ab-gap):
+    # THE init_state case. Every nft_listing_data value below is read out of the
+    # deploy message's GetGems StateInit by getgems_auction_init / the legacy
+    # get_auction_data — NOT from the nft_auction interface snapshot. This is the
+    # only fixture in the corpus that exercises that path end to end.
+    trace-id: M2rUrfJXfjW8Xsex9RY8vXo__9MZHdh-emPatSp2Ooc=
+    expected-actions:
+      - type: nft_put_on_auction
+        values:
+          accounts:
+            - 0:2187BD884C188AE7FE77DF32F2D5DC630F40C8B9FF199F5F4A5929676FA9B240
+            - 0:39D63083E48F46452FF8A04CD0D3733A90C8BE299AA5951B62741759B2C17E0E
+            - 0:9BA46D6AEB2F793FF5F3B8F53171E55CCDF32407A26C47A212E3F669A3AE7901
+            - 0:E10A75DB6669E0894A9B469C770B485273E2D12977F2A9F20E55E89701CC722D
+          success: true
+          # owner -> auction contract, with the listing (marketplace) address as
+          # source_secondary.
+          source: 0:9BA46D6AEB2F793FF5F3B8F53171E55CCDF32407A26C47A212E3F669A3AE7901
+          source_secondary: 0:39D63083E48F46452FF8A04CD0D3733A90C8BE299AA5951B62741759B2C17E0E
+          destination: 0:E10A75DB6669E0894A9B469C770B485273E2D12977F2A9F20E55E89701CC722D
+          asset: 0:8170C3E9123289CAC4DBE77E0DBEDDC55D0824CD5CA169A043232ADC68A0F53E
+          asset_secondary: 0:2187BD884C188AE7FE77DF32F2D5DC630F40C8B9FF199F5F4A5929676FA9B240
+          start_lt: 93563765000002
+          end_lt: 93563765000013
+          nft_transfer_data:
+            marketplace_address: 0:584EE61B2DFF0837116D0FCB5078D93964BCBE9C05FD6A141B1BFCA5D6A43E18
+          nft_listing_data:
+            # ton-fixture-save stores chain big-ints as strings; the serializer
+            # passes the index through raw on both engines.
+            nft_item_index: "2148043439213041448537974075905118563233232504308491092484043492802816886261"
+            # StateInit-derived, v3r3 layout (the auction's code_hash is absent
+            # from the fixture, so both engines take the "latest" fallback).
+            mp_fee_factor: 2
+            mp_fee_base: 100
+            royalty_fee_base: 100
+            max_bid: 0
+            min_bid: 30000000000
+            marketplace_fee_address: 0:BEE7A3D7B8C06F9552032C3880A56A74B702AD8B224F42BFB1AC1C33BD719080
+            royalty_address: 0:68F3A076D3451A18FD41E05C71B4C020545D46B2757064E65825DED0C49BF02C
+            marketplace: getgems
+            # The five sale-only keys the auction fill nulls out.
+            full_price: null
+            marketplace_fee: null
+            royalty_amount: null
+
+  nft update sale (ab-gap):
+    trace-id: _4VnZDY_vkS57MyeF3M43QAyEpWriYSveSPIP4Ygtog=
+    expected-actions:
+      - type: nft_update_sale
+        values:
+          tx_hashes:
+            - /4VnZDY/vkS57MyeF3M43QAyEpWriYSveSPIP4Ygtog=
+            - Oji3LRcWwLgbOcudnHYnWIwZmKUMA51crJ2OgCHiB+Q=
+          accounts:
+            - 0:138899B3246531232296BA3B65CBEBE3507DEF96CCF5B0512622718CA5CA5F66
+            - 0:9F2F94B2D30F097D6F2208768D2A15944F3C51BA06F32684C9B27EA45AC19781
+            - 0:BB6789A035598885BF1A64793E1724458957A6032A3E6A84AC235B288F1AAB7D
+          success: true
+          source: 0:BB6789A035598885BF1A64793E1724458957A6032A3E6A84AC235B288F1AAB7D
+          destination: 0:138899B3246531232296BA3B65CBEBE3507DEF96CCF5B0512622718CA5CA5F66
+          # The NFT is neither source nor destination here, so the fill pushes it
+          # into `accounts` explicitly (C++ push_account mirrors that).
+          asset_secondary: 0:9F2F94B2D30F097D6F2208768D2A15944F3C51BA06F32684C9B27EA45AC19781
+          start_lt: 93563470000002
+          end_lt: 93563475000001
+          # The three new prices come from the SaleUpdate body, marketplace from
+          # the nft_sale lookup.
+          nft_listing_data:
+            full_price: 10000000000000000
+            royalty_amount: 1000000000000000
+            marketplace_fee: 500000000000000
+          nft_transfer_data:
+            marketplace_address: 0:584EE61B2DFF0837116D0FCB5078D93964BCBE9C05FD6A141B1BFCA5D6A43E18

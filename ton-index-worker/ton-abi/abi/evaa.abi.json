@@ -1,0 +1,238 @@
+{
+  "abi_schema_version": "1.0",
+  "contract_name": "EvaaMessages",
+  "unique_types": [
+    {
+      "kind": "void"
+    },
+    {
+      "kind": "int"
+    },
+    {
+      "kind": "slice"
+    },
+    {
+      "kind": "cell"
+    },
+    {
+      "kind": "builder"
+    },
+    {
+      "kind": "bool"
+    },
+    {
+      "kind": "coins"
+    },
+    {
+      "kind": "address"
+    },
+    {
+      "kind": "intN",
+      "n": 32
+    },
+    {
+      "kind": "uintN",
+      "n": 32
+    },
+    {
+      "kind": "intN",
+      "n": 64
+    },
+    {
+      "kind": "uintN",
+      "n": 64
+    },
+    {
+      "kind": "StructRef",
+      "struct_name": "EvaaSupplyMaster"
+    },
+    {
+      "kind": "bitsN",
+      "n": 64
+    },
+    {
+      "kind": "bitsN",
+      "n": 2
+    },
+    {
+      "kind": "addressAny"
+    },
+    {
+      "kind": "StructRef",
+      "struct_name": "EvaaSupplySuccess"
+    },
+    {
+      "kind": "uintN",
+      "n": 256
+    },
+    {
+      "kind": "StructRef",
+      "struct_name": "EvaaWithdrawMaster"
+    },
+    {
+      "kind": "StructRef",
+      "struct_name": "EvaaWithdrawCollateralized"
+    },
+    {
+      "kind": "StructRef",
+      "struct_name": "Storage"
+    },
+    {
+      "kind": "uintN",
+      "n": 1
+    }
+  ],
+  "struct_instantiations": [],
+  "alias_instantiations": [],
+  "declarations": [
+    {
+      "kind": "struct",
+      "name": "EvaaSupplyMaster",
+      "ty_idx": 12,
+      "prefix": {
+        "prefix_num": 1,
+        "prefix_len": 32
+      },
+      "fields": [
+        {
+          "name": "_query_id",
+          "ty_idx": 13
+        },
+        {
+          "name": "_include_user_code",
+          "ty_idx": 14
+        },
+        {
+          "name": "supply_amount",
+          "ty_idx": 11
+        },
+        {
+          "name": "recipient_address",
+          "ty_idx": 15
+        }
+      ]
+    },
+    {
+      "kind": "struct",
+      "name": "EvaaSupplySuccess",
+      "ty_idx": 16,
+      "prefix": {
+        "prefix_num": 282,
+        "prefix_len": 32
+      },
+      "fields": [
+        {
+          "name": "_query_id",
+          "ty_idx": 13
+        },
+        {
+          "name": "_owner_address",
+          "ty_idx": 15
+        },
+        {
+          "name": "_asset_id",
+          "ty_idx": 17
+        },
+        {
+          "name": "amount_supplied",
+          "ty_idx": 11
+        }
+      ]
+    },
+    {
+      "kind": "struct",
+      "name": "EvaaWithdrawMaster",
+      "ty_idx": 18,
+      "prefix": {
+        "prefix_num": 2,
+        "prefix_len": 32
+      },
+      "fields": [
+        {
+          "name": "query_id",
+          "ty_idx": 11
+        },
+        {
+          "name": "asset_id",
+          "ty_idx": 17
+        },
+        {
+          "name": "amount",
+          "ty_idx": 11
+        },
+        {
+          "name": "recipient_address",
+          "ty_idx": 15
+        }
+      ]
+    },
+    {
+      "kind": "struct",
+      "name": "EvaaWithdrawCollateralized",
+      "ty_idx": 19,
+      "prefix": {
+        "prefix_num": 529,
+        "prefix_len": 32
+      },
+      "fields": [
+        {
+          "name": "query_id",
+          "ty_idx": 11
+        },
+        {
+          "name": "owner_address",
+          "ty_idx": 15
+        },
+        {
+          "name": "asset_id",
+          "ty_idx": 17
+        },
+        {
+          "name": "withdraw_amount_current",
+          "ty_idx": 11
+        }
+      ]
+    },
+    {
+      "kind": "struct",
+      "name": "Storage",
+      "ty_idx": 20,
+      "fields": [
+        {
+          "name": "dummy",
+          "ty_idx": 21
+        }
+      ]
+    }
+  ],
+  "storage": {
+    "storage_ty_idx": 20
+  },
+  "incoming_messages": [
+    {
+      "body_ty_idx": 12
+    },
+    {
+      "body_ty_idx": 16
+    },
+    {
+      "body_ty_idx": 18
+    },
+    {
+      "body_ty_idx": 19
+    }
+  ],
+  "incoming_external": [],
+  "outgoing_messages": [],
+  "emitted_events": [],
+  "get_methods": [],
+  "thrown_errors": [
+    {
+      "kind": "plain_int",
+      "err_code": 65535
+    }
+  ],
+  "compiler_name": "tolk",
+  "compiler_version": "1.4.1",
+  "code_boc64": "te6ccgEBAgEAYAABFP8A9KQT9LzyyAsBAKLT+JHyQCDXLCAAAAAMmDCEDwHHAPL04NcsIAAACNSYMIQPAccA8vTg1ywgAAAAFJgwhA8BxwDy9ODXLCAAABCMMZeEDwHHAPL04IQPAccA8vQ="
+}
