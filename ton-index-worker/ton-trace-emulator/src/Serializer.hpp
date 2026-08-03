@@ -217,7 +217,7 @@ struct RedisTraceNode {
   MSGPACK_DEFINE(transaction, emulated, mc_block_seqno, block_id, finality);
 };
 
-td::Result<int64_t> to_balance(vm::CellSlice& balance_slice) {
+inline td::Result<int64_t> to_balance(vm::CellSlice& balance_slice) {
   auto balance = block::tlb::t_Grams.as_integer_skip(balance_slice);
   if (balance.is_null()) {
       return td::Status::Error("Failed to unpack balance");
@@ -229,12 +229,12 @@ td::Result<int64_t> to_balance(vm::CellSlice& balance_slice) {
   return res;
 }
 
-td::Result<int64_t> to_balance(td::Ref<vm::CellSlice> balance_ref) {
+inline td::Result<int64_t> to_balance(td::Ref<vm::CellSlice> balance_ref) {
   vm::CellSlice balance_slice = *balance_ref;
   return to_balance(balance_slice);
 }
 
-td::Result<Message> parse_message(td::Ref<vm::Cell> msg_cell) {
+inline td::Result<Message> parse_message(td::Ref<vm::Cell> msg_cell) {
   Message msg;
   msg.hash = msg_cell->get_hash().bits();
 
@@ -334,7 +334,7 @@ td::Result<Message> parse_message(td::Ref<vm::Cell> msg_cell) {
 }
 
 
-td::Result<TrStoragePhase> parse_tr_storage_phase(vm::CellSlice& cs) {
+inline td::Result<TrStoragePhase> parse_tr_storage_phase(vm::CellSlice& cs) {
   block::gen::TrStoragePhase::Record phase_data;
   if (!tlb::unpack(cs, phase_data)) {
     return td::Status::Error("Failed to unpack TrStoragePhase");
@@ -349,7 +349,7 @@ td::Result<TrStoragePhase> parse_tr_storage_phase(vm::CellSlice& cs) {
   return phase;
 }
 
-td::Result<TrCreditPhase> parse_tr_credit_phase(vm::CellSlice& cs) {
+inline td::Result<TrCreditPhase> parse_tr_credit_phase(vm::CellSlice& cs) {
   block::gen::TrCreditPhase::Record phase_data;
   if (!tlb::unpack(cs, phase_data)) {
     return td::Status::Error("Failed to unpack TrCreditPhase");
@@ -363,7 +363,7 @@ td::Result<TrCreditPhase> parse_tr_credit_phase(vm::CellSlice& cs) {
   return phase;
 }
 
-td::Result<TrComputePhase> parse_tr_compute_phase(vm::CellSlice& cs) {
+inline td::Result<TrComputePhase> parse_tr_compute_phase(vm::CellSlice& cs) {
   int compute_ph_tag = block::gen::t_TrComputePhase.get_tag(cs);
   if (compute_ph_tag == block::gen::TrComputePhase::tr_phase_compute_vm) {
     block::gen::TrComputePhase::Record_tr_phase_compute_vm compute_vm;
@@ -401,7 +401,7 @@ td::Result<TrComputePhase> parse_tr_compute_phase(vm::CellSlice& cs) {
   return td::Status::OK();
 }
 
-td::Result<StorageUsed> parse_storage_used_short(vm::CellSlice& cs) {
+inline td::Result<StorageUsed> parse_storage_used_short(vm::CellSlice& cs) {
   block::gen::StorageUsed::Record info;
   if (!tlb::unpack(cs, info)) {
     return td::Status::Error("Error unpacking StorageUsed");
@@ -412,7 +412,7 @@ td::Result<StorageUsed> parse_storage_used_short(vm::CellSlice& cs) {
   return res;
 }
 
-td::Result<TrActionPhase> parse_tr_action_phase(vm::CellSlice& cs) {
+inline td::Result<TrActionPhase> parse_tr_action_phase(vm::CellSlice& cs) {
   block::gen::TrActionPhase::Record info;
   if (!tlb::unpack(cs, info)) {
     return td::Status::Error("Error unpacking TrActionPhase");
@@ -444,7 +444,7 @@ td::Result<TrActionPhase> parse_tr_action_phase(vm::CellSlice& cs) {
   return res;
 }
 
-td::Result<TrBouncePhase> parse_tr_bounce_phase(vm::CellSlice& cs) {
+inline td::Result<TrBouncePhase> parse_tr_bounce_phase(vm::CellSlice& cs) {
   int bounce_ph_tag = block::gen::t_TrBouncePhase.get_tag(cs);
   switch (bounce_ph_tag) {
     case block::gen::TrBouncePhase::tr_phase_bounce_negfunds: {
@@ -480,7 +480,7 @@ td::Result<TrBouncePhase> parse_tr_bounce_phase(vm::CellSlice& cs) {
   }
 }
 
-td::Result<SplitMergeInfo> parse_split_merge_info(td::Ref<vm::CellSlice>& cs) {
+inline td::Result<SplitMergeInfo> parse_split_merge_info(td::Ref<vm::CellSlice>& cs) {
   block::gen::SplitMergeInfo::Record info;
   if (!tlb::csr_unpack(cs, info)) {
     return td::Status::Error("Error unpacking SplitMergeInfo");
@@ -493,7 +493,7 @@ td::Result<SplitMergeInfo> parse_split_merge_info(td::Ref<vm::CellSlice>& cs) {
   return res;
 }
 
-td::Result<TransactionDescr> process_transaction_descr(vm::CellSlice& td_cs) {
+inline td::Result<TransactionDescr> process_transaction_descr(vm::CellSlice& td_cs) {
   auto tag = block::gen::t_TransactionDescr.get_tag(td_cs);
   switch (tag) {
     case block::gen::TransactionDescr::trans_ord: {
@@ -530,7 +530,7 @@ td::Result<TransactionDescr> process_transaction_descr(vm::CellSlice& td_cs) {
   }
 }
 
-td::Result<Transaction> parse_tx(td::Ref<vm::Cell> root, ton::WorkchainId workchain) {
+inline td::Result<Transaction> parse_tx(td::Ref<vm::Cell> root, ton::WorkchainId workchain) {
   block::gen::Transaction::Record trans;
   if (!tlb::unpack_cell(root, trans)) {
     return td::Status::Error("Failed to unpack Transaction");
@@ -576,7 +576,7 @@ td::Result<Transaction> parse_tx(td::Ref<vm::Cell> root, ton::WorkchainId workch
   return schema_tx;
 }
 
-td::Result<RedisTraceNode> parse_trace_node(const TraceNode& node) {
+inline td::Result<RedisTraceNode> parse_trace_node(const TraceNode& node) {
   TRY_RESULT(tx, parse_tx(node.transaction_root, node.address.workchain));
   auto redis_blkid = BlockId{.workchain = node.block_id.workchain, 
                              .shard = node.block_id.shard, 
@@ -679,7 +679,7 @@ struct AddressInterfaces {
 template <class... T>
 constexpr bool always_false = false;
 
-AddressInterfaces parse_interfaces(std::vector<typename Trace::Detector::DetectedInterface> interfaces) {
+inline AddressInterfaces parse_interfaces(std::vector<typename Trace::Detector::DetectedInterface> interfaces) {
   AddressInterfaces result;
   for (const auto& interface : interfaces) {
     std::visit([&](auto&& arg) {
@@ -800,7 +800,7 @@ struct AccountState {
   MSGPACK_DEFINE(hash, timestamp, balance, account_status, frozen_hash, code_hash, data_hash, last_trans_hash, last_trans_lt);
 };
 
-td::Result<AccountState> parse_account(const block::Account& account) {
+inline td::Result<AccountState> parse_account(const block::Account& account) {
   AccountState result;
   int account_tag = block::gen::t_Account.get_tag(vm::load_cell_slice(account.total_state));
   switch (account_tag) {

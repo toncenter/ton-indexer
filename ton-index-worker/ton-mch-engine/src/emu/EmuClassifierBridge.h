@@ -9,7 +9,7 @@ struct Trace;  // Emulator ::Trace; mch::Trace also exists.
 
 namespace mch {
 
-// Copies references, PODs, and the cell anchor without loading cells.
-EmuTraceView make_view(const ::Trace &trace);
+// Adapts detector results without retaining transaction or block cells.
+ParsedBlockLookupSource::InterfaceMap make_interface_map(const ::Trace &trace);
 
 }  // namespace mch

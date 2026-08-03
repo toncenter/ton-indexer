@@ -9,8 +9,6 @@
 #include "ParsedBlockLookupSource.h" // InterfaceMap, LookupStats
 
 #include "crypto/block/block.h"  // block::StdAddress
-#include "vm/cells/Cell.h"
-
 #include "td/utils/port/Clocks.h"
 
 #include <algorithm>
@@ -42,30 +40,26 @@ inline std::int64_t emu_now_us() {
 
 enum class EmuFinality : std::uint8_t { emulated = 0, confirmed = 1, finalized = 2 };
 
-// Keeps the lazy block store alive while interior transaction cells are in use.
-// Listener-emulated traces do not reference a block BOC and use a null anchor.
-using EmuCellAnchor = std::shared_ptr<const std::vector<td::Ref<vm::Cell>>>;
-
 struct EmuTxRef {
   block::StdAddress address;
-  // Transaction cell kept loadable by EmuTraceView::anchor. Null means absent.
-  td::Ref<vm::Cell> tx_root;
+  // Standalone BOC: classifier input never depends on a source BlockData.
+  std::string tx_boc;
   std::uint32_t mc_seqno{0};
   EmuFinality finality{EmuFinality::emulated};
 };
 
-// Read-only trace emission plus its cell-lifetime handle. Construction loads no cells.
+// Fully owned, read-only full trace.
 struct EmuTraceView {
   std::string trace_id;  // base64(ext_in_msg_hash_norm) == the Redis trace key
   bool tx_limit_exceeded{false};
   // Pre-order nodes; to_tree reconstructs edges by message hash.
   std::vector<EmuTxRef> nodes;
   ParsedBlockLookupSource::InterfaceMap interfaces;  // already V2-adapted
-  EmuCellAnchor anchor;
   // Shared shard-state and config handles for tier-2 lookups. Listener traces
   // leave them empty and receive no tier-2 results.
   AllShardStates shard_states;
   std::shared_ptr<block::ConfigInfo> config;
+  std::uint64_t update_seq{0};
   std::int64_t sent_us{0}, deadline_us{0};  // emu_now_us basis
 };
 
@@ -95,8 +89,7 @@ enum class EmuClassifyOutcome : std::uint8_t {
 struct EmuClassifyResult {
   std::string trace_id;
   EmuClassifyOutcome outcome{EmuClassifyOutcome::bypassed_disabled};
-  // Serialized while the view's anchor is alive; no anchor-backed value leaves
-  // the classifier actor.
+  // Serialized before the owned view leaves the classifier actor.
   EmuActionPayload payload;
   bool used_fallback{false};       // rows came from ClassifyResult::fallback_rows
   std::size_t unported_btypes{0};  // spine blocks build_action() declined
@@ -121,7 +114,7 @@ struct EmuGate {
 struct EmuClassifierConfig {
   std::shared_ptr<const MchEnginePrep> prep;  // nullptr = feature off
   int global_version{kEmuGlobalVersion};
-  // Required whenever `prep` is set; scheduler integration and actor dereference it.
+  // Required whenever `prep` is set; TraceProcessor and the actor dereference it.
   std::shared_ptr<EmuGate> gate;
   // Cell-db tier-2 lookups. Enabled by default; disabling them uses tier 1 only.
   bool tier2{true};

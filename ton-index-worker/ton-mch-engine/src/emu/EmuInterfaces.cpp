@@ -138,7 +138,9 @@ schema::MultisigOrderData to_v2(const MultisigOrder::Result &r) {
   v.approvals_mask = r.approvals_mask;
   v.approvals_num = r.approvals_num;
   v.expiration_date = r.expiration_date;
-  v.order = r.order;
+  // v.order = r.order;
+  // `order` can be a lazy cell backed by the source BlockData. Classifier interfaces live across trace patches,
+  // so keeping it could later access a destroyed StaticBagOfCellsDb. The classifier currently reads only `signers`.
   v.signers = r.signers;
   return v;
 }

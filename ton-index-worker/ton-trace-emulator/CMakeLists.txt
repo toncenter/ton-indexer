@@ -18,6 +18,21 @@ target_include_directories(ton-confirmed-root-tracker
 target_link_libraries(ton-confirmed-root-tracker PUBLIC tdutils)
 target_compile_features(ton-confirmed-root-tracker PUBLIC cxx_std_20)
 
+add_library(ton-trace-assembler STATIC
+    src/TraceAssembler.cpp
+)
+target_include_directories(ton-trace-assembler PUBLIC src)
+target_compile_features(ton-trace-assembler PUBLIC cxx_std_20)
+target_compile_definitions(ton-trace-assembler PRIVATE -DMSGPACK_USE_DEFINE_MAP)
+target_link_libraries(
+    ton-trace-assembler
+    PUBLIC
+        ton-trace-state
+        ton-trace-emulator-core
+        mch-emu-bridge
+        msgpack-cxx
+)
+
 add_library(ton-trace-emulator-core STATIC
     src/TraceEmulator.cpp
     src/ExternalMessageAdmission.cpp
@@ -48,7 +63,8 @@ target_compile_features(ton-trace-emulator-core PRIVATE cxx_std_20)
 add_executable(ton-trace-emulator
     src/main.cpp
     src/TraceScheduler.cpp
-    src/TraceInserter.cpp
+    src/TraceProcessor.cpp
+    src/RedisMaterializer.cpp
     src/RedisListener.cpp
     src/Measurement.h
 )
@@ -62,6 +78,7 @@ target_link_libraries(
     ton-trace-emulator
     ton-trace-emulator-core
     ton-trace-state
+    ton-trace-assembler
     ton-confirmed-root-tracker
     mch-emu-bridge
     redis++_static
@@ -72,6 +89,7 @@ install(TARGETS ton-trace-emulator RUNTIME DESTINATION bin)
 
 add_executable(test-ton-trace-state
     test/TraceStateTest.cpp
+    test/TraceAssemblerTest.cpp
     test/TraceLifecycleTest.cpp
     test/ConfirmedRootTrackerTest.cpp
     test/OrderedResultBufferTest.cpp
@@ -82,6 +100,7 @@ target_link_libraries(
     test-ton-trace-state
     PRIVATE
         ton-trace-state
+        ton-trace-assembler
         ton-confirmed-root-tracker
         ton_crypto_core
         tdutils
@@ -90,20 +109,22 @@ target_link_libraries(
 )
 target_compile_features(test-ton-trace-state PRIVATE cxx_std_20)
 
-# White-box coverage for TraceInserter's translation-unit-local prepare helpers.
-add_executable(test-ton-trace-inserter
-    test/TraceInserterTest.cpp
+# White-box coverage for TraceProcessor's translation-unit-local prepare helpers.
+add_executable(test-ton-trace-processor
+    test/TraceProcessorTest.cpp
+    src/RedisMaterializer.cpp
 )
-target_include_directories(test-ton-trace-inserter
+target_include_directories(test-ton-trace-processor
     PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/../external/redis-plus-plus/src
 )
-target_compile_features(test-ton-trace-inserter PRIVATE cxx_std_20)
-target_compile_definitions(test-ton-trace-inserter PRIVATE -DMSGPACK_USE_DEFINE_MAP)
+target_compile_features(test-ton-trace-processor PRIVATE cxx_std_20)
+target_compile_definitions(test-ton-trace-processor PRIVATE -DMSGPACK_USE_DEFINE_MAP)
 target_link_libraries(
-    test-ton-trace-inserter
+    test-ton-trace-processor
     PRIVATE
         ton-trace-emulator-core
         ton-trace-state
+        ton-trace-assembler
         ton-confirmed-root-tracker
         mch-emu-bridge
         redis++_static

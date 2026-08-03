@@ -2,9 +2,8 @@
 
 #include "EmuInterfaces.h"
 
-#include "TraceEmulator.h"  // ::Trace / ::TraceNode / FinalityState
+#include "TraceEmulator.h"
 
-#include "td/utils/base64.h"
 #include "td/utils/overloaded.h"
 
 #include <utility>
@@ -13,49 +12,8 @@
 
 namespace mch {
 
-namespace {
-
-EmuFinality to_emu_finality(FinalityState f) {
-  switch (f) {
-    case FinalityState::Emulated: return EmuFinality::emulated;
-    case FinalityState::Confirmed: return EmuFinality::confirmed;
-    case FinalityState::Finalized: return EmuFinality::finalized;
-  }
-  return EmuFinality::emulated;
-}
-
-}  // namespace
-
-EmuTraceView make_view(const ::Trace &trace) {
-  EmuTraceView view;
-  view.trace_id = td::base64_encode(trace.ext_in_msg_hash_norm.as_slice());
-  view.tx_limit_exceeded = trace.tx_limit_exceeded;
-  // Keep the block's lazy cell store loadable for the classifier.
-  view.anchor = trace.cell_anchor;
-  // Tier-2 inputs. Both empty on the listener path; the hook then serves
-  // nothing, producing a clean tier-2 miss.
-  view.shard_states = trace.shard_states;
-  view.config = trace.config;
-
-  std::vector<const TraceNode *> stack;
-  if (trace.root) {
-    stack.push_back(trace.root.get());
-  }
-  while (!stack.empty()) {
-    const TraceNode *node = stack.back();
-    stack.pop_back();
-    EmuTxRef rec;
-    rec.address = node->address;
-    rec.tx_root = node->transaction_root;
-    rec.mc_seqno = node->mc_block_seqno;
-    rec.finality = to_emu_finality(node->finality_state);
-    view.nodes.push_back(std::move(rec));
-    for (auto it = node->children.rbegin(); it != node->children.rend(); ++it) {
-      if (*it) {
-        stack.push_back(it->get());
-      }
-    }
-  }
+ParsedBlockLookupSource::InterfaceMap make_interface_map(const ::Trace &trace) {
+  ParsedBlockLookupSource::InterfaceMap result;
 
   // Derive NFT code hashes from the detector's account state, preferring the
   // latest emulated state over committed state. Zero means unknown.
@@ -115,10 +73,10 @@ EmuTraceView make_view(const ::Trace &trace) {
           iface);
     }
     if (!adapted.empty()) {
-      view.interfaces.emplace(addr, std::move(adapted));
+      result.emplace(addr, std::move(adapted));
     }
   }
-  return view;
+  return result;
 }
 
 }  // namespace mch

@@ -26,6 +26,12 @@ struct TraceStateNode {
     TraceStateFinality finality{TraceStateFinality::Emulated};
     std::string fingerprint;
     std::shared_ptr<const std::string> serialized;
+    // Standalone transaction BOC used to build immutable classifier snapshots.
+    // Unlike transaction cells from BlockData, these bytes remain valid after
+    // the source block and its lazy cell database have been released.
+    std::shared_ptr<const std::string> transaction_boc;
+    std::int32_t workchain{0};
+    std::uint32_t mc_seqno{0};
     std::vector<std::string> child_keys;
     std::vector<TraceStateIndexRef> index_refs;
 

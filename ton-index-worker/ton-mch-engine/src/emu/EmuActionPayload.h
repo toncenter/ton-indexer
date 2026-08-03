@@ -17,10 +17,9 @@ struct EmuActionPayload {
   std::string actions_blob;
   // (account, "<trace_key>:<action_id>") for every (action, account) pair.
   std::vector<std::pair<std::string, std::string>> aai;
-  // Accounts that appear in an action but in no transaction of the trace.
-  std::vector<std::string> referenced_accounts;
   std::int64_t aai_score{0};    // Python's trace.start_lt == root tx lt
   std::size_t action_count{0};  // telemetry only
+  std::uint64_t update_seq{0};
   // Written as `mch_classify_state`. Null suppresses the field entirely.
   const char *state{nullptr};
   // Minimum node finality, shared by the wire payload and write guard.

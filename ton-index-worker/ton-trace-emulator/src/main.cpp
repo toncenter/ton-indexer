@@ -8,7 +8,8 @@
 
 #include "DbScanner.h"
 #include "TraceScheduler.h"
-#include "TraceInserter.h"
+#include "TraceProcessor.h"
+#include "RedisMaterializer.h"
 #include "GenMatchers.h"
 #include "emu/EmuClassifierBridge.h"
 
@@ -224,15 +225,16 @@ int main(int argc, char *argv[]) {
 
   td::actor::Scheduler scheduler({threads});
   td::actor::ActorOwn<DbScanner> db_scanner;
-  td::actor::ActorOwn<ITraceInsertManager> insert_manager;
+  td::actor::ActorOwn<ITraceProcessor> trace_processor;
 
   scheduler.run_in_context([&] { 
     db_scanner = td::actor::create_actor<DbScanner>("scanner", db_root, dbs_secondary, working_dir, 0.05f);
-    insert_manager = td::actor::create_actor<RedisInsertManager>(
-        "RedisInsertManager", redis_dsn, trace_retention);
-    td::actor::create_actor<TraceEmulatorScheduler>("integritychecker", db_scanner.get(), insert_manager.get(), 
-      global_config_path, inet_addr, redis_dsn, redis_channel, working_dir, db_event_fifo_path,
-      mch_classifier_config).release();
+    trace_processor = td::actor::create_actor<TraceProcessor>(
+        "TraceProcessor", redis_dsn, trace_retention,
+        mch_classifier_config);
+    td::actor::create_actor<TraceEmulatorScheduler>("integritychecker", db_scanner.get(), trace_processor.get(),
+      global_config_path, inet_addr, redis_dsn, redis_channel, working_dir,
+      db_event_fifo_path).release();
   });
   
   scheduler.run();

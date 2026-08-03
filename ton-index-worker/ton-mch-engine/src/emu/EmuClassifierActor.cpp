@@ -164,11 +164,6 @@ void classify_txs(const EmuClassifierConfig &cfg, const EmuTraceView &view,
   }
 }
 
-// Canonical account form shared by actions, AAI keys, and reference notifications.
-std::string addr_str(const block::StdAddress &a) {
-  return std::to_string(a.workchain) + ":" + a.addr.to_hex();
-}
-
 // Build the Redis writeback payload while the view remains alive.
 EmuActionPayload build_payload(const EmuTraceView &view, const std::vector<Action> &rows,
                                std::int64_t aai_score, ActionSerializeStats &st) {
@@ -177,24 +172,13 @@ EmuActionPayload build_payload(const EmuTraceView &view, const std::vector<Actio
   payload.aai_score = aai_score;
   payload.actions_blob = serialize_actions(rows, view, &st);
 
-  std::set<std::string> tx_accounts;
-  for (const EmuTxRef &node : view.nodes) {
-    tx_accounts.insert(addr_str(node.address));
-  }
-  std::set<std::string> referenced;
   for (const Action &a : rows) {
     // Preserve the action ID byte-for-byte in `<trace_key>:<action_id>` members.
     const std::string member = view.trace_id + ":" + a.action_id;
     for (const std::string &account : a.accounts) {
       payload.aai.emplace_back(account, member);
-      if (tx_accounts.count(account) == 0) {
-        referenced.insert(account);
-      }
     }
   }
-  // TraceInserter publishes these canonical accounts for AAI expiry cleanup.
-  // _aai:<account> set-index of trace hashes; consumers filter subscriptions by it.
-  payload.referenced_accounts.assign(referenced.begin(), referenced.end());
   return payload;
 }
 
@@ -229,6 +213,7 @@ void EmuClassifierActor::classify(EmuTraceView view, td::Promise<EmuClassifyResu
   res.trace_id = view.trace_id;
   // Derive payload and guard finality from the same view.
   res.payload.finality = static_cast<std::uint8_t>(view_finality(view));
+  res.payload.update_seq = view.update_seq;
 
   const std::int64_t started_us = emu_now_us();
   res.queue_us = started_us - view.sent_us;
@@ -294,8 +279,10 @@ void EmuClassifierActor::classify(EmuTraceView view, td::Promise<EmuClassifyResu
       const std::int64_t ser_started_us = emu_now_us();
       ActionSerializeStats ser;
       const std::uint8_t finality = res.payload.finality;
+      const std::uint64_t update_seq = res.payload.update_seq;
       res.payload = build_payload(view, rows, aai_score, ser);
       res.payload.finality = finality;
+      res.payload.update_seq = update_seq;
       res.serialize_us = emu_now_us() - ser_started_us;
       if (res.serialize_us > 0) {
         auto us = static_cast<std::size_t>(res.serialize_us);
