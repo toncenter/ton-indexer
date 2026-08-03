@@ -13,20 +13,16 @@ import (
 )
 
 const (
-	healthKeyTraceEmulator   = "health:ton-trace-emulator"
-	healthKeyEventClassifier = "health:event-classifier"
+	healthKeyTraceEmulator = "health:ton-trace-emulator"
 
 	finalizedMaxAge    = 15 * time.Second
 	confirmedMaxAge    = 15 * time.Second
-	classifierMaxAge   = 15 * time.Second
 	healthRedisTimeout = 2 * time.Second
 )
 
 type componentHealth struct {
 	OK                       bool   `json:"ok"`
 	Error                    string `json:"error,omitempty"`
-	AgeSeconds               *int64 `json:"age_seconds,omitempty"`
-	LastHeartbeat            *int64 `json:"last_heartbeat,omitempty"`
 	LastFinalizedMcBlockTime *int64 `json:"last_finalized_mc_block_time,omitempty"`
 	FinalizedAgeSeconds      *int64 `json:"finalized_age_seconds,omitempty"`
 	LastConfirmedBlockTime   *int64 `json:"last_confirmed_block_time,omitempty"`
@@ -65,29 +61,6 @@ func statusFromCmd(cmd *redis.MapStringStringCmd) (componentHealth, map[string]s
 		return status, nil
 	}
 	return status, values
-}
-
-func applyHeartbeat(status *componentHealth, values map[string]string, now int64, maxAge time.Duration) {
-	if values == nil {
-		return
-	}
-	lastHeartbeat, err := parseInt64Field(values, "last_heartbeat")
-	if err != nil {
-		status.OK = false
-		if status.Error == "" {
-			status.Error = err.Error()
-		}
-		return
-	}
-	status.LastHeartbeat = &lastHeartbeat
-	age := now - lastHeartbeat
-	status.AgeSeconds = &age
-	if time.Duration(age)*time.Second > maxAge {
-		status.OK = false
-		if status.Error == "" {
-			status.Error = "heartbeat is too old"
-		}
-	}
 }
 
 func applyEmulatorStatus(status *componentHealth, values map[string]string, now int64) {
@@ -132,10 +105,7 @@ func healthzHandler(rdb *redis.Client) fiber.Handler {
 		ctx, cancel := context.WithTimeout(context.Background(), healthRedisTimeout)
 		defer cancel()
 
-		pipe := rdb.Pipeline()
-		emulatorCmd := pipe.HGetAll(ctx, healthKeyTraceEmulator)
-		classifierCmd := pipe.HGetAll(ctx, healthKeyEventClassifier)
-		_, _ = pipe.Exec(ctx)
+		emulatorCmd := rdb.HGetAll(ctx, healthKeyTraceEmulator)
 
 		now := time.Now().Unix()
 		response := healthzResponse{
@@ -149,12 +119,6 @@ func healthzHandler(rdb *redis.Client) fiber.Handler {
 		applyEmulatorStatus(&emulatorStatus, emulatorValues, now)
 		response.OK = response.OK && emulatorStatus.OK
 		response.Components["ton-trace-emulator"] = emulatorStatus
-
-		// indexer/event-classifier
-		classifierStatus, classifierValues := statusFromCmd(classifierCmd)
-		applyHeartbeat(&classifierStatus, classifierValues, now, classifierMaxAge)
-		response.OK = response.OK && classifierStatus.OK
-		response.Components["event-classifier"] = classifierStatus
 
 		if response.OK {
 			return c.Status(fiber.StatusOK).JSON(response)
