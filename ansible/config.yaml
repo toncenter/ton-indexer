@@ -42,9 +42,6 @@ services:
   trace_emulator:
     additional_args: --working-dir /var/ton-trace-emulator --db /var/ton-work/db --threads 16 --redis "redis://{{ pendings_redis_password }}@localhost:6379" --trace-root-pending-ttl 30 --trace-root-replaced-confirmed-ttl 30 --trace-open-ttl 300 --trace-completed-ttl 30 --addr "{{ host_addr }}" --global-config /var/ton-work/etc/global.config.json 2>&1
     workdir: "{{ deploy_path }}"
-  pendings_action_classifier:
-    additional_args: --emulated-traces --batch-time-window=0.2
-    environment: "ton_indexer_redis_dsn=redis://:{{ pendings_redis_password }}@localhost:6379"
   index_classifier:
     additional_args: --pool-size 8
     environment:

@@ -11,12 +11,21 @@
 
 namespace mch {
 
+struct EmuActionRoute {
+  std::string type;
+  std::vector<std::string> accounts;
+
+  bool operator==(const EmuActionRoute &) const = default;
+};
+
 struct EmuActionPayload {
   // Bare msgpack. Empty means no payload and suppresses the `actions` field.
   // Payload is plain MsgPack (consumer detects gzip by magic bytes if compressed).
   std::string actions_blob;
   // (account, "<trace_key>:<action_id>") for every (action, account) pair.
   std::vector<std::pair<std::string, std::string>> aai;
+  // Small routing summary used by streaming before it decides to load the trace.
+  std::vector<EmuActionRoute> routes;
   std::int64_t aai_score{0};    // Python's trace.start_lt == root tx lt
   std::size_t action_count{0};  // telemetry only
   std::uint64_t update_seq{0};
@@ -28,8 +37,7 @@ struct EmuActionPayload {
 
 // Reports whether `stored` is more advanced than the emission. Missing or
 // malformed values permit a repair write rather than blocking updates.
-inline bool actions_write_is_stale(const std::optional<std::string> &stored,
-                                   std::uint8_t emission_finality) {
+inline bool actions_write_is_stale(const std::optional<std::string> &stored, std::uint8_t emission_finality) {
   if (!stored) {
     return false;  // nothing stored: nothing to downgrade
   }

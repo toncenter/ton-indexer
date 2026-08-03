@@ -10,11 +10,11 @@ import (
 
 func TestDecodeTransactionHint(t *testing.T) {
 	payload, err := msgpack.Marshal(map[string]any{
-		"trace_key":  "trace",
-		"update_seq": uint64(42),
-		"kind":       uint8(transactionHintFinalized),
-		"finality":   uint8(indexModels.FinalityStateConfirmed),
-		"accounts":   []string{"0:AAAA", "0:BBBB"},
+		"trace_key":       "trace",
+		"update_seq":      uint64(42),
+		"update_finality": uint8(indexModels.FinalityStateFinalized),
+		"trace_finality":  uint8(indexModels.FinalityStateConfirmed),
+		"accounts":        []string{"0:AAAA", "0:BBBB"},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -27,11 +27,11 @@ func TestDecodeTransactionHint(t *testing.T) {
 	if hint.TraceKey != "trace" || hint.UpdateSeq != 42 {
 		t.Fatalf("unexpected trace version: %#v", hint)
 	}
-	if hint.Kind != transactionHintFinalized {
-		t.Fatalf("unexpected kind: %s", hint.Kind)
+	if hint.UpdateFinality != indexModels.FinalityStateFinalized {
+		t.Fatalf("unexpected update_finality: %s", hint.UpdateFinality)
 	}
-	if hint.Finality != indexModels.FinalityStateConfirmed {
-		t.Fatalf("unexpected finality: %s", hint.Finality)
+	if hint.TraceFinality != indexModels.FinalityStateConfirmed {
+		t.Fatalf("unexpected trace_finality: %s", hint.TraceFinality)
 	}
 	if len(hint.Accounts) != 2 || hint.Accounts[0] != "0:AAAA" || hint.Accounts[1] != "0:BBBB" {
 		t.Fatalf("unexpected accounts: %v", hint.Accounts)
@@ -54,6 +54,82 @@ func TestDecodeAccountStateHint(t *testing.T) {
 	}
 	if hint.Account != "0:AAAA" || hint.Lt != 123 || hint.Finality != indexModels.FinalityStateFinalized {
 		t.Fatalf("unexpected account state hint: %#v", hint)
+	}
+}
+
+func TestDecodeActionsHint(t *testing.T) {
+	payload, err := msgpack.Marshal(map[string]any{
+		"trace_key":       "trace",
+		"update_seq":      uint64(42),
+		"update_finality": uint8(indexModels.FinalityStateFinalized),
+		"trace_finality":  uint8(indexModels.FinalityStateConfirmed),
+		"actions_updated": true,
+		"action_types_and_accounts": []map[string]any{{
+			"type":     "ton_transfer",
+			"accounts": []string{"0:AAAA", "0:BBBB"},
+		}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	hint, err := decodeActionsHint(string(payload))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if hint.TraceKey != "trace" || hint.UpdateSeq != 42 ||
+		hint.UpdateFinality != indexModels.FinalityStateFinalized ||
+		hint.TraceFinality != indexModels.FinalityStateConfirmed {
+		t.Fatalf("unexpected action hint version: %#v", hint)
+	}
+	if !hint.ActionsUpdated || len(hint.ActionTypesAndAccounts) != 1 {
+		t.Fatalf("unexpected action status or routes: %#v", hint)
+	}
+	if route := hint.ActionTypesAndAccounts[0]; route.Type != "ton_transfer" || len(route.Accounts) != 2 {
+		t.Fatalf("unexpected action route: %#v", route)
+	}
+}
+
+func TestDecodeFailedActionsHint(t *testing.T) {
+	payload, err := msgpack.Marshal(map[string]any{
+		"trace_key":                 "trace",
+		"update_seq":                uint64(42),
+		"update_finality":           uint8(indexModels.FinalityStateConfirmed),
+		"trace_finality":            uint8(indexModels.FinalityStatePending),
+		"actions_updated":           false,
+		"action_types_and_accounts": []any{},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	hint, err := decodeActionsHint(string(payload))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if hint.ActionsUpdated || len(hint.ActionTypesAndAccounts) != 0 {
+		t.Fatalf("failed classification must decode as an empty update: %#v", hint)
+	}
+}
+
+func TestFailedActionsHintCannotContainRoutes(t *testing.T) {
+	payload, err := msgpack.Marshal(map[string]any{
+		"trace_key":       "trace",
+		"update_seq":      uint64(42),
+		"update_finality": uint8(indexModels.FinalityStateConfirmed),
+		"trace_finality":  uint8(indexModels.FinalityStatePending),
+		"actions_updated": false,
+		"action_types_and_accounts": []map[string]any{{
+			"type":     "ton_transfer",
+			"accounts": []string{"0:AAAA"},
+		}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := decodeActionsHint(string(payload)); err == nil {
+		t.Fatal("failed classification with action routes must be rejected")
 	}
 }
 
@@ -90,5 +166,33 @@ func TestAccountStateJobKeyIdentifiesTheStateVersion(t *testing.T) {
 	nextState.Lt = 101
 	if confirmed.jobKey() == nextState.jobKey() {
 		t.Fatal("different account states must remain separate")
+	}
+}
+
+func TestActionsJobKeyKeepsPendingSeparateFromCommittedSnapshot(t *testing.T) {
+	pending := actionsHint{TraceKey: "trace", UpdateFinality: indexModels.FinalityStatePending}
+	confirmed := actionsHint{TraceKey: "trace", UpdateFinality: indexModels.FinalityStateConfirmed}
+	finalized := actionsHint{TraceKey: "trace", UpdateFinality: indexModels.FinalityStateFinalized}
+
+	if pending.jobKey() == confirmed.jobKey() {
+		t.Fatal("pending actions must not replace a queued committed snapshot")
+	}
+	if confirmed.jobKey() != finalized.jobKey() {
+		t.Fatal("finalized actions must replace a queued confirmed snapshot")
+	}
+	if !(pending.priority() < confirmed.priority() && confirmed.priority() < finalized.priority()) {
+		t.Fatal("action job priorities must follow finality")
+	}
+}
+
+func TestActionsPriorityUsesUpdateFinality(t *testing.T) {
+	hint := actionsHint{
+		TraceKey:       "trace",
+		UpdateFinality: indexModels.FinalityStateFinalized,
+		TraceFinality:  indexModels.FinalityStatePending,
+	}
+
+	if hint.priority() != finalizedPriority {
+		t.Fatal("a finalized update must keep finalized priority even when the resulting trace is still pending")
 	}
 }

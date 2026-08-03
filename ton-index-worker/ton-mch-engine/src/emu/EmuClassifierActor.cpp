@@ -173,6 +173,10 @@ EmuActionPayload build_payload(const EmuTraceView &view, const std::vector<Actio
   payload.actions_blob = serialize_actions(rows, view, &st);
 
   for (const Action &a : rows) {
+    payload.routes.push_back(EmuActionRoute{
+        .type = a.type,
+        .accounts = a.accounts,
+    });
     // Preserve the action ID byte-for-byte in `<trace_key>:<action_id>` members.
     const std::string member = view.trace_id + ":" + a.action_id;
     for (const std::string &account : a.accounts) {

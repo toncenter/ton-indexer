@@ -125,8 +125,6 @@
     - name: Install requirements
       ansible.builtin.apt:
         name:
-          - python3-pip
-          - python3-venv
           - dnsutils
           - libpq-dev
           - libsecp256k1-dev
@@ -149,18 +147,6 @@
       ansible.builtin.command: ldconfig
       changed_when: false
 
-    - name: Copy python module
-      ansible.builtin.copy:
-        src: indexer
-        dest: "{{ deploy_path }}"
-
-    - name: Setup venv
-      ansible.builtin.pip:
-        requirements: "{{ deploy_path }}/indexer/requirements.txt"
-        virtualenv: "{{ deploy_path }}/venv"
-        virtualenv_command: "python3 -m venv"
-        extra_args: "--no-cache-dir"
-    
     - name: Stop and disable legacy trace_ttl_tracker service
       ansible.builtin.systemd:
         name: "{{ stack_name }}__trace_ttl_tracker"
@@ -176,6 +162,18 @@
         - "{{ systemd_service_path }}/{{ stack_name }}__trace_ttl_tracker.service"
         - "{{ deploy_path }}/{{ stack_name }}__trace_ttl_tracker"
 
+    - name: Stop and disable legacy pending action classifier service
+      ansible.builtin.systemd:
+        name: "{{ stack_name }}__pendings_action_classifier"
+        state: stopped
+        enabled: false
+      failed_when: false
+
+    - name: Remove legacy pending action classifier service
+      ansible.builtin.file:
+        path: "{{ systemd_service_path }}/{{ stack_name }}__pendings_action_classifier.service"
+        state: absent
+
     - name: Setup trace_emulator service
       ansible.builtin.template:
         src: "ansible/systemd.service.j2"
@@ -189,19 +187,6 @@
       with_items:
         - trace_emulator
     
-    - name: Setup action classifier service
-      ansible.builtin.template:
-        src: "ansible/systemd.service.j2"
-        dest: "{{ systemd_service_path }}/{{ service_name }}.service"
-        mode: "0644"
-        force: true
-      vars:
-        service: "{{ services[item] }}"
-        service_name: "{{ stack_name }}__{{ item }}"
-        start_cmd: "{{ deploy_path }}/venv/bin/python3 {{ deploy_path }}/indexer/event_classifier.py {{ service.additional_args }}"
-      with_items:
-        - pendings_action_classifier
-
     - name: Install and configure Redis
       ansible.builtin.include_role:
         name: geerlingguy.redis
@@ -247,7 +232,6 @@
       throttle: 1
       with_items:
        - trace_emulator
-       - pendings_action_classifier
 
     - name: Restart and enable pendings services
       ansible.builtin.systemd:
@@ -261,4 +245,3 @@
       throttle: 1
       with_items:
        - trace_emulator
-       - pendings_action_classifier

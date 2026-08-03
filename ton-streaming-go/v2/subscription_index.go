@@ -128,6 +128,60 @@ func (manager *ClientManager) subscribersForTrace(traceKey indexModels.HashType,
 	return manager.filterConnectedClientsLocked(manager.traceSubscribers[traceKey], &finality)
 }
 
+func (manager *ClientManager) subscribersForActionRoutes(routes []actionRoute, finality indexModels.FinalityState) clientSet {
+	manager.mu.RLock()
+	defer manager.mu.RUnlock()
+
+	result := make(clientSet)
+	eventAddresses := manager.addressSubscribers[EventActions]
+	for _, route := range routes {
+		for _, address := range route.Accounts {
+			for clientID := range eventAddresses[address] {
+				if _, found := result[clientID]; found {
+					continue
+				}
+				client := manager.clients[clientID]
+				if client == nil {
+					continue
+				}
+				client.mu.Lock()
+				eligible := client.Connected && client.Subscription.MinFinality <= finality &&
+					subscriptionPotentiallyAcceptsActionType(&client.Subscription, route.Type)
+				client.mu.Unlock()
+				if eligible {
+					result[clientID] = struct{}{}
+				}
+			}
+		}
+	}
+	return result
+}
+
+func subscriptionPotentiallyAcceptsActionType(subscription *Subscription, actionType string) bool {
+	if len(subscription.ActionTypes) != 0 && !containsPossibleParsedActionType(subscription.ActionTypes, actionType) {
+		return false
+	}
+	// Live subscriptions always receive a default supported-actions set. Treat
+	// an empty set conservatively so internal callers cannot create a false negative.
+	return len(subscription.SupportedActionTypes) == 0 ||
+		containsPossibleParsedActionType(subscription.SupportedActionTypes, actionType)
+}
+
+func containsPossibleParsedActionType(values []string, rawType string) bool {
+	for _, value := range values {
+		if value == rawType {
+			return true
+		}
+		// ParseRawAction exposes either raw type as extra_currency_transfer when
+		// the action contains extra currencies. The hint intentionally stays small,
+		// so both results remain possible here.
+		if value == "extra_currency_transfer" && (rawType == "ton_transfer" || rawType == "call_contract") {
+			return true
+		}
+	}
+	return false
+}
+
 func (manager *ClientManager) hasEventSubscribers(eventType EventType) bool {
 	manager.mu.RLock()
 	defer manager.mu.RUnlock()

@@ -65,6 +65,11 @@ ActiveTrace trace_with_actions(FinalityState trace_finality, std::optional<std::
     trace.actions.blob = actions_blob(*action_finality);
     trace.actions.blob_finality = *action_finality;
     trace.actions.classify_state = "ok";
+    trace.actions.routes = {mch::EmuActionRoute{
+        .type = "ton_transfer",
+        .accounts = {"0:AAAA"},
+    }};
+    trace.actions.blob_is_current = true;
   }
   return trace;
 }
@@ -124,6 +129,42 @@ TEST(TraceProcessor, promotion_cannot_demote_actions) {
   ASSERT_TRUE(!redis_field(prepared.redis, kActionsFinalityField).has_value());
   ASSERT_EQ(std::uint8_t{1}, *prepared.next_trace.actions.blob_finality);
   ASSERT_EQ(original_blob, *prepared.next_trace.actions.blob);
+  ASSERT_TRUE(!prepared.next_trace.actions.blob_is_current);
+}
+
+TEST(TraceProcessor, failed_classification_keeps_blob_but_marks_it_stale_for_streaming) {
+  auto current = trace_with_actions(FinalityState::Confirmed, 1);
+  mch::EmuActionPayload failed;
+  failed.state = "convert_failed";
+  failed.finality = 1;
+  failed.update_seq = 2;
+
+  auto prepared = prepare_action_update(current.actions, failed, "trace");
+
+  ASSERT_TRUE(!prepared.actions_updated);
+  ASSERT_TRUE(prepared.state.blob.has_value());
+  ASSERT_TRUE(!prepared.state.blob_is_current);
+  ASSERT_EQ(current.actions.aai_refs, prepared.state.aai_refs);
+}
+
+TEST(TraceProcessor, failed_classification_publishes_an_empty_actions_hint) {
+  auto trace = trace_with_actions(FinalityState::Confirmed, 1);
+  trace.update_seq = 7;
+  RedisWritePlan plan;
+
+  append_streaming_actions_hint(plan, trace, "trace", StreamingUpdateFinality::Confirmed, false);
+
+  ASSERT_EQ(1u, plan.publications.size());
+  ASSERT_EQ(std::string(kStreamingActionsChannel), plan.publications[0].first);
+  StreamingActionsHint hint;
+  const auto& payload = plan.publications[0].second;
+  msgpack::unpack(payload.data(), payload.size()).get().convert(hint);
+  ASSERT_EQ("trace", hint.trace_key);
+  ASSERT_EQ(7u, hint.update_seq);
+  ASSERT_EQ(1u, hint.update_finality);
+  ASSERT_EQ(1u, hint.trace_finality);
+  ASSERT_TRUE(!hint.actions_updated);
+  ASSERT_TRUE(hint.action_types_and_accounts.empty());
 }
 
 TEST(TraceProcessor, full_materialization_restores_action_marker_and_indexes) {

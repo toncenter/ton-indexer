@@ -21,7 +21,6 @@ import (
 	"github.com/valyala/fasthttp"
 
 	"github.com/toncenter/ton-indexer/ton-emulate-go/models"
-	"github.com/toncenter/ton-indexer/ton-index-go/index/emulated"
 	"github.com/toncenter/ton-indexer/ton-streaming-go/observability"
 )
 
@@ -48,8 +47,8 @@ func InitConfig(cfg Config) {
 ////////////////////////////////////////////////////////////////////////////////
 
 const (
-	classifiedTraceSpanName = "ton.streaming_api.process_classified_trace"
-	rawTraceSpanName        = "ton.streaming_api.process_raw_trace"
+	actionHintSpanName = "ton.streaming_api.process_action_hint"
+	rawTraceSpanName   = "ton.streaming_api.process_raw_trace"
 
 	streamingWorkerCount        = 16
 	streamingQueueSizePerWorker = 64
@@ -419,13 +418,6 @@ func (manager *ClientManager) shouldFetchAddressBookAndMetadataForTrace(eventFin
 	return manager.enrichmentNeeds(manager.subscribersForTrace(traceExternalHashNorm, eventFinality))
 }
 
-// needsClassifiedTrace reports whether a classified trace can produce an event
-// for at least one connected client. Action addresses are not known until the
-// trace is loaded, so any non-empty actions subscription is considered relevant.
-func (manager *ClientManager) needsClassifiedTrace(traceExternalHashNorm indexModels.HashType) bool {
-	return manager.hasEventSubscribers(EventActions) || manager.hasTraceSubscribers(traceExternalHashNorm)
-}
-
 func (manager *ClientManager) sendNotification(notification Notification, targets clientSet) {
 	if targets != nil && len(targets) == 0 {
 		return
@@ -777,9 +769,7 @@ func (n *TraceNotification) AdjustForClient(client *Client) any {
 			}
 			filteredActions = append(filteredActions, action)
 		}
-		if len(filteredActions) > 0 {
-			adjustedActions = &filteredActions
-		}
+		adjustedActions = &filteredActions
 	}
 
 	if n.Finality == indexModels.FinalityStateFinalized {
@@ -862,249 +852,6 @@ func (n *JettonsNotification) AdjustForClient(client *Client) any {
 		}
 	}
 	return nil
-}
-
-////////////////////////////////////////////////////////////////////////////////
-// Classified traces (actions)
-////////////////////////////////////////////////////////////////////////////////
-
-func SubscribeToClassifiedTraces(ctx context.Context, rdb *redis.Client, manager *ClientManager, channel string) {
-	pubsub := rdb.Subscribe(ctx, channel)
-	defer pubsub.Close()
-
-	log.Printf("[v2] Subscribed to Redis channel (classified traces): %s", channel)
-
-	pool := newKeyedWorkerPool(ctx, "classified traces", streamingWorkerCount, streamingQueueSizePerWorker,
-		func(ctx context.Context, traceKey indexModels.HashType) {
-			ProcessNewClassifiedTrace(ctx, rdb, traceKey, manager, channel)
-		})
-
-	for {
-		msg, err := pubsub.ReceiveMessage(ctx)
-		if err != nil {
-			if ctx.Err() != nil {
-				return
-			}
-			log.Printf("[v2] Error receiving classified trace message: %v", err)
-			continue
-		}
-
-		traceExternalHashNorm := indexModels.HashType(msg.Payload)
-		if !manager.needsClassifiedTrace(traceExternalHashNorm) {
-			continue
-		}
-		if !pool.Enqueue(ctx, traceExternalHashNorm.String(), traceExternalHashNorm.String(), normalPriority, traceExternalHashNorm) {
-			return
-		}
-	}
-}
-
-func ProcessNewClassifiedTrace(ctx context.Context, rdb *redis.Client, traceExternalHashNorm indexModels.HashType, manager *ClientManager, channel string) {
-	// The subscription may have disappeared while this job was waiting in the
-	// queue. Avoid an expensive HGETALL when nobody can receive the result.
-	if !manager.needsClassifiedTrace(traceExternalHashNorm) {
-		return
-	}
-
-	startTimeUnix := observability.NowUnixNano()
-
-	repository := &emulated.EmulatedTracesRepository{Rdb: rdb}
-	rawTraces, err := repository.LoadRawTraces([]string{traceExternalHashNorm.String()})
-	if err != nil {
-		log.Printf("[v2] Error loading raw traces (classified): %v, trace key: %s", err, traceExternalHashNorm)
-		return
-	}
-	stage := NewTraceProcessingStage(
-		startTimeUnix,
-		classifiedTraceSpanName,
-		rawTraces[traceExternalHashNorm.String()],
-		traceExternalHashNorm.String(),
-		channel,
-	)
-	traceRootHash := indexModels.HashType(rawTraces[traceExternalHashNorm.String()]["root_node"])
-	stage.Span.AddAttr("ton.trace.external_message_hash", string(traceRootHash))
-
-	emulatedContext := crud.NewEmptyContext(false)
-	err = emulatedContext.FillFromRawData(rawTraces)
-	if err != nil {
-		log.Printf("[v2] Error filling context from raw data (classified): %v, trace key: %s", err, traceExternalHashNorm)
-		stage.EmitOtelError("streaming_api.fill_context_error", err.Error())
-		return
-	}
-	if emulatedContext.GetTraceCount() > 1 {
-		log.Printf("[v2] More than 1 trace in context (classified), trace key: %s", traceExternalHashNorm)
-		stage.EmitOtelError("streaming_api.invalid_trace_count", "more than one trace in emulated context")
-		return
-	}
-	if emulatedContext.GetTraceCount() == 0 {
-		log.Printf("[v2] No traces in context (classified), trace key: %s", traceExternalHashNorm)
-		stage.EmitOtelError("streaming_api.invalid_trace_count", "no traces in emulated context")
-		return
-	}
-
-	// log.Print("[v2] Processing classified trace: ", traceExternalHashNorm)
-
-	// Finality of trace is the minimum finality of its txs, however,
-	// NFT and jetton transfer notifications do not affect finality if there are no outgoing messages
-	traceFinality := indexModels.FinalityStateFinalized
-	{
-		emulatedTxs := emulatedContext.GetTransactions()
-		txFinality := make(map[string]indexModels.FinalityState, len(emulatedTxs))
-		txHashes := make([]string, 0, len(emulatedTxs))
-		for _, tx := range emulatedTxs {
-			txHash := string(tx.Hash)
-			txHashes = append(txHashes, txHash)
-			txFinality[txHash] = tx.Finality
-			if stage.RootTxHash == "-" && tx.TraceId != nil {
-				stage.SetRootTxHash(*tx.TraceId)
-			}
-		}
-
-		inOpcodes := make(map[string]string, len(txFinality))
-		outMsgCounts := make(map[string]int, len(txFinality))
-		if len(txHashes) > 0 {
-			for _, msg := range emulatedContext.GetMessages(txHashes) {
-				txHash := string(msg.TxHash)
-				if msg.Direction == "in" {
-					if msg.Opcode != nil {
-						inOpcodes[txHash] = (*msg.Opcode).String()
-					}
-					continue
-				} else {
-					outMsgCounts[txHash]++
-				}
-			}
-		}
-
-		for txHash, finality := range txFinality {
-			if outMsgCounts[txHash] == 0 {
-				if opcode, ok := inOpcodes[txHash]; ok {
-					if opcode == jettonTransferNotificationOpcode || opcode == nftOwnershipAssignedNotificationOpcode || opcode == excessesOpcode {
-						continue
-					}
-				}
-			}
-			if finality < traceFinality {
-				traceFinality = finality
-			}
-		}
-	}
-
-	var actions []*indexModels.Action
-	var actionsAddresses [][]indexModels.AccountAddress
-
-	for _, rawAction := range emulatedContext.GetAllActions() { // ascending order
-		actionAddrMap := map[indexModels.AccountAddress]bool{}
-		parse.CollectAddressesFromAction(&actionAddrMap, rawAction)
-
-		action, err := parse.ParseRawAction(rawAction)
-		if err != nil {
-			log.Printf("[v2] Error parsing raw action: %v", err)
-			continue
-		}
-		actionAddresses := []indexModels.AccountAddress{}
-		for addr := range actionAddrMap {
-			actionAddresses = append(actionAddresses, addr)
-		}
-		actions = append(actions, action)
-		actionsAddresses = append(actionsAddresses, actionAddresses)
-	}
-	stage.Span.AddAttr("ton.actions.count", len(actions))
-	stage.Span.AddAttr("ton.actions.has_actions", len(actions) > 0)
-	stage.Span.AddAttr("ton.trace.finality", traceFinality.String())
-
-	var addressBook *indexModels.AddressBook
-	var metadata *indexModels.Metadata
-	var allAddresses []indexModels.AccountAddress
-	for _, aa := range actionsAddresses {
-		allAddresses = append(allAddresses, aa...)
-	}
-	// Fetch address_book/metadata only if at least one eligible client needs it,
-	// and only if that client will receive this event with traceFinality.
-	shouldFetchAddressBook, shouldFetchMetadata := manager.shouldFetchAddressBookAndMetadata(
-		[]EventType{EventActions}, traceFinality, allAddresses)
-	if shouldFetchAddressBook || shouldFetchMetadata {
-		addressBook, metadata = fetchAddressBookAndMetadata(ctx, allAddresses, allAddresses, shouldFetchAddressBook, shouldFetchMetadata)
-	}
-	actionTargets := manager.subscribersForAddresses(EventActions, allAddresses, traceFinality)
-	manager.sendNotification(&ActionsNotification{
-		Type:                  EventActions,
-		Finality:              traceFinality,
-		TraceExternalHashNorm: traceExternalHashNorm,
-		Actions:               actions,
-		ActionAddresses:       actionsAddresses,
-		AddressBook:           addressBook,
-		Metadata:              metadata,
-	}, actionTargets)
-
-	traceTargets := manager.subscribersForTrace(traceExternalHashNorm, traceFinality)
-	if len(traceTargets) == 0 {
-		stage.Emit()
-		return
-	}
-
-	txs, err := crud.QueryPendingTransactionsImpl(emulatedContext, nil, indexModels.RequestSettings{}, false)
-	if err != nil {
-		log.Printf("[v2] Error querying trace transactions (classified): %v", err)
-		stage.EmitOtelError("streaming_api.query_transactions_error", err.Error())
-		return
-	}
-
-	txOrder := make([]indexModels.HashType, 0, len(txs))
-	for idx := range txs {
-		txOrder = append(txOrder, txs[idx].Hash)
-	}
-
-	traceRoot, traceTxMap, err := buildTraceFromTransactions(txOrder, txs)
-	if err != nil {
-		log.Printf("[v2] Error assembling trace (classified) %s: %v", traceExternalHashNorm, err)
-		stage.EmitOtelError("streaming_api.build_trace_error", err.Error())
-		return
-	}
-	if traceRoot == nil {
-		stage.EmitOtelError("streaming_api.build_trace_error", "classified trace root is nil")
-		return
-	}
-
-	traceAddrSet := map[indexModels.AccountAddress]bool{}
-	for idx := range txs {
-		collectAddressesFromTransaction(traceAddrSet, &txs[idx])
-	}
-	for _, aa := range actionsAddresses {
-		for _, addr := range aa {
-			traceAddrSet[addr] = true
-		}
-	}
-	traceAddresses := make([]indexModels.AccountAddress, 0, len(traceAddrSet))
-	for addr := range traceAddrSet {
-		traceAddresses = append(traceAddresses, addr)
-	}
-
-	var traceAddressBook *indexModels.AddressBook
-	var traceMetadata *indexModels.Metadata
-	shouldFetchTraceAddressBook, shouldFetchTraceMetadata := manager.shouldFetchAddressBookAndMetadataForTrace(
-		traceFinality, traceExternalHashNorm)
-	if shouldFetchTraceAddressBook || shouldFetchTraceMetadata {
-		traceAddressBook, traceMetadata = fetchAddressBookAndMetadata(
-			ctx, traceAddresses, traceAddresses, shouldFetchTraceAddressBook, shouldFetchTraceMetadata)
-	}
-
-	var traceActionsPtr *[]*indexModels.Action
-	if len(actions) > 0 {
-		traceActionsPtr = &actions
-	}
-
-	manager.sendNotification(&TraceNotification{
-		Type:                  EventTrace,
-		Finality:              traceFinality,
-		TraceExternalHashNorm: traceExternalHashNorm,
-		Trace:                 *traceRoot,
-		Transactions:          traceTxMap,
-		Actions:               traceActionsPtr,
-		AddressBook:           traceAddressBook,
-		Metadata:              traceMetadata,
-	}, traceTargets)
-	stage.Emit()
 }
 
 ////////////////////////////////////////////////////////////////////////////////

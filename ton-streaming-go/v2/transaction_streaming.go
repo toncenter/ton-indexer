@@ -50,7 +50,7 @@ func SubscribeToTransactionHints(ctx context.Context, rdb *redis.Client, manager
 }
 
 func hasTransactionSubscribers(manager *ClientManager, hint transactionHint) bool {
-	return len(manager.subscribersForAddresses(EventTransactions, hint.Accounts, hint.Finality)) > 0
+	return len(manager.subscribersForAddresses(EventTransactions, hint.Accounts, hint.TraceFinality)) > 0
 }
 
 func ProcessTransactionHint(ctx context.Context, rdb *redis.Client, hint transactionHint, manager *ClientManager, channel string) {
@@ -78,7 +78,7 @@ func ProcessTransactionHint(ctx context.Context, rdb *redis.Client, hint transac
 	}
 	emulatedContext := crud.NewEmptyContext(false)
 	if err := emulatedContext.FillFromRawData(rawTraces); err != nil {
-		log.Printf("[v2] Error filling transaction trace %s (%s): %v", hint.TraceKey, hint.Kind, err)
+		log.Printf("[v2] Error filling transaction trace %s (%s update): %v", hint.TraceKey, hint.UpdateFinality, err)
 		stage.EmitOtelError("streaming_api.fill_context_error", err.Error())
 		return
 	}
@@ -95,8 +95,8 @@ func ProcessTransactionHint(ctx context.Context, rdb *redis.Client, hint transac
 		stage.Emit()
 		return
 	}
-	if traceFinality != hint.Finality {
-		err := fmt.Errorf("hint finality is %s, Redis snapshot finality is %s", hint.Finality, traceFinality)
+	if traceFinality != hint.TraceFinality {
+		err := fmt.Errorf("hint trace_finality is %s, Redis snapshot finality is %s", hint.TraceFinality, traceFinality)
 		log.Printf("[v2] Transaction hint finality mismatch for %s: %v", hint.TraceKey, err)
 		stage.EmitOtelError("streaming_api.finality_mismatch", err.Error())
 		return
@@ -148,7 +148,7 @@ func transactionsForHint(
 	finality := indexModels.FinalityStateFinalized
 
 	for _, tx := range emulatedContext.GetTransactions() {
-		if hint.Kind == transactionHintPending && tx.Finality != indexModels.FinalityStatePending {
+		if hint.UpdateFinality == indexModels.FinalityStatePending && tx.Finality != indexModels.FinalityStatePending {
 			continue
 		}
 		txs = append(txs, *tx)
@@ -178,7 +178,7 @@ func attachTransactionMessages(emulatedContext *crud.EmulatedTracesContext, hint
 	for _, msg := range messages {
 		txIndex, ok := txIndexes[msg.TxHash]
 		if !ok {
-			log.Printf("[v2] Message for unknown transaction (%s), tx hash: %s", hint.Kind, msg.TxHash)
+			log.Printf("[v2] Message for unknown transaction (%s update), tx hash: %s", hint.UpdateFinality, msg.TxHash)
 			continue
 		}
 		messagePointers = append(messagePointers, msg)
@@ -195,7 +195,7 @@ func attachTransactionMessages(emulatedContext *crud.EmulatedTracesContext, hint
 		}
 	}
 
-	if hint.Kind == transactionHintPending {
+	if hint.UpdateFinality == indexModels.FinalityStatePending {
 		if err := detect.MarkMessagesByPtr(messagePointers); err != nil {
 			log.Printf("[v2] Error marking pending messages for %s: %v", hint.TraceKey, err)
 		}

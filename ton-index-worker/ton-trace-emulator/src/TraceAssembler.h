@@ -22,6 +22,9 @@ struct ActionState {
   std::optional<std::string> classify_state;
   std::optional<std::uint8_t> blob_finality;
   std::vector<TraceStateIndexRef> aai_refs;
+  std::vector<mch::EmuActionRoute> routes;
+  // False means the blob belongs to an older trace version and must not be streamed.
+  bool blob_is_current{false};
 };
 
 // Canonical, fully owned state of one active trace. TraceStateNode keeps both

@@ -36,9 +36,9 @@ constexpr std::size_t kMaxCachedTraceNodes = 1000;
 constexpr double kCleanupRetrySeconds = 1.0;
 constexpr double kExpirySweepSeconds = 1.0;
 
-constexpr const char* kNewTraceChannel = "new_trace";
 constexpr const char* kInvalidatedTraceChannel = "invalidated_traces";
 constexpr const char* kStreamingTransactionsChannel = "streaming_transactions";
+constexpr const char* kStreamingActionsChannel = "streaming_actions";
 constexpr const char* kActionsStateField = "mch_classify_state";
 constexpr const char* kActionsField = "actions";
 constexpr const char* kActionsFinalityField = "actions_finality";
@@ -121,28 +121,55 @@ std::vector<std::string> transaction_accounts(const ActiveTrace& trace,
   return {accounts.begin(), accounts.end()};
 }
 
+StreamingUpdateFinality streaming_update_finality(FinalityState finality) {
+  return static_cast<StreamingUpdateFinality>(static_cast<std::uint8_t>(finality));
+}
+
 void append_streaming_transaction_hint(RedisWritePlan& plan, const ActiveTrace& trace, const std::string& trace_key,
-                                       StreamingTransactionKind kind) {
+                                       StreamingUpdateFinality update_finality) {
   const auto only_finality =
-      kind == StreamingTransactionKind::Pending ? std::optional{TraceStateFinality::Emulated} : std::nullopt;
+      update_finality == StreamingUpdateFinality::Pending ? std::optional{TraceStateFinality::Emulated} : std::nullopt;
   auto accounts = transaction_accounts(trace, only_finality);
   if (accounts.empty()) {
     return;
   }
-  const auto finality = kind == StreamingTransactionKind::Pending
-                            ? static_cast<std::uint8_t>(TraceStateFinality::Emulated)
-                            : trace_finality(trace);
+  const auto snapshot_finality = update_finality == StreamingUpdateFinality::Pending
+                                     ? static_cast<std::uint8_t>(TraceStateFinality::Emulated)
+                                     : trace_finality(trace);
   plan.publications.emplace_back(kStreamingTransactionsChannel, pack_streaming_hint(StreamingTransactionHint{
                                                                     .trace_key = trace_key,
                                                                     .update_seq = trace.update_seq,
-                                                                    .kind = static_cast<std::uint8_t>(kind),
-                                                                    .finality = finality,
+                                                                    .update_finality =
+                                                                        static_cast<std::uint8_t>(update_finality),
+                                                                    .trace_finality = snapshot_finality,
                                                                     .accounts = std::move(accounts),
                                                                 }));
 }
 
+void append_streaming_actions_hint(RedisWritePlan& plan, const ActiveTrace& trace, const std::string& trace_key,
+                                   StreamingUpdateFinality update_finality, bool actions_updated) {
+  StreamingActionsHint hint{
+      .trace_key = trace_key,
+      .update_seq = trace.update_seq,
+      .update_finality = static_cast<std::uint8_t>(update_finality),
+      .trace_finality = trace_finality(trace),
+      .actions_updated = actions_updated,
+  };
+  if (actions_updated) {
+    hint.action_types_and_accounts.reserve(trace.actions.routes.size());
+    for (const auto& route : trace.actions.routes) {
+      hint.action_types_and_accounts.push_back(StreamingActionRoute{
+          .type = route.type,
+          .accounts = route.accounts,
+      });
+    }
+  }
+  plan.publications.emplace_back(kStreamingActionsChannel, pack_streaming_hint(hint));
+}
+
 struct PreparedActionUpdate {
   ActionState state;
+  bool actions_updated{false};
   std::vector<std::pair<std::string, std::string>> fields_to_set;
   std::vector<TraceStateIndexRef> removed_index_refs;
   std::vector<TraceStateIndexRef> added_index_refs;
@@ -324,6 +351,7 @@ PreparedActionUpdate prepare_action_update(const ActionState& current, const mch
                                            const std::string& trace_key) {
   PreparedActionUpdate prepared;
   prepared.state = current;
+  prepared.state.blob_is_current = false;
   if (payload.state == nullptr) {
     return prepared;
   }
@@ -343,6 +371,9 @@ PreparedActionUpdate prepare_action_update(const ActionState& current, const mch
   prepared.fields_to_set.emplace_back(kActionsField, payload.actions_blob);
   prepared.fields_to_set.emplace_back(kActionsFinalityField, std::to_string(static_cast<int>(payload.finality)));
   prepared.state.blob = payload.actions_blob;
+  prepared.state.routes = payload.routes;
+  prepared.state.blob_is_current = true;
+  prepared.actions_updated = true;
 
   std::vector<TraceStateIndexRef> resulting_refs;
   resulting_refs.reserve(payload.aai.size());
@@ -406,6 +437,7 @@ td::Result<std::string> rewrite_actions_finality(std::string_view blob, std::uin
 }
 
 struct PreparedActionPromotion {
+  bool actions_updated{false};
   std::vector<std::pair<std::string, std::string>> fields_to_set;
 };
 
@@ -413,6 +445,7 @@ td::Result<PreparedActionPromotion> prepare_promoted_action_update(const ActionS
                                                                    std::uint8_t finality,
                                                                    const std::string& trace_key) {
   PreparedActionPromotion prepared;
+  next.blob_is_current = false;
   if (!current.blob_finality) {
     return prepared;
   }
@@ -425,12 +458,17 @@ td::Result<PreparedActionPromotion> prepare_promoted_action_update(const ActionS
   if (!current.blob) {
     return prepared;
   }
+  if (!current.blob_is_current) {
+    return prepared;
+  }
 
   TRY_RESULT(rewritten, rewrite_actions_finality(*current.blob, finality));
   prepared.fields_to_set.emplace_back(kActionsField, rewritten);
   prepared.fields_to_set.emplace_back(kActionsFinalityField, std::to_string(static_cast<int>(finality)));
   next.blob = std::move(rewritten);
   next.blob_finality = finality;
+  next.blob_is_current = true;
+  prepared.actions_updated = true;
   return prepared;
 }
 
@@ -471,7 +509,7 @@ td::Status append_account_state_writes(RedisWritePlan& plan, const Trace& trace)
 }
 
 void append_publications(RedisWritePlan& plan, const TraceTransition& transition, const Trace& trace,
-                         const std::string& trace_key) {
+                         const std::string& trace_key, bool actions_updated) {
   bool has_committed_transactions = false;
   bool has_pending_transactions = false;
   for (const auto& accepted : transition.accepted_nodes) {
@@ -484,13 +522,14 @@ void append_publications(RedisWritePlan& plan, const TraceTransition& transition
 
   if (has_committed_transactions) {
     const auto finalized = trace.root->finality_state == FinalityState::Finalized;
-    auto kind = finalized ? StreamingTransactionKind::Finalized : StreamingTransactionKind::Confirmed;
-    append_streaming_transaction_hint(plan, transition.next_trace, trace_key, kind);
+    auto update_finality = finalized ? StreamingUpdateFinality::Finalized : StreamingUpdateFinality::Confirmed;
+    append_streaming_transaction_hint(plan, transition.next_trace, trace_key, update_finality);
   }
   if (has_pending_transactions) {
-    append_streaming_transaction_hint(plan, transition.next_trace, trace_key, StreamingTransactionKind::Pending);
+    append_streaming_transaction_hint(plan, transition.next_trace, trace_key, StreamingUpdateFinality::Pending);
   }
-  plan.publications.emplace_back(kNewTraceChannel, trace_key);
+  append_streaming_actions_hint(plan, transition.next_trace, trace_key,
+                                streaming_update_finality(trace.root->finality_state), actions_updated);
 }
 
 td::Result<RedisWritePlan> build_redis_plan(const TraceTransition& transition,
@@ -528,7 +567,7 @@ td::Result<RedisWritePlan> build_redis_plan(const TraceTransition& transition,
   if (account_states_status.is_error()) {
     return account_states_status;
   }
-  append_publications(plan, transition, trace, trace_key);
+  append_publications(plan, transition, trace, trace_key, action_update.actions_updated);
   return plan;
 }
 
@@ -552,7 +591,7 @@ void fill_measurement(const TraceTransition& transition, const Trace& trace, con
 
   measurement->set_finality(finality_name(trace.root->finality_state));
   measurement->set_operation(trace_emulator_operation(trace.root->finality_state));
-  measurement->set_out_channel(kNewTraceChannel);
+  measurement->set_out_channel(kStreamingActionsChannel);
   measurement->set_otel_attribute("ton.trace_state.upserted_nodes_count",
                                   static_cast<std::int64_t>(transition.node_delta.upserted_nodes.size()));
   measurement->set_otel_attribute("ton.trace_state.removed_nodes_count",
@@ -685,17 +724,17 @@ td::Status append_promoted_account_states(RedisWritePlan& plan, const CachedConf
 }
 
 void append_promoted_publications(RedisWritePlan& plan, const CachedConfirmedTrace& cached,
-                                  const ActiveTrace& next_trace, const std::string& trace_key) {
+                                  const ActiveTrace& next_trace, const std::string& trace_key, bool actions_updated) {
   if (!cached.nodes.empty()) {
-    append_streaming_transaction_hint(plan, next_trace, trace_key, StreamingTransactionKind::Finalized);
+    append_streaming_transaction_hint(plan, next_trace, trace_key, StreamingUpdateFinality::Finalized);
   }
   const auto has_pending_nodes =
       std::any_of(next_trace.nodes.nodes().begin(), next_trace.nodes.nodes().end(),
                   [](const auto& entry) { return entry.second.finality == TraceStateFinality::Emulated; });
   if (has_pending_nodes) {
-    append_streaming_transaction_hint(plan, next_trace, trace_key, StreamingTransactionKind::Pending);
+    append_streaming_transaction_hint(plan, next_trace, trace_key, StreamingUpdateFinality::Pending);
   }
-  plan.publications.emplace_back(kNewTraceChannel, trace_key);
+  append_streaming_actions_hint(plan, next_trace, trace_key, StreamingUpdateFinality::Finalized, actions_updated);
 }
 
 td::Status append_full_trace_state(RedisWritePlan& plan, const ActiveTrace& trace) {
@@ -755,8 +794,10 @@ td::Result<PreparedTraceUpdate> prepare_confirmed_promotion(const ActiveTrace& c
     if (current.actions.classify_state) {
       plan.fields_to_set.emplace_back(kActionsStateField, *current.actions.classify_state);
     }
-    plan.indexes_to_add.insert(plan.indexes_to_add.end(), current.actions.aai_refs.begin(),
-                               current.actions.aai_refs.end());
+    if (action_update.actions_updated) {
+      plan.indexes_to_add.insert(plan.indexes_to_add.end(), current.actions.aai_refs.begin(),
+                                 current.actions.aai_refs.end());
+    }
   } else {
     plan.node_fields_to_delete = node_delta.removed_node_keys;
     plan.indexes_to_remove = node_delta.removed_index_refs;
@@ -775,7 +816,7 @@ td::Result<PreparedTraceUpdate> prepare_confirmed_promotion(const ActiveTrace& c
                             action_update.fields_to_set.end());
 
   TRY_STATUS(append_promoted_account_states(plan, cached));
-  append_promoted_publications(plan, cached, prepared.next_trace, trace_key);
+  append_promoted_publications(plan, cached, prepared.next_trace, trace_key, action_update.actions_updated);
   prepared.needs_redis_write = true;
   return prepared;
 }

@@ -9,26 +9,32 @@ import (
 	"github.com/vmihailenco/msgpack/v5"
 )
 
-type transactionHintKind uint8
-
-const (
-	transactionHintPending transactionHintKind = iota
-	transactionHintConfirmed
-	transactionHintFinalized
-)
-
 type transactionHint struct {
-	TraceKey  indexModels.HashType         `msgpack:"trace_key"`
-	UpdateSeq uint64                       `msgpack:"update_seq"`
-	Kind      transactionHintKind          `msgpack:"kind"`
-	Finality  indexModels.FinalityState    `msgpack:"finality"`
-	Accounts  []indexModels.AccountAddress `msgpack:"accounts"`
+	TraceKey       indexModels.HashType         `msgpack:"trace_key"`
+	UpdateSeq      uint64                       `msgpack:"update_seq"`
+	UpdateFinality indexModels.FinalityState    `msgpack:"update_finality"`
+	TraceFinality  indexModels.FinalityState    `msgpack:"trace_finality"`
+	Accounts       []indexModels.AccountAddress `msgpack:"accounts"`
 }
 
 type accountStateHint struct {
 	Account  indexModels.AccountAddress `msgpack:"account"`
 	Lt       uint64                     `msgpack:"lt"`
 	Finality indexModels.FinalityState  `msgpack:"finality"`
+}
+
+type actionRoute struct {
+	Type     string                       `msgpack:"type"`
+	Accounts []indexModels.AccountAddress `msgpack:"accounts"`
+}
+
+type actionsHint struct {
+	TraceKey               indexModels.HashType      `msgpack:"trace_key"`
+	UpdateSeq              uint64                    `msgpack:"update_seq"`
+	UpdateFinality         indexModels.FinalityState `msgpack:"update_finality"`
+	TraceFinality          indexModels.FinalityState `msgpack:"trace_finality"`
+	ActionsUpdated         bool                      `msgpack:"actions_updated"`
+	ActionTypesAndAccounts []actionRoute             `msgpack:"action_types_and_accounts"`
 }
 
 var errStaleStreamingHint = errors.New("stale streaming hint")
@@ -44,11 +50,11 @@ func decodeTransactionHint(payload string) (transactionHint, error) {
 	if hint.UpdateSeq == 0 {
 		return transactionHint{}, fmt.Errorf("update_seq must be positive")
 	}
-	if hint.Kind > transactionHintFinalized {
-		return transactionHint{}, fmt.Errorf("unknown transaction hint kind %d", hint.Kind)
+	if hint.UpdateFinality > indexModels.FinalityStateFinalized {
+		return transactionHint{}, fmt.Errorf("unknown update_finality %d", hint.UpdateFinality)
 	}
-	if hint.Finality > indexModels.FinalityStateFinalized {
-		return transactionHint{}, fmt.Errorf("unknown finality %d", hint.Finality)
+	if hint.TraceFinality > indexModels.FinalityStateFinalized {
+		return transactionHint{}, fmt.Errorf("unknown trace_finality %d", hint.TraceFinality)
 	}
 	if len(hint.Accounts) == 0 {
 		return transactionHint{}, fmt.Errorf("missing transaction accounts")
@@ -67,6 +73,34 @@ func decodeAccountStateHint(payload string) (accountStateHint, error) {
 	if hint.Finality != indexModels.FinalityStateConfirmed &&
 		hint.Finality != indexModels.FinalityStateFinalized {
 		return accountStateHint{}, fmt.Errorf("unsupported finality %d", hint.Finality)
+	}
+	return hint, nil
+}
+
+func decodeActionsHint(payload string) (actionsHint, error) {
+	var hint actionsHint
+	if err := msgpack.Unmarshal([]byte(payload), &hint); err != nil {
+		return actionsHint{}, fmt.Errorf("decode msgpack: %w", err)
+	}
+	if hint.TraceKey == "" {
+		return actionsHint{}, fmt.Errorf("missing trace_key")
+	}
+	if hint.UpdateSeq == 0 {
+		return actionsHint{}, fmt.Errorf("update_seq must be positive")
+	}
+	if hint.UpdateFinality > indexModels.FinalityStateFinalized {
+		return actionsHint{}, fmt.Errorf("unknown update_finality %d", hint.UpdateFinality)
+	}
+	if hint.TraceFinality > indexModels.FinalityStateFinalized {
+		return actionsHint{}, fmt.Errorf("unknown trace_finality %d", hint.TraceFinality)
+	}
+	if !hint.ActionsUpdated && len(hint.ActionTypesAndAccounts) != 0 {
+		return actionsHint{}, fmt.Errorf("actions_updated=false must not contain action routes")
+	}
+	for index, route := range hint.ActionTypesAndAccounts {
+		if route.Type == "" {
+			return actionsHint{}, fmt.Errorf("action route %d has no type", index)
+		}
 	}
 	return hint, nil
 }
@@ -110,36 +144,27 @@ func compareStreamingVersion(actual uint64, expected uint64, field string) error
 }
 
 func (hint transactionHint) priority() jobPriority {
-	switch hint.Kind {
-	case transactionHintPending:
+	return priorityForUpdateFinality(hint.UpdateFinality)
+}
+
+func priorityForUpdateFinality(finality indexModels.FinalityState) jobPriority {
+	switch finality {
+	case indexModels.FinalityStatePending:
 		return normalPriority
-	case transactionHintConfirmed:
+	case indexModels.FinalityStateConfirmed:
 		return confirmedPriority
-	case transactionHintFinalized:
+	case indexModels.FinalityStateFinalized:
 		return finalizedPriority
 	default:
-		panic("transaction hint kind was not validated")
+		panic("update_finality was not validated")
 	}
 }
 
 func (hint transactionHint) jobKey() string {
-	if hint.Kind == transactionHintPending {
+	if hint.UpdateFinality == indexModels.FinalityStatePending {
 		return hint.TraceKey.String() + ":pending"
 	}
 	return hint.TraceKey.String() + ":snapshot"
-}
-
-func (kind transactionHintKind) String() string {
-	switch kind {
-	case transactionHintPending:
-		return "pending"
-	case transactionHintConfirmed:
-		return "confirmed"
-	case transactionHintFinalized:
-		return "finalized"
-	default:
-		return fmt.Sprintf("unknown_%d", kind)
-	}
 }
 
 func (hint accountStateHint) priority() jobPriority {
@@ -151,4 +176,15 @@ func (hint accountStateHint) priority() jobPriority {
 
 func (hint accountStateHint) jobKey() string {
 	return hint.Account.String() + ":" + strconv.FormatUint(hint.Lt, 10)
+}
+
+func (hint actionsHint) priority() jobPriority {
+	return priorityForUpdateFinality(hint.UpdateFinality)
+}
+
+func (hint actionsHint) jobKey() string {
+	if hint.UpdateFinality == indexModels.FinalityStatePending {
+		return hint.TraceKey.String() + ":actions:pending"
+	}
+	return hint.TraceKey.String() + ":actions:snapshot"
 }

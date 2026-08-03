@@ -19,7 +19,7 @@ import (
 
 var (
 	redisAddr                = flag.String("redis", "localhost:6379", "Redis server dsn")
-	classifiedTracesChannel  = flag.String("classified-traces-channel", "classified_trace", "Redis channel for classified traces")
+	actionHintsChannel       = flag.String("action-hints-channel", "streaming_actions", "Redis channel for v2 action hints")
 	transactionHintsChannel  = flag.String("transaction-hints-channel", "streaming_transactions", "Redis channel for v2 transaction hints")
 	accountStateHintsChannel = flag.String("account-state-hints-channel", "streaming_account_states", "Redis channel for v2 account state hints")
 	redisPoolSize            = flag.Int("redis-pool-size", 0, "Connection pool size of redis client")
@@ -112,7 +112,7 @@ func main() {
 	go v2Manager.Run()
 
 	go streamingv2.SubscribeToTransactionHints(ctx, rdb, v2Manager, *transactionHintsChannel)
-	go streamingv2.SubscribeToClassifiedTraces(ctx, rdb, v2Manager, *classifiedTracesChannel)
+	go streamingv2.SubscribeToActionHints(ctx, rdb, v2Manager, *actionHintsChannel)
 	go streamingv2.SubscribeToAccountStateHints(ctx, rdb, v2Manager, *accountStateHintsChannel)
 	go streamingv2.SubscribeToInvalidatedTraces(ctx, rdb, v2Manager, "invalidated_traces")
 
