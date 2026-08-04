@@ -1,7 +1,9 @@
 package v2
 
 import (
+	"bytes"
 	"errors"
+	"log"
 	"testing"
 	"time"
 
@@ -9,6 +11,27 @@ import (
 	"github.com/toncenter/ton-indexer/ton-streaming-go/observability"
 	"github.com/vmihailenco/msgpack/v5"
 )
+
+func TestTraceStageLogStartsWithExternalMessageHash(t *testing.T) {
+	var output bytes.Buffer
+	previousOutput := log.Writer()
+	previousFlags := log.Flags()
+	previousPrefix := log.Prefix()
+	log.SetOutput(&output)
+	log.SetFlags(0)
+	log.SetPrefix("")
+	t.Cleanup(func() {
+		log.SetOutput(previousOutput)
+		log.SetFlags(previousFlags)
+		log.SetPrefix(previousPrefix)
+	})
+
+	logTraceStage("external-hash", "stage=test update_seq=%d", 42)
+
+	if got, want := output.String(), "[v2] external_message_hash_norm=external-hash stage=test update_seq=42\n"; got != want {
+		t.Fatalf("unexpected trace log:\n%s", got)
+	}
+}
 
 func TestTraceHintSpanAttributesDescribeWorkerQueue(t *testing.T) {
 	receivedAt := time.Now()

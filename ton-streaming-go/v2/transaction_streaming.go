@@ -41,13 +41,25 @@ func SubscribeToTransactionHints(ctx context.Context, rdb *redis.Client, manager
 			log.Printf("[v2] Invalid transaction hint: %v", err)
 			continue
 		}
+		hint.timing = hintTiming{receivedAt: receivedAt, workerIndex: pool.workerIndexFor(hint.TraceKey.String())}
 		if !hasTransactionSubscribers(manager, hint) {
 			continue
 		}
-		hint.timing = hintTiming{receivedAt: receivedAt, workerIndex: pool.workerIndexFor(hint.TraceKey.String())}
+		logTraceStage(hint.TraceKey, "stage=redis_hint_received stream=transactions update_seq=%d update_finality=%s "+
+			"hint_trace_finality=%s worker=%d decode_ms=%.3f accounts=%d", hint.UpdateSeq, hint.UpdateFinality,
+			hint.TraceFinality, hint.timing.workerIndex, durationMilliseconds(time.Since(receivedAt)), len(hint.Accounts))
+		enqueueStarted := time.Now()
+		logTraceStage(hint.TraceKey, "stage=worker_enqueue_started stream=transactions update_seq=%d update_finality=%s "+
+			"worker=%d priority=%s", hint.UpdateSeq, hint.UpdateFinality, hint.timing.workerIndex, hint.priority())
 		if !pool.Enqueue(ctx, hint.TraceKey.String(), hint.jobKey(), hint.priority(), hint) {
+			logTraceStage(hint.TraceKey, "stage=worker_enqueue_stopped stream=transactions update_seq=%d update_finality=%s "+
+				"worker=%d wait_ms=%.3f", hint.UpdateSeq, hint.UpdateFinality, hint.timing.workerIndex,
+				durationMilliseconds(time.Since(enqueueStarted)))
 			return
 		}
+		logTraceStage(hint.TraceKey, "stage=worker_enqueue_finished stream=transactions update_seq=%d update_finality=%s "+
+			"worker=%d wait_ms=%.3f", hint.UpdateSeq, hint.UpdateFinality, hint.timing.workerIndex,
+			durationMilliseconds(time.Since(enqueueStarted)))
 	}
 }
 
@@ -57,6 +69,13 @@ func hasTransactionSubscribers(manager *ClientManager, hint transactionHint) boo
 
 func ProcessTransactionHint(ctx context.Context, rdb *redis.Client, hint transactionHint, manager *ClientManager, channel string) {
 	hint.timing.workerStartedAt = time.Now()
+	logTraceStage(hint.TraceKey, "stage=worker_started stream=transactions update_seq=%d update_finality=%s worker=%d "+
+		"worker_queue_ms=%.3f", hint.UpdateSeq, hint.UpdateFinality, hint.timing.workerIndex,
+		durationMilliseconds(durationBetween(hint.timing.receivedAt, hint.timing.workerStartedAt)))
+	defer func() {
+		logTraceStage(hint.TraceKey, "stage=worker_finished stream=transactions update_seq=%d update_finality=%s total_ms=%.3f",
+			hint.UpdateSeq, hint.UpdateFinality, durationMilliseconds(durationBetween(hint.timing.receivedAt, time.Now())))
+	}()
 	// Subscriptions may have changed while the hint waited in the queue.
 	if !hasTransactionSubscribers(manager, hint) {
 		logUndeliveredTraceHint("transactions", hint.TraceKey, hint.UpdateSeq, hint.UpdateFinality, hint.timing,
@@ -65,17 +84,27 @@ func ProcessTransactionHint(ctx context.Context, rdb *redis.Client, hint transac
 	}
 
 	startTimeUnix := hint.timing.workerStartedAt.UnixNano()
+	redisStartedAt := time.Now()
+	logTraceStage(hint.TraceKey, "stage=redis_hgetall_started stream=transactions update_seq=%d update_finality=%s",
+		hint.UpdateSeq, hint.UpdateFinality)
 	rawTrace, err := rdb.HGetAll(ctx, hint.TraceKey.String()).Result()
 	if err != nil {
-		log.Printf("[v2] Error loading transaction trace %s: %v", hint.TraceKey, err)
+		logTraceStage(hint.TraceKey, "stage=redis_hgetall_failed stream=transactions update_seq=%d update_finality=%s "+
+			"duration_ms=%.3f error=%q", hint.UpdateSeq, hint.UpdateFinality,
+			durationMilliseconds(time.Since(redisStartedAt)), err)
 		return
 	}
+	logTraceStage(hint.TraceKey, "stage=redis_hgetall_finished stream=transactions update_seq=%d update_finality=%s "+
+		"duration_ms=%.3f fields=%d redis_update_seq=%s", hint.UpdateSeq, hint.UpdateFinality,
+		durationMilliseconds(time.Since(redisStartedAt)), len(rawTrace), rawTrace["update_seq"])
 	if err := validateTraceHintVersion(rawTrace, hint.UpdateSeq); err != nil {
 		if errors.Is(err, errStaleStreamingHint) {
 			logUndeliveredTraceHint("transactions", hint.TraceKey, hint.UpdateSeq, hint.UpdateFinality, hint.timing,
 				"stale_snapshot", rawTrace["update_seq"])
 		} else {
-			log.Printf("[v2] Transaction hint version mismatch for %s: %v", hint.TraceKey, err)
+			logTraceStage(hint.TraceKey, "stage=redis_snapshot_invalid stream=transactions update_seq=%d "+
+				"update_finality=%s redis_update_seq=%s error=%q", hint.UpdateSeq, hint.UpdateFinality,
+				rawTrace["update_seq"], err)
 			logUndeliveredTraceHint("transactions", hint.TraceKey, hint.UpdateSeq, hint.UpdateFinality, hint.timing,
 				"version_mismatch", rawTrace["update_seq"])
 		}
@@ -89,12 +118,15 @@ func ProcessTransactionHint(ctx context.Context, rdb *redis.Client, hint transac
 	}
 	emulatedContext := crud.NewEmptyContext(false)
 	if err := emulatedContext.FillFromRawData(rawTraces); err != nil {
-		log.Printf("[v2] Error filling transaction trace %s (%s update): %v", hint.TraceKey, hint.UpdateFinality, err)
+		logTraceStage(hint.TraceKey, "stage=trace_decode_failed stream=transactions update_seq=%d update_finality=%s "+
+			"error=%q", hint.UpdateSeq, hint.UpdateFinality, err)
 		stage.EmitOtelError("streaming_api.fill_context_error", err.Error())
 		return
 	}
 	if emulatedContext.GetTraceCount() != 1 {
 		err := fmt.Errorf("expected one trace, got %d", emulatedContext.GetTraceCount())
+		logTraceStage(hint.TraceKey, "stage=trace_decode_failed stream=transactions update_seq=%d update_finality=%s "+
+			"error=%q", hint.UpdateSeq, hint.UpdateFinality, err)
 		stage.EmitOtelError("streaming_api.invalid_trace_count", err.Error())
 		return
 	}
@@ -110,7 +142,8 @@ func ProcessTransactionHint(ctx context.Context, rdb *redis.Client, hint transac
 	}
 	if traceFinality != hint.TraceFinality {
 		err := fmt.Errorf("hint trace_finality is %s, Redis snapshot finality is %s", hint.TraceFinality, traceFinality)
-		log.Printf("[v2] Transaction hint finality mismatch for %s: %v", hint.TraceKey, err)
+		logTraceStage(hint.TraceKey, "stage=trace_finality_mismatch stream=transactions update_seq=%d update_finality=%s "+
+			"error=%q", hint.UpdateSeq, hint.UpdateFinality, err)
 		logUndeliveredTraceHint("transactions", hint.TraceKey, hint.UpdateSeq, hint.UpdateFinality, hint.timing,
 			"finality_mismatch", rawTrace["update_seq"])
 		stage.EmitOtelError("streaming_api.finality_mismatch", err.Error())
@@ -138,6 +171,9 @@ func ProcessTransactionHint(ctx context.Context, rdb *redis.Client, hint transac
 	sortTransactions(txs)
 	stage.Span.AddAttr("ton.trace.finality", traceFinality.String())
 	stage.Span.AddAttr("ton.transactions.count", len(txs))
+	logTraceStage(hint.TraceKey, "stage=trace_processed stream=transactions update_seq=%d update_finality=%s "+
+		"event_finality=%s transactions=%d targets=%d worker_process_ms=%.3f", hint.UpdateSeq, hint.UpdateFinality,
+		traceFinality, len(txs), len(targets), durationMilliseconds(time.Since(hint.timing.workerStartedAt)))
 	manager.sendHintNotification(&TransactionsNotification{
 		Type:                  EventTransactions,
 		Finality:              traceFinality,
@@ -197,7 +233,8 @@ func attachTransactionMessages(emulatedContext *crud.EmulatedTracesContext, hint
 	for _, msg := range messages {
 		txIndex, ok := txIndexes[msg.TxHash]
 		if !ok {
-			log.Printf("[v2] Message for unknown transaction (%s update), tx hash: %s", hint.UpdateFinality, msg.TxHash)
+			logTraceStage(hint.TraceKey, "stage=message_attach_skipped stream=transactions update_seq=%d "+
+				"update_finality=%s reason=unknown_transaction transaction=%s", hint.UpdateSeq, hint.UpdateFinality, msg.TxHash)
 			continue
 		}
 		messagePointers = append(messagePointers, msg)
@@ -216,7 +253,8 @@ func attachTransactionMessages(emulatedContext *crud.EmulatedTracesContext, hint
 
 	if hint.UpdateFinality == indexModels.FinalityStatePending {
 		if err := detect.MarkMessagesByPtr(messagePointers); err != nil {
-			log.Printf("[v2] Error marking pending messages for %s: %v", hint.TraceKey, err)
+			logTraceStage(hint.TraceKey, "stage=message_marking_failed stream=transactions update_seq=%d "+
+				"update_finality=%s error=%q", hint.UpdateSeq, hint.UpdateFinality, err)
 		}
 	}
 	return addresses

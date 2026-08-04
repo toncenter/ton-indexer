@@ -17,6 +17,16 @@ type hintTiming struct {
 	workerIndex     int
 }
 
+func logTraceStage(traceKey indexModels.HashType, format string, args ...any) {
+	if traceKey == "" {
+		return
+	}
+	values := make([]any, 0, len(args)+1)
+	values = append(values, traceKey)
+	values = append(values, args...)
+	log.Printf("[v2] external_message_hash_norm=%s "+format, values...)
+}
+
 func addTraceHintSpanAttributes(stage *TraceProcessingStage, timing hintTiming, updateSeq uint64,
 	updateFinality indexModels.FinalityState, traceFinality indexModels.FinalityState) {
 	stage.Span.AddAttr("ton.streaming.update_seq", updateSeq)
@@ -29,11 +39,8 @@ func addTraceHintSpanAttributes(stage *TraceProcessingStage, timing hintTiming, 
 
 func logUndeliveredTraceHint(stream string, traceKey indexModels.HashType, updateSeq uint64,
 	updateFinality indexModels.FinalityState, timing hintTiming, reason string, redisUpdateSeq string) {
-	if updateFinality < indexModels.FinalityStateConfirmed {
-		return
-	}
-	log.Printf("[v2] trace hint not delivered stream=%s trace=%s update_seq=%d update_finality=%s reason=%s worker=%d "+
-		"worker_queue_ms=%.3f redis_update_seq=%s", stream, traceKey, updateSeq, updateFinality, reason, timing.workerIndex,
+	logTraceStage(traceKey, "stage=hint_not_delivered stream=%s update_seq=%d update_finality=%s reason=%s worker=%d "+
+		"worker_queue_ms=%.3f redis_update_seq=%s", stream, updateSeq, updateFinality, reason, timing.workerIndex,
 		durationMilliseconds(durationBetween(timing.receivedAt, timing.workerStartedAt)), redisUpdateSeq)
 }
 

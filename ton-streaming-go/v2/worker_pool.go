@@ -87,7 +87,7 @@ func (pool *keyedWorkerPool[T]) Enqueue(ctx context.Context, workerKey string, j
 		if pool.replaceQueuedJob(worker, jobKey, priority, job) {
 			worker.mu.Unlock()
 			pool.recordCoalesced()
-			pool.logCommittedQueueEvent("coalesced", workerIndex, jobKey, priority)
+			pool.logCommittedQueueEvent("coalesced", workerKey, workerIndex, jobKey, priority)
 			return true
 		}
 		if len(worker.order[priority]) < worker.capacity {
@@ -101,14 +101,14 @@ func (pool *keyedWorkerPool[T]) Enqueue(ctx context.Context, workerKey string, j
 
 		if priority != finalizedPriority {
 			pool.recordDropped()
-			pool.logCommittedQueueEvent("dropped", workerIndex, jobKey, priority)
+			pool.logCommittedQueueEvent("dropped", workerKey, workerIndex, jobKey, priority)
 			return true
 		}
 
 		// Finalized work is not dropped. Waiting here can only be caused by a
 		// full finalized queue; pending and confirmed queues never block it.
 		if !waitingForSpaceLogged {
-			pool.logCommittedQueueEvent("waiting_for_space", workerIndex, jobKey, priority)
+			pool.logCommittedQueueEvent("waiting_for_space", workerKey, workerIndex, jobKey, priority)
 			waitingForSpaceLogged = true
 		}
 		select {
@@ -220,12 +220,20 @@ func (pool *keyedWorkerPool[T]) logOverloadCount(action string, count uint64) {
 	}
 }
 
-func (pool *keyedWorkerPool[T]) logCommittedQueueEvent(action string, workerIndex int, jobKey string, priority jobPriority) {
-	if priority < confirmedPriority {
+func (pool *keyedWorkerPool[T]) logCommittedQueueEvent(
+	action string,
+	workerKey string,
+	workerIndex int,
+	jobKey string,
+	priority jobPriority,
+) {
+	if pool.name == "transactions" || pool.name == "actions" {
+		log.Printf("[v2] external_message_hash_norm=%s stage=worker_queue_event stream=%s action=%s worker=%d job=%s priority=%s",
+			workerKey, pool.name, action, workerIndex, jobKey, priority)
 		return
 	}
-	log.Printf("[v2] worker pool queue event pool=%s action=%s worker=%d job=%s priority=%s", pool.name, action, workerIndex,
-		jobKey, priority)
+	log.Printf("[v2] key=%s stage=worker_queue_event pool=%s action=%s worker=%d job=%s priority=%s",
+		workerKey, pool.name, action, workerIndex, jobKey, priority)
 }
 
 func keyWorkerIndex(key string, workerCount int) int {
