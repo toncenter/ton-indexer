@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"log"
+	"math"
 	"os"
 	"strconv"
 	"strings"
@@ -450,6 +451,14 @@ func attributesToKeyValues(attributes map[string]any) []attribute.KeyValue {
 			items = append(items, attribute.Int(key, typed))
 		case int64:
 			items = append(items, attribute.Int64(key, typed))
+		case uint64:
+			if typed <= math.MaxInt64 {
+				items = append(items, attribute.Int64(key, int64(typed)))
+			} else {
+				items = append(items, attribute.String(key, strconv.FormatUint(typed, 10)))
+			}
+		case float64:
+			items = append(items, attribute.Float64(key, typed))
 		default:
 			text := asString(value)
 			if text != "" {
