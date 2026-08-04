@@ -125,6 +125,8 @@ func ProcessTransactionHint(ctx context.Context, rdb *redis.Client, hint transac
 		Type:                  EventTransactions,
 		Finality:              traceFinality,
 		TraceExternalHashNorm: hint.TraceKey,
+		UpdateSeq:             hint.UpdateSeq,
+		UpdateFinality:        hint.UpdateFinality,
 		Transactions:          txs,
 		AddressBook:           addressBook,
 		Metadata:              metadata,

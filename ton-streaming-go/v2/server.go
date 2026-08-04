@@ -324,9 +324,92 @@ type Notification interface {
 	AdjustForClient(client *Client) any
 }
 
+const slowDeliveryLogThreshold = 50 * time.Millisecond
+
+type deliveryMetadata struct {
+	eventType       EventType
+	traceKey        indexModels.HashType
+	updateSeq       uint64
+	updateFinality  indexModels.FinalityState
+	finality        indexModels.FinalityState
+	targetCount     int
+	readyAt         time.Time
+	managerAt       time.Time
+	clientAt        time.Time
+	senderAt        time.Time
+	adjustDuration  time.Duration
+	marshalDuration time.Duration
+	queueDepth      int
+	clientID        string
+}
+
 type notificationDelivery struct {
 	notification Notification
 	targets      clientSet // nil means all connected clients
+	metadata     deliveryMetadata
+}
+
+type outboundMessage struct {
+	payload  []byte
+	metadata deliveryMetadata
+}
+
+func notificationMetadata(notification Notification) deliveryMetadata {
+	switch typed := notification.(type) {
+	case *TransactionsNotification:
+		return deliveryMetadata{
+			eventType:      typed.Type,
+			traceKey:       typed.TraceExternalHashNorm,
+			updateSeq:      typed.UpdateSeq,
+			updateFinality: typed.UpdateFinality,
+			finality:       typed.Finality,
+		}
+	case *ActionsNotification:
+		return deliveryMetadata{
+			eventType:      typed.Type,
+			traceKey:       typed.TraceExternalHashNorm,
+			updateSeq:      typed.UpdateSeq,
+			updateFinality: typed.UpdateFinality,
+			finality:       typed.Finality,
+		}
+	case *TraceNotification:
+		return deliveryMetadata{
+			eventType:      typed.Type,
+			traceKey:       typed.TraceExternalHashNorm,
+			updateSeq:      typed.UpdateSeq,
+			updateFinality: typed.UpdateFinality,
+			finality:       typed.Finality,
+		}
+	default:
+		return deliveryMetadata{}
+	}
+}
+
+func durationMilliseconds(duration time.Duration) float64 {
+	return float64(duration) / float64(time.Millisecond)
+}
+
+func logSlowDelivery(message outboundMessage, transport string, writeStarted, writeFinished time.Time, writeErr error) {
+	metadata := message.metadata
+	if metadata.readyAt.IsZero() {
+		return
+	}
+	total := writeFinished.Sub(metadata.readyAt)
+	if total < slowDeliveryLogThreshold {
+		return
+	}
+
+	log.Printf("[v2] slow notification delivery event=%s trace=%s update_seq=%d update_finality=%s finality=%s client=%s "+
+		"transport=%s targets=%d bytes=%d queue_depth=%d manager_wait_ms=%.3f manager_process_ms=%.3f "+
+		"adjust_ms=%.3f marshal_ms=%.3f sender_queue_ms=%.3f transport_queue_ms=%.3f write_ms=%.3f total_ms=%.3f write_error=%t",
+		metadata.eventType, metadata.traceKey, metadata.updateSeq, metadata.updateFinality, metadata.finality, metadata.clientID,
+		transport, metadata.targetCount, len(message.payload), metadata.queueDepth,
+		durationMilliseconds(metadata.managerAt.Sub(metadata.readyAt)),
+		durationMilliseconds(metadata.clientAt.Sub(metadata.managerAt)),
+		durationMilliseconds(metadata.adjustDuration), durationMilliseconds(metadata.marshalDuration),
+		durationMilliseconds(metadata.senderAt.Sub(metadata.clientAt)),
+		durationMilliseconds(writeStarted.Sub(metadata.senderAt)), durationMilliseconds(writeFinished.Sub(writeStarted)),
+		durationMilliseconds(total), writeErr != nil)
 }
 
 type Client struct {
@@ -335,8 +418,8 @@ type Client struct {
 	Connected                      bool
 	Subscription                   Subscription
 	TracesForPotentialInvalidation map[indexModels.HashType]bool // traceExternalHashNorm -> true
-	SendEvent                      func([]byte) error
-	sendChan                       chan []byte
+	SendEvent                      func(outboundMessage) error
+	sendChan                       chan outboundMessage
 	mu                             sync.Mutex
 	writeMu                        sync.Mutex
 }
@@ -356,6 +439,7 @@ func disconnectClient(manager *ClientManager, client *Client) {
 func (c *Client) startSender(manager *ClientManager) {
 	go func() {
 		for msg := range c.sendChan {
+			msg.metadata.senderAt = time.Now()
 			c.writeMu.Lock()
 			c.mu.Lock()
 			if !c.Connected {
@@ -422,9 +506,13 @@ func (manager *ClientManager) sendNotification(notification Notification, target
 	if targets != nil && len(targets) == 0 {
 		return
 	}
+	metadata := notificationMetadata(notification)
+	metadata.readyAt = time.Now()
+	metadata.targetCount = len(targets)
 	manager.broadcast <- notificationDelivery{
 		notification: notification,
 		targets:      targets,
+		metadata:     metadata,
 	}
 }
 
@@ -441,7 +529,7 @@ func (manager *ClientManager) Run() {
 				manager.mu.Unlock()
 				continue
 			}
-			client.sendChan = make(chan []byte, 64)
+			client.sendChan = make(chan outboundMessage, 64)
 			manager.clients[client.ID] = client
 			manager.addSubscriptionToIndexesLocked(client.ID, &client.Subscription)
 			client.mu.Unlock()
@@ -465,6 +553,7 @@ func (manager *ClientManager) Run() {
 			manager.mu.Unlock()
 
 		case delivery := <-manager.broadcast:
+			delivery.metadata.managerAt = time.Now()
 			manager.mu.RLock()
 			clients := make([]*Client, 0, len(manager.clients))
 			if delivery.targets == nil {
@@ -483,15 +572,24 @@ func (manager *ClientManager) Run() {
 			for _, client := range clients {
 				client.mu.Lock()
 				if client.Connected {
+					adjustStarted := time.Now()
 					if event := delivery.notification.AdjustForClient(client); event != nil {
+						adjustDuration := time.Since(adjustStarted)
+						marshalStarted := time.Now()
 						msgBytes, err := json.Marshal(event)
 						if err != nil {
 							log.Printf("[v2] Error marshalling event: %v", err)
 							client.mu.Unlock()
 							continue
 						}
+						metadata := delivery.metadata
+						metadata.clientAt = time.Now()
+						metadata.adjustDuration = adjustDuration
+						metadata.marshalDuration = time.Since(marshalStarted)
+						metadata.queueDepth = len(client.sendChan)
+						metadata.clientID = client.ID
 						select {
-						case client.sendChan <- msgBytes:
+						case client.sendChan <- outboundMessage{payload: msgBytes, metadata: metadata}:
 						default:
 							log.Printf("[v2] Client %s send buffer full, dropping event", client.ID)
 						}
@@ -567,6 +665,8 @@ type ActionsNotification struct {
 	Type                  EventType                      `json:"type"` // always "actions"
 	Finality              indexModels.FinalityState      `json:"finality,string"`
 	TraceExternalHashNorm indexModels.HashType           `json:"trace_external_hash_norm"`
+	UpdateSeq             uint64                         `json:"-"`
+	UpdateFinality        indexModels.FinalityState      `json:"-"`
 	Actions               []*indexModels.Action          `json:"actions"`
 	ActionAddresses       [][]indexModels.AccountAddress `json:"-"` // used internally
 	AddressBook           *indexModels.AddressBook       `json:"address_book,omitempty"`
@@ -656,6 +756,8 @@ type TransactionsNotification struct {
 	Type                  EventType                 `json:"type"` // always "transactions"
 	Finality              indexModels.FinalityState `json:"finality"`
 	TraceExternalHashNorm indexModels.HashType      `json:"trace_external_hash_norm"`
+	UpdateSeq             uint64                    `json:"-"`
+	UpdateFinality        indexModels.FinalityState `json:"-"`
 	Transactions          []indexModels.Transaction `json:"transactions"`
 	AddressBook           *indexModels.AddressBook  `json:"address_book,omitempty"`
 	Metadata              *indexModels.Metadata     `json:"metadata,omitempty"`
@@ -735,6 +837,8 @@ type TraceNotification struct {
 	Type                  EventType                                         `json:"type"` // always "trace"
 	Finality              indexModels.FinalityState                         `json:"finality"`
 	TraceExternalHashNorm indexModels.HashType                              `json:"trace_external_hash_norm"`
+	UpdateSeq             uint64                                            `json:"-"`
+	UpdateFinality        indexModels.FinalityState                         `json:"-"`
 	Trace                 indexModels.TraceNode                             `json:"trace"`
 	Transactions          map[indexModels.HashType]*indexModels.Transaction `json:"transactions"`
 	Actions               *[]*indexModels.Action                            `json:"actions,omitempty"`
@@ -1074,7 +1178,7 @@ func writeWSMessage(c *websocket.Conn, client *Client, msg []byte) error {
 		return nil
 	}
 	client.mu.Unlock()
-	return client.SendEvent(msg)
+	return client.SendEvent(outboundMessage{payload: msg})
 }
 
 func sendWSJSONErr(c *websocket.Conn, client *Client, id *string, err error) {
@@ -1198,7 +1302,7 @@ func SSEHandler(manager *ClientManager) fiber.Handler {
 			}
 		}
 
-		eventCh := make(chan []byte, 16)
+		eventCh := make(chan outboundMessage, 16)
 
 		client := &Client{
 			ID:          clientID,
@@ -1212,9 +1316,9 @@ func SSEHandler(manager *ClientManager) fiber.Handler {
 				MinFinality:          minFinality,
 			},
 			TracesForPotentialInvalidation: make(map[indexModels.HashType]bool),
-			SendEvent: func(b []byte) error {
+			SendEvent: func(message outboundMessage) error {
 				select {
-				case eventCh <- b:
+				case eventCh <- message:
 					return nil
 				default:
 					return nil
@@ -1244,8 +1348,11 @@ func SSEHandler(manager *ClientManager) fiber.Handler {
 
 			for {
 				select {
-				case data := <-eventCh:
-					if err := writeSSEBytes(w, "event", data); err != nil {
+				case message := <-eventCh:
+					writeStarted := time.Now()
+					err := writeSSEBytes(w, "event", message.payload)
+					logSlowDelivery(message, "sse", writeStarted, time.Now(), err)
+					if err != nil {
 						log.Printf("[v2] SSE event write failed for client %s: %v", clientID, err)
 						return
 					}
@@ -1328,7 +1435,12 @@ func WebSocketHandler(manager *ClientManager) func(*websocket.Conn) {
 				MinFinality:          defaultMinFinality(),
 			},
 			TracesForPotentialInvalidation: make(map[indexModels.HashType]bool),
-			SendEvent:                      func(b []byte) error { return c.WriteMessage(websocket.TextMessage, b) },
+			SendEvent: func(message outboundMessage) error {
+				writeStarted := time.Now()
+				err := c.WriteMessage(websocket.TextMessage, message.payload)
+				logSlowDelivery(message, "websocket", writeStarted, time.Now(), err)
+				return err
+			},
 		}
 		manager.register <- client
 		defer disconnectClient(manager, client)
