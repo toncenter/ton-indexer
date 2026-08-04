@@ -3,46 +3,11 @@ package v2
 import (
 	"errors"
 	"fmt"
-	"log"
 	"strconv"
-	"time"
 
 	indexModels "github.com/toncenter/ton-indexer/ton-index-go/index/models"
 	"github.com/vmihailenco/msgpack/v5"
 )
-
-type hintTiming struct {
-	receivedAt      time.Time
-	workerStartedAt time.Time
-	workerIndex     int
-}
-
-func logTraceStage(traceKey indexModels.HashType, format string, args ...any) {
-	if traceKey == "" {
-		return
-	}
-	values := make([]any, 0, len(args)+1)
-	values = append(values, traceKey)
-	values = append(values, args...)
-	log.Printf("[v2] external_message_hash_norm=%s "+format, values...)
-}
-
-func addTraceHintSpanAttributes(stage *TraceProcessingStage, timing hintTiming, updateSeq uint64,
-	updateFinality indexModels.FinalityState, traceFinality indexModels.FinalityState) {
-	stage.Span.AddAttr("ton.streaming.update_seq", updateSeq)
-	stage.Span.AddAttr("ton.streaming.update_finality", updateFinality.String())
-	stage.Span.AddAttr("ton.streaming.hint_trace_finality", traceFinality.String())
-	stage.Span.AddAttr("ton.streaming.worker.index", timing.workerIndex)
-	stage.Span.AddAttr("ton.streaming.worker_queue_ms",
-		durationMilliseconds(durationBetween(timing.receivedAt, timing.workerStartedAt)))
-}
-
-func logUndeliveredTraceHint(stream string, traceKey indexModels.HashType, updateSeq uint64,
-	updateFinality indexModels.FinalityState, timing hintTiming, reason string, redisUpdateSeq string) {
-	logTraceStage(traceKey, "stage=hint_not_delivered stream=%s update_seq=%d update_finality=%s reason=%s worker=%d "+
-		"worker_queue_ms=%.3f redis_update_seq=%s", stream, updateSeq, updateFinality, reason, timing.workerIndex,
-		durationMilliseconds(durationBetween(timing.receivedAt, timing.workerStartedAt)), redisUpdateSeq)
-}
 
 type transactionHint struct {
 	TraceKey       indexModels.HashType         `msgpack:"trace_key"`
@@ -50,7 +15,6 @@ type transactionHint struct {
 	UpdateFinality indexModels.FinalityState    `msgpack:"update_finality"`
 	TraceFinality  indexModels.FinalityState    `msgpack:"trace_finality"`
 	Accounts       []indexModels.AccountAddress `msgpack:"accounts"`
-	timing         hintTiming
 }
 
 type accountStateHint struct {
@@ -71,7 +35,6 @@ type actionsHint struct {
 	TraceFinality          indexModels.FinalityState `msgpack:"trace_finality"`
 	ActionsUpdated         bool                      `msgpack:"actions_updated"`
 	ActionTypesAndAccounts []actionRoute             `msgpack:"action_types_and_accounts"`
-	timing                 hintTiming
 }
 
 var errStaleStreamingHint = errors.New("stale streaming hint")

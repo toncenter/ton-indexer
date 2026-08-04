@@ -324,152 +324,9 @@ type Notification interface {
 	AdjustForClient(client *Client) any
 }
 
-const slowDeliveryLogThreshold = 50 * time.Millisecond
-
-type deliveryMetadata struct {
-	eventType       EventType
-	traceKey        indexModels.HashType
-	updateSeq       uint64
-	updateFinality  indexModels.FinalityState
-	finality        indexModels.FinalityState
-	targetCount     int
-	hintReceivedAt  time.Time
-	workerStartedAt time.Time
-	workerIndex     int
-	readyAt         time.Time
-	managerAt       time.Time
-	clientAt        time.Time
-	senderAt        time.Time
-	adjustDuration  time.Duration
-	marshalDuration time.Duration
-	queueDepth      int
-	clientID        string
-}
-
 type notificationDelivery struct {
 	notification Notification
 	targets      clientSet // nil means all connected clients
-	metadata     deliveryMetadata
-}
-
-type outboundMessage struct {
-	payload  []byte
-	metadata deliveryMetadata
-}
-
-func notificationMetadata(notification Notification) deliveryMetadata {
-	metadata := deliveryMetadata{workerIndex: -1}
-	switch typed := notification.(type) {
-	case *TransactionsNotification:
-		metadata.eventType = typed.Type
-		metadata.traceKey = typed.TraceExternalHashNorm
-		metadata.updateSeq = typed.UpdateSeq
-		metadata.updateFinality = typed.UpdateFinality
-		metadata.finality = typed.Finality
-	case *ActionsNotification:
-		metadata.eventType = typed.Type
-		metadata.traceKey = typed.TraceExternalHashNorm
-		metadata.updateSeq = typed.UpdateSeq
-		metadata.updateFinality = typed.UpdateFinality
-		metadata.finality = typed.Finality
-	case *TraceNotification:
-		metadata.eventType = typed.Type
-		metadata.traceKey = typed.TraceExternalHashNorm
-		metadata.updateSeq = typed.UpdateSeq
-		metadata.updateFinality = typed.UpdateFinality
-		metadata.finality = typed.Finality
-	case *TraceInvalidatedNotification:
-		metadata.eventType = typed.Type
-		metadata.traceKey = typed.TraceExternalHashNorm
-	}
-	return metadata
-}
-
-func durationMilliseconds(duration time.Duration) float64 {
-	return float64(duration) / float64(time.Millisecond)
-}
-
-func durationBetween(start, end time.Time) time.Duration {
-	if start.IsZero() || end.IsZero() || end.Before(start) {
-		return 0
-	}
-	return end.Sub(start)
-}
-
-func logSlowDelivery(message outboundMessage, transport string, writeStarted, writeFinished time.Time, writeErr error) {
-	metadata := message.metadata
-	if metadata.readyAt.IsZero() {
-		return
-	}
-	totalStartedAt := metadata.readyAt
-	if !metadata.hintReceivedAt.IsZero() {
-		totalStartedAt = metadata.hintReceivedAt
-	}
-	total := durationBetween(totalStartedAt, writeFinished)
-	if total < slowDeliveryLogThreshold {
-		return
-	}
-
-	format := "stage=slow_notification_delivery event=%s update_seq=%d update_finality=%s finality=%s client=%s " +
-		"transport=%s targets=%d bytes=%d worker=%d queue_depth=%d worker_queue_ms=%.3f worker_process_ms=%.3f " +
-		"manager_wait_ms=%.3f manager_process_ms=%.3f adjust_ms=%.3f marshal_ms=%.3f sender_queue_ms=%.3f " +
-		"transport_queue_ms=%.3f write_ms=%.3f total_ms=%.3f write_error=%t"
-	args := []any{
-		metadata.eventType, metadata.updateSeq, metadata.updateFinality, metadata.finality, metadata.clientID,
-		transport, metadata.targetCount, len(message.payload), metadata.workerIndex, metadata.queueDepth,
-		durationMilliseconds(durationBetween(metadata.hintReceivedAt, metadata.workerStartedAt)),
-		durationMilliseconds(durationBetween(metadata.workerStartedAt, metadata.readyAt)),
-		durationMilliseconds(durationBetween(metadata.readyAt, metadata.managerAt)),
-		durationMilliseconds(durationBetween(metadata.managerAt, metadata.clientAt)),
-		durationMilliseconds(metadata.adjustDuration), durationMilliseconds(metadata.marshalDuration),
-		durationMilliseconds(durationBetween(metadata.clientAt, metadata.senderAt)),
-		durationMilliseconds(durationBetween(metadata.senderAt, writeStarted)),
-		durationMilliseconds(durationBetween(writeStarted, writeFinished)),
-		durationMilliseconds(total), writeErr != nil,
-	}
-	if metadata.traceKey != "" {
-		logTraceStage(metadata.traceKey, format, args...)
-		return
-	}
-	log.Printf("[v2] "+format, args...)
-}
-
-func logDeliveryFinished(message outboundMessage, transport string, writeStarted, writeFinished time.Time, writeErr error) {
-	metadata := message.metadata
-	if metadata.traceKey != "" {
-		totalStartedAt := metadata.readyAt
-		if !metadata.hintReceivedAt.IsZero() {
-			totalStartedAt = metadata.hintReceivedAt
-		}
-		logTraceStage(metadata.traceKey, "stage=transport_write_finished event=%s update_seq=%d update_finality=%s "+
-			"finality=%s client=%s transport=%s bytes=%d worker_queue_ms=%.3f worker_process_ms=%.3f "+
-			"manager_wait_ms=%.3f manager_process_ms=%.3f adjust_ms=%.3f marshal_ms=%.3f sender_queue_ms=%.3f "+
-			"transport_queue_ms=%.3f write_ms=%.3f total_ms=%.3f write_error=%t",
-			metadata.eventType, metadata.updateSeq, metadata.updateFinality, metadata.finality, metadata.clientID, transport,
-			len(message.payload),
-			durationMilliseconds(durationBetween(metadata.hintReceivedAt, metadata.workerStartedAt)),
-			durationMilliseconds(durationBetween(metadata.workerStartedAt, metadata.readyAt)),
-			durationMilliseconds(durationBetween(metadata.readyAt, metadata.managerAt)),
-			durationMilliseconds(durationBetween(metadata.managerAt, metadata.clientAt)),
-			durationMilliseconds(metadata.adjustDuration), durationMilliseconds(metadata.marshalDuration),
-			durationMilliseconds(durationBetween(metadata.clientAt, metadata.senderAt)),
-			durationMilliseconds(durationBetween(metadata.senderAt, writeStarted)),
-			durationMilliseconds(durationBetween(writeStarted, writeFinished)),
-			durationMilliseconds(durationBetween(totalStartedAt, writeFinished)), writeErr != nil)
-	}
-	logSlowDelivery(message, transport, writeStarted, writeFinished, writeErr)
-}
-
-func logDroppedDelivery(metadata deliveryMetadata, reason string, queueDepth int) {
-	format := "stage=notification_not_delivered event=%s update_seq=%d update_finality=%s finality=%s client=%s " +
-		"reason=%s worker=%d queue_depth=%d"
-	args := []any{metadata.eventType, metadata.updateSeq, metadata.updateFinality, metadata.finality, metadata.clientID,
-		reason, metadata.workerIndex, queueDepth}
-	if metadata.traceKey != "" {
-		logTraceStage(metadata.traceKey, format, args...)
-		return
-	}
-	log.Printf("[v2] "+format, args...)
 }
 
 type Client struct {
@@ -478,8 +335,8 @@ type Client struct {
 	Connected                      bool
 	Subscription                   Subscription
 	TracesForPotentialInvalidation map[indexModels.HashType]bool // traceExternalHashNorm -> true
-	SendEvent                      func(outboundMessage) error
-	sendChan                       chan outboundMessage
+	SendEvent                      func([]byte) error
+	sendChan                       chan []byte
 	mu                             sync.Mutex
 	writeMu                        sync.Mutex
 }
@@ -499,14 +356,6 @@ func disconnectClient(manager *ClientManager, client *Client) {
 func (c *Client) startSender(manager *ClientManager) {
 	go func() {
 		for msg := range c.sendChan {
-			msg.metadata.senderAt = time.Now()
-			if msg.metadata.traceKey != "" {
-				logTraceStage(msg.metadata.traceKey, "stage=client_queue_dequeued event=%s update_seq=%d "+
-					"update_finality=%s finality=%s client=%s bytes=%d queue_depth=%d sender_queue_ms=%.3f",
-					msg.metadata.eventType, msg.metadata.updateSeq, msg.metadata.updateFinality, msg.metadata.finality,
-					msg.metadata.clientID, len(msg.payload), len(c.sendChan),
-					durationMilliseconds(durationBetween(msg.metadata.clientAt, msg.metadata.senderAt)))
-			}
 			c.writeMu.Lock()
 			c.mu.Lock()
 			if !c.Connected {
@@ -570,40 +419,12 @@ func (manager *ClientManager) shouldFetchAddressBookAndMetadataForTrace(eventFin
 }
 
 func (manager *ClientManager) sendNotification(notification Notification, targets clientSet) {
-	manager.sendNotificationWithTiming(notification, targets, hintTiming{})
-}
-
-func (manager *ClientManager) sendHintNotification(notification Notification, targets clientSet, timing hintTiming) {
-	manager.sendNotificationWithTiming(notification, targets, timing)
-}
-
-func (manager *ClientManager) sendNotificationWithTiming(notification Notification, targets clientSet, timing hintTiming) {
 	if targets != nil && len(targets) == 0 {
 		return
-	}
-	metadata := notificationMetadata(notification)
-	metadata.hintReceivedAt = timing.receivedAt
-	metadata.workerStartedAt = timing.workerStartedAt
-	if !timing.receivedAt.IsZero() {
-		metadata.workerIndex = timing.workerIndex
-	}
-	metadata.readyAt = time.Now()
-	metadata.targetCount = len(targets)
-	if metadata.traceKey != "" {
-		logTraceStage(metadata.traceKey, "stage=notification_ready event=%s update_seq=%d update_finality=%s finality=%s "+
-			"targets=%d worker=%d worker_process_ms=%.3f", metadata.eventType, metadata.updateSeq,
-			metadata.updateFinality, metadata.finality, metadata.targetCount, metadata.workerIndex,
-			durationMilliseconds(durationBetween(metadata.workerStartedAt, metadata.readyAt)))
 	}
 	manager.broadcast <- notificationDelivery{
 		notification: notification,
 		targets:      targets,
-		metadata:     metadata,
-	}
-	if metadata.traceKey != "" {
-		logTraceStage(metadata.traceKey, "stage=manager_handoff_finished event=%s update_seq=%d update_finality=%s "+
-			"finality=%s wait_ms=%.3f", metadata.eventType, metadata.updateSeq, metadata.updateFinality, metadata.finality,
-			durationMilliseconds(time.Since(metadata.readyAt)))
 	}
 }
 
@@ -620,7 +441,7 @@ func (manager *ClientManager) Run() {
 				manager.mu.Unlock()
 				continue
 			}
-			client.sendChan = make(chan outboundMessage, 64)
+			client.sendChan = make(chan []byte, 64)
 			manager.clients[client.ID] = client
 			manager.addSubscriptionToIndexesLocked(client.ID, &client.Subscription)
 			client.mu.Unlock()
@@ -644,14 +465,6 @@ func (manager *ClientManager) Run() {
 			manager.mu.Unlock()
 
 		case delivery := <-manager.broadcast:
-			delivery.metadata.managerAt = time.Now()
-			if delivery.metadata.traceKey != "" {
-				logTraceStage(delivery.metadata.traceKey, "stage=manager_received event=%s update_seq=%d update_finality=%s "+
-					"finality=%s targets=%d manager_wait_ms=%.3f", delivery.metadata.eventType,
-					delivery.metadata.updateSeq, delivery.metadata.updateFinality, delivery.metadata.finality,
-					delivery.metadata.targetCount,
-					durationMilliseconds(durationBetween(delivery.metadata.readyAt, delivery.metadata.managerAt)))
-			}
 			manager.mu.RLock()
 			clients := make([]*Client, 0, len(manager.clients))
 			if delivery.targets == nil {
@@ -670,43 +483,18 @@ func (manager *ClientManager) Run() {
 			for _, client := range clients {
 				client.mu.Lock()
 				if client.Connected {
-					adjustStarted := time.Now()
 					if event := delivery.notification.AdjustForClient(client); event != nil {
-						adjustDuration := time.Since(adjustStarted)
-						marshalStarted := time.Now()
 						msgBytes, err := json.Marshal(event)
 						if err != nil {
-							if delivery.metadata.traceKey != "" {
-								logTraceStage(delivery.metadata.traceKey, "stage=json_marshal_failed event=%s update_seq=%d "+
-									"update_finality=%s finality=%s client=%s error=%q", delivery.metadata.eventType,
-									delivery.metadata.updateSeq, delivery.metadata.updateFinality, delivery.metadata.finality,
-									client.ID, err)
-							} else {
-								log.Printf("[v2] Error marshalling event: %v", err)
-							}
+							log.Printf("[v2] Error marshalling event: %v", err)
 							client.mu.Unlock()
 							continue
 						}
-						metadata := delivery.metadata
-						metadata.clientAt = time.Now()
-						metadata.adjustDuration = adjustDuration
-						metadata.marshalDuration = time.Since(marshalStarted)
-						metadata.queueDepth = len(client.sendChan)
-						metadata.clientID = client.ID
 						select {
-						case client.sendChan <- outboundMessage{payload: msgBytes, metadata: metadata}:
-							logTraceStage(metadata.traceKey, "stage=client_queue_enqueued event=%s update_seq=%d "+
-								"update_finality=%s finality=%s client=%s bytes=%d queue_depth_before=%d adjust_ms=%.3f "+
-								"marshal_ms=%.3f", metadata.eventType, metadata.updateSeq, metadata.updateFinality,
-								metadata.finality, metadata.clientID, len(msgBytes), metadata.queueDepth,
-								durationMilliseconds(metadata.adjustDuration), durationMilliseconds(metadata.marshalDuration))
+						case client.sendChan <- msgBytes:
 						default:
-							logDroppedDelivery(metadata, "client_send_buffer_full", len(client.sendChan))
+							log.Printf("[v2] Client %s send buffer full, dropping event", client.ID)
 						}
-					} else if delivery.metadata.traceKey != "" {
-						metadata := delivery.metadata
-						metadata.clientID = client.ID
-						logDroppedDelivery(metadata, "filtered_after_routing", len(client.sendChan))
 					}
 				}
 				client.mu.Unlock()
@@ -779,8 +567,6 @@ type ActionsNotification struct {
 	Type                  EventType                      `json:"type"` // always "actions"
 	Finality              indexModels.FinalityState      `json:"finality,string"`
 	TraceExternalHashNorm indexModels.HashType           `json:"trace_external_hash_norm"`
-	UpdateSeq             uint64                         `json:"-"`
-	UpdateFinality        indexModels.FinalityState      `json:"-"`
 	Actions               []*indexModels.Action          `json:"actions"`
 	ActionAddresses       [][]indexModels.AccountAddress `json:"-"` // used internally
 	AddressBook           *indexModels.AddressBook       `json:"address_book,omitempty"`
@@ -870,8 +656,6 @@ type TransactionsNotification struct {
 	Type                  EventType                 `json:"type"` // always "transactions"
 	Finality              indexModels.FinalityState `json:"finality"`
 	TraceExternalHashNorm indexModels.HashType      `json:"trace_external_hash_norm"`
-	UpdateSeq             uint64                    `json:"-"`
-	UpdateFinality        indexModels.FinalityState `json:"-"`
 	Transactions          []indexModels.Transaction `json:"transactions"`
 	AddressBook           *indexModels.AddressBook  `json:"address_book,omitempty"`
 	Metadata              *indexModels.Metadata     `json:"metadata,omitempty"`
@@ -951,8 +735,6 @@ type TraceNotification struct {
 	Type                  EventType                                         `json:"type"` // always "trace"
 	Finality              indexModels.FinalityState                         `json:"finality"`
 	TraceExternalHashNorm indexModels.HashType                              `json:"trace_external_hash_norm"`
-	UpdateSeq             uint64                                            `json:"-"`
-	UpdateFinality        indexModels.FinalityState                         `json:"-"`
 	Trace                 indexModels.TraceNode                             `json:"trace"`
 	Transactions          map[indexModels.HashType]*indexModels.Transaction `json:"transactions"`
 	Actions               *[]*indexModels.Action                            `json:"actions,omitempty"`
@@ -1090,7 +872,6 @@ func SubscribeToInvalidatedTraces(ctx context.Context, rdb *redis.Client, manage
 		}
 
 		traceExternalHashNorm := indexModels.HashType(msg.Payload)
-		logTraceStage(traceExternalHashNorm, "stage=redis_hint_received stream=invalidations")
 		manager.sendNotification(&TraceInvalidatedNotification{
 			Type:                  EventTraceInvalidated,
 			TraceExternalHashNorm: traceExternalHashNorm,
@@ -1293,7 +1074,7 @@ func writeWSMessage(c *websocket.Conn, client *Client, msg []byte) error {
 		return nil
 	}
 	client.mu.Unlock()
-	return client.SendEvent(outboundMessage{payload: msg})
+	return client.SendEvent(msg)
 }
 
 func sendWSJSONErr(c *websocket.Conn, client *Client, id *string, err error) {
@@ -1417,7 +1198,7 @@ func SSEHandler(manager *ClientManager) fiber.Handler {
 			}
 		}
 
-		eventCh := make(chan outboundMessage, 16)
+		eventCh := make(chan []byte, 16)
 
 		client := &Client{
 			ID:          clientID,
@@ -1431,12 +1212,11 @@ func SSEHandler(manager *ClientManager) fiber.Handler {
 				MinFinality:          minFinality,
 			},
 			TracesForPotentialInvalidation: make(map[indexModels.HashType]bool),
-			SendEvent: func(message outboundMessage) error {
+			SendEvent: func(b []byte) error {
 				select {
-				case eventCh <- message:
+				case eventCh <- b:
 					return nil
 				default:
-					logDroppedDelivery(message.metadata, "sse_buffer_full", len(eventCh))
 					return nil
 				}
 			},
@@ -1464,16 +1244,8 @@ func SSEHandler(manager *ClientManager) fiber.Handler {
 
 			for {
 				select {
-				case message := <-eventCh:
-					writeStarted := time.Now()
-					logTraceStage(message.metadata.traceKey, "stage=transport_write_started event=%s update_seq=%d "+
-						"update_finality=%s finality=%s client=%s transport=sse bytes=%d transport_queue_ms=%.3f",
-						message.metadata.eventType, message.metadata.updateSeq, message.metadata.updateFinality,
-						message.metadata.finality, message.metadata.clientID, len(message.payload),
-						durationMilliseconds(durationBetween(message.metadata.senderAt, writeStarted)))
-					err := writeSSEBytes(w, "event", message.payload)
-					logDeliveryFinished(message, "sse", writeStarted, time.Now(), err)
-					if err != nil {
+				case data := <-eventCh:
+					if err := writeSSEBytes(w, "event", data); err != nil {
 						log.Printf("[v2] SSE event write failed for client %s: %v", clientID, err)
 						return
 					}
@@ -1556,17 +1328,7 @@ func WebSocketHandler(manager *ClientManager) func(*websocket.Conn) {
 				MinFinality:          defaultMinFinality(),
 			},
 			TracesForPotentialInvalidation: make(map[indexModels.HashType]bool),
-			SendEvent: func(message outboundMessage) error {
-				writeStarted := time.Now()
-				logTraceStage(message.metadata.traceKey, "stage=transport_write_started event=%s update_seq=%d "+
-					"update_finality=%s finality=%s client=%s transport=websocket bytes=%d transport_queue_ms=%.3f",
-					message.metadata.eventType, message.metadata.updateSeq, message.metadata.updateFinality,
-					message.metadata.finality, message.metadata.clientID, len(message.payload),
-					durationMilliseconds(durationBetween(message.metadata.senderAt, writeStarted)))
-				err := c.WriteMessage(websocket.TextMessage, message.payload)
-				logDeliveryFinished(message, "websocket", writeStarted, time.Now(), err)
-				return err
-			},
+			SendEvent:                      func(b []byte) error { return c.WriteMessage(websocket.TextMessage, b) },
 		}
 		manager.register <- client
 		defer disconnectClient(manager, client)

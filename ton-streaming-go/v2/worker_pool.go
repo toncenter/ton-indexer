@@ -16,19 +16,6 @@ const (
 	priorityCount
 )
 
-func (priority jobPriority) String() string {
-	switch priority {
-	case normalPriority:
-		return "pending"
-	case confirmedPriority:
-		return "confirmed"
-	case finalizedPriority:
-		return "finalized"
-	default:
-		return "unknown"
-	}
-}
-
 type keyedWorker[T any] struct {
 	mu       sync.Mutex
 	capacity int
@@ -78,16 +65,13 @@ func (pool *keyedWorkerPool[T]) Enqueue(ctx context.Context, workerKey string, j
 	if priority >= priorityCount {
 		panic("unknown worker priority")
 	}
-	workerIndex := pool.workerIndexFor(workerKey)
-	worker := &pool.workers[workerIndex]
-	waitingForSpaceLogged := false
+	worker := &pool.workers[keyWorkerIndex(workerKey, len(pool.workers))]
 
 	for {
 		worker.mu.Lock()
 		if pool.replaceQueuedJob(worker, jobKey, priority, job) {
 			worker.mu.Unlock()
 			pool.recordCoalesced()
-			pool.logCommittedQueueEvent("coalesced", workerKey, workerIndex, jobKey, priority)
 			return true
 		}
 		if len(worker.order[priority]) < worker.capacity {
@@ -101,26 +85,17 @@ func (pool *keyedWorkerPool[T]) Enqueue(ctx context.Context, workerKey string, j
 
 		if priority != finalizedPriority {
 			pool.recordDropped()
-			pool.logCommittedQueueEvent("dropped", workerKey, workerIndex, jobKey, priority)
 			return true
 		}
 
 		// Finalized work is not dropped. Waiting here can only be caused by a
 		// full finalized queue; pending and confirmed queues never block it.
-		if !waitingForSpaceLogged {
-			pool.logCommittedQueueEvent("waiting_for_space", workerKey, workerIndex, jobKey, priority)
-			waitingForSpaceLogged = true
-		}
 		select {
 		case <-ctx.Done():
 			return false
 		case <-worker.space:
 		}
 	}
-}
-
-func (pool *keyedWorkerPool[T]) workerIndexFor(key string) int {
-	return keyWorkerIndex(key, len(pool.workers))
 }
 
 func (pool *keyedWorkerPool[T]) replaceQueuedJob(worker *keyedWorker[T], jobKey string, priority jobPriority, job T) bool {
@@ -218,22 +193,6 @@ func (pool *keyedWorkerPool[T]) logOverloadCount(action string, count uint64) {
 	if count&(count-1) == 0 {
 		log.Printf("[v2] %s worker pool %s %d queued updates", pool.name, action, count)
 	}
-}
-
-func (pool *keyedWorkerPool[T]) logCommittedQueueEvent(
-	action string,
-	workerKey string,
-	workerIndex int,
-	jobKey string,
-	priority jobPriority,
-) {
-	if pool.name == "transactions" || pool.name == "actions" {
-		log.Printf("[v2] external_message_hash_norm=%s stage=worker_queue_event stream=%s action=%s worker=%d job=%s priority=%s",
-			workerKey, pool.name, action, workerIndex, jobKey, priority)
-		return
-	}
-	log.Printf("[v2] key=%s stage=worker_queue_event pool=%s action=%s worker=%d job=%s priority=%s",
-		workerKey, pool.name, action, workerIndex, jobKey, priority)
 }
 
 func keyWorkerIndex(key string, workerCount int) int {
