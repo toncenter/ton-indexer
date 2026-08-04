@@ -3,10 +3,34 @@ package v2
 import (
 	"errors"
 	"testing"
+	"time"
 
 	indexModels "github.com/toncenter/ton-indexer/ton-index-go/index/models"
+	"github.com/toncenter/ton-indexer/ton-streaming-go/observability"
 	"github.com/vmihailenco/msgpack/v5"
 )
+
+func TestTraceHintSpanAttributesDescribeWorkerQueue(t *testing.T) {
+	receivedAt := time.Now()
+	workerStartedAt := receivedAt.Add(12 * time.Millisecond)
+	stage := &TraceProcessingStage{Span: &observability.StageSpan{Attributes: make(map[string]any)}}
+
+	addTraceHintSpanAttributes(stage, hintTiming{
+		receivedAt:      receivedAt,
+		workerStartedAt: workerStartedAt,
+		workerIndex:     5,
+	}, 42, indexModels.FinalityStateFinalized, indexModels.FinalityStateConfirmed)
+
+	attributes := stage.Span.Attributes
+	if attributes["ton.streaming.update_seq"] != uint64(42) ||
+		attributes["ton.streaming.update_finality"] != "finalized" ||
+		attributes["ton.streaming.hint_trace_finality"] != "confirmed" {
+		t.Fatalf("unexpected hint identity attributes: %#v", attributes)
+	}
+	if attributes["ton.streaming.worker.index"] != 5 || attributes["ton.streaming.worker_queue_ms"] != float64(12) {
+		t.Fatalf("unexpected worker attributes: %#v", attributes)
+	}
+}
 
 func TestDecodeTransactionHint(t *testing.T) {
 	payload, err := msgpack.Marshal(map[string]any{

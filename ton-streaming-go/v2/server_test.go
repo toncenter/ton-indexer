@@ -2,9 +2,38 @@ package v2
 
 import (
 	"testing"
+	"time"
 
 	indexModels "github.com/toncenter/ton-indexer/ton-index-go/index/models"
 )
+
+func TestHintTimingIsAttachedToNotificationDelivery(t *testing.T) {
+	manager := NewClientManager()
+	receivedAt := time.Now().Add(-20 * time.Millisecond)
+	workerStartedAt := receivedAt.Add(7 * time.Millisecond)
+	timing := hintTiming{receivedAt: receivedAt, workerStartedAt: workerStartedAt, workerIndex: 3}
+	targets := clientSet{"client": {}}
+
+	go manager.sendHintNotification(&TransactionsNotification{
+		Type:                  EventTransactions,
+		Finality:              indexModels.FinalityStateFinalized,
+		TraceExternalHashNorm: "trace",
+		UpdateSeq:             42,
+		UpdateFinality:        indexModels.FinalityStateFinalized,
+	}, targets, timing)
+
+	delivery := <-manager.broadcast
+	metadata := delivery.metadata
+	if metadata.hintReceivedAt != receivedAt || metadata.workerStartedAt != workerStartedAt {
+		t.Fatalf("hint timestamps were not preserved: %#v", metadata)
+	}
+	if metadata.workerIndex != 3 || metadata.updateSeq != 42 || metadata.targetCount != 1 {
+		t.Fatalf("hint identity was not preserved: %#v", metadata)
+	}
+	if metadata.readyAt.Before(workerStartedAt) {
+		t.Fatalf("notification became ready before its worker started: %#v", metadata)
+	}
+}
 
 func TestHasActionHintSubscribers(t *testing.T) {
 	const (

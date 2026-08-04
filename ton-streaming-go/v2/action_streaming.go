@@ -5,12 +5,12 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"time"
 
 	"github.com/redis/go-redis/v9"
 	"github.com/toncenter/ton-indexer/ton-index-go/index/crud"
 	indexModels "github.com/toncenter/ton-indexer/ton-index-go/index/models"
 	"github.com/toncenter/ton-indexer/ton-index-go/index/parse"
-	"github.com/toncenter/ton-indexer/ton-streaming-go/observability"
 )
 
 func SubscribeToActionHints(ctx context.Context, rdb *redis.Client, manager *ClientManager, channel string) {
@@ -33,6 +33,7 @@ func SubscribeToActionHints(ctx context.Context, rdb *redis.Client, manager *Cli
 			log.Printf("[v2] Error receiving action hint: %v", err)
 			continue
 		}
+		receivedAt := time.Now()
 
 		hint, err := decodeActionsHint(msg.Payload)
 		if err != nil {
@@ -42,6 +43,7 @@ func SubscribeToActionHints(ctx context.Context, rdb *redis.Client, manager *Cli
 		if !hasActionHintSubscribers(manager, hint) {
 			continue
 		}
+		hint.timing = hintTiming{receivedAt: receivedAt, workerIndex: pool.workerIndexFor(hint.TraceKey.String())}
 		if !pool.Enqueue(ctx, hint.TraceKey.String(), hint.jobKey(), hint.priority(), hint) {
 			return
 		}
@@ -63,12 +65,15 @@ func hasActionHintSubscribers(manager *ClientManager, hint actionsHint) bool {
 }
 
 func ProcessActionHint(ctx context.Context, rdb *redis.Client, hint actionsHint, manager *ClientManager, channel string) {
+	hint.timing.workerStartedAt = time.Now()
 	// The subscription may have disappeared while this job was waiting.
 	if !hasActionHintSubscribers(manager, hint) {
+		logUndeliveredTraceHint("actions", hint.TraceKey, hint.UpdateSeq, hint.UpdateFinality, hint.timing,
+			"subscription_disappeared_before_processing", "")
 		return
 	}
 
-	startedAt := observability.NowUnixNano()
+	startedAt := hint.timing.workerStartedAt.UnixNano()
 	rawTrace, err := rdb.HGetAll(ctx, hint.TraceKey.String()).Result()
 	if err != nil {
 		log.Printf("[v2] Error loading action trace %s: %v", hint.TraceKey, err)
@@ -79,8 +84,13 @@ func ProcessActionHint(ctx context.Context, rdb *redis.Client, hint actionsHint,
 		return
 	}
 	if err := validateTraceHintVersion(rawTrace, hint.UpdateSeq); err != nil {
-		if !errors.Is(err, errStaleStreamingHint) {
+		if errors.Is(err, errStaleStreamingHint) {
+			logUndeliveredTraceHint("actions", hint.TraceKey, hint.UpdateSeq, hint.UpdateFinality, hint.timing,
+				"stale_snapshot", rawTrace["update_seq"])
+		} else {
 			log.Printf("[v2] Action hint version mismatch for %s: %v", hint.TraceKey, err)
+			logUndeliveredTraceHint("actions", hint.TraceKey, hint.UpdateSeq, hint.UpdateFinality, hint.timing,
+				"version_mismatch", rawTrace["update_seq"])
 		}
 		return
 	}
@@ -92,6 +102,7 @@ func ProcessActionHint(ctx context.Context, rdb *redis.Client, hint actionsHint,
 	}
 
 	stage := NewTraceProcessingStage(startedAt, actionHintSpanName, rawTrace, hint.TraceKey.String(), channel)
+	addTraceHintSpanAttributes(stage, hint.timing, hint.UpdateSeq, hint.UpdateFinality, hint.TraceFinality)
 	traceRootHash := indexModels.HashType(rawTrace["root_node"])
 	stage.Span.AddAttr("ton.trace.external_message_hash", string(traceRootHash))
 
@@ -126,7 +137,7 @@ func ProcessActionHint(ctx context.Context, rdb *redis.Client, hint actionsHint,
 				ctx, allActionAddresses, allActionAddresses, shouldFetchAddressBook, shouldFetchMetadata)
 		}
 		actionTargets := manager.subscribersForAddresses(EventActions, allActionAddresses, traceFinality)
-		manager.sendNotification(&ActionsNotification{
+		manager.sendHintNotification(&ActionsNotification{
 			Type:                  EventActions,
 			Finality:              traceFinality,
 			TraceExternalHashNorm: hint.TraceKey,
@@ -136,7 +147,7 @@ func ProcessActionHint(ctx context.Context, rdb *redis.Client, hint actionsHint,
 			ActionAddresses:       actionsAddresses,
 			AddressBook:           addressBook,
 			Metadata:              metadata,
-		}, actionTargets)
+		}, actionTargets, hint.timing)
 	}
 
 	traceTargets := manager.subscribersForTrace(hint.TraceKey, traceFinality)
@@ -179,7 +190,7 @@ func ProcessActionHint(ctx context.Context, rdb *redis.Client, hint actionsHint,
 
 	// A non-nil empty slice deliberately serializes as `actions: []`. This is
 	// how a trace subscriber learns that classification failed or found nothing.
-	manager.sendNotification(&TraceNotification{
+	manager.sendHintNotification(&TraceNotification{
 		Type:                  EventTrace,
 		Finality:              traceFinality,
 		TraceExternalHashNorm: hint.TraceKey,
@@ -190,7 +201,7 @@ func ProcessActionHint(ctx context.Context, rdb *redis.Client, hint actionsHint,
 		Actions:               &actions,
 		AddressBook:           traceAddressBook,
 		Metadata:              traceMetadata,
-	}, traceTargets)
+	}, traceTargets, hint.timing)
 	stage.Emit()
 }
 

@@ -6,12 +6,12 @@ import (
 	"fmt"
 	"log"
 	"sort"
+	"time"
 
 	"github.com/redis/go-redis/v9"
 	"github.com/toncenter/ton-indexer/ton-index-go/index/crud"
 	"github.com/toncenter/ton-indexer/ton-index-go/index/detect"
 	indexModels "github.com/toncenter/ton-indexer/ton-index-go/index/models"
-	"github.com/toncenter/ton-indexer/ton-streaming-go/observability"
 )
 
 func SubscribeToTransactionHints(ctx context.Context, rdb *redis.Client, manager *ClientManager, channel string) {
@@ -34,6 +34,7 @@ func SubscribeToTransactionHints(ctx context.Context, rdb *redis.Client, manager
 			log.Printf("[v2] Error receiving transaction hint: %v", err)
 			continue
 		}
+		receivedAt := time.Now()
 
 		hint, err := decodeTransactionHint(msg.Payload)
 		if err != nil {
@@ -43,6 +44,7 @@ func SubscribeToTransactionHints(ctx context.Context, rdb *redis.Client, manager
 		if !hasTransactionSubscribers(manager, hint) {
 			continue
 		}
+		hint.timing = hintTiming{receivedAt: receivedAt, workerIndex: pool.workerIndexFor(hint.TraceKey.String())}
 		if !pool.Enqueue(ctx, hint.TraceKey.String(), hint.jobKey(), hint.priority(), hint) {
 			return
 		}
@@ -54,25 +56,34 @@ func hasTransactionSubscribers(manager *ClientManager, hint transactionHint) boo
 }
 
 func ProcessTransactionHint(ctx context.Context, rdb *redis.Client, hint transactionHint, manager *ClientManager, channel string) {
+	hint.timing.workerStartedAt = time.Now()
 	// Subscriptions may have changed while the hint waited in the queue.
 	if !hasTransactionSubscribers(manager, hint) {
+		logUndeliveredTraceHint("transactions", hint.TraceKey, hint.UpdateSeq, hint.UpdateFinality, hint.timing,
+			"subscription_disappeared_before_processing", "")
 		return
 	}
 
-	startTimeUnix := observability.NowUnixNano()
+	startTimeUnix := hint.timing.workerStartedAt.UnixNano()
 	rawTrace, err := rdb.HGetAll(ctx, hint.TraceKey.String()).Result()
 	if err != nil {
 		log.Printf("[v2] Error loading transaction trace %s: %v", hint.TraceKey, err)
 		return
 	}
 	if err := validateTraceHintVersion(rawTrace, hint.UpdateSeq); err != nil {
-		if !errors.Is(err, errStaleStreamingHint) {
+		if errors.Is(err, errStaleStreamingHint) {
+			logUndeliveredTraceHint("transactions", hint.TraceKey, hint.UpdateSeq, hint.UpdateFinality, hint.timing,
+				"stale_snapshot", rawTrace["update_seq"])
+		} else {
 			log.Printf("[v2] Transaction hint version mismatch for %s: %v", hint.TraceKey, err)
+			logUndeliveredTraceHint("transactions", hint.TraceKey, hint.UpdateSeq, hint.UpdateFinality, hint.timing,
+				"version_mismatch", rawTrace["update_seq"])
 		}
 		return
 	}
 
 	stage := NewTraceProcessingStage(startTimeUnix, rawTraceSpanName, rawTrace, hint.TraceKey.String(), channel)
+	addTraceHintSpanAttributes(stage, hint.timing, hint.UpdateSeq, hint.UpdateFinality, hint.TraceFinality)
 	rawTraces := map[string]map[string]string{
 		hint.TraceKey.String(): rawTrace,
 	}
@@ -92,12 +103,16 @@ func ProcessTransactionHint(ctx context.Context, rdb *redis.Client, hint transac
 	if len(txs) == 0 {
 		stage.Span.AddAttr("ton.streaming.skipped", true)
 		stage.Span.AddAttr("ton.streaming.skip_reason", "no_matching_transactions")
+		logUndeliveredTraceHint("transactions", hint.TraceKey, hint.UpdateSeq, hint.UpdateFinality, hint.timing,
+			"no_matching_transactions", rawTrace["update_seq"])
 		stage.Emit()
 		return
 	}
 	if traceFinality != hint.TraceFinality {
 		err := fmt.Errorf("hint trace_finality is %s, Redis snapshot finality is %s", hint.TraceFinality, traceFinality)
 		log.Printf("[v2] Transaction hint finality mismatch for %s: %v", hint.TraceKey, err)
+		logUndeliveredTraceHint("transactions", hint.TraceKey, hint.UpdateSeq, hint.UpdateFinality, hint.timing,
+			"finality_mismatch", rawTrace["update_seq"])
 		stage.EmitOtelError("streaming_api.finality_mismatch", err.Error())
 		return
 	}
@@ -106,6 +121,8 @@ func ProcessTransactionHint(ctx context.Context, rdb *redis.Client, hint transac
 	if len(targets) == 0 {
 		stage.Span.AddAttr("ton.streaming.skipped", true)
 		stage.Span.AddAttr("ton.streaming.skip_reason", "subscription_disappeared")
+		logUndeliveredTraceHint("transactions", hint.TraceKey, hint.UpdateSeq, hint.UpdateFinality, hint.timing,
+			"subscription_disappeared_after_processing", rawTrace["update_seq"])
 		stage.Emit()
 		return
 	}
@@ -121,7 +138,7 @@ func ProcessTransactionHint(ctx context.Context, rdb *redis.Client, hint transac
 	sortTransactions(txs)
 	stage.Span.AddAttr("ton.trace.finality", traceFinality.String())
 	stage.Span.AddAttr("ton.transactions.count", len(txs))
-	manager.sendNotification(&TransactionsNotification{
+	manager.sendHintNotification(&TransactionsNotification{
 		Type:                  EventTransactions,
 		Finality:              traceFinality,
 		TraceExternalHashNorm: hint.TraceKey,
@@ -130,7 +147,7 @@ func ProcessTransactionHint(ctx context.Context, rdb *redis.Client, hint transac
 		Transactions:          txs,
 		AddressBook:           addressBook,
 		Metadata:              metadata,
-	}, targets)
+	}, targets, hint.timing)
 	stage.Emit()
 }
 
