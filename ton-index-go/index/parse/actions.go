@@ -373,6 +373,9 @@ func ParseRawAction(raw *models.RawAction) (*models.Action, error) {
 		if details.Provider != nil && *details.Provider == "ethena" {
 			details.SourceAsset = raw.Asset2
 		}
+		if details.Provider != nil && *details.Provider == "hipo" {
+			details.PayoutNft = raw.StakingDataTsNft
+		}
 		act.Details = &details
 	case "stake_withdrawal":
 		var details models.ActionDetailsWithdrawStake
@@ -395,6 +398,8 @@ func ParseRawAction(raw *models.RawAction) (*models.Action, error) {
 			details.TokensBurnt = raw.Amount
 		} else if details.Provider != nil && *details.Provider == "ethena" {
 			details.TokensMinted = raw.StakingDataTokensMinted
+		} else if details.Provider != nil && *details.Provider == "hipo" {
+			details.TokensBurnt = raw.StakingDataTokensBurnt
 		}
 		act.Details = &details
 	case "subscribe":

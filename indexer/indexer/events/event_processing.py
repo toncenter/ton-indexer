@@ -106,6 +106,10 @@ from indexer.events.blocks.staking import (
     CoffeeStakingClaimRewardsMatcher,
     CoffeeStakingDepositMatcher,
     CoffeeStakingWithdrawMatcher,
+    HipoDepositMatcher,
+    HipoRoundEndDepositMatcher,
+    HipoRoundEndWithdrawalMatcher,
+    HipoUnstakeMatcher,
     NominatorPoolDepositMatcher,
     NominatorPoolWithdrawMatcher,
     NominatorPoolWithdrawRequestMatcher,
@@ -213,6 +217,12 @@ matchers = [
     DedustDepositFirstAssetBlockMatcher(),
     TONStakersDepositMatcher(),
     TONStakersWithdrawMatcher(),
+    # Hipo unstakes start with a TEP-74 burn, so they have to be matched before
+    # JettonBurnBlockMatcher claims the trace as a plain jetton burn.
+    HipoDepositMatcher(),
+    HipoUnstakeMatcher(),
+    HipoRoundEndDepositMatcher(),
+    HipoRoundEndWithdrawalMatcher(),
     MultisigCreateOrderBlockMatcher(),
     MultisigApproveBlockMatcher(),
     MultisigExecuteBlockMatcher(),
