@@ -1,10 +1,13 @@
 #include "Otel.h"
+#include "OtelSampler.h"
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <chrono>
 #include <cctype>
 #include <cstdlib>
+#include <iostream>
 #include <map>
 #include <memory>
 #include <optional>
@@ -23,6 +26,8 @@
 #include "opentelemetry/exporters/otlp/otlp_http_exporter_factory.h"
 #include "opentelemetry/nostd/shared_ptr.h"
 #include "opentelemetry/sdk/common/disabled.h"
+#include "opentelemetry/sdk/common/env_variables.h"
+#include "opentelemetry/sdk/common/global_log_handler.h"
 #include "opentelemetry/sdk/resource/resource.h"
 #include "opentelemetry/sdk/trace/batch_span_processor_factory.h"
 #include "opentelemetry/sdk/trace/batch_span_processor_options.h"
@@ -40,6 +45,7 @@ namespace otlp = opentelemetry::exporter::otlp;
 namespace resource_api = opentelemetry::sdk::resource;
 namespace trace_api = opentelemetry::trace;
 namespace trace_sdk = opentelemetry::sdk::trace;
+namespace otel_log = opentelemetry::sdk::common::internal_log;
 
 namespace {
 
@@ -47,6 +53,7 @@ constexpr const char* kScopeName = "ton-indexer.observability";
 constexpr const char* kScopeVersion = "1.0.0";
 constexpr const char* kDefaultPipeline = "trace_to_actions_to_stream";
 constexpr const char* kOtelDataField = "otel_data";
+constexpr auto kOtelLogInterval = std::chrono::seconds(10);
 
 constexpr std::array<const char*, 5> kPropagationBaggageKeys = {
     "ton.trace.external_message_hash",
@@ -92,12 +99,14 @@ std::string normalized_env(const char* name) {
     return value;
 }
 
-std::string signal_env(const char* traces_name, const char* generic_name) {
-    auto value = trim(getenv_or_empty(traces_name));
-    if (!value.empty()) {
-        return value;
+const char* signal_env_name(const char* traces_name, const char* generic_name) {
+    if (!trim(getenv_or_empty(traces_name)).empty()) {
+        return traces_name;
     }
-    return trim(getenv_or_empty(generic_name));
+    if (!trim(getenv_or_empty(generic_name)).empty()) {
+        return generic_name;
+    }
+    return nullptr;
 }
 
 bool traces_exporter_enabled() {
@@ -111,18 +120,19 @@ bool tracing_runtime_enabled() {
            traces_exporter_enabled();
 }
 
-long exporter_timeout_ms() {
-    auto raw = signal_env("OTEL_EXPORTER_OTLP_TRACES_TIMEOUT", "OTEL_EXPORTER_OTLP_TIMEOUT");
-    if (raw.empty()) {
-        return 1000;
+std::chrono::milliseconds exporter_timeout() {
+    const auto* name = signal_env_name("OTEL_EXPORTER_OTLP_TRACES_TIMEOUT", "OTEL_EXPORTER_OTLP_TIMEOUT");
+    if (!name) {
+        return std::chrono::seconds(1);
     }
 
-    try {
-        const auto timeout = std::stol(raw);
-        return timeout > 0 ? timeout : 1000;
-    } catch (...) {
-        return 1000;
+    std::chrono::system_clock::duration duration;
+    if (!opentelemetry::sdk::common::GetDurationEnvironmentVariable(name, duration)) {
+        return std::chrono::seconds(1);
     }
+
+    const auto timeout = std::chrono::duration_cast<std::chrono::milliseconds>(duration);
+    return timeout.count() > 0 ? timeout : std::chrono::seconds(1);
 }
 
 std::string random_hex(std::size_t bytes_count) {
@@ -296,18 +306,71 @@ void set_span_attribute(
     span->SetAttribute(key, std::get<std::int64_t>(value));
 }
 
+class RateLimitedOtelLogHandler final : public otel_log::LogHandler {
+public:
+    void Handle(otel_log::LogLevel level,
+                const char*,
+                int,
+                const char* message,
+                const opentelemetry::sdk::common::AttributeMap&) noexcept override {
+        auto& state = level == otel_log::LogLevel::Error ? error_state_ : warning_state_;
+        const auto now = std::chrono::steady_clock::now().time_since_epoch();
+        const auto now_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(now).count();
+        auto next_log_ns = state.next_log_ns.load(std::memory_order_relaxed);
+        const auto interval_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(kOtelLogInterval).count();
+
+        if (now_ns < next_log_ns ||
+            !state.next_log_ns.compare_exchange_strong(next_log_ns, now_ns + interval_ns, std::memory_order_relaxed)) {
+            state.suppressed.fetch_add(1, std::memory_order_relaxed);
+            return;
+        }
+
+        const auto suppressed = state.suppressed.exchange(0, std::memory_order_relaxed);
+        try {
+            std::cerr << "[OpenTelemetry " << otel_log::LevelToString(level) << "] "
+                      << (message ? message : "unknown error");
+            if (suppressed > 0) {
+                std::cerr << " (" << suppressed << " OpenTelemetry messages suppressed since previous log)";
+            }
+            std::cerr << '\n';
+        } catch (...) {
+        }
+    }
+
+private:
+    struct LogState {
+        std::atomic<std::int64_t> next_log_ns{0};
+        std::atomic<std::uint64_t> suppressed{0};
+    };
+
+    LogState error_state_;
+    LogState warning_state_;
+};
+
+void configure_otel_internal_logging() {
+    static const auto configured = [] {
+        otel_log::GlobalLogHandler::SetLogHandler(
+            opentelemetry::nostd::shared_ptr<otel_log::LogHandler>(new RateLimitedOtelLogHandler()));
+        return true;
+    }();
+    (void)configured;
+}
+
 class TracerRuntime {
 public:
     TracerRuntime() = default;
 
     explicit TracerRuntime(std::string service_name) {
+        configure_otel_internal_logging();
         trace_sdk::BatchSpanProcessorOptions processor_options;
         auto exporter = otlp::OtlpHttpExporterFactory::Create();
         auto processor = trace_sdk::BatchSpanProcessorFactory::Create(
             std::move(exporter), processor_options);
 
         provider_ = trace_sdk::TracerProviderFactory::Create(
-            std::move(processor), build_resource(service_name));
+            std::move(processor),
+            build_resource(service_name),
+            ton::observability::make_otel_sampler_from_environment());
         tracer_ = provider_->GetTracer(kScopeName, kScopeVersion);
     }
 
@@ -316,7 +379,7 @@ public:
             return;
         }
 
-        const auto timeout = std::chrono::milliseconds(exporter_timeout_ms());
+        const auto timeout = exporter_timeout();
         provider_->ForceFlush(timeout);
         provider_->Shutdown(timeout);
     }
