@@ -662,6 +662,9 @@ type ActionDetailsStakeDeposit struct {
 	TokensMinted *string         `json:"tokens_minted"`
 	Asset        *AccountAddress `json:"asset"`
 	SourceAsset  *AccountAddress `json:"source_asset,omitempty"`
+	// Set by providers that settle deposits at the end of a validation round (hipo):
+	// the SBT that tracks the pending deposit until it is minted.
+	PayoutNft *AccountAddress `json:"payout_nft,omitempty"`
 }
 
 type ActionDetailsWithdrawStake struct {

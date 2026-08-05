@@ -1,0 +1,237 @@
+# Hipo (hGRAM liquid staking) — mainnet traces.
+#   treasury 0:8BC991CFE177BC7E9721433EFA3BEFD199485A55CFFD040A06C89AF026B71BCF
+#   parent   0:CF76AF318C0872B58A9F1925FC29C156211782B9FB01F56760D292E56123BF87 (hGRAM master)
+cases:
+  "Hipo instant stake":
+    # deposit_coins -> treasury -> proxy_tokens_minted -> parent -> tokens_minted
+    trace-id: Gbb8fKc2plQRt1eOnbF_ll7qpgzLkc5kcS9hJ9QHrTg=
+    expected-blocks:
+      - type: hipo_stake_deposit
+        values:
+          data:
+            source: 0:65CE7A6C1C447F4D3714DB81B43FC4C0D65329784FE7660C6FC8314FCA64DFFC
+            pool: 0:8BC991CFE177BC7E9721433EFA3BEFD199485A55CFFD040A06C89AF026B71BCF
+            user_jetton_wallet: 0:6D2F2C42272817632F7CE076D1AF431F96BD50EA720703C9EABA0EC8A14B47EC
+            value: 2513964318
+            tokens_minted: 2205971097
+            bill: null
+    expected-actions:
+      - type: stake_deposit
+        values:
+          success: true
+          accounts:
+            - 0:65CE7A6C1C447F4D3714DB81B43FC4C0D65329784FE7660C6FC8314FCA64DFFC
+            - 0:6D2F2C42272817632F7CE076D1AF431F96BD50EA720703C9EABA0EC8A14B47EC
+            - 0:8BC991CFE177BC7E9721433EFA3BEFD199485A55CFFD040A06C89AF026B71BCF
+            - 0:CF76AF318C0872B58A9F1925FC29C156211782B9FB01F56760D292E56123BF87
+          tx_hashes:
+            - Gbb8fKc2plQRt1eOnbF/ll7qpgzLkc5kcS9hJ9QHrTg=
+            - Pi3OcY5gIWGSWswl8myEq0wSNJ+M7X/3O+8MMej6JIE=
+            - Umw075nRliRnkOQR3lvhM/fazEpQfdl4bquFGkZ1Th0=
+            - kiQUwRiPlXd2kcnLLxFk+qW5/uJ/VmTSHwyQ3wEJSgM=
+            - oKkg5U41cEadrNsAEAwOpsBHEv5Lc5uGwVKO/9AzEZE=
+          source: 0:65CE7A6C1C447F4D3714DB81B43FC4C0D65329784FE7660C6FC8314FCA64DFFC
+          source_secondary: 0:6D2F2C42272817632F7CE076D1AF431F96BD50EA720703C9EABA0EC8A14B47EC
+          destination: 0:8BC991CFE177BC7E9721433EFA3BEFD199485A55CFFD040A06C89AF026B71BCF
+          asset: 0:CF76AF318C0872B58A9F1925FC29C156211782B9FB01F56760D292E56123BF87
+          amount: 2513964318
+          staking_data:
+            provider: hipo
+            tokens_minted: 2205971097
+            ts_nft: null
+
+  "Hipo deferred stake":
+    # deposit while a round is running: coins are only remembered (proxy_save_coins) and a
+    # bill SBT is minted; hGRAM follows at round end. tokens_minted stays null until then.
+    trace-id: 1OjNJodp-DDOtuWKG_fz-4WxN1foD9KpoxzOlOSRSTY=
+    expected-blocks:
+      - type: hipo_stake_deposit
+        values:
+          data:
+            source: 0:3BD5479721BEAF48DC0C7F777690C8D7275E173F6F61E01B5ED027B7A3C09000
+            pool: 0:8BC991CFE177BC7E9721433EFA3BEFD199485A55CFFD040A06C89AF026B71BCF
+            user_jetton_wallet: 0:E860FC2BD284F930D86A778E77D02E3B85F3B891976BB0A6FB8050E9E9F21463
+            value: 5000039599
+            tokens_minted: null
+            bill: 0:B6D4D107CF7AB228536C0D305A8530096CE869E55E7AA42FFBFBEBC226C84A6A
+    expected-actions:
+      - type: stake_deposit
+        values:
+          success: true
+          accounts:
+            - 0:3BD5479721BEAF48DC0C7F777690C8D7275E173F6F61E01B5ED027B7A3C09000
+            - 0:4FC5A9CB92ADCE9AAD7FBB3EBC8599F54107C9511202C553534BCA97089A4190
+            - 0:8BC991CFE177BC7E9721433EFA3BEFD199485A55CFFD040A06C89AF026B71BCF
+            - 0:CF76AF318C0872B58A9F1925FC29C156211782B9FB01F56760D292E56123BF87
+            - 0:E860FC2BD284F930D86A778E77D02E3B85F3B891976BB0A6FB8050E9E9F21463
+          tx_hashes:
+            - 1OjNJodp+DDOtuWKG/fz+4WxN1foD9KpoxzOlOSRSTY=
+            - MMchAZ4wNWLbC+0O5m7Xc8rWtKVTm7P7E3WPpc9VC3A=
+            - QIVZXZlbsgg7Lrsr4+u6ouN5DML18hk5KuACH9jUdiY=
+            - cne/wb+D/bVIJWcZjzeAT8fdiJURFdMx8E01r6/yi7I=
+            - ngVgRdTAnrPW6oyO9PexAfecq27E0KZzV12fMn974Lo=
+          source: 0:3BD5479721BEAF48DC0C7F777690C8D7275E173F6F61E01B5ED027B7A3C09000
+          source_secondary: 0:E860FC2BD284F930D86A778E77D02E3B85F3B891976BB0A6FB8050E9E9F21463
+          destination: 0:8BC991CFE177BC7E9721433EFA3BEFD199485A55CFFD040A06C89AF026B71BCF
+          asset: 0:CF76AF318C0872B58A9F1925FC29C156211782B9FB01F56760D292E56123BF87
+          amount: 5000039599
+          staking_data:
+            provider: hipo
+            tokens_minted: null
+            ts_nft: 0:B6D4D107CF7AB228536C0D305A8530096CE869E55E7AA42FFBFBEBC226C84A6A
+      - type: nft_mint
+        values:
+          success: true
+          source: 0:4FC5A9CB92ADCE9AAD7FBB3EBC8599F54107C9511202C553534BCA97089A4190
+          destination: 0:B6D4D107CF7AB228536C0D305A8530096CE869E55E7AA42FFBFBEBC226C84A6A
+
+  "Hipo instant unstake":
+    # TEP-74 burn that must NOT surface as a plain jetton_burn
+    trace-id: RyCFwsqeLcj5Pa2d-itlb4lT2Sz9EIUE3kiniFdWISM=
+    expected-blocks:
+      - type: hipo_stake_withdrawal
+        values:
+          data:
+            source: 0:B4CEBA28B455DEF1F3E6E283602D3C28A92800F0EB49DD226EDBA80AA23664F6
+            pool: 0:8BC991CFE177BC7E9721433EFA3BEFD199485A55CFFD040A06C89AF026B71BCF
+            user_jetton_wallet: 0:CB3E16DD41033BC880EFB44A96ADD2914B1C61BED90133281FC6046B0F69F3FF
+            amount: 46490058860013
+            tokens_burnt: 40518685599171
+            bill: null
+    expected-actions:
+      - type: stake_withdrawal
+        values:
+          success: true
+          accounts:
+            - 0:8BC991CFE177BC7E9721433EFA3BEFD199485A55CFFD040A06C89AF026B71BCF
+            - 0:B4CEBA28B455DEF1F3E6E283602D3C28A92800F0EB49DD226EDBA80AA23664F6
+            - 0:CB3E16DD41033BC880EFB44A96ADD2914B1C61BED90133281FC6046B0F69F3FF
+            - 0:CF76AF318C0872B58A9F1925FC29C156211782B9FB01F56760D292E56123BF87
+          tx_hashes:
+            - EEHCR7USPn4I9K4GKFb0p6/1+yRVn34UewhqEoFQD3c=
+            - NY4Jf+hVJoVr4S/ZTpUWzJ1VL0As/cu6mtE92nwqfwI=
+            - RyCFwsqeLcj5Pa2d+itlb4lT2Sz9EIUE3kiniFdWISM=
+            - WoT3jHkVaby7haqWWqMHPmoNnsxih4LPgXxPQfWR2Io=
+            - jI9jQv7ONjdl/s4tjduaJjAfObRBIq2YylxkP1AhP6k=
+            - ou8O+pYf1kKdNS69WSReeXIbQltjik/J5qvq9iI8dUA=
+            - z+H/zigaK+CCg8t6XHjWJCRkCvTLz42dHDjmDn5Qc5U=
+          source: 0:B4CEBA28B455DEF1F3E6E283602D3C28A92800F0EB49DD226EDBA80AA23664F6
+          source_secondary: 0:CB3E16DD41033BC880EFB44A96ADD2914B1C61BED90133281FC6046B0F69F3FF
+          destination: 0:8BC991CFE177BC7E9721433EFA3BEFD199485A55CFFD040A06C89AF026B71BCF
+          asset: 0:CF76AF318C0872B58A9F1925FC29C156211782B9FB01F56760D292E56123BF87
+          amount: 46490058860013
+          staking_data:
+            provider: hipo
+            ts_nft: null
+            tokens_burnt: 40518685599171
+
+  "Hipo deferred unstake request":
+    # unstake while a round is running -> bill SBT, payout at round end.
+    # The bill minted here is burned in the "Hipo round end" traces below.
+    trace-id: kjarkW6SKTqCLhu3Aclw3pfqw98Y8aGL_KOk0_0Ekik=
+    expected-blocks:
+      - type: hipo_stake_withdrawal_request
+        values:
+          data:
+            source: 0:F1F1AD0F4FFF9CF79D8AF45381BCF98AE6AFE1175EDE0AA714495DA92CA3F078
+            pool: 0:8BC991CFE177BC7E9721433EFA3BEFD199485A55CFFD040A06C89AF026B71BCF
+            user_jetton_wallet: 0:C922154BE9E3213F0368E4B1B3E6792C23E5E02FC8B28B32AD6C16A0F447B5A6
+            tokens_burnt: 3200000000
+            bill: 0:C831F186CB35F27772BB3FC012EB619C0F42D1DA2A64A052DAF2E51250BBF534
+    expected-actions:
+      - type: stake_withdrawal_request
+        values:
+          success: true
+          accounts:
+            - 0:8BC991CFE177BC7E9721433EFA3BEFD199485A55CFFD040A06C89AF026B71BCF
+            - 0:BBFB86B18B81883668E7F44BCF0C5A8C63DB4CE85C144961991BD4206F630641
+            - 0:C922154BE9E3213F0368E4B1B3E6792C23E5E02FC8B28B32AD6C16A0F447B5A6
+            - 0:CF76AF318C0872B58A9F1925FC29C156211782B9FB01F56760D292E56123BF87
+            - 0:F1F1AD0F4FFF9CF79D8AF45381BCF98AE6AFE1175EDE0AA714495DA92CA3F078
+          tx_hashes:
+            - 2G5/fXcKiCW9YtF5Cv0+Kfo3FkIX9Xl6a9wE3e6tRPU=
+            - G63FDjhqud6VceoMhlf97cMlSADEDa1JZztVdfIDZPc=
+            - Wy3veQnkys/jQ+oK/FG/RPGt9aQWRKylaFitzLZ94H4=
+            - kjarkW6SKTqCLhu3Aclw3pfqw98Y8aGL/KOk0/0Ekik=
+            - vD+0eBNQZ/Z2gfduXzoUKAXBOdiuhO26vq+z8p77jF8=
+          source: 0:F1F1AD0F4FFF9CF79D8AF45381BCF98AE6AFE1175EDE0AA714495DA92CA3F078
+          source_secondary: 0:C922154BE9E3213F0368E4B1B3E6792C23E5E02FC8B28B32AD6C16A0F447B5A6
+          destination: 0:8BC991CFE177BC7E9721433EFA3BEFD199485A55CFFD040A06C89AF026B71BCF
+          asset: 0:CF76AF318C0872B58A9F1925FC29C156211782B9FB01F56760D292E56123BF87
+          amount: 3200000000
+          staking_data:
+            provider: hipo
+            ts_nft: 0:C831F186CB35F27772BB3FC012EB619C0F42D1DA2A64A052DAF2E51250BBF534
+            tokens_burnt: 3200000000
+      - type: nft_mint
+        values:
+          success: true
+          source: 0:BBFB86B18B81883668E7F44BCF0C5A8C63DB4CE85C144961991BD4206F630641
+          destination: 0:C831F186CB35F27772BB3FC012EB619C0F42D1DA2A64A052DAF2E51250BBF534
+
+  "Hipo round end deposit completion":
+    # One round-end trace settles every pending bill. This selects one of the seven
+    # mint_tokens legs: the pending deposit is finally paid out in hGRAM.
+    trace-id: Zlryk5_NNI7f11uLLdlzOymfxEWi89UHndlrtFM8118=
+    expected-actions:
+      - type: stake_deposit
+        selector: "{{ value.staking_data.ts_nft == '0:75E2A5F8CFA60D971BAD5B4842AA485F52FAC9DE933957EFE3CFA1273A6DE7CA' }}"
+        values:
+          success: true
+          accounts:
+            - 0:63BBCB4087EE606551DB931E9279B7DED30937B75FB61452056BBABE738FFEC4
+            - 0:75E2A5F8CFA60D971BAD5B4842AA485F52FAC9DE933957EFE3CFA1273A6DE7CA
+            - 0:8BC991CFE177BC7E9721433EFA3BEFD199485A55CFFD040A06C89AF026B71BCF
+            - 0:BBFB86B18B81883668E7F44BCF0C5A8C63DB4CE85C144961991BD4206F630641
+            - 0:CB80D3CECD2EF07F00C48A28F741B36ABBF213A57C9D9F80636BEC90E1040348
+            - 0:CF76AF318C0872B58A9F1925FC29C156211782B9FB01F56760D292E56123BF87
+          source: 0:CB80D3CECD2EF07F00C48A28F741B36ABBF213A57C9D9F80636BEC90E1040348
+          source_secondary: 0:63BBCB4087EE606551DB931E9279B7DED30937B75FB61452056BBABE738FFEC4
+          destination: 0:8BC991CFE177BC7E9721433EFA3BEFD199485A55CFFD040A06C89AF026B71BCF
+          asset: 0:CF76AF318C0872B58A9F1925FC29C156211782B9FB01F56760D292E56123BF87
+          amount: 10000000000
+          staking_data:
+            provider: hipo
+            tokens_minted: 8715559109
+            ts_nft: 0:75E2A5F8CFA60D971BAD5B4842AA485F52FAC9DE933957EFE3CFA1273A6DE7CA
+
+  "Hipo round end withdrawal completion":
+    # Same trace, burn_tokens leg. ts_nft is the very bill minted by the
+    # "Hipo deferred unstake request" case above, which joins the two halves.
+    trace-id: Zlryk5_NNI7f11uLLdlzOymfxEWi89UHndlrtFM8118=
+    expected-actions:
+      - type: stake_withdrawal
+        selector: "{{ value.staking_data.ts_nft == '0:C831F186CB35F27772BB3FC012EB619C0F42D1DA2A64A052DAF2E51250BBF534' }}"
+        values:
+          success: true
+          accounts:
+            - 0:8BC991CFE177BC7E9721433EFA3BEFD199485A55CFFD040A06C89AF026B71BCF
+            - 0:BBFB86B18B81883668E7F44BCF0C5A8C63DB4CE85C144961991BD4206F630641
+            - 0:C831F186CB35F27772BB3FC012EB619C0F42D1DA2A64A052DAF2E51250BBF534
+            - 0:C922154BE9E3213F0368E4B1B3E6792C23E5E02FC8B28B32AD6C16A0F447B5A6
+            - 0:CF76AF318C0872B58A9F1925FC29C156211782B9FB01F56760D292E56123BF87
+            - 0:F1F1AD0F4FFF9CF79D8AF45381BCF98AE6AFE1175EDE0AA714495DA92CA3F078
+          source: 0:F1F1AD0F4FFF9CF79D8AF45381BCF98AE6AFE1175EDE0AA714495DA92CA3F078
+          source_secondary: 0:C922154BE9E3213F0368E4B1B3E6792C23E5E02FC8B28B32AD6C16A0F447B5A6
+          destination: 0:8BC991CFE177BC7E9721433EFA3BEFD199485A55CFFD040A06C89AF026B71BCF
+          asset: 0:CF76AF318C0872B58A9F1925FC29C156211782B9FB01F56760D292E56123BF87
+          amount: 3671594627
+          staking_data:
+            provider: hipo
+            ts_nft: 0:C831F186CB35F27772BB3FC012EB619C0F42D1DA2A64A052DAF2E51250BBF534
+            tokens_burnt: 3200000000
+
+  "Hipo rolled back unstake":
+    # The treasury could not serve the unstake and returned the hGRAM
+    # (proxy_rollback_unstake -> rollback_unstake). Nothing was withdrawn, so this must
+    # stay a plain jetton burn — see test_hipo_rollback_is_not_a_withdrawal for the
+    # assertion that no staking action is produced.
+    trace-id: ug2Oph0srx2HCRk2K4qReHJujz1x5FwMhmrn_EUOav8=
+    expected-actions:
+      - type: jetton_burn
+        values:
+          success: true
+          source: 0:742E7C4AD4667B14C65D54020B4ED1E000CB207ED4907B6F4A1122B1CB5B625A
+          source_secondary: 0:CAF84127558C94E2B1EAC00FDD065CA290D2FD7CBE5A4A347ACDE0BB23085502
+          asset: 0:CF76AF318C0872B58A9F1925FC29C156211782B9FB01F56760D292E56123BF87
+          amount: 10332191597

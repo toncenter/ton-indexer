@@ -57,6 +57,9 @@ from indexer.events.blocks.staking import (
     CoffeeStakingClaimRewardsBlock,
     CoffeeStakingDepositBlock,
     CoffeeStakingWithdrawBlock,
+    HipoStakeDepositBlock,
+    HipoStakeWithdrawalBlock,
+    HipoStakeWithdrawalRequestBlock,
     NominatorPoolDepositBlock,
     NominatorPoolWithdrawRequestBlock,
     TONStakersDepositBlock,
@@ -501,6 +504,50 @@ def _fill_delete_dns_record_action(block: DeleteDnsRecordBlock, action: Action):
     }
     action.asset = _addr(block.data['collection_address'])
     action.change_dns_record_data = data
+
+def _fill_hipo_deposit_action(block: HipoStakeDepositBlock, action: Action):
+    action.type = 'stake_deposit'
+    action.source = _addr(block.data.source)
+    action.source_secondary = _addr(block.data.user_jetton_wallet)
+    action.destination = _addr(block.data.pool)
+    action.amount = block.data.value.value
+    action.asset = _addr(block.data.asset)
+    action.staking_data = {
+        'provider': 'hipo',
+        # None while the deposit is pending; the minting half of a deferred deposit is
+        # emitted as a second stake_deposit at round end, joinable through `ts_nft`.
+        'tokens_minted': _value(block.data.tokens_minted),
+        'ts_nft': _addr(block.data.bill),
+    }
+
+
+def _fill_hipo_withdrawal_request_action(block: HipoStakeWithdrawalRequestBlock, action: Action):
+    action.type = 'stake_withdrawal_request'
+    action.source = _addr(block.data.source)
+    action.source_secondary = _addr(block.data.user_jetton_wallet)
+    action.destination = _addr(block.data.pool)
+    action.amount = block.data.tokens_burnt.value
+    action.asset = _addr(block.data.asset)
+    action.staking_data = {
+        'provider': 'hipo',
+        'ts_nft': _addr(block.data.bill),
+        'tokens_burnt': _value(block.data.tokens_burnt),
+    }
+
+
+def _fill_hipo_withdrawal_action(block: HipoStakeWithdrawalBlock, action: Action):
+    action.type = 'stake_withdrawal'
+    action.source = _addr(block.data.source)
+    action.source_secondary = _addr(block.data.user_jetton_wallet)
+    action.destination = _addr(block.data.pool)
+    action.amount = block.data.amount.value
+    action.asset = _addr(block.data.asset)
+    action.staking_data = {
+        'provider': 'hipo',
+        'ts_nft': _addr(block.data.bill),
+        'tokens_burnt': _value(block.data.tokens_burnt),
+    }
+
 
 def _fill_tonstakers_deposit_action(block: TONStakersDepositBlock, action: Action):
     action.type = 'stake_deposit'
@@ -1337,6 +1384,12 @@ def block_to_action(block: Block, trace_id: str, trace: Trace) -> Action:
             _fill_delete_dns_record_action(block, action)
         case 'renew_dns':
             _fill_dns_renew_action(block, action)
+        case "hipo_stake_deposit":
+            _fill_hipo_deposit_action(block, action)
+        case "hipo_stake_withdrawal_request":
+            _fill_hipo_withdrawal_request_action(block, action)
+        case "hipo_stake_withdrawal":
+            _fill_hipo_withdrawal_action(block, action)
         case "tonstakers_deposit":
             _fill_tonstakers_deposit_action(block, action)
         case "tonstakers_withdraw_request":
@@ -1512,6 +1565,9 @@ v1_ops = [
     'tonstakers_deposit',
     'tonstakers_withdraw_request',
     'tonstakers_withdraw',
+    'hipo_stake_deposit',
+    'hipo_stake_withdrawal_request',
+    'hipo_stake_withdrawal',
     'ethena_withdrawal_request',
     'ethena_deposit',
     'tonco_deposit_liquidity',
