@@ -2788,19 +2788,8 @@ KvrocksBatchWriter::KvrocksBatchWriter(sw::redis::Redis& redis, const StateBatch
 }
 
 void KvrocksBatchWriter::write() {
-  for (std::size_t attempt = 1; attempt <= KVROCKS_INDEX_SNAPSHOT_MAX_RETRIES; ++attempt) {
-    reset_pipeline();
-    try {
-      write_once();
-      return;
-    } catch (const KvrocksIndexSnapshotConflict& e) {
-      if (attempt == KVROCKS_INDEX_SNAPSHOT_MAX_RETRIES) {
-        throw;
-      }
-      LOG(WARNING) << e.what() << ", retrying Kvrocks batch attempt " << (attempt + 1) << "/"
-                   << KVROCKS_INDEX_SNAPSHOT_MAX_RETRIES;
-    }
-  }
+  reset_pipeline();
+  write_once();
 }
 
 void KvrocksBatchWriter::write_once() {
@@ -2967,41 +2956,103 @@ void KvrocksBatchWriter::queue_set_indexed(const std::string& script_sha, const 
 }
 
 void KvrocksBatchWriter::queue_indexed_writes(const std::vector<IndexedWrite>& writes) {
-  std::size_t begin = 0;
-  while (begin < writes.size()) {
-    std::unordered_set<std::string> chunk_keys;
-    std::size_t end = begin;
-    for (; end < writes.size() && end - begin < KVROCKS_INDEX_SNAPSHOT_CHUNK_SIZE; ++end) {
-      if (!chunk_keys.insert(writes[end].key).second) {
-        break;
-      }
-    }
-    if (end == begin) {
-      end = begin + 1;
-    }
+  queued_ += writes.size();
+  std::vector<std::size_t> pending_write_indexes;
+  pending_write_indexes.reserve(writes.size());
+  for (std::size_t i = 0; i < writes.size(); ++i) {
+    pending_write_indexes.push_back(i);
+  }
 
-    bool pending_conflicts_with_snapshot = false;
-    for (std::size_t i = begin; i < end; ++i) {
-      if (writes[i].read_old_indexes && pending_row_keys_.count(writes[i].key) != 0) {
-        pending_conflicts_with_snapshot = true;
-        break;
+  for (std::size_t attempt = 1; attempt <= KVROCKS_INDEX_SNAPSHOT_MAX_RETRIES; ++attempt) {
+    std::vector<std::size_t> next_pending_write_indexes;
+    next_pending_write_indexes.reserve(pending_write_indexes.size());
+    std::size_t snapshot_read_conflicts = 0;
+    std::size_t script_exec_conflicts = 0;
+
+    std::size_t begin = 0;
+    while (begin < pending_write_indexes.size()) {
+      std::unordered_set<std::string> chunk_keys;
+      std::size_t end = begin;
+      for (; end < pending_write_indexes.size() && end - begin < KVROCKS_INDEX_SNAPSHOT_CHUNK_SIZE; ++end) {
+        const auto write_index = pending_write_indexes[end];
+        if (!chunk_keys.insert(writes[write_index].key).second) {
+          break;
+        }
       }
-    }
-    if (pending_conflicts_with_snapshot) {
+      if (end == begin) {
+        end = begin + 1;
+      }
+
+      // Keep this pipeline limited to the indexed writes below so its reply offsets
+      // map directly back to the rows that need to be retried.
       flush();
+
+      std::vector<std::size_t> chunk_write_indexes(pending_write_indexes.begin() + begin,
+                                                   pending_write_indexes.begin() + end);
+      auto snapshot_result = read_old_index_snapshots(writes, chunk_write_indexes);
+      snapshot_read_conflicts += snapshot_result.conflict_offsets.size();
+      std::vector<bool> retry(chunk_write_indexes.size(), false);
+      for (const auto offset : snapshot_result.conflict_offsets) {
+        if (offset >= retry.size()) {
+          throw std::runtime_error("Kvrocks old index snapshot conflict offset mismatch");
+        }
+        retry[offset] = true;
+      }
+
+      std::vector<std::size_t> command_offsets;
+      command_offsets.reserve(chunk_write_indexes.size() - snapshot_result.conflict_offsets.size());
+      for (std::size_t offset = 0; offset < chunk_write_indexes.size(); ++offset) {
+        if (retry[offset]) {
+          continue;
+        }
+        const auto write_index = chunk_write_indexes[offset];
+        queue_indexed_write(writes[write_index], snapshot_result.snapshots[offset],
+                            /*auto_flush=*/false, /*count_queued=*/false);
+        command_offsets.push_back(offset);
+      }
+
+      const auto command_conflicts = flush(/*throw_on_snapshot_conflict=*/false);
+      script_exec_conflicts += command_conflicts.size();
+      for (const auto command_offset : command_conflicts) {
+        if (command_offset >= command_offsets.size()) {
+          throw std::runtime_error("Kvrocks indexed write conflict reply offset mismatch");
+        }
+        retry[command_offsets[command_offset]] = true;
+      }
+
+      for (std::size_t offset = 0; offset < retry.size(); ++offset) {
+        if (retry[offset]) {
+          next_pending_write_indexes.push_back(chunk_write_indexes[offset]);
+        }
+      }
+      begin = end;
     }
 
-    const auto old_snapshots = read_old_index_snapshots(writes, begin, end);
-    for (std::size_t i = begin; i < end; ++i) {
-      queue_indexed_write(writes[i], old_snapshots[i - begin]);
+    if (next_pending_write_indexes.empty()) {
+      return;
     }
-    flush();
-    begin = end;
+
+    const auto& first_conflict = writes[next_pending_write_indexes.front()];
+    const auto conflict_detail = "conflicts=" + std::to_string(next_pending_write_indexes.size()) +
+                                 " snapshot_reads=" + std::to_string(snapshot_read_conflicts) +
+                                 " script_execs=" + std::to_string(script_exec_conflicts) +
+                                 " first_key=" + first_conflict.key +
+                                 " first_source_mc_seqno=" + std::to_string(first_conflict.source_mc_seqno);
+    if (attempt == KVROCKS_INDEX_SNAPSHOT_MAX_RETRIES) {
+      throw KvrocksIndexSnapshotConflict("Kvrocks indexed writes still conflict after " + std::to_string(attempt) +
+                                         " attempts: " + conflict_detail);
+    }
+
+    LOG(WARNING) << "Kvrocks indexed write snapshot conflict: " << conflict_detail
+                 << ", retrying conflicting rows attempt " << (attempt + 1) << "/"
+                 << KVROCKS_INDEX_SNAPSHOT_MAX_RETRIES;
+    pending_write_indexes = std::move(next_pending_write_indexes);
   }
 }
 
 void KvrocksBatchWriter::queue_indexed_write(const IndexedWrite& write,
-                                             const std::vector<KvrocksIndexSnapshotEntry>& old_indexes) {
+                                             const std::vector<KvrocksIndexSnapshotEntry>& old_indexes,
+                                             bool auto_flush, bool count_queued) {
   std::vector<std::string> keys;
   keys.reserve(2 + old_indexes.size() + write.indexes.size());
   keys.push_back(write.key);
@@ -3029,28 +3080,33 @@ void KvrocksBatchWriter::queue_indexed_write(const IndexedWrite& write,
   pipeline_.evalsha(write.script_sha, keys.begin(), keys.end(), args.begin(), args.end());
   record_pending_command("set_indexed old_indexes=" + std::to_string(old_indexes.size()) +
                              " new_indexes=" + std::to_string(write.indexes.size()),
-                         write.key, write.source_mc_seqno);
-  flush_if_needed();
+                         write.key, write.source_mc_seqno, count_queued);
+  if (auto_flush) {
+    flush_if_needed();
+  }
 }
 
-std::vector<std::vector<KvrocksIndexSnapshotEntry>> KvrocksBatchWriter::read_old_index_snapshots(
-    const std::vector<IndexedWrite>& writes, std::size_t begin, std::size_t end) {
-  std::vector<std::vector<KvrocksIndexSnapshotEntry>> snapshots(end - begin);
+KvrocksBatchWriter::OldIndexSnapshotReadResult KvrocksBatchWriter::read_old_index_snapshots(
+    const std::vector<IndexedWrite>& writes, const std::vector<std::size_t>& write_indexes) {
+  OldIndexSnapshotReadResult result;
+  result.snapshots.resize(write_indexes.size());
+  auto& snapshots = result.snapshots;
   std::vector<std::size_t> count_offsets;
-  count_offsets.reserve(end - begin);
+  count_offsets.reserve(write_indexes.size());
 
   td::Timer count_timer;
   auto count_pipeline = redis_.pipeline(true);
-  for (std::size_t i = begin; i < end; ++i) {
-    if (!writes[i].read_old_indexes) {
+  for (std::size_t offset = 0; offset < write_indexes.size(); ++offset) {
+    const auto& write = writes[write_indexes[offset]];
+    if (!write.read_old_indexes) {
       continue;
     }
-    count_pipeline.hget(writes[i].key, "idx_count");
-    count_offsets.push_back(i - begin);
+    count_pipeline.hget(write.key, "idx_count");
+    count_offsets.push_back(offset);
   }
   if (count_offsets.empty()) {
     count_timer.pause();
-    return snapshots;
+    return result;
   }
 
   auto count_replies = count_pipeline.exec();
@@ -3064,7 +3120,7 @@ std::vector<std::vector<KvrocksIndexSnapshotEntry>> KvrocksBatchWriter::read_old
   for (std::size_t i = 0; i < count_replies.size(); ++i) {
     const auto offset = count_offsets[i];
     old_counts[offset] = parse_kvrocks_index_count(count_replies.get<sw::redis::OptionalString>(i),
-                                                   writes[begin + offset].key);
+                                                   writes[write_indexes[offset]].key);
   }
 
   std::vector<std::size_t> value_offsets;
@@ -3085,13 +3141,13 @@ std::vector<std::vector<KvrocksIndexSnapshotEntry>> KvrocksBatchWriter::read_old
       fields.push_back("idx_member_" + std::to_string(i));
     }
 
-    values_pipeline.hmget(writes[begin + offset].key, fields.begin(), fields.end());
+    values_pipeline.hmget(writes[write_indexes[offset]].key, fields.begin(), fields.end());
     value_offsets.push_back(offset);
   }
   if (value_offsets.empty()) {
     values_timer.pause();
     exec_elapsed_millis_ += values_timer.elapsed() * 1e3;
-    return snapshots;
+    return result;
   }
 
   auto value_replies = values_pipeline.exec();
@@ -3109,7 +3165,7 @@ std::vector<std::vector<KvrocksIndexSnapshotEntry>> KvrocksBatchWriter::read_old
     value_replies.get(reply_i, std::back_inserter(values));
     if (values.size() != fields.size()) {
       throw std::runtime_error("Kvrocks HMGET old index snapshot reply count mismatch for " +
-                               writes[begin + offset].key);
+                               writes[write_indexes[offset]].key);
     }
 
     auto& snapshot = snapshots[offset];
@@ -3118,25 +3174,22 @@ std::vector<std::vector<KvrocksIndexSnapshotEntry>> KvrocksBatchWriter::read_old
       const auto& index_key = values[i * 2];
       const auto& index_member = values[i * 2 + 1];
       if (!index_key || !index_member) {
-        throw KvrocksIndexSnapshotConflict(
-            "Kvrocks indexed write snapshot conflict while reading old index snapshot: key=" +
-            writes[begin + offset].key + " source_mc_seqno=" +
-            std::to_string(writes[begin + offset].source_mc_seqno) + " idx_count=" +
-            std::to_string(old_counts[offset]) + " missing idx_" + std::to_string(i + 1) +
-            " idx_key_missing=" + (index_key ? "false" : "true") +
-            " idx_member_missing=" + (index_member ? "false" : "true"));
+        snapshot.clear();
+        result.conflict_offsets.push_back(offset);
+        break;
       }
       snapshot.push_back({*index_key, *index_member});
     }
   }
-  return snapshots;
+  return result;
 }
 
 void KvrocksBatchWriter::record_pending_command(const std::string& op, const std::string& key,
-                                                std::uint32_t source_mc_seqno) {
+                                                std::uint32_t source_mc_seqno, bool count_queued) {
   ++pending_;
-  ++queued_;
-  pending_row_keys_.insert(key);
+  if (count_queued) {
+    ++queued_;
+  }
   pending_debug_.push_back(op + " key=" + key + " source_mc_seqno=" + std::to_string(source_mc_seqno));
 }
 
@@ -3144,7 +3197,6 @@ void KvrocksBatchWriter::reset_pipeline() {
   pipeline_ = redis_.pipeline(true);
   pending_ = 0;
   queued_ = 0;
-  pending_row_keys_.clear();
   pending_debug_.clear();
 }
 
@@ -3154,9 +3206,10 @@ void KvrocksBatchWriter::flush_if_needed() {
   }
 }
 
-void KvrocksBatchWriter::flush() {
+std::vector<std::size_t> KvrocksBatchWriter::flush(bool throw_on_snapshot_conflict) {
+  std::vector<std::size_t> snapshot_conflicts;
   if (pending_ == 0) {
-    return;
+    return snapshot_conflicts;
   }
 
   td::Timer exec_timer;
@@ -3164,24 +3217,27 @@ void KvrocksBatchWriter::flush() {
   if (replies.size() != pending_) {
     throw std::runtime_error("Kvrocks pipeline reply count mismatch");
   }
-  bool snapshot_conflict = false;
   std::string snapshot_conflict_detail;
   for (std::size_t i = 0; i < replies.size(); ++i) {
     if (replies.get<long long>(i) == KVROCKS_INDEX_SNAPSHOT_CONFLICT) {
-      if (!snapshot_conflict) {
-        snapshot_conflict = true;
+      if (snapshot_conflicts.empty()) {
         snapshot_conflict_detail = i < pending_debug_.size() ? pending_debug_[i] : "unknown pending command";
       }
+      snapshot_conflicts.push_back(i);
     }
   }
   exec_timer.pause();
   exec_elapsed_millis_ += exec_timer.elapsed() * 1e3;
   pending_ = 0;
-  pending_row_keys_.clear();
   pending_debug_.clear();
-  if (snapshot_conflict) {
+  if (throw_on_snapshot_conflict && !snapshot_conflicts.empty()) {
     throw KvrocksIndexSnapshotConflict("Kvrocks indexed write snapshot conflict: " + snapshot_conflict_detail);
   }
+  return snapshot_conflicts;
+}
+
+void KvrocksBatchWriter::flush() {
+  static_cast<void>(flush(true));
 }
 
 void write_batch_with_script_reload(sw::redis::Redis& redis, const StateBatch& batch) {

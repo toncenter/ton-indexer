@@ -7,7 +7,6 @@
 #include <memory>
 #include <optional>
 #include <string>
-#include <unordered_set>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -505,6 +504,11 @@ private:
     bool read_old_indexes{false};
   };
 
+  struct OldIndexSnapshotReadResult {
+    std::vector<std::vector<KvrocksIndexSnapshotEntry>> snapshots;
+    std::vector<std::size_t> conflict_offsets;
+  };
+
   void write_once();
   void queue_set_once(const std::string& table, const std::string& id, std::uint32_t source_mc_seqno,
                       const std::string& payload);
@@ -518,13 +522,15 @@ private:
                          std::uint32_t source_mc_seqno, const std::string& payload,
                          const std::vector<KvrocksIndexEntry>& indexes, bool read_old_indexes);
   void queue_indexed_writes(const std::vector<IndexedWrite>& writes);
-  void queue_indexed_write(const IndexedWrite& write, const std::vector<KvrocksIndexSnapshotEntry>& old_indexes);
-  std::vector<std::vector<KvrocksIndexSnapshotEntry>> read_old_index_snapshots(const std::vector<IndexedWrite>& writes,
-                                                                               std::size_t begin,
-                                                                               std::size_t end);
-  void record_pending_command(const std::string& op, const std::string& key, std::uint32_t source_mc_seqno);
+  void queue_indexed_write(const IndexedWrite& write, const std::vector<KvrocksIndexSnapshotEntry>& old_indexes,
+                           bool auto_flush = true, bool count_queued = true);
+  OldIndexSnapshotReadResult read_old_index_snapshots(const std::vector<IndexedWrite>& writes,
+                                                       const std::vector<std::size_t>& write_indexes);
+  void record_pending_command(const std::string& op, const std::string& key, std::uint32_t source_mc_seqno,
+                              bool count_queued = true);
   void reset_pipeline();
   void flush_if_needed();
+  std::vector<std::size_t> flush(bool throw_on_snapshot_conflict);
   void flush();
 
   sw::redis::Redis& redis_;
@@ -532,7 +538,6 @@ private:
   const StateBatch& batch_;
   std::size_t pending_{0};
   std::size_t queued_{0};
-  std::unordered_set<std::string> pending_row_keys_;
   std::vector<std::string> pending_debug_;
   double exec_elapsed_millis_{0.0};
 };
