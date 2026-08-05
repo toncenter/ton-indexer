@@ -4,7 +4,7 @@
 
 #include "ActionBuild.h"             // Action (the rows the classifier hands back)
 #include "EmuActionPayload.h"        // EmuActionPayload (the write-back bytes)
-#include "EmuCelldbLookup.h"         // Tier2Budget, Tier2Stats, AllShardStates
+#include "EmuCelldbLookup.h"         // Tier2Stats, AllShardStates
 #include "EnginePrep.h"             // MchEnginePrep
 #include "ParsedBlockLookupSource.h" // InterfaceMap, LookupStats
 
@@ -12,7 +12,6 @@
 #include "td/utils/port/Clocks.h"
 
 #include <algorithm>
-#include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -27,13 +26,7 @@ namespace mch {
 // TODO: wire live config global_version
 inline constexpr int kEmuGlobalVersion = 12;
 
-// Admission and timeout limits for classification work.
-inline constexpr std::size_t kMaxInFlightClassify = 1024;
-inline constexpr std::int64_t kClassifyDeadlineUs = 200'000;
-inline constexpr std::int64_t kStallFailOpenUs = 5'000'000;
-
-// Monotonic microseconds: the deadline is stamped on an emulator thread and
-// read on the classifier's, so it must not move with the wall clock.
+// Monotonic microseconds used for classifier timing measurements.
 inline std::int64_t emu_now_us() {
   return static_cast<std::int64_t>(td::Clocks::monotonic() * 1e6);
 }
@@ -60,7 +53,6 @@ struct EmuTraceView {
   AllShardStates shard_states;
   std::shared_ptr<block::ConfigInfo> config;
   std::uint64_t update_seq{0};
-  std::int64_t sent_us{0}, deadline_us{0};  // emu_now_us basis
 };
 
 // Minimum node finality shared by the wire payload and insert guard.
@@ -80,15 +72,12 @@ inline EmuFinality view_finality(const EmuTraceView &view) {
 enum class EmuClassifyOutcome : std::uint8_t {
   classified,
   classify_failed,
-  convert_failed,   // the classifier ran
-  shed_admission,
-  shed_deadline,
-  bypassed_disabled  // classifier did not run
+  convert_failed
 };
 
 struct EmuClassifyResult {
   std::string trace_id;
-  EmuClassifyOutcome outcome{EmuClassifyOutcome::bypassed_disabled};
+  EmuClassifyOutcome outcome{EmuClassifyOutcome::classify_failed};
   // Serialized before the owned view leaves the classifier actor.
   EmuActionPayload payload;
   bool used_fallback{false};       // rows came from ClassifyResult::fallback_rows
@@ -102,23 +91,12 @@ struct EmuClassifyResult {
   std::int64_t queue_us{0}, classify_us{0}, serialize_us{0};
 };
 
-// Shared gate state: written by emitter-thread admission and by the classifier
-// on its own.
-struct EmuGate {
-  std::atomic<std::size_t> in_flight{0};
-  // Seeded at construction so the first stalled request can trip fail-open.
-  std::atomic<std::int64_t> last_response_us{emu_now_us()};
-  std::atomic<bool> disabled{false};  // sticky fail-open
-};
-
 struct EmuClassifierConfig {
   std::shared_ptr<const MchEnginePrep> prep;  // nullptr = feature off
+  int workers{1};
   int global_version{kEmuGlobalVersion};
-  // Required whenever `prep` is set; TraceProcessor and the actor dereference it.
-  std::shared_ptr<EmuGate> gate;
   // Cell-db tier-2 lookups. Enabled by default; disabling them uses tier 1 only.
   bool tier2{true};
-  Tier2Budget tier2_budget;
 };
 
 }  // namespace mch

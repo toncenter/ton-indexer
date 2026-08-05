@@ -114,8 +114,8 @@ void classify_txs(const EmuClassifierConfig &cfg, const EmuTraceView &view,
     }
     ctx.root = init_block(ctx.arena, ctx.tree.root);
 
-    // Memoization and both tier-2 budgets are scoped to this classification.
-    EmuCelldbTier2 tier2(&view.shard_states, view.config, cfg.tier2_budget);
+    // Tier-2 memoization is scoped to this classification.
+    EmuCelldbTier2 tier2(&view.shard_states, view.config);
     ParsedBlockLookupSource::Tier2Hook hook;
     if (cfg.tier2) {
       hook = [&tier2](const std::string &kind, const std::vector<Value> &args) {
@@ -192,14 +192,6 @@ void EmuClassifierActor::start_up() {
   alarm_timestamp() = td::Timestamp::in(kStatsIntervalSec);
 }
 
-void EmuClassifierActor::note_shed(EmuClassifyOutcome why) {
-  switch (why) {
-    case EmuClassifyOutcome::shed_admission: stats_.shed_admission++; break;
-    case EmuClassifyOutcome::bypassed_disabled: stats_.bypassed_disabled++; break;
-    default: break;  // the classifier-side outcomes never come through here
-  }
-}
-
 bool EmuClassifierActor::remember_seen(const std::string &trace_id) {
   if (!seen_traces_.insert(trace_id).second) {
     return false;
@@ -212,7 +204,8 @@ bool EmuClassifierActor::remember_seen(const std::string &trace_id) {
   return true;
 }
 
-void EmuClassifierActor::classify(EmuTraceView view, td::Promise<EmuClassifyResult> promise) {
+void EmuClassifierActor::classify(EmuTraceView view, std::int64_t enqueued_us,
+                                  td::Promise<EmuClassifyResult> promise) {
   EmuClassifyResult res;
   res.trace_id = view.trace_id;
   // Derive payload and guard finality from the same view.
@@ -220,12 +213,11 @@ void EmuClassifierActor::classify(EmuTraceView view, td::Promise<EmuClassifyResu
   res.payload.update_seq = view.update_seq;
 
   const std::int64_t started_us = emu_now_us();
-  res.queue_us = started_us - view.sent_us;
+  res.queue_us = started_us - enqueued_us;
   if (res.queue_us > 0 && static_cast<std::size_t>(res.queue_us) > stats_.queue_us_max) {
     stats_.queue_us_max = static_cast<std::size_t>(res.queue_us);
   }
 
-  // Count every actor admission, including requests later shed by deadline.
   stats_.emissions++;
   if (!remember_seen(view.trace_id)) {
     stats_.reemissions++;
@@ -237,22 +229,12 @@ void EmuClassifierActor::classify(EmuTraceView view, td::Promise<EmuClassifyResu
     stats_.tx_limit_exceeded++;
   }
 
-  // Shed work whose queue deadline expired before classification starts.
-  if (started_us > view.deadline_us) {
-    stats_.shed_deadline++;
-    res.outcome = EmuClassifyOutcome::shed_deadline;
-    // Record the shed reason without writing an action blob.
-    res.payload.state = "shed_deadline";
-    promise.set_value(std::move(res));
-    return;
-  }
-
   // Serialize rows before the view and its cell anchor leave scope.
   std::vector<Action> rows;
   bool unknown_row = false;
 
   // Catch vm::VmError explicitly because it does not derive from std::exception.
-  // Every path reaches the single response below and releases the gate slot.
+  // Every path reaches the single response below.
   try {
     auto r_txs = emu_to_schema_txs(view, cfg_.global_version);
     if (r_txs.is_error()) {
@@ -263,7 +245,7 @@ void EmuClassifierActor::classify(EmuTraceView view, td::Promise<EmuClassifyResu
       res.failure_category = FailureCategory::malformed_trace;
       res.failure_reason = r_txs.move_as_error().message().str();
       res.payload.state = "convert_failed";
-      LOG(WARNING) << "[mch-emu] trace=" << view.trace_id
+      LOG(WARNING) << "[mch-emu-w" << worker_index_ << "] trace=" << view.trace_id
                    << " CONVERT FAILED: " << res.failure_reason;
     } else {
       auto txs = r_txs.move_as_ok();
@@ -298,7 +280,7 @@ void EmuClassifierActor::classify(EmuTraceView view, td::Promise<EmuClassifyResu
       stats_.ser_cell_values += ser.cell_values;
       stats_.ser_unrenderable += ser.unrenderable;
       if (ser.float_values != 0 || ser.cell_values != 0 || ser.unrenderable != 0) {
-        LOG(WARNING) << "[mch-emu] trace=" << res.trace_id
+        LOG(WARNING) << "[mch-emu-w" << worker_index_ << "] trace=" << res.trace_id
                      << " serializer saw float=" << ser.float_values
                      << " cell=" << ser.cell_values << " unrenderable=" << ser.unrenderable;
       }
@@ -315,10 +297,10 @@ void EmuClassifierActor::classify(EmuTraceView view, td::Promise<EmuClassifyResu
       }
       stats_.tier2.fetched += res.tier2_stats.fetched;
       stats_.tier2.memo_hits += res.tier2_stats.memo_hits;
-      stats_.tier2.budget_exhausted += res.tier2_stats.budget_exhausted;
       if (scrubbed > 0) {
         stats_.arena_refs_scrubbed += scrubbed;
-        LOG(WARNING) << "[mch-emu] trace=" << view.trace_id << " scrubbed " << scrubbed
+        LOG(WARNING) << "[mch-emu-w" << worker_index_ << "] trace=" << view.trace_id
+                     << " scrubbed " << scrubbed
                      << " arena block reference(s) out of the action rows";
       }
       if (res.failure) {
@@ -327,7 +309,8 @@ void EmuClassifierActor::classify(EmuTraceView view, td::Promise<EmuClassifyResu
         res.outcome = EmuClassifyOutcome::classify_failed;
         // Classification failures write the basic-action fallback payload.
         res.payload.state = "fallback";
-        LOG(WARNING) << "[mch-emu] trace=" << view.trace_id << " FAILED ("
+        LOG(WARNING) << "[mch-emu-w" << worker_index_ << "] trace=" << view.trace_id
+                     << " FAILED ("
                      << category_name(res.failure_category) << "): " << res.failure_reason;
       } else {
         stats_.classified++;
@@ -339,7 +322,8 @@ void EmuClassifierActor::classify(EmuTraceView view, td::Promise<EmuClassifyResu
           if (!names.empty()) names += ",";
           names += n;
         }
-        LOG(DEBUG) << "[mch-emu] trace=" << view.trace_id << " txs=" << txs.size()
+        LOG(DEBUG) << "[mch-emu-w" << worker_index_ << "] trace=" << view.trace_id
+                   << " txs=" << txs.size()
                    << " actions=" << res.payload.action_count
                    << " serialize_us=" << res.serialize_us << " matchers=[" << names << "]";
       }
@@ -351,7 +335,8 @@ void EmuClassifierActor::classify(EmuTraceView view, td::Promise<EmuClassifyResu
     res.failure_category = FailureCategory::malformed_trace;
     res.failure_reason = std::string("exception (vm): ") + e.get_msg();
     res.payload.state = "convert_failed";
-    LOG(WARNING) << "[mch-emu] trace=" << view.trace_id << " EXCEPTION (vm): " << e.get_msg();
+    LOG(WARNING) << "[mch-emu-w" << worker_index_ << "] trace=" << view.trace_id
+                 << " EXCEPTION (vm): " << e.get_msg();
   } catch (...) {
     stats_.convert_failed++;
     res.outcome = EmuClassifyOutcome::convert_failed;
@@ -359,7 +344,8 @@ void EmuClassifierActor::classify(EmuTraceView view, td::Promise<EmuClassifyResu
     res.failure_category = FailureCategory::malformed_trace;
     res.failure_reason = "unknown exception";
     res.payload.state = "convert_failed";
-    LOG(WARNING) << "[mch-emu] trace=" << view.trace_id << " EXCEPTION";
+    LOG(WARNING) << "[mch-emu-w" << worker_index_ << "] trace=" << view.trace_id
+                 << " EXCEPTION";
   }
 
   res.classify_us = emu_now_us() - started_us;
@@ -390,7 +376,7 @@ void EmuClassifierActor::alarm() {
     miss_kinds += kind + "=" + std::to_string(n);
   }
   std::size_t resolved = stats_.lookups.tier1_hits + stats_.lookups.tier2_hits;
-  LOG(INFO) << "[mch-emu] emissions=" << stats_.emissions << " (+"
+  LOG(INFO) << "[mch-emu-w" << worker_index_ << "] emissions=" << stats_.emissions << " (+"
             << (stats_.emissions - prev_.emissions) << ")"
             << " reemissions=" << stats_.reemissions
             << " classified=" << stats_.classified << " (+"
@@ -411,13 +397,7 @@ void EmuClassifierActor::alarm() {
             << " tier2_rate=" << (resolved ? (100 * stats_.lookups.tier2_hits / resolved) : 0)
             << "%}"
             << " tier2{fetched=" << stats_.tier2.fetched
-            << " memo_hits=" << stats_.tier2.memo_hits
-            << " budget_exhausted=" << stats_.tier2.budget_exhausted << "}"
-            << " shed{admission=" << stats_.shed_admission
-            << " deadline=" << stats_.shed_deadline
-            << " disabled=" << stats_.bypassed_disabled << "}"
-            << " in_flight=" << cfg_.gate->in_flight.load(std::memory_order_relaxed)
-            << (cfg_.gate->disabled.load(std::memory_order_relaxed) ? " DISABLED" : "")
+            << " memo_hits=" << stats_.tier2.memo_hits << "}"
             << " queue_us{max=" << stats_.queue_us_max << "}"
             << " classify_us{avg="
             << (stats_.latency_samples ? stats_.classify_us_total / stats_.latency_samples : 0)

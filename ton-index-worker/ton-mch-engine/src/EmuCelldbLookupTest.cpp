@@ -1,6 +1,6 @@
 // Cell-db tier-2 tests pin value-shape equality with tier 1, JVault cell parsing,
-// memoization, and budgets. Injected account reads cannot exercise successful
-// get-method detection or the final JVault jetton-wallet leg.
+// memoization, and argument discipline. Injected account reads cannot exercise
+// successful get-method detection or the final JVault jetton-wallet leg.
 #include "EmuCelldbLookupTest.h"
 
 #include "ParsedBlockLookupSource.h"
@@ -288,8 +288,8 @@ struct Fixture {
   std::map<std::string, schema::AccountState> accounts;
   int reads = 0;
 
-  EmuCelldbTier2 make(Tier2Budget budget = {}) {
-    EmuCelldbTier2 t(&states, nullptr, budget);
+  EmuCelldbTier2 make() {
+    EmuCelldbTier2 t(&states, nullptr);
     t.set_account_source([this](const block::StdAddress &a) -> td::Result<schema::AccountState> {
       reads++;
       auto it = accounts.find(std::to_string(a.workchain) + ":" + a.addr.to_hex());
@@ -352,9 +352,9 @@ void test_jvault_hook() {
   }
 }
 
-// Memo and budgets
+// Memo and argument discipline
 
-void test_memo_and_budgets() {
+void test_memo_and_guards() {
   {
     Fixture f;
     f.put('A', stake_wallet_data(addr_of('1'), addr_of('2')));
@@ -388,37 +388,6 @@ void test_memo_and_budgets() {
     check("memo/kind_in_key", t.stats().memo_hits == 0 && f.reads == 1);
   }
   {
-    // Fetch budget: the (N+1)th DISTINCT account degrades to null and the
-    // classify keeps going.
-    Fixture f;
-    for (char c : {'A', 'B', 'C'}) {
-      f.put(c, stake_wallet_data(addr_of('1'), addr_of('2')));
-    }
-    Tier2Budget budget;
-    budget.fetches = 2;
-    auto t = f.make(budget);
-    t.fetch("nominator_pool", {Value::make_str(raw_of('A'))});
-    t.fetch("nominator_pool", {Value::make_str(raw_of('B'))});
-    Value third = t.fetch("nominator_pool", {Value::make_str(raw_of('C'))});
-    check("budget/fetches_capped", f.reads == 2 && t.stats().fetched == 2);
-    check("budget/over_budget_is_null", third.is_null());
-    check("budget/exhausted_counted", t.stats().budget_exhausted == 1);
-    // An already-memoized account still answers after the budget is gone.
-    check("budget/memo_survives_exhaustion",
-          t.stats().memo_hits == 0 && f.reads == 2);
-  }
-  {
-    // Wall-clock budget: a zero window refuses the very first read.
-    Fixture f;
-    f.put('A', stake_wallet_data(addr_of('1'), addr_of('2')));
-    Tier2Budget budget;
-    budget.wall_us = 0;
-    auto t = f.make(budget);
-    check("budget/wall_clock_refuses",
-          t.fetch("nominator_pool", {Value::make_str(raw_of('A'))}).is_null());
-    check("budget/wall_clock_no_read", f.reads == 0 && t.stats().budget_exhausted == 1);
-  }
-  {
     // Argument discipline: same guard as tier 1 and the fixture source.
     Fixture f;
     auto t = f.make();
@@ -429,7 +398,7 @@ void test_memo_and_budgets() {
           t.fetch("nominator_pool", {Value::make_str("not-an-address")}).is_null());
     check("guard/unknown_kind_null",
           t.fetch("no_such_kind", {Value::make_str(raw_of('A'))}).is_null());
-    // The tier-1-only kinds are gated BEFORE the read, so they cost no budget.
+    // The tier-1-only kinds are gated before the account read.
     check("guard/tier1_only_kind_null",
           t.fetch("nft_item", {Value::make_str(raw_of('A'))}).is_null());
     check("guard/no_reads_on_guarded", f.reads == 0 && t.stats().fetched == 0);
@@ -437,7 +406,7 @@ void test_memo_and_budgets() {
   {
     // A listener-emulated trace has no shard states and therefore no tier 2.
     AllShardStates none;
-    EmuCelldbTier2 t(&none, nullptr, Tier2Budget{});
+    EmuCelldbTier2 t(&none, nullptr);
     check("guard/no_shard_states_null",
           t.fetch("nominator_pool", {Value::make_str(raw_of('A'))}).is_null());
   }
@@ -496,7 +465,7 @@ int run_celldb_tier2_test() {
   test_nominator_predicate();
   test_jvault_parsers();
   test_jvault_hook();
-  test_memo_and_budgets();
+  test_memo_and_guards();
   test_two_tier_routing();
   std::printf("CELLDB-TIER2-TEST %s\n", g_fail == 0 ? "ALL PASS" : "FAILURES");
   return g_fail == 0 ? 0 : 1;

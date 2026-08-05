@@ -13,6 +13,7 @@
 #include "GenMatchers.h"
 #include "emu/EmuClassifierBridge.h"
 
+#include <algorithm>
 #include <cmath>
 
 namespace {
@@ -55,7 +56,7 @@ int main(int argc, char *argv[]) {
   std::string db_event_fifo_path;
   bool mch_disable = false;
   bool mch_no_tier2 = false;
-  mch::Tier2Budget mch_tier2_budget;
+  int mch_workers = 1;
   
   td::OptionParser p;
   p.set_description("Emulate TON traces");
@@ -147,28 +148,19 @@ int main(int argc, char *argv[]) {
     mch_disable = true;
   });
 
-  // Tier-2 lookups are enabled by default and use configurable budgets.
+  // Tier-2 lookups are enabled by default.
   p.add_option('\0', "mch-no-tier2", "Disable celldb tier-2 lookups (tier-1-only classification)", [&]() {
     mch_no_tier2 = true;
   });
-  p.add_checked_option('\0', "mch-tier2-fetches", "Celldb account reads per trace (default: 16)", [&](td::Slice value) {
+
+  p.add_checked_option('\0', "mch-workers", "MCH classifier workers (default: 1)", [&](td::Slice value) {
     int v;
     try {
       v = std::stoi(value.str());
     } catch (...) {
-      return td::Status::Error(ton::ErrorCode::error, "bad value for --mch-tier2-fetches: not a number");
+      return td::Status::Error(ton::ErrorCode::error, "bad value for --mch-workers: not a number");
     }
-    mch_tier2_budget.fetches = static_cast<std::size_t>(v < 0 ? 0 : v);
-    return td::Status::OK();
-  });
-  p.add_checked_option('\0', "mch-tier2-ms", "Celldb tier-2 wall-clock budget per trace, ms (default: 20)", [&](td::Slice value) {
-    int v;
-    try {
-      v = std::stoi(value.str());
-    } catch (...) {
-      return td::Status::Error(ton::ErrorCode::error, "bad value for --mch-tier2-ms: not a number");
-    }
-    mch_tier2_budget.wall_us = static_cast<std::int64_t>(v < 0 ? 0 : v) * 1000;
+    mch_workers = std::clamp(v, 1, 64);
     return td::Status::OK();
   });
 
@@ -195,6 +187,7 @@ int main(int argc, char *argv[]) {
   }
 
   mch::EmuClassifierConfig mch_classifier_config;
+  mch_classifier_config.workers = mch_workers;
   if (mch_disable) {
     LOG(WARNING) << "MCH classification DISABLED (--mch-disable): traces are inserted unclassified";
   } else {
@@ -204,14 +197,11 @@ int main(int argc, char *argv[]) {
       LOG(FATAL) << "MCH engine prep failed: " << r_prep.move_as_error();
     }
     mch_classifier_config.prep = r_prep.move_as_ok();
-    mch_classifier_config.gate = std::make_shared<mch::EmuGate>();
     mch_classifier_config.tier2 = !mch_no_tier2;
-    mch_classifier_config.tier2_budget = mch_tier2_budget;
     LOG(INFO) << "MCH classification ENABLED (artifact sha " << mch::gen_matchers_ir_source_sha()
-              << "), insert gated on classification, celldb tier-2 "
-              << (mch_classifier_config.tier2 ? "ON" : "OFF") << " (budget "
-              << mch_classifier_config.tier2_budget.fetches << " fetches / "
-              << mch_classifier_config.tier2_budget.wall_us / 1000 << " ms per trace)";
+              << "), inserts wait for classification, celldb tier-2 "
+              << (mch_classifier_config.tier2 ? "ON" : "OFF")
+              << " workers=" << mch_classifier_config.workers;
   }
 
   // This must happen before any actor can subscribe to events or write a trace.

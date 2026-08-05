@@ -19,8 +19,6 @@ namespace mch {
 // the previous line.
 struct EmuClassifierStats {
   std::size_t emissions{0}, reemissions{0};
-  // Gate-side outcomes: the classifier did not run.
-  std::size_t shed_admission{0}, shed_deadline{0}, bypassed_disabled{0};
   std::size_t classified{0}, failed{0}, convert_failed{0}, tx_limit_exceeded{0}, actions{0};
   // Actions produced by the basic-action fallback after classification failure.
   std::size_t fallback_actions{0};
@@ -32,20 +30,17 @@ struct EmuClassifierStats {
   std::array<std::size_t, 3> by_finality{};  // root-node EmuFinality of the emission
   std::map<FailureCategory, std::size_t> by_category;
   ParsedBlockLookupSource::LookupStats lookups;  // tier1 / tier2 / miss
-  Tier2Stats tier2;  // celldb reads / memo hits / budget refusals
+  Tier2Stats tier2;  // celldb reads / memo hits
 };
 
 class EmuClassifierActor : public td::actor::Actor {
  public:
-  explicit EmuClassifierActor(EmuClassifierConfig cfg) : cfg_(std::move(cfg)) {
-    CHECK(cfg_.gate);  // Enabled EmuClassifierConfig requires a gate.
-  }
+  explicit EmuClassifierActor(EmuClassifierConfig cfg, std::size_t worker_index = 0)
+      : cfg_(std::move(cfg)), worker_index_(worker_index) {}
 
   // Request entry from scheduler integration. Always answers exactly once.
-  void classify(EmuTraceView view, td::Promise<EmuClassifyResult> promise);
-  // The gate turned an emission away before it became a request (admission cap
-  // or the sticky fail-open flag).
-  void note_shed(EmuClassifyOutcome why);
+  void classify(EmuTraceView view, std::int64_t enqueued_us,
+                td::Promise<EmuClassifyResult> promise);
 
   void start_up() override;
   void alarm() override;
@@ -55,8 +50,10 @@ class EmuClassifierActor : public td::actor::Actor {
   bool remember_seen(const std::string &trace_id);
 
   EmuClassifierConfig cfg_;
+  std::size_t worker_index_;
   EmuClassifierStats stats_;
   EmuClassifierStats prev_;  // snapshot at the previous log line, for the delta
+  // Reemission dedup is per-worker, so round-robin pools undercount reemissions.
   std::unordered_set<std::string> seen_traces_;
   std::deque<std::string> seen_order_;
 };

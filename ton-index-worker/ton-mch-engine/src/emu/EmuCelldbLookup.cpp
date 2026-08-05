@@ -2,7 +2,6 @@
 
 #include "EmuInterfaces.h"
 #include "EmuJvaultChain.h"
-#include "EmuTypes.h"  // emu_now_us
 
 #include "smc-interfaces/NominatorPool.h"
 #include "smc-interfaces/Tokens.h"
@@ -21,11 +20,9 @@ std::string memo_key(const std::string &kind, const block::StdAddress &addr) {
 }  // namespace
 
 EmuCelldbTier2::EmuCelldbTier2(const AllShardStates *shard_states,
-                               std::shared_ptr<block::ConfigInfo> config, Tier2Budget budget)
+                               std::shared_ptr<block::ConfigInfo> config)
     : shard_states_(shard_states)
     , config_(std::move(config))
-    , budget_(budget)
-    , deadline_us_(emu_now_us() + budget.wall_us)
     // Capture the states pointer so the source survives moving this object.
     , account_source_([states = shard_states](const block::StdAddress &a) {
       return lookup_account(*states, a);
@@ -36,12 +33,6 @@ const schema::AccountState *EmuCelldbTier2::account(const block::StdAddress &add
   auto it = account_memo_.find(addr);
   if (it != account_memo_.end()) {
     return it->second ? &*it->second : nullptr;
-  }
-  // The half-open wall window is exhausted at the deadline.
-  if (stats_.fetched >= budget_.fetches || emu_now_us() >= deadline_us_) {
-    stats_.budget_exhausted++;
-    // Budget exhaustion is scoped to the run and is not memoized by account.
-    return nullptr;
   }
   stats_.fetched++;
   auto r = account_source_(addr);
@@ -55,7 +46,7 @@ Value EmuCelldbTier2::resolve(const std::string &kind, const block::StdAddress &
   if (kind == "jvault_assets") {
     return jvault_assets(addr);
   }
-  // Reject unsupported kinds before spending the account-read budget.
+  // Reject unsupported kinds before reading an account.
   if (kind != "jetton_wallet" && kind != "dedust_pool" && kind != "nominator_pool") {
     return Value::null();
   }
@@ -124,7 +115,7 @@ Value EmuCelldbTier2::jvault_assets(const block::StdAddress &stake_wallet) {
     // Python's KeyError on ['lock_wallet_address'] -> outer except -> None.
     return Value::null();
   }
-  // Resolve the lock wallet through fetch() to share memo and budget state.
+  // Resolve the lock wallet through fetch() to share memo state.
   Value jw = fetch("jetton_wallet", {Value::make_str(r_lock.move_as_ok())});
   const Value *jetton = jw.field("jetton");
   if (jetton == nullptr || jetton->t != VType::Str) {
