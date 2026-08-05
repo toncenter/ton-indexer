@@ -10,6 +10,7 @@ require (
 	github.com/lib/pq v1.10.9
 	github.com/redis/go-redis/v9 v9.7.0
 	github.com/swaggo/swag v1.16.3
+	github.com/valyala/fasthttp v1.55.0
 	github.com/vmihailenco/msgpack/v5 v5.4.1
 	github.com/xssnick/tonutils-go v1.15.5
 )
@@ -37,7 +38,6 @@ require (
 	github.com/rivo/uniseg v0.4.7 // indirect
 	github.com/swaggo/files/v2 v2.0.1 // indirect
 	github.com/valyala/bytebufferpool v1.0.0 // indirect
-	github.com/valyala/fasthttp v1.55.0 // indirect
 	github.com/valyala/tcplisten v1.0.0 // indirect
 	github.com/vmihailenco/tagparser/v2 v2.0.0 // indirect
 	golang.org/x/crypto v0.42.0 // indirect

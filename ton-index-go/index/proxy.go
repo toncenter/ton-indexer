@@ -7,10 +7,57 @@ import (
 	"math/big"
 	"net/url"
 	"reflect"
+	"time"
 
-	"github.com/gofiber/fiber/v2"
 	"github.com/toncenter/ton-indexer/ton-index-go/index/models"
+	"github.com/valyala/fasthttp"
 )
+
+const (
+	v2MaxConnections      = 256
+	v2ConnectionWaitLimit = 3 * time.Second
+	v2IdleConnectionLimit = 30 * time.Second
+)
+
+var v2HTTPClient = newV2HTTPClient()
+
+func newV2HTTPClient() *fasthttp.Client {
+	return &fasthttp.Client{
+		MaxConnsPerHost:     v2MaxConnections,
+		MaxConnWaitTimeout:  v2ConnectionWaitLimit,
+		MaxIdleConnDuration: v2IdleConnectionLimit,
+	}
+}
+
+func doV2Request(method string, requestURL string, requestBody []byte, timeout time.Duration) ([]byte, error) {
+	return executeV2Request(v2HTTPClient, method, requestURL, requestBody, timeout)
+}
+
+func executeV2Request(client *fasthttp.Client, method string, requestURL string, requestBody []byte, timeout time.Duration) ([]byte, error) {
+	req := fasthttp.AcquireRequest()
+	resp := fasthttp.AcquireResponse()
+	defer fasthttp.ReleaseRequest(req)
+	defer fasthttp.ReleaseResponse(resp)
+
+	req.Header.SetMethod(method)
+	req.SetRequestURI(requestURL)
+	if requestBody != nil {
+		req.Header.SetContentType("application/json")
+		req.SetBody(requestBody)
+	}
+
+	var err error
+	if timeout > 0 {
+		err = client.DoTimeout(req, resp, timeout)
+	} else {
+		err = client.Do(req, resp)
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	return append([]byte(nil), resp.Body()...), nil
+}
 
 func GetV2AddressInformation(state_req models.V2AccountRequest, settings models.RequestSettings) (*models.V2AddressInformation, error) {
 	if len(settings.V2Endpoint) == 0 {
@@ -28,11 +75,9 @@ func GetV2AddressInformation(state_req models.V2AccountRequest, settings models.
 		params.Add("api_key", settings.V2ApiKey)
 	}
 	baseUrl.RawQuery = params.Encode()
-	agent := fiber.Get(baseUrl.String())
-	agent.Timeout(settings.Timeout)
-	_, body, errs := agent.Bytes()
-	if len(errs) > 0 {
-		return nil, models.IndexError{Code: 500, Message: errs[0].Error()}
+	body, err := doV2Request(fasthttp.MethodGet, baseUrl.String(), nil, settings.Timeout)
+	if err != nil {
+		return nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
 
 	var jsn map[string]interface{}
@@ -98,11 +143,9 @@ func GetV2WalletInformation(state_req models.V2AccountRequest, settings models.R
 		params.Add("api_key", settings.V2ApiKey)
 	}
 	baseUrl.RawQuery = params.Encode()
-	agent := fiber.Get(baseUrl.String())
-	agent.Timeout(settings.Timeout)
-	_, body, errs := agent.Bytes()
-	if len(errs) > 0 {
-		return nil, models.IndexError{Code: 500, Message: errs[0].Error()}
+	body, err := doV2Request(fasthttp.MethodGet, baseUrl.String(), nil, settings.Timeout)
+	if err != nil {
+		return nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
 	var jsn map[string]interface{}
 	if err = json.Unmarshal(body, &jsn); err != nil {
@@ -169,17 +212,13 @@ func PostMessage(req models.V2SendMessageRequest, settings models.RequestSetting
 		params.Add("api_key", settings.V2ApiKey)
 	}
 	baseUrl.RawQuery = params.Encode()
-	agent := fiber.Post(baseUrl.String())
-	agent.Timeout(settings.Timeout)
 	var req_body []byte
 	if req_body, err = json.Marshal(req); err != nil {
 		return nil, models.IndexError{Code: 500, Message: fmt.Sprintf("failed to send request: %s", err.Error())}
 	}
-	agent.Add("Content-Type", "application/json")
-	agent.Body(req_body)
-	_, body, errs := agent.Bytes()
-	if len(errs) > 0 {
-		return nil, models.IndexError{Code: 500, Message: errs[0].Error()}
+	body, err := doV2Request(fasthttp.MethodPost, baseUrl.String(), req_body, settings.Timeout)
+	if err != nil {
+		return nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
 	var jsn map[string]interface{}
 	if err = json.Unmarshal(body, &jsn); err != nil {
@@ -226,17 +265,13 @@ func PostEstimateFee(req models.V2EstimateFeeRequest, settings models.RequestSet
 		params.Add("api_key", settings.V2ApiKey)
 	}
 	baseUrl.RawQuery = params.Encode()
-	agent := fiber.Post(baseUrl.String())
-	agent.Timeout(settings.Timeout)
 	var req_body []byte
 	if req_body, err = json.Marshal(req); err != nil {
 		return nil, models.IndexError{Code: 500, Message: fmt.Sprintf("failed to send request: %s", err.Error())}
 	}
-	agent.Add("Content-Type", "application/json")
-	agent.Body(req_body)
-	_, body, errs := agent.Bytes()
-	if len(errs) > 0 {
-		return nil, models.IndexError{Code: 500, Message: errs[0].Error()}
+	body, err := doV2Request(fasthttp.MethodPost, baseUrl.String(), req_body, settings.Timeout)
+	if err != nil {
+		return nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
 	var resp_full struct {
 		Ok     bool                       `json:"ok"`
@@ -268,9 +303,7 @@ func PostRunGetMethod(req models.V2RunGetMethodRequest, settings models.RequestS
 		params.Add("api_key", settings.V2ApiKey)
 	}
 	baseUrl.RawQuery = params.Encode()
-	agent := fiber.Post(baseUrl.String())
-	agent.Timeout(settings.Timeout)
-	agent.Add("Content-Type", "application/json")
+	var requestBody []byte
 	{
 		body := make(map[string]interface{})
 		body["address"] = string(req.Address)
@@ -294,15 +327,13 @@ func PostRunGetMethod(req models.V2RunGetMethodRequest, settings models.RequestS
 		}
 		body["stack"] = stack
 
-		var body_json []byte
-		if body_json, err = json.Marshal(body); err != nil {
+		if requestBody, err = json.Marshal(body); err != nil {
 			return nil, models.IndexError{Code: 500, Message: fmt.Sprintf("failed to send request: %s", err.Error())}
 		}
-		agent.Body(body_json)
 	}
-	_, body, errs := agent.Bytes()
-	if len(errs) > 0 {
-		return nil, models.IndexError{Code: 500, Message: errs[0].Error()}
+	body, err := doV2Request(fasthttp.MethodPost, baseUrl.String(), requestBody, settings.Timeout)
+	if err != nil {
+		return nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
 	var jsn map[string]interface{}
 	if err = json.Unmarshal(body, &jsn); err != nil {
