@@ -4102,7 +4102,12 @@ void InsertBatchPostgres::insert_validator_snapshots(pqxx::work &txn) {
       "election_id", "elect_close", "min_stake", "total_stake", "failed", "finished", "source_mc_seqno"
     };
     PopulateTableStream stream(txn, "validator_elections", columns, 1000, false);
-    stream.setConflictDoUpdate({"election_id"}, "validator_elections.source_mc_seqno <= EXCLUDED.source_mc_seqno");
+    // Equal-seqno snapshots are retries of the same deterministic block and must not
+    // create another row version.
+    stream.setConflictDoUpdate(
+        {"election_id"},
+        {"elect_close", "min_stake", "total_stake", "failed", "finished", "source_mc_seqno"},
+        "validator_elections.source_mc_seqno < EXCLUDED.source_mc_seqno");
 
     std::map<uint32_t, schema::ValidatorElection> latest_elections;
     for (const auto& task : insert_tasks_) {
@@ -4134,9 +4139,18 @@ void InsertBatchPostgres::insert_validator_snapshots(pqxx::work &txn) {
       "election_id", "validator_pubkey", "stake", "max_factor", "stake_holder_address", "adnl_addr", "source_mc_seqno"
     };
     PopulateTableStream stream(txn, "validator_election_participants", columns, 1000, false);
+    // Elector emits the complete, growing participant dictionary after each change. Keep
+    // accepting full snapshots, but only create a new row version for a participant whose
+    // payload actually changed. source_mc_seqno consequently tracks the last real change
+    // of this participant rather than the last snapshot in which it was observed.
     stream.setConflictDoUpdate(
         {"election_id", "validator_pubkey", "stake_holder_address"},
-        "validator_election_participants.source_mc_seqno <= EXCLUDED.source_mc_seqno");
+        {"stake", "max_factor", "adnl_addr", "source_mc_seqno"},
+        "EXCLUDED.source_mc_seqno > validator_election_participants.source_mc_seqno"
+        " AND ROW(validator_election_participants.stake,"
+        " validator_election_participants.max_factor,"
+        " validator_election_participants.adnl_addr)"
+        " IS DISTINCT FROM ROW(EXCLUDED.stake, EXCLUDED.max_factor, EXCLUDED.adnl_addr)");
 
     std::map<std::tuple<uint32_t, std::string, std::string>, schema::ValidatorElectionParticipant> latest_participants;
     for (const auto& task : insert_tasks_) {

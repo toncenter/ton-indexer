@@ -1,6 +1,7 @@
 #pragma once
 #include <pqxx/pqxx>
 #include <map>
+#include <vector>
 #include "IndexData.h"
 
 namespace pqxx
@@ -155,6 +156,10 @@ private:
     ConflictAction conflict_action_{ConflictAction::None};
     std::initializer_list<std::string_view> conflict_columns_;
     std::string update_condition_;
+    // Columns included in the DO UPDATE SET clause. By default all inserted columns are
+    // updated for backwards compatibility; callers can provide only mutable columns to
+    // avoid needlessly marking conflict keys as updated.
+    std::vector<std::string> update_columns_;
     // Optional per-column update expressions overriding the default `col = EXCLUDED.col`
     // in the ON CONFLICT DO UPDATE clause (e.g. `col = GREATEST(table.col, EXCLUDED.col)`).
     std::map<std::string, std::string> column_overrides_;
@@ -190,12 +195,27 @@ public:
 
     void setConflictDoUpdate(std::initializer_list<std::string_view> conflict_columns, std::string_view update_condition,
                              std::map<std::string_view, std::string_view> column_overrides = {}) {
+        setConflictDoUpdate(conflict_columns, column_names_, update_condition, std::move(column_overrides));
+    }
+
+    void setConflictDoUpdate(std::initializer_list<std::string_view> conflict_columns,
+                             std::initializer_list<std::string_view> update_columns,
+                             std::string_view update_condition,
+                             std::map<std::string_view, std::string_view> column_overrides = {}) {
         if (with_copy_) {
             throw std::runtime_error("ON CONFLICT not supported with COPY mode");
+        }
+        if (update_columns.size() == 0) {
+            throw std::runtime_error("ON CONFLICT DO UPDATE requires at least one update column");
         }
         conflict_action_ = ConflictAction::DoUpdate;
         conflict_columns_ = std::move(conflict_columns);
         update_condition_ = std::move(update_condition);
+        update_columns_.clear();
+        update_columns_.reserve(update_columns.size());
+        for (const auto& col : update_columns) {
+            update_columns_.emplace_back(col);
+        }
         column_overrides_.clear();
         for (const auto& [col, expr] : column_overrides) {
             column_overrides_.emplace(std::string(col), std::string(expr));
@@ -225,9 +245,9 @@ private:
           } else if (conflict_action_ == ConflictAction::DoUpdate) {
               conflict_stream << "DO UPDATE SET ";
               bool first = true;
-              for (const auto& col : column_names_) {
+              for (const auto& col : update_columns_) {
                   if (!first) conflict_stream << ", ";
-                  auto override_it = column_overrides_.find(std::string(col));
+                  auto override_it = column_overrides_.find(col);
                   if (override_it != column_overrides_.end()) {
                       conflict_stream << col << " = " << override_it->second;
                   } else {
