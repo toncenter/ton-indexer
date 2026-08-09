@@ -102,11 +102,13 @@ func (db *DbClient) acquireFed(ctx context.Context) (*fedConns, func(), error) {
 	return fc, release, nil
 }
 
-// hotThenCold is for point lookups: try hot, then cold, and let hot rows win.
+// hotThenCold checks hot first and consults cold when needed.
+// mergeDesc controls partition order for ID pages; nil keeps point-lookup behavior.
 // Hot errors degrade to cold-only; cold errors stay fatal because hot is partial.
 func hotThenCold[T any, K comparable](fc *fedConns, expect int,
 	fetch func(conn *pgxpool.Conn) ([]T, error),
 	keyOf func(*T) K,
+	mergeDesc *bool,
 ) ([]T, error) {
 	hotConn, hotErr := fc.hot()
 	var rows []T
@@ -130,6 +132,9 @@ func hotThenCold[T any, K comparable](fc *fedConns, expect int,
 	if hotErr != nil {
 		return coldRows, nil
 	}
+	if mergeDesc != nil {
+		return concatPartitions(rows, coldRows, keyOf, *mergeDesc), nil
+	}
 	seen := make(map[K]bool, len(rows))
 	for i := range rows {
 		seen[keyOf(&rows[i])] = true
@@ -140,4 +145,51 @@ func hotThenCold[T any, K comparable](fc *fedConns, expect int,
 		}
 	}
 	return rows, nil
+}
+
+// Deeper pages use the normal router to avoid buffering more than this per database.
+const idMergeMaxRows = 1000
+
+// concatPartitions keeps each partition's SQL order and prefers hot copies.
+// Cross-partition order is approximate: hot first for desc, cold first for asc.
+func concatPartitions[T any, K comparable](hotRows, coldRows []T,
+	keyOf func(*T) K, desc bool) []T {
+	hotRows = dedupeFirst(hotRows, keyOf)
+	coldRows = dedupeFirst(coldRows, keyOf)
+	hotKeys := make(map[K]bool, len(hotRows))
+	for i := range hotRows {
+		hotKeys[keyOf(&hotRows[i])] = true
+	}
+	coldOnly := make([]T, 0, len(coldRows))
+	for i := range coldRows {
+		if !hotKeys[keyOf(&coldRows[i])] {
+			coldOnly = append(coldOnly, coldRows[i])
+		}
+	}
+	if desc {
+		return append(hotRows, coldOnly...)
+	}
+	return append(coldOnly, hotRows...)
+}
+
+// dedupeFirst removes repeated keys without changing row order.
+func dedupeFirst[T any, K comparable](rows []T, keyOf func(*T) K) []T {
+	seen := make(map[K]bool, len(rows))
+	out := make([]T, 0, len(rows))
+	for i := range rows {
+		k := keyOf(&rows[i])
+		if !seen[k] {
+			seen[k] = true
+			out = append(out, rows[i])
+		}
+	}
+	return out
+}
+
+func slicePage[T any](rows []T, offset, limit int) []T {
+	if offset >= len(rows) {
+		return []T{}
+	}
+	end := min(offset+limit, len(rows))
+	return rows[offset:end]
 }

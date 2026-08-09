@@ -75,6 +75,17 @@ func (db *DbClient) QueryActionsV2(
 			return nil, nil, nil, models.IndexError{Code: 404, Message: fmt.Sprintf("masterchain block %d not found", *req.McSeqno)}
 		}
 		raw_actions, err = fetch(buildActionsOffsetQueryV2(parts, offset, int(limit)), conn)
+	} else if fc.federated && actionsHasIdFilter(req) && offset+int(limit) <= idMergeMaxRows {
+		// Mixed results must be enriched from each action's owning partition.
+		query := buildActionsOffsetQueryV2(parts, 0, offset+int(limit))
+		desc := sortOrder == "desc"
+		raw_actions, err = hotThenCold(fc, -1,
+			func(conn *pgxpool.Conn) ([]models.RawAction, error) { return fetch(query, conn) },
+			actionMergeKey, &desc)
+		if err != nil {
+			return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
+		}
+		raw_actions = slicePage(raw_actions, offset, int(limit))
 	} else {
 		routed = true
 		raw_actions, servedCold, err = queryActionsRouted(fc, req, parts, sortOrder, offset, int(limit), fetch)
@@ -193,6 +204,24 @@ func enrichActionsAccountsRouted(fc *fedConns, actions []models.Action, servedCo
 		return err
 	}
 	return queryActionsAccountsImpl(actions, idxs, conn, settings)
+}
+
+func actionsHasIdFilter(req models.ActionRequest) bool {
+	return len(req.ActionId) > 0 || len(req.TraceId) > 0 ||
+		len(req.TransactionHash) > 0 || len(req.MessageHash) > 0
+}
+
+type actionKey struct {
+	traceId  models.HashType
+	actionId models.HashType
+}
+
+func actionMergeKey(a *models.RawAction) actionKey {
+	var tid models.HashType
+	if a.TraceId != nil {
+		tid = *a.TraceId
+	}
+	return actionKey{tid, a.ActionId}
 }
 
 // actionOrderKey returns the row's router sort key; action keys are non-null.
@@ -676,7 +705,8 @@ func queryActionsTransactionsImpl(fc *fedConns, release func(), actions []models
 		func(conn *pgxpool.Conn) ([]models.Transaction, error) {
 			return queryTransactionsImpl(query, conn, settings, store, queryArgs...)
 		},
-		func(t *models.Transaction) models.HashType { return t.Hash })
+		func(t *models.Transaction) models.HashType { return t.Hash },
+		nil)
 	if err != nil {
 		return nil, models.IndexError{Code: 500, Message: err.Error()}
 	}

@@ -671,6 +671,16 @@ func buildTransactionsOffsetQuery(p txQueryParts, offset, limit int) string {
 	return `select ` + transactionsColumns + ` from` + p.fromQuery + filter_query + p.orderBy + limit_query
 }
 
+// Message filters can return the same transaction more than once.
+type txKey struct {
+	hash models.HashType
+	lt   int64
+}
+
+func txMergeKey(t *models.Transaction) txKey {
+	return txKey{t.Hash, int64(t.Lt)}
+}
+
 // txOrderKey returns the row's non-null router sort key.
 func txOrderKey(orderByNow bool) func(*models.Transaction) *uint64 {
 	if orderByNow {
@@ -782,7 +792,8 @@ func (db *DbClient) QueryTransactions(
 			func(conn *pgxpool.Conn) ([]models.Transaction, error) {
 				return scanTransactionsImpl(query, conn, settings, args...)
 			},
-			func(t *models.Transaction) models.HashType { return t.Hash })
+			func(t *models.Transaction) models.HashType { return t.Hash },
+			nil)
 		if err != nil {
 			return nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 		}
@@ -835,10 +846,23 @@ func (db *DbClient) QueryTransactions(
 			}
 			return scanTransactionsImpl(query, conn, settings, parts.args...)
 		}
-		routed = true
-		txs, servedCold, err = queryTransactionsRouted(fc, req, parts, sortOrder, offset, int(limit), fetch)
-		if err != nil {
-			return nil, nil, models.IndexError{Code: 500, Message: err.Error()}
+		if fc.federated && len(req.MessageHash) > 0 && offset+int(limit) <= idMergeMaxRows {
+			// Mixed results are enriched from each transaction's owning partition.
+			query := buildTransactionsOffsetQuery(parts, 0, offset+int(limit))
+			desc := sortOrder == "desc"
+			txs, err = hotThenCold(fc, -1,
+				func(conn *pgxpool.Conn) ([]models.Transaction, error) { return fetch(query, conn) },
+				txMergeKey, &desc)
+			if err != nil {
+				return nil, nil, models.IndexError{Code: 500, Message: err.Error()}
+			}
+			txs = slicePage(txs, offset, int(limit))
+		} else {
+			routed = true
+			txs, servedCold, err = queryTransactionsRouted(fc, req, parts, sortOrder, offset, int(limit), fetch)
+			if err != nil {
+				return nil, nil, models.IndexError{Code: 500, Message: err.Error()}
+			}
 		}
 	}
 
@@ -917,7 +941,8 @@ func (db *DbClient) QueryAdjacentTransactions(
 		func(conn *pgxpool.Conn) ([]models.HashType, error) {
 			return queryAdjacentTransactionsImpl(req, conn, settings)
 		},
-		func(h *models.HashType) models.HashType { return *h })
+		func(h *models.HashType) models.HashType { return *h },
+		nil)
 	if err != nil {
 		return nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
@@ -946,7 +971,8 @@ func (db *DbClient) QueryAdjacentTransactions(
 		func(conn *pgxpool.Conn) ([]models.Transaction, error) {
 			return queryTransactionsImpl(query, conn, settings, db.Kvrocks)
 		},
-		func(t *models.Transaction) models.HashType { return t.Hash })
+		func(t *models.Transaction) models.HashType { return t.Hash },
+		nil)
 	if err != nil {
 		return nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
@@ -1041,5 +1067,6 @@ func (db *DbClient) QueryTransactionsExternalHashes(ctx context.Context, txIDs [
 		return out, nil
 	}
 	return hotThenCold(fc, -1, fetch,
-		func(h *models.HashType) models.HashType { return *h })
+		func(h *models.HashType) models.HashType { return *h },
+		nil)
 }
