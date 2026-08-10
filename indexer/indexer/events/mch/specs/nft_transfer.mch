@@ -62,6 +62,7 @@ matcher nft_transfer {
     # key dict; the nested `nft` dict passes through as a field value.
     let d = nft_transfer_data(transfer, assigned)
     reject when d == null
+    failed when transfer.failed
     out {
         is_purchase:          d.is_purchase
         prev_owner:           d.prev_owner

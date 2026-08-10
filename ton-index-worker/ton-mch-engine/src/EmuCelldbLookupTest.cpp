@@ -388,12 +388,14 @@ void test_memo_and_guards() {
     check("memo/kind_in_key", t.stats().memo_hits == 0 && f.reads == 1);
   }
   {
-    // Argument discipline: same guard as tier 1 and the fixture source.
+    // Mirrors the tier-1 dispatch contract
     Fixture f;
     auto t = f.make();
     check("guard/non_str_arg_null",
           t.fetch("nominator_pool", {Value::make_int(td::make_refint(1))}).is_null());
     check("guard/wrong_arity_null", t.fetch("nominator_pool", {}).is_null());
+    check("guard/account_none_null",
+          t.fetch("nominator_pool", {Value::make_account_none()}).is_null());
     check("guard/malformed_addr_null",
           t.fetch("nominator_pool", {Value::make_str("not-an-address")}).is_null());
     check("guard/unknown_kind_null",
@@ -402,6 +404,10 @@ void test_memo_and_guards() {
     check("guard/tier1_only_kind_null",
           t.fetch("nft_item", {Value::make_str(raw_of('A'))}).is_null());
     check("guard/no_reads_on_guarded", f.reads == 0 && t.stats().fetched == 0);
+    // An Account-typed argument must pass the guard and reach the account
+    // read (regression: tier 2 used to null all Account args unconditionally).
+    t.fetch("nominator_pool", {Value::make_account_raw(raw_of('A'))});
+    check("guard/account_arg_reaches_read", f.reads == 1);
   }
   {
     // A listener-emulated trace has no shard states and therefore no tier 2.

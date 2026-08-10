@@ -130,8 +130,10 @@ Value EmuCelldbTier2::fetch(const std::string &kind, const std::vector<Value> &a
   if (shard_states_ == nullptr || shard_states_->empty()) {
     return Value::null();  // listener-emulated trace: no states to read
   }
-  // Same one-Str-argument guard the fixture source and tier 1 apply.
-  if (args.size() != 1 || args[0].t != VType::Str) {
+  // One argument - str address or a non-addr_none Account
+  if (args.size() != 1 ||
+      !(args[0].t == VType::Str ||
+        (args[0].t == VType::Account && !args[0].addr_none))) {
     return Value::null();
   }
   auto r_addr = block::StdAddress::parse(td::Slice(args[0].str));
