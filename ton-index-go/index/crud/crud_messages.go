@@ -286,6 +286,21 @@ func messageOrderKey(orderByNow bool) func(*models.Message) *uint64 {
 	}
 }
 
+// trace_id distinguishes grouped rows when the same message appears in multiple traces.
+type messageKey struct {
+	msgHash  models.HashType
+	orderKey int64
+	traceId  models.HashType
+}
+
+func messageMergeKey(m *models.Message) messageKey {
+	var tid models.HashType
+	if m.TraceId != nil {
+		tid = *m.TraceId
+	}
+	return messageKey{m.MsgHash, m.TxLt, tid}
+}
+
 func messageRouteWindow(req models.MessageRequest, parts msgQueryParts, sortOrder string) routeWindow {
 	return routeWindow{
 		startLt:    req.StartLt,
@@ -306,6 +321,27 @@ func queryMessagesRouted(
 	offset, limit int,
 	fetch func(query string, conn *pgxpool.Conn) ([]models.Message, error),
 ) ([]models.Message, error) {
+	// Legacy hash filters are normalized into MessageHash by the handler.
+	if fc.federated && len(req.MessageHash) > 0 && offset+limit <= idMergeMaxRows {
+		w := messageRouteWindow(req, parts, sortOrder)
+		if dec, ok := idSingleLeg(w, fc.split, fc.utimeMargin); ok {
+			query := buildMessagesOffsetQuery(parts, offset, limit)
+			msgs, _, err := routedPage(fc, dec,
+				func(conn *pgxpool.Conn) ([]models.Message, error) { return fetch(query, conn) },
+				messageOrderKey(parts.orderByNow), limit, 0)
+			return msgs, err
+		}
+		query := buildMessagesOffsetQuery(parts, 0, offset+limit)
+		desc := sortOrder == "desc"
+		msgs, err := hotThenCold(fc, -1,
+			func(conn *pgxpool.Conn) ([]models.Message, error) { return fetch(query, conn) },
+			messageMergeKey, &desc)
+		if err != nil {
+			return nil, err
+		}
+		return slicePage(msgs, offset, limit), nil
+	}
+
 	query := buildMessagesOffsetQuery(parts, offset, limit)
 
 	// Single pool: read cold directly, no classification.

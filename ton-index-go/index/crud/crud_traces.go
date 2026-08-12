@@ -76,7 +76,7 @@ func tracesBaseFilters(req models.TracesRequest) []string {
 			)`, cond))
 	}
 
-	// —— Filters that are native to traces —— //
+	// Trace filters
 
 	if v := req.TraceId; v != nil {
 		if cond := filterByArray("E.trace_id", v); len(cond) > 0 {
@@ -462,9 +462,65 @@ func traceOrderKey(orderByNow bool) func(*models.Trace) *uint64 {
 	return func(t *models.Trace) *uint64 { return t.EndLt }
 }
 
+func tracesHasIdFilter(req models.TracesRequest) bool {
+	return len(req.TraceId) > 0 || len(req.TransactionHash) > 0 || len(req.MessageHash) > 0
+}
+
+// Keep separate trace versions; the table key is (trace_id, mc_seqno_end).
+type traceKey struct {
+	id       models.HashType
+	seqnoEnd int32
+}
+
+func traceMergeKey(t *models.Trace) traceKey {
+	var id models.HashType
+	if t.TraceId != nil {
+		id = *t.TraceId
+	}
+	return traceKey{id, t.McSeqnoEnd}
+}
+
 // queryTracesRouted returns one router-served page plus the side it came from.
 func queryTracesRouted(req models.TracesRequest, settings models.RequestSettings,
 	sortOrder string, fc *fedConns, offset, limit int, orderByNow bool) ([]models.Trace, bool, error) {
+	// Check both sides because hot may be ahead of replication while cold retains older partitions.
+	if fc.federated && tracesHasIdFilter(req) && offset+limit <= idMergeMaxRows {
+		w := routeWindow{
+			startLt:    req.StartLt,
+			endLt:      req.EndLt,
+			startUtime: (*uint64)(req.StartUtime),
+			endUtime:   (*uint64)(req.EndUtime),
+			orderByNow: orderByNow,
+			sortDesc:   sortOrder == "desc",
+		}
+		if dec, ok := idSingleLeg(w, fc.split, fc.utimeMargin); ok {
+			query := buildTracesOffsetQuery(req, sortOrder, offset, limit, orderByNow)
+			return routedPage(fc, dec,
+				func(conn *pgxpool.Conn) ([]models.Trace, error) {
+					if settings.DebugRequest {
+						log.Println("Debug router query:", query)
+					}
+					return queryTraces(query, conn, settings)
+				},
+				traceOrderKey(orderByNow), limit, 0)
+		}
+		query := buildTracesOffsetQuery(req, sortOrder, 0, offset+limit, orderByNow)
+		desc := sortOrder == "desc"
+		rows, err := hotThenCold(fc, -1,
+			func(conn *pgxpool.Conn) ([]models.Trace, error) {
+				if settings.DebugRequest {
+					log.Println("Debug id-merge query:", query)
+				}
+				return queryTraces(query, conn, settings)
+			},
+			traceMergeKey, &desc)
+		if err != nil {
+			return nil, false, err
+		}
+		// Mixed results are enriched per row using McSeqnoStart.
+		return slicePage(rows, offset, limit), false, nil
+	}
+
 	query := buildTracesOffsetQuery(req, sortOrder, offset, limit, orderByNow)
 
 	// Single pool: read cold directly, no classification.
