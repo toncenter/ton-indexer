@@ -76,16 +76,34 @@ func (db *DbClient) QueryActionsV2(
 		}
 		raw_actions, err = fetch(buildActionsOffsetQueryV2(parts, offset, int(limit)), conn)
 	} else if fc.federated && actionsHasIdFilter(req) && offset+int(limit) <= idMergeMaxRows {
-		// Mixed results must be enriched from each action's owning partition.
-		query := buildActionsOffsetQueryV2(parts, 0, offset+int(limit))
-		desc := sortOrder == "desc"
-		raw_actions, err = hotThenCold(fc, -1,
-			func(conn *pgxpool.Conn) ([]models.RawAction, error) { return fetch(query, conn) },
-			actionMergeKey, &desc)
-		if err != nil {
-			return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
+		w := routeWindow{
+			startLt:    req.StartLt,
+			endLt:      req.EndLt,
+			startUtime: (*uint64)(req.StartUtime),
+			endUtime:   (*uint64)(req.EndUtime),
+			orderByNow: parts.orderKey == "utime",
+			sortDesc:   sortOrder == "desc",
 		}
-		raw_actions = slicePage(raw_actions, offset, int(limit))
+		if dec, ok := idSingleLeg(w, fc.split, fc.utimeMargin); ok {
+			query := buildActionsOffsetQueryV2(parts, offset, int(limit))
+			raw_actions, _, err = routedPage(fc, dec,
+				func(conn *pgxpool.Conn) ([]models.RawAction, error) { return fetch(query, conn) },
+				actionOrderKey(w.orderByNow), int(limit), 0)
+			if err != nil {
+				return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
+			}
+		} else {
+			// Mixed results must be enriched from each action's owning partition.
+			query := buildActionsOffsetQueryV2(parts, 0, offset+int(limit))
+			desc := sortOrder == "desc"
+			raw_actions, err = hotThenCold(fc, -1,
+				func(conn *pgxpool.Conn) ([]models.RawAction, error) { return fetch(query, conn) },
+				actionMergeKey, &desc)
+			if err != nil {
+				return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
+			}
+			raw_actions = slicePage(raw_actions, offset, int(limit))
+		}
 	} else {
 		routed = true
 		raw_actions, servedCold, err = queryActionsRouted(fc, req, parts, sortOrder, offset, int(limit), fetch)

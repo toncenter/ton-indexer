@@ -323,6 +323,14 @@ func queryMessagesRouted(
 ) ([]models.Message, error) {
 	// Legacy hash filters are normalized into MessageHash by the handler.
 	if fc.federated && len(req.MessageHash) > 0 && offset+limit <= idMergeMaxRows {
+		w := messageRouteWindow(req, parts, sortOrder)
+		if dec, ok := idSingleLeg(w, fc.split, fc.utimeMargin); ok {
+			query := buildMessagesOffsetQuery(parts, offset, limit)
+			msgs, _, err := routedPage(fc, dec,
+				func(conn *pgxpool.Conn) ([]models.Message, error) { return fetch(query, conn) },
+				messageOrderKey(parts.orderByNow), limit, 0)
+			return msgs, err
+		}
 		query := buildMessagesOffsetQuery(parts, 0, offset+limit)
 		desc := sortOrder == "desc"
 		msgs, err := hotThenCold(fc, -1,

@@ -147,6 +147,28 @@ func hotThenCold[T any, K comparable](fc *fedConns, expect int,
 	return rows, nil
 }
 
+// idSingleLeg reports whether an id lookup's window proves a single pool can  serve it completely
+func idSingleLeg(w routeWindow, s hotColdSplit, utimeMarginSec uint64) (routeDecision, bool) {
+	var start, end *uint64
+	var coldFloor, hotFloor uint64
+	if w.orderByNow {
+		start, end = w.startUtime, w.endUtime
+		coldFloor = s.Utime
+		hotFloor = s.Utime + utimeMarginSec
+	} else {
+		start, end = w.startLt, w.endLt
+		coldFloor = s.Lt
+		hotFloor = s.Lt
+	}
+	if start != nil && *start >= hotFloor {
+		return routeHot, true
+	}
+	if end != nil && *end < coldFloor {
+		return routeCold, true
+	}
+	return routeCold, false
+}
+
 // Deeper pages use the normal router to avoid buffering more than this per database.
 const idMergeMaxRows = 1000
 

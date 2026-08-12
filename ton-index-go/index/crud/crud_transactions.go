@@ -25,6 +25,36 @@ const transactionsColumns = `T.account, T.hash, T.lt, T.block_workchain, T.block
 	T.bounce_req_fwd_fees, T.bounce_msg_fees, T.bounce_fwd_fees, T.split_info_cur_shard_pfx_len, T.split_info_acc_split_depth,
 	T.split_info_this_addr, T.split_info_sibling_addr, false as emulated, 2 as finality`
 
+// messageFilterExists builds an EXISTS subquery for the message-level filters
+func messageFilterExists(req models.TransactionsRequest, args *[]any) string {
+	msg_filters := []string{}
+	if v := req.Direction; v != nil {
+		*args = append(*args, *v)
+		msg_filters = append(msg_filters, fmt.Sprintf("M.direction = $%d", len(*args)))
+	}
+	if v := req.MessageHash; len(v) > 0 {
+		msg_filters = append(msg_filters, fmt.Sprintf("(%s or %s)",
+			filterByArray("M.msg_hash", v), filterByArray("M.msg_hash_norm", v)))
+	}
+	if v := req.Source; v != nil {
+		msg_filters = append(msg_filters, fmt.Sprintf("M.source = '%s'", v.FilterString()))
+	}
+	if v := req.Destination; v != nil {
+		msg_filters = append(msg_filters, fmt.Sprintf("M.destination = '%s'", v.FilterString()))
+	}
+	if v := req.BodyHash; v != nil {
+		msg_filters = append(msg_filters, fmt.Sprintf("M.body_hash = '%s'", v.FilterString()))
+	}
+	if v := req.Opcode; v != nil {
+		msg_filters = append(msg_filters, fmt.Sprintf("M.opcode = %d", *v))
+	}
+	if len(msg_filters) == 0 {
+		return ""
+	}
+	return "exists (select 1 from messages as M where M.tx_hash = T.hash and M.tx_lt = T.lt and " +
+		strings.Join(msg_filters, " and ") + ")"
+}
+
 func buildTransactionsQuery(
 	req models.TransactionsRequest,
 	settings models.RequestSettings,
@@ -126,35 +156,8 @@ func buildTransactionsQuery(
 	}
 
 	// transaction by message
-	by_msg := false
-	if v := req.Direction; v != nil {
-		by_msg = true
-		args = append(args, *v)
-		filter_list = append(filter_list, fmt.Sprintf("M.direction = $%d", len(args)))
-	}
-	if v := req.MessageHash; len(v) > 0 {
-		by_msg = true
-		filter_str := fmt.Sprintf("(%s or %s)", filterByArray("M.msg_hash", v), filterByArray("M.msg_hash_norm", v))
-		filter_list = append(filter_list, filter_str)
-	}
-	if v := req.Source; v != nil {
-		by_msg = true
-		filter_list = append(filter_list, fmt.Sprintf("M.source = '%s'", v.FilterString()))
-	}
-	if v := req.Destination; v != nil {
-		by_msg = true
-		filter_list = append(filter_list, fmt.Sprintf("M.destination = '%s'", v.FilterString()))
-	}
-	if v := req.BodyHash; v != nil {
-		by_msg = true
-		filter_list = append(filter_list, fmt.Sprintf("M.body_hash = '%s'", v.FilterString()))
-	}
-	if v := req.Opcode; v != nil {
-		by_msg = true
-		filter_list = append(filter_list, fmt.Sprintf("M.opcode = %d", *v))
-	}
-	if by_msg {
-		from_query = " messages as M join transactions as T on M.tx_hash = T.hash and M.tx_lt = T.lt"
+	if msg_filter := messageFilterExists(req, &args); len(msg_filter) > 0 {
+		filter_list = append(filter_list, msg_filter)
 	}
 
 	// build query
@@ -617,34 +620,8 @@ func transactionsQueryParts(req models.TransactionsRequest, sortOrder string) tx
 		filter_list = append(filter_list, fmt.Sprintf("T.lt = %d", *v))
 	}
 
-	by_msg := false
-	if v := req.Direction; v != nil {
-		by_msg = true
-		args = append(args, *v)
-		filter_list = append(filter_list, fmt.Sprintf("M.direction = $%d", len(args)))
-	}
-	if v := req.MessageHash; len(v) > 0 {
-		by_msg = true
-		filter_list = append(filter_list, fmt.Sprintf("(%s or %s)", filterByArray("M.msg_hash", v), filterByArray("M.msg_hash_norm", v)))
-	}
-	if v := req.Source; v != nil {
-		by_msg = true
-		filter_list = append(filter_list, fmt.Sprintf("M.source = '%s'", v.FilterString()))
-	}
-	if v := req.Destination; v != nil {
-		by_msg = true
-		filter_list = append(filter_list, fmt.Sprintf("M.destination = '%s'", v.FilterString()))
-	}
-	if v := req.BodyHash; v != nil {
-		by_msg = true
-		filter_list = append(filter_list, fmt.Sprintf("M.body_hash = '%s'", v.FilterString()))
-	}
-	if v := req.Opcode; v != nil {
-		by_msg = true
-		filter_list = append(filter_list, fmt.Sprintf("M.opcode = %d", *v))
-	}
-	if by_msg {
-		from_query = " messages as M join transactions as T on M.tx_hash = T.hash and M.tx_lt = T.lt"
+	if msg_filter := messageFilterExists(req, &args); len(msg_filter) > 0 {
+		filter_list = append(filter_list, msg_filter)
 	}
 
 	var orderby_query string
@@ -847,16 +824,35 @@ func (db *DbClient) QueryTransactions(
 			return scanTransactionsImpl(query, conn, settings, parts.args...)
 		}
 		if fc.federated && len(req.MessageHash) > 0 && offset+int(limit) <= idMergeMaxRows {
-			// Mixed results are enriched from each transaction's owning partition.
-			query := buildTransactionsOffsetQuery(parts, 0, offset+int(limit))
-			desc := sortOrder == "desc"
-			txs, err = hotThenCold(fc, -1,
-				func(conn *pgxpool.Conn) ([]models.Transaction, error) { return fetch(query, conn) },
-				txMergeKey, &desc)
-			if err != nil {
-				return nil, nil, models.IndexError{Code: 500, Message: err.Error()}
+			w := routeWindow{
+				startLt:    req.StartLt,
+				endLt:      req.EndLt,
+				startUtime: (*uint64)(req.StartUtime),
+				endUtime:   (*uint64)(req.EndUtime),
+				orderByNow: parts.orderByNow,
+				sortDesc:   sortOrder == "desc",
 			}
-			txs = slicePage(txs, offset, int(limit))
+			if dec, ok := idSingleLeg(w, fc.split, fc.utimeMargin); ok {
+				routed = true
+				query := buildTransactionsOffsetQuery(parts, offset, int(limit))
+				txs, servedCold, err = routedPage(fc, dec,
+					func(conn *pgxpool.Conn) ([]models.Transaction, error) { return fetch(query, conn) },
+					txOrderKey(parts.orderByNow), int(limit), 0)
+				if err != nil {
+					return nil, nil, models.IndexError{Code: 500, Message: err.Error()}
+				}
+			} else {
+				// Mixed results are enriched from each transaction's owning partition.
+				query := buildTransactionsOffsetQuery(parts, 0, offset+int(limit))
+				desc := sortOrder == "desc"
+				txs, err = hotThenCold(fc, -1,
+					func(conn *pgxpool.Conn) ([]models.Transaction, error) { return fetch(query, conn) },
+					txMergeKey, &desc)
+				if err != nil {
+					return nil, nil, models.IndexError{Code: 500, Message: err.Error()}
+				}
+				txs = slicePage(txs, offset, int(limit))
+			}
 		} else {
 			routed = true
 			txs, servedCold, err = queryTransactionsRouted(fc, req, parts, sortOrder, offset, int(limit), fetch)
