@@ -85,8 +85,10 @@ func (db *DbClient) QueryActionsV2(
 			sortDesc:   sortOrder == "desc",
 		}
 		if dec, ok := idSingleLeg(w, fc.split, fc.utimeMargin); ok {
+			// Enrichment must follow the DB that served the page (cold on hot-error fallback).
+			routed = true
 			query := buildActionsOffsetQueryV2(parts, offset, int(limit))
-			raw_actions, _, err = routedPage(fc, dec,
+			raw_actions, servedCold, err = routedPage(fc, dec,
 				func(conn *pgxpool.Conn) ([]models.RawAction, error) { return fetch(query, conn) },
 				actionOrderKey(w.orderByNow), int(limit), 0)
 			if err != nil {
