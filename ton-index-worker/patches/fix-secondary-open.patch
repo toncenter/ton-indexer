@@ -1,11 +1,79 @@
+diff --git a/db/db_impl/db_impl_secondary.cc b/db/db_impl/db_impl_secondary.cc
+index c8517be25d73857d24d1bb2c5d1590c009427020..7edef380006dd562066438dcafd91bad762e3b6f 100644
+--- a/db/db_impl/db_impl_secondary.cc
++++ b/db/db_impl/db_impl_secondary.cc
+@@ -39,7 +39,7 @@ DBImplSecondary::~DBImplSecondary() = default;
+ Status DBImplSecondary::Recover(
+     const std::vector<ColumnFamilyDescriptor>& column_families,
+     bool /*readonly*/, bool /*error_if_wal_file_exists*/,
+-    bool /*error_if_data_exists_in_wals*/, bool /*is_retry*/, uint64_t*,
++    bool /*error_if_data_exists_in_wals*/, bool is_retry, uint64_t*,
+     RecoveryContext* /*recovery_ctx*/, bool* /*can_retry*/) {
+   mutex_.AssertHeld();
+
+@@ -47,7 +47,8 @@ Status DBImplSecondary::Recover(
+   Status s;
+   s = static_cast<ReactiveVersionSet*>(versions_.get())
+           ->Recover(column_families, &manifest_reader_, &manifest_reporter_,
+-                    &manifest_reader_status_);
++                    &manifest_reader_status_,
++                    /*use_fast_recovery=*/!is_retry);
+   if (!s.ok()) {
+     if (manifest_reader_status_) {
+       manifest_reader_status_->PermitUncheckedError();
+@@ -781,17 +782,36 @@ Status DB::OpenAsSecondary(
+   }
+
+   handles->clear();
+-  DBImplSecondary* impl = new DBImplSecondary(tmp_opts, dbname, secondary_path);
+-  impl->versions_.reset(new ReactiveVersionSet(
+-      dbname, &impl->immutable_db_options_, impl->mutable_db_options_,
+-      impl->file_options_, impl->table_cache_.get(),
+-      impl->write_buffer_manager_, &impl->write_controller_, impl->io_tracer_));
+-  impl->column_family_memtables_.reset(
+-      new ColumnFamilyMemTablesImpl(impl->versions_->GetColumnFamilySet()));
+-  impl->wal_in_db_path_ = impl->immutable_db_options_.IsWalDirSameAsDBPath();
++  auto create_impl = [&]() {
++    auto* result = new DBImplSecondary(tmp_opts, dbname, secondary_path);
++    result->versions_.reset(new ReactiveVersionSet(
++        dbname, &result->immutable_db_options_, result->mutable_db_options_,
++        result->file_options_, result->table_cache_.get(),
++        result->write_buffer_manager_, &result->write_controller_,
++        result->io_tracer_));
++    result->column_family_memtables_.reset(new ColumnFamilyMemTablesImpl(
++        result->versions_->GetColumnFamilySet()));
++    result->wal_in_db_path_ =
++        result->immutable_db_options_.IsWalDirSameAsDBPath();
++    return result;
++  };
++
++  DBImplSecondary* impl = create_impl();
+
+   impl->mutex_.Lock();
+   s = impl->Recover(column_families, true, false, false);
++  if (s.IsTryAgain() && s.subcode() == Status::kPathNotFound) {
++    ROCKS_LOG_WARN(tmp_opts.info_log,
++                   "Fast secondary recovery could not reach a complete "
++                   "MANIFEST state; falling back to point-in-time recovery");
++    impl->mutex_.Unlock();
++    delete impl;
++
++    impl = create_impl();
++    impl->mutex_.Lock();
++    s = impl->Recover(column_families, true, false, false,
++                      /*is_retry=*/true);
++  }
+   if (s.ok()) {
+     for (const auto& cf : column_families) {
+       auto cfd =
 diff --git a/db/db_secondary_test.cc b/db/db_secondary_test.cc
-index e34a95d55..196a45850 100644
+index e34a95d554177b24b8b62968c0e334510b1ca7f6..e0502fe361842e66bbb0f4c6ca42136fd5787b7c 100644
 --- a/db/db_secondary_test.cc
 +++ b/db/db_secondary_test.cc
-@@ -675,6 +675,34 @@ TEST_F(DBSecondaryTest, SecondaryCloseFiles) {
+@@ -675,6 +675,128 @@ TEST_F(DBSecondaryTest, SecondaryCloseFiles) {
    CloseSecondary();
  }
- 
+
 +TEST_F(DBSecondaryTest, SecondaryCloseFilesPresentAtOpen) {
 +  Options options;
 +  options.env = env_;
@@ -34,17 +102,122 @@ index e34a95d55..196a45850 100644
 +  CloseSecondary();
 +}
 +
++TEST_F(DBSecondaryTest, SecondaryOpenCatchesUpAfterLiveSstIsDeleted) {
++  Options primary_options;
++  primary_options.env = env_;
++  primary_options.max_open_files = 1;
++  primary_options.disable_auto_compactions = true;
++  Reopen(primary_options);
++
++  ASSERT_OK(Put("a", "value-a"));
++  ASSERT_OK(Put("c", "value-c"));
++  ASSERT_OK(Flush());
++  ASSERT_OK(Put("b", "value-b"));
++  ASSERT_OK(Put("d", "value-d"));
++  ASSERT_OK(Flush());
++
++  std::atomic<bool> compacted{false};
++  std::atomic<int> load_attempts{0};
++  SyncPoint::GetInstance()->DisableProcessing();
++  SyncPoint::GetInstance()->ClearAllCallBacks();
++  Defer cleanup_sync_points([]() {
++    SyncPoint::GetInstance()->DisableProcessing();
++    SyncPoint::GetInstance()->ClearAllCallBacks();
++  });
++  SyncPoint::GetInstance()->SetCallBack(
++      "VersionEditHandler::LoadTables:skip_load_table_files", [&](void*) {
++        load_attempts.fetch_add(1, std::memory_order_relaxed);
++        if (!compacted.exchange(true, std::memory_order_relaxed)) {
++          ASSERT_OK(
++              dbfull()->CompactRange(CompactRangeOptions(), nullptr, nullptr));
++        }
++      });
++  SyncPoint::GetInstance()->EnableProcessing();
++
++  Options secondary_options;
++  secondary_options.env = env_;
++  secondary_options.max_open_files = -1;
++  secondary_options.follower_catchup_retry_wait_ms = 0;
++  OpenSecondary(secondary_options);
++
++  ASSERT_TRUE(compacted.load(std::memory_order_relaxed));
++  ASSERT_GE(load_attempts.load(std::memory_order_relaxed), 2);
++  for (const auto& [key, expected_value] :
++       std::vector<std::pair<std::string, std::string>>{
++           {"a", "value-a"}, {"b", "value-b"},
++           {"c", "value-c"}, {"d", "value-d"}}) {
++    std::string value;
++    ASSERT_OK(db_secondary_->Get(ReadOptions(), key, &value));
++    ASSERT_EQ(expected_value, value);
++  }
++}
++
++TEST_F(DBSecondaryTest,
++       SecondaryOpenFallsBackWhenMissingSstDoesNotGetReplaced) {
++  Options primary_options;
++  primary_options.env = env_;
++  primary_options.max_open_files = 1;
++  primary_options.disable_auto_compactions = true;
++  Reopen(primary_options);
++
++  ASSERT_OK(Put("key", "value"));
++  ASSERT_OK(Flush());
++
++  ColumnFamilyMetaData metadata;
++  db_->GetColumnFamilyMetaData(&metadata);
++  ASSERT_EQ(1, metadata.levels[0].files.size());
++  const std::string sst_path = dbname_ + metadata.levels[0].files[0].name;
++
++  std::atomic<bool> deleted{false};
++  std::atomic<int> load_attempts{0};
++  SyncPoint::GetInstance()->DisableProcessing();
++  SyncPoint::GetInstance()->ClearAllCallBacks();
++  Defer cleanup_sync_points([]() {
++    SyncPoint::GetInstance()->DisableProcessing();
++    SyncPoint::GetInstance()->ClearAllCallBacks();
++  });
++  SyncPoint::GetInstance()->SetCallBack(
++      "VersionEditHandler::LoadTables:skip_load_table_files", [&](void*) {
++        load_attempts.fetch_add(1, std::memory_order_relaxed);
++        if (!deleted.exchange(true, std::memory_order_relaxed)) {
++          ASSERT_OK(env_->DeleteFile(sst_path));
++        }
++      });
++  SyncPoint::GetInstance()->EnableProcessing();
++
++  Options secondary_options;
++  secondary_options.env = env_;
++  secondary_options.max_open_files = -1;
++  secondary_options.follower_catchup_retry_count = 3;
++  secondary_options.follower_catchup_retry_wait_ms = 0;
++  OpenSecondary(secondary_options);
++
++  ASSERT_EQ(3, load_attempts.load(std::memory_order_relaxed));
++  ASSERT_NE(nullptr, db_secondary_);
++}
++
  TEST_F(DBSecondaryTest, OpenAsSecondaryWALTailing) {
    Options options;
    options.env = env_;
 diff --git a/db/version_edit_handler.cc b/db/version_edit_handler.cc
-index 42d83b84d..d741db2d7 100644
+index 42d83b84d627fd042d2065c571a2a415be884bcb..fc7b69cfad2d9c54bd76e87262a339fd36279f15 100644
 --- a/db/version_edit_handler.cc
 +++ b/db/version_edit_handler.cc
-@@ -1018,6 +1018,28 @@ void VersionEditHandlerPointInTime::AtomicUpdateVersionsApply() {
+@@ -567,6 +567,10 @@ Status VersionEditHandler::LoadTables(ColumnFamilyData* cfd,
+       version_set_->db_options_->max_file_opening_threads,
+       prefetch_index_and_filter_in_cache, is_initial_load, moptions,
+       MaxFileSizeForL0MetaPin(moptions), read_options_);
++  return MaybeHandleLoadTablesStatus(s);
++}
++
++Status VersionEditHandler::MaybeHandleLoadTablesStatus(Status s) const {
+   if ((s.IsPathNotFound() || s.IsCorruption()) && no_error_if_files_missing_) {
+     s = Status::OK();
+   }
+@@ -1018,6 +1022,28 @@ void VersionEditHandlerPointInTime::AtomicUpdateVersionsApply() {
    atomic_update_versions_.clear();
  }
- 
+
 +ManifestTailer::~ManifestTailer() {
 +  for (const auto& base_version : manifest_base_versions_) {
 +    base_version.second->Unref();
@@ -70,10 +243,10 @@ index 42d83b84d..d741db2d7 100644
  Status ManifestTailer::Initialize() {
    if (Mode::kRecovery == mode_) {
      return VersionEditHandler::Initialize();
-@@ -1032,10 +1054,8 @@ Status ManifestTailer::Initialize() {
+@@ -1032,10 +1058,8 @@ Status ManifestTailer::Initialize() {
      auto builder_iter = builders_.find(default_cfd->GetID());
      assert(builder_iter != builders_.end());
- 
+
 -    Version* dummy_version = default_cfd->dummy_versions();
 -    assert(dummy_version);
 -    Version* base_version = dummy_version->Next();
@@ -83,13 +256,20 @@ index 42d83b84d..d741db2d7 100644
      base_version->Ref();
      VersionBuilderUPtr new_builder(new BaseReferencedVersionBuilder(
          default_cfd, base_version, this, track_found_and_missing_files_,
-@@ -1047,6 +1067,65 @@ Status ManifestTailer::Initialize() {
+@@ -1047,6 +1071,72 @@ Status ManifestTailer::Initialize() {
    return s;
  }
- 
-+Status ManifestTailer::PrepareForCatchUpAfterRecover() {
+
++Status ManifestTailer::PrepareForCatchUpAfterRecover(
++    const VersionEditHandler& recovered_handler) {
 +  assert(Mode::kRecovery == mode_);
 +  assert(!initialized_);
++
++  // Continue exactly where the fast recovery handler stopped. In particular,
++  // preserve an incomplete atomic group and column families intentionally not
++  // opened by this secondary.
++  CopyReadBufferFrom(recovered_handler);
++  CopyDoNotOpenColumnFamiliesFrom(recovered_handler);
 +
 +  ColumnFamilySet* cfd_set = version_set_->GetColumnFamilySet();
 +  assert(cfd_set);
@@ -149,10 +329,10 @@ index 42d83b84d..d741db2d7 100644
  Status ManifestTailer::ApplyVersionEdit(VersionEdit& edit,
                                          ColumnFamilyData** cfd) {
    Status s = VersionEditHandler::ApplyVersionEdit(edit, cfd);
-@@ -1077,10 +1156,8 @@ Status ManifestTailer::OnColumnFamilyAdd(VersionEdit& edit,
+@@ -1077,10 +1167,8 @@ Status ManifestTailer::OnColumnFamilyAdd(VersionEdit& edit,
    auto builder_iter = builders_.find(edit.GetColumnFamily());
    assert(builder_iter != builders_.end());
- 
+
 -  Version* dummy_version = tmp_cfd->dummy_versions();
 -  assert(dummy_version);
 -  Version* base_version = dummy_version->Next();
@@ -162,10 +342,10 @@ index 42d83b84d..d741db2d7 100644
    base_version->Ref();
    VersionBuilderUPtr new_builder(new BaseReferencedVersionBuilder(
        tmp_cfd, base_version, this, track_found_and_missing_files_));
-@@ -1093,6 +1170,16 @@ Status ManifestTailer::OnColumnFamilyAdd(VersionEdit& edit,
+@@ -1093,6 +1181,16 @@ Status ManifestTailer::OnColumnFamilyAdd(VersionEdit& edit,
    return Status::OK();
  }
- 
+
 +ColumnFamilyData* ManifestTailer::DestroyCfAndCleanup(
 +    const VersionEdit& edit) {
 +  auto base_iter = manifest_base_versions_.find(edit.GetColumnFamily());
@@ -180,13 +360,13 @@ index 42d83b84d..d741db2d7 100644
                                            Status* s) {
    VersionEditHandlerPointInTime::CheckIterationResult(reader, s);
 diff --git a/db/version_edit_handler.h b/db/version_edit_handler.h
-index 1d4b22e3c..2c9dc43de 100644
+index 1d4b22e3c13ec8bf123dffbf2f2f14aea6aa7baf..eb7d0a7298ad1f6452ae7261865506345af59760 100644
 --- a/db/version_edit_handler.h
 +++ b/db/version_edit_handler.h
 @@ -31,6 +31,10 @@ class VersionEditHandlerBase {
- 
+
    AtomicGroupReadBuffer& GetReadBuffer() { return read_buffer_; }
- 
+
 +  void CopyReadBufferFrom(const VersionEditHandlerBase& handler) {
 +    read_buffer_ = handler.read_buffer_;
 +  }
@@ -194,20 +374,38 @@ index 1d4b22e3c..2c9dc43de 100644
   protected:
    explicit VersionEditHandlerBase(const ReadOptions& read_options,
                                    uint64_t max_read_size)
-@@ -365,6 +369,8 @@ class ManifestTailer : public VersionEditHandlerPointInTime {
+@@ -221,10 +225,16 @@ class VersionEditHandler : public VersionEditHandlerBase {
+                             bool prefetch_index_and_filter_in_cache,
+                             bool is_initial_load);
+
++  virtual Status MaybeHandleLoadTablesStatus(Status s) const;
++
+   virtual bool MustOpenAllColumnFamilies() const {
+     return !version_set_->unchanging();
+   }
+
++  void CopyDoNotOpenColumnFamiliesFrom(const VersionEditHandler& handler) {
++    do_not_open_column_families_ = handler.do_not_open_column_families_;
++  }
++
+   const bool read_only_;
+   std::vector<ColumnFamilyDescriptor> column_families_;
+   VersionSet* version_set_;
+@@ -365,6 +375,8 @@ class ManifestTailer : public VersionEditHandlerPointInTime {
              /*allow_incomplete_valid_version=*/false, epoch_number_requirement),
          mode_(Mode::kRecovery) {}
- 
+
 +  ~ManifestTailer() override;
 +
    Status VerifyFile(ColumnFamilyData* cfd, const std::string& fpath, int level,
                      const FileMetaData& fmeta) override;
- 
-@@ -373,6 +379,13 @@ class ManifestTailer : public VersionEditHandlerPointInTime {
+
+@@ -373,6 +385,14 @@ class ManifestTailer : public VersionEditHandlerPointInTime {
      ClearReadBuffer();
    }
- 
-+  Status PrepareForCatchUpAfterRecover();
+
++  Status PrepareForCatchUpAfterRecover(
++      const VersionEditHandler& recovered_handler);
 +
 +  // Rebuild the tailing state on top of the versions installed by the last
 +  // successful iteration. This must be called under the DB mutex and after
@@ -217,17 +415,17 @@ index 1d4b22e3c..2c9dc43de 100644
    std::unordered_set<ColumnFamilyData*>& GetUpdatedColumnFamilies() {
      return cfds_changed_;
    }
-@@ -388,6 +401,8 @@ class ManifestTailer : public VersionEditHandlerPointInTime {
- 
+@@ -388,6 +408,8 @@ class ManifestTailer : public VersionEditHandlerPointInTime {
+
    Status OnColumnFamilyAdd(VersionEdit& edit, ColumnFamilyData** cfd) override;
- 
+
 +  ColumnFamilyData* DestroyCfAndCleanup(const VersionEdit& edit) override;
 +
    void CheckIterationResult(const log::Reader& reader, Status* s) override;
- 
+
    enum Mode : uint8_t {
-@@ -397,6 +412,10 @@ class ManifestTailer : public VersionEditHandlerPointInTime {
- 
+@@ -397,6 +419,10 @@ class ManifestTailer : public VersionEditHandlerPointInTime {
+
    Mode mode_;
    std::unordered_set<ColumnFamilyData*> cfds_changed_;
 +  std::unordered_map<uint32_t, Version*> manifest_base_versions_;
@@ -235,43 +433,122 @@ index 1d4b22e3c..2c9dc43de 100644
 + private:
 +  Version* GetManifestBaseVersion(ColumnFamilyData* cfd);
  };
- 
+
  class DumpManifestHandler : public VersionEditHandler {
 diff --git a/db/version_set.cc b/db/version_set.cc
-index cf89ec8ad..784030bb9 100644
+index cf89ec8ad735c0627611c3eac434b293ac7edda1..9a9042f10302cf06cadd1c5546bb07b181085d8b 100644
 --- a/db/version_set.cc
 +++ b/db/version_set.cc
-@@ -7860,19 +7860,38 @@ Status ReactiveVersionSet::Recover(
+@@ -7843,11 +7843,43 @@ ReactiveVersionSet::ReactiveVersionSet(
+
+ ReactiveVersionSet::~ReactiveVersionSet() = default;
+
++namespace {
++class FastSecondaryVersionEditHandler : public VersionEditHandler {
++ public:
++  FastSecondaryVersionEditHandler(
++      const std::vector<ColumnFamilyDescriptor>& column_families,
++      VersionSet* version_set, const std::shared_ptr<IOTracer>& io_tracer,
++      const ReadOptions& read_options)
++      : VersionEditHandler(
++            /*read_only=*/true, column_families, version_set,
++            /*track_found_and_missing_files=*/false,
++            /*no_error_if_files_missing=*/false, io_tracer, read_options,
++            /*allow_incomplete_valid_version=*/false,
++            EpochNumberRequirement::kMightMissing) {}
++
++  void ResetStatusForRetry() { status_ = Status::OK(); }
++
++ protected:
++  bool MustOpenAllColumnFamilies() const override { return false; }
++
++  Status MaybeHandleLoadTablesStatus(Status s) const override {
++    if (s.IsPathNotFound() || s.IsNotFound()) {
++      return Status(
++          Status::kTryAgain, Status::kPathNotFound, Status::kNoError,
++          "An SST referenced by the MANIFEST disappeared while the secondary "
++          "was opening it. Original status: " +
++              s.ToString());
++    }
++    return VersionEditHandler::MaybeHandleLoadTablesStatus(s);
++  }
++};
++}  // anonymous namespace
++
+ Status ReactiveVersionSet::Recover(
+     const std::vector<ColumnFamilyDescriptor>& column_families,
+     std::unique_ptr<log::FragmentBufferedReader>* manifest_reader,
+     std::unique_ptr<log::Reader::Reporter>* manifest_reporter,
+-    std::unique_ptr<Status>* manifest_reader_status) {
++    std::unique_ptr<Status>* manifest_reader_status, bool use_fast_recovery) {
+   assert(manifest_reader != nullptr);
+   assert(manifest_reporter != nullptr);
+   assert(manifest_reader_status != nullptr);
+@@ -7860,19 +7892,72 @@ Status ReactiveVersionSet::Recover(
    if (!s.ok()) {
      return s;
    }
 +
    log::Reader* reader = manifest_reader->get();
    assert(reader);
- 
+
 -  manifest_tailer_.reset(new ManifestTailer(
 -      column_families, const_cast<ReactiveVersionSet*>(this), io_tracer_,
 -      read_options_, EpochNumberRequirement::kMightMissing));
--
++  if (!use_fast_recovery) {
++    manifest_tailer_.reset(new ManifestTailer(
++        column_families, const_cast<ReactiveVersionSet*>(this), io_tracer_,
++        read_options_, EpochNumberRequirement::kMightMissing));
++    manifest_tailer_->Iterate(*reader, manifest_reader_status->get());
++    s = manifest_tailer_->status();
++    if (s.ok()) {
++      RecoverEpochNumbers();
++    }
++    return s;
++  }
+
 -  manifest_tailer_->Iterate(*reader, manifest_reader_status->get());
--
--  s = manifest_tailer_->status();
 +  // TON indexer workaround for RocksDB secondary-open regression. After
 +  // RocksDB PR #12928 (first released in v9.6.1), secondary point-in-time
 +  // recovery can spend minutes replaying long MANIFEST histories through
 +  // ManifestTailer because it repeatedly materializes intermediate Version
-+  // states. Open the final manifest state with the regular VersionEditHandler
-+  // instead, then bootstrap ManifestTailer in catch-up mode so
-+  // TryCatchUpWithPrimary() continues tailing from this reader position.
-+  VersionEditHandler handler(
-+      /*read_only=*/true, column_families,
-+      const_cast<ReactiveVersionSet*>(this),
-+      /*track_found_and_missing_files=*/false,
-+      /*no_error_if_files_missing=*/false, io_tracer_, read_options_,
-+      /*allow_incomplete_valid_version=*/false,
-+      EpochNumberRequirement::kMightMissing);
-+  handler.Iterate(*reader, manifest_reader_status->get());
-+  s = handler.status();
++  // states. Open the final manifest state with a regular VersionEditHandler.
++  // If the primary deletes a referenced SST while table handlers are opening,
++  // keep this handler alive and tail the new MANIFEST records before retrying.
++  // Successfully opened files stay pinned in the handler's VersionBuilder, so
++  // each retry only needs to open newly added files instead of starting over.
++  FastSecondaryVersionEditHandler handler(
++      column_families, const_cast<ReactiveVersionSet*>(this), io_tracer_,
++      read_options_);
++  const uint64_t max_attempts =
++      std::max<uint64_t>(1, db_options_->follower_catchup_retry_count);
++  for (uint64_t attempt = 0; attempt < max_attempts; ++attempt) {
++    if (attempt > 0) {
++      handler.ResetStatusForRetry();
++    }
++    handler.Iterate(*reader, manifest_reader_status->get());
++    s = handler.status();
++    const bool missing_sst_while_opening =
++        s.IsTryAgain() && s.subcode() == Status::kPathNotFound;
++    if (!missing_sst_while_opening || attempt + 1 == max_attempts) {
++      break;
++    }
+
+-  s = manifest_tailer_->status();
++    ROCKS_LOG_WARN(db_options_->info_log,
++                   "An SST disappeared while the secondary was opening it; "
++                   "retrying recovery (%" PRIu64 "/%" PRIu64 ")",
++                   attempt + 2, max_attempts);
++    TEST_SYNC_POINT_CALLBACK(
++        "ReactiveVersionSet::Recover:RetryAfterMissingFile", &attempt);
++    if (db_options_->follower_catchup_retry_wait_ms > 0) {
++      const uint64_t wait_ms = std::min<uint64_t>(
++          db_options_->follower_catchup_retry_wait_ms,
++          static_cast<uint64_t>(std::numeric_limits<int>::max()) / 1000);
++      db_options_->clock->SleepForMicroseconds(
++          static_cast<int>(wait_ms * 1000));
++    }
++  }
    if (s.ok()) {
      RecoverEpochNumbers();
 +  } else {
@@ -281,13 +558,11 @@ index cf89ec8ad..784030bb9 100644
 +  manifest_tailer_.reset(new ManifestTailer(
 +      column_families, const_cast<ReactiveVersionSet*>(this), io_tracer_,
 +      read_options_, EpochNumberRequirement::kMightMissing));
-+  // Preserve any AtomicGroup that reached EOF before becoming replayable.
-+  manifest_tailer_->CopyReadBufferFrom(handler);
-+  s = manifest_tailer_->PrepareForCatchUpAfterRecover();
++  s = manifest_tailer_->PrepareForCatchUpAfterRecover(handler);
    return s;
  }
- 
-@@ -7901,6 +7920,12 @@ Status ReactiveVersionSet::ReadAndApply(
+
+@@ -7901,6 +7986,12 @@ Status ReactiveVersionSet::ReadAndApply(
    if (files_to_delete) {
      *files_to_delete = manifest_tailer_->GetAndClearIntermediateFiles();
    }
@@ -297,6 +572,20 @@ index cf89ec8ad..784030bb9 100644
 +    // successful pass, otherwise its SSTs stay referenced until DB close.
 +    manifest_tailer_->RebaseBuildersToCurrentVersions();
 +  }
- 
+
    return s;
  }
+diff --git a/db/version_set.h b/db/version_set.h
+index 365d2838183d27fed162f4afd9ef81c24f28a2f8..eea2abefecebb4c23540b5cea55075adb09d2a41 100644
+--- a/db/version_set.h
++++ b/db/version_set.h
+@@ -1819,7 +1819,8 @@ class ReactiveVersionSet : public VersionSet {
+   Status Recover(const std::vector<ColumnFamilyDescriptor>& column_families,
+                  std::unique_ptr<log::FragmentBufferedReader>* manifest_reader,
+                  std::unique_ptr<log::Reader::Reporter>* manifest_reporter,
+-                 std::unique_ptr<Status>* manifest_reader_status);
++                 std::unique_ptr<Status>* manifest_reader_status,
++                 bool use_fast_recovery = true);
+ #ifndef NDEBUG
+   uint64_t TEST_read_edits_in_atomic_group() const;
+ #endif  //! NDEBUG
