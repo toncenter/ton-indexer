@@ -1,5 +1,5 @@
 diff --git a/db/db_impl/db_impl_secondary.cc b/db/db_impl/db_impl_secondary.cc
-index c8517be25d73857d24d1bb2c5d1590c009427020..7edef380006dd562066438dcafd91bad762e3b6f 100644
+index c8517be25d73857d24d1bb2c5d1590c009427020..1ce072c8acd99a9aadd549d2c9a6700ba3d06129 100644
 --- a/db/db_impl/db_impl_secondary.cc
 +++ b/db/db_impl/db_impl_secondary.cc
 @@ -39,7 +39,7 @@ DBImplSecondary::~DBImplSecondary() = default;
@@ -21,7 +21,47 @@ index c8517be25d73857d24d1bb2c5d1590c009427020..7edef380006dd562066438dcafd91bad
    if (!s.ok()) {
      if (manifest_reader_status_) {
        manifest_reader_status_->PermitUncheckedError();
-@@ -781,17 +782,36 @@ Status DB::OpenAsSecondary(
+@@ -115,10 +116,22 @@ Status DBImplSecondary::FindNewLogNumbers(std::vector<uint64_t>* logs) {
+     return s;
+   }
+
+-  // if log_readers_ is non-empty, it means we have applied all logs with log
+-  // numbers smaller than the smallest log in log_readers_, so there is no
+-  // need to pass these logs to RecoverLogFiles
+-  uint64_t log_number_min = 0;
++  // Drop readers only after MANIFEST replay says the WAL is obsolete. The
++  // primary can create a higher-number empty WAL before it stops appending to a
++  // lower-number current WAL, so seeing a higher-number WAL is not sufficient.
++  const uint64_t min_log_number_to_keep = versions_->min_log_number_to_keep();
++  for (auto iter = log_readers_.begin(); iter != log_readers_.end();) {
++    if (iter->first < min_log_number_to_keep) {
++      iter = log_readers_.erase(iter);
++    } else {
++      break;
++    }
++  }
++
++  // If log_readers_ is non-empty, it means we have applied all logs with log
++  // numbers smaller than the smallest retained log reader. Otherwise, manifest
++  // recovery tells us which older logs can be skipped.
++  uint64_t log_number_min = min_log_number_to_keep;
+   if (!log_readers_.empty()) {
+     log_number_min = log_readers_.begin()->first;
+   }
+@@ -331,12 +344,6 @@ Status DBImplSecondary::RecoverLogFiles(
+       return status;
+     }
+   }
+-  // remove logreaders from map after successfully recovering the WAL
+-  if (log_readers_.size() > 1) {
+-    auto erase_iter = log_readers_.begin();
+-    std::advance(erase_iter, log_readers_.size() - 1);
+-    log_readers_.erase(log_readers_.begin(), erase_iter);
+-  }
+   return status;
+ }
+
+@@ -781,17 +788,36 @@ Status DB::OpenAsSecondary(
    }
 
    handles->clear();
@@ -67,10 +107,18 @@ index c8517be25d73857d24d1bb2c5d1590c009427020..7edef380006dd562066438dcafd91bad
      for (const auto& cf : column_families) {
        auto cfd =
 diff --git a/db/db_secondary_test.cc b/db/db_secondary_test.cc
-index e34a95d554177b24b8b62968c0e334510b1ca7f6..e0502fe361842e66bbb0f4c6ca42136fd5787b7c 100644
+index e34a95d554177b24b8b62968c0e334510b1ca7f6..90bae66974838d7d94a3db4e26369a8e9e899b48 100644
 --- a/db/db_secondary_test.cc
 +++ b/db/db_secondary_test.cc
-@@ -675,6 +675,128 @@ TEST_F(DBSecondaryTest, SecondaryCloseFiles) {
+@@ -10,6 +10,7 @@
+ #include "db/db_impl/db_impl_secondary.h"
+ #include "db/db_test_util.h"
+ #include "db/db_with_timestamp_test_util.h"
++#include "file/filename.h"
+ #include "port/stack_trace.h"
+ #include "rocksdb/utilities/transaction_db.h"
+ #include "test_util/sync_point.h"
+@@ -675,6 +676,128 @@ TEST_F(DBSecondaryTest, SecondaryCloseFiles) {
    CloseSecondary();
  }
 
@@ -197,6 +245,55 @@ index e34a95d554177b24b8b62968c0e334510b1ca7f6..e0502fe361842e66bbb0f4c6ca42136f
 +}
 +
  TEST_F(DBSecondaryTest, OpenAsSecondaryWALTailing) {
+   Options options;
+   options.env = env_;
+@@ -730,6 +853,48 @@ TEST_F(DBSecondaryTest, OpenAsSecondaryWALTailing) {
+   verify_db_func("new_foo_value_1", "new_bar_value");
+ }
+
++TEST_F(DBSecondaryTest, CatchUpTailsCurrentWalWhenFutureWalExists) {
++  // Goal: secondary catch-up must keep tailing the current WAL even when a
++  // higher-number empty WAL is present. This reproduces the async WAL
++  // precreation shape by creating a future WAL before opening the secondary,
++  // then appending another write to the current WAL and catching up again.
++  Options options;
++  options.env = env_;
++  Reopen(options);
++
++  ASSERT_OK(Put("foo", "value0"));
++  ASSERT_OK(Flush());
++  ASSERT_OK(Put("foo", "value1"));
++  ASSERT_OK(db_->FlushWAL(/*sync=*/true));
++
++  std::unique_ptr<WalFile> current_wal;
++  ASSERT_OK(db_->GetCurrentWalFile(&current_wal));
++  ASSERT_NE(nullptr, current_wal);
++
++  const uint64_t future_wal_number = current_wal->LogNumber() + 1000;
++  std::unique_ptr<WritableFile> future_wal_file;
++  ASSERT_OK(env_->NewWritableFile(LogFileName(dbname_, future_wal_number),
++                                  &future_wal_file, EnvOptions()));
++  ASSERT_OK(future_wal_file->Close());
++
++  Options secondary_options;
++  secondary_options.env = env_;
++  secondary_options.max_open_files = -1;
++  OpenSecondary(secondary_options);
++
++  ReadOptions read_options;
++  std::string value;
++  ASSERT_OK(db_secondary_->Get(read_options, "foo", &value));
++  ASSERT_EQ("value1", value);
++
++  ASSERT_OK(Put("foo", "value2"));
++  ASSERT_OK(db_->FlushWAL(/*sync=*/true));
++
++  ASSERT_OK(db_secondary_->TryCatchUpWithPrimary());
++  ASSERT_OK(db_secondary_->Get(read_options, "foo", &value));
++  ASSERT_EQ("value2", value);
++}
++
+ TEST_F(DBSecondaryTest, SecondaryTailingBug_ISSUE_8467) {
    Options options;
    options.env = env_;
 diff --git a/db/version_edit_handler.cc b/db/version_edit_handler.cc
