@@ -86,7 +86,72 @@ TEST(TraceProcessor, classification_telemetry_names_are_stable) {
   ASSERT_EQ(std::string("classified"), classification_outcome_name(mch::EmuClassifyOutcome::classified));
   ASSERT_EQ(std::string("classify_failed"), classification_outcome_name(mch::EmuClassifyOutcome::classify_failed));
   ASSERT_EQ(std::string("convert_failed"), classification_outcome_name(mch::EmuClassifyOutcome::convert_failed));
+  ASSERT_EQ(std::string_view("emulator.trace_processor.queue_full"),
+            ticker_names.at(TRACE_PROCESSOR_QUEUE_FULL));
   ASSERT_EQ(std::string_view("emulator.classify.trace.micros"), histogram_names.at(CLASSIFY_TRACE));
+}
+
+TEST(TraceProcessor, ready_work_is_routed_by_write_capacity_requirement) {
+  TraceSlot slot;
+  ASSERT_EQ(TraceReadyQueue::None, next_ready_queue(slot));
+
+  slot.queued.emplace_back(InsertRequest{});
+  ASSERT_EQ(TraceReadyQueue::General, next_ready_queue(slot));
+
+  slot.queued.clear();
+  slot.classification.emplace(ClassificationWork{});
+  ASSERT_EQ(TraceReadyQueue::None, next_ready_queue(slot));
+
+  slot.classification->payload.emplace();
+  ASSERT_EQ(TraceReadyQueue::Write, next_ready_queue(slot));
+
+  slot.classification.reset();
+  slot.cleanup_requested = true;
+  ASSERT_EQ(TraceReadyQueue::Write, next_ready_queue(slot));
+}
+
+TEST(TraceProcessor, saturated_writes_do_not_drain_the_write_ready_queue) {
+  ASSERT_EQ(TraceReadyQueue::Write,
+            next_queue_to_drain(kMaxConcurrentWrites - 1, true, 0, false));
+  ASSERT_EQ(TraceReadyQueue::None,
+            next_queue_to_drain(kMaxConcurrentWrites, true, 0, false));
+  ASSERT_EQ(TraceReadyQueue::General,
+            next_queue_to_drain(kMaxConcurrentWrites, true, 1, true));
+}
+
+TEST(TraceProcessor, queue_snapshot_accounts_for_pending_updates) {
+  std::unordered_map<std::string, TraceSlot> traces;
+
+  auto& queued = traces["queued"];
+  queued.queued.emplace_back(InsertRequest{});
+  queued.queued.emplace_back(InsertRequest{});
+  queued.scheduled_queue = TraceReadyQueue::General;
+
+  traces["classifying"].classification.emplace(ClassificationWork{});
+
+  auto& classified = traces["classified"];
+  classified.classification.emplace(ClassificationWork{});
+  classified.classification->payload.emplace();
+  classified.scheduled_queue = TraceReadyQueue::Write;
+
+  traces["writing"].in_flight.emplace(InFlightWork{.counted_update = true});
+  auto& cleanup = traces["cleanup"];
+  cleanup.in_flight.emplace(InFlightWork{.kind = InFlightKind::Cleanup});
+  cleanup.cleanup_requested = true;
+  traces["promotion"].queued.emplace_back(PromoteConfirmedRequest{});
+
+  const auto snapshot = collect_queue_snapshot(traces);
+  ASSERT_EQ(2u, snapshot.queued_updates);
+  ASSERT_EQ(1u, snapshot.classifying);
+  ASSERT_EQ(1u, snapshot.classified_waiting_write);
+  ASSERT_EQ(1u, snapshot.in_flight_updates);
+  ASSERT_EQ(1u, snapshot.in_flight_cleanups);
+  ASSERT_EQ(1u, snapshot.cleanup_requested);
+  ASSERT_EQ(1u, snapshot.promotions_waiting_write);
+  ASSERT_EQ(1u, snapshot.scheduled_general);
+  ASSERT_EQ(1u, snapshot.scheduled_writes);
+  ASSERT_EQ(2u, snapshot.max_slot_queue);
+  ASSERT_EQ(std::string("queued"), snapshot.max_slot_trace);
 }
 
 TEST(TraceProcessor, promotion_rewrites_all_action_finalities_and_keeps_content) {

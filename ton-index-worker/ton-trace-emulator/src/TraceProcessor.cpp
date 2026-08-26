@@ -35,6 +35,7 @@ constexpr std::size_t kMaxPendingTraceUpdates = 10000;
 constexpr std::size_t kMaxCachedTraceNodes = 1000;
 constexpr double kCleanupRetrySeconds = 1.0;
 constexpr double kExpirySweepSeconds = 1.0;
+constexpr double kQueueFullLogIntervalSeconds = 5.0;
 
 constexpr const char* kInvalidatedTraceChannel = "invalidated_traces";
 constexpr const char* kStreamingTransactionsChannel = "streaming_transactions";
@@ -288,6 +289,12 @@ enum class InFlightKind {
   Cleanup,
 };
 
+enum class TraceReadyQueue {
+  None,
+  General,
+  Write,
+};
+
 struct InFlightWork {
   InFlightKind kind{InFlightKind::Update};
   ActiveTrace next_trace;
@@ -305,13 +312,97 @@ struct TraceSlot {
   std::deque<TraceRequest> queued;
   std::optional<ClassificationWork> classification;
   std::optional<InFlightWork> in_flight;
-  bool scheduled{false};
+  TraceReadyQueue scheduled_queue{TraceReadyQueue::None};
   bool cleanup_requested{false};
 
   TraceLifecycle lifecycle{TraceLifecycle::UnknownRoot};
   td::Timestamp deadline;
   TraceCleanupMode cleanup_mode{TraceCleanupMode::Retention};
 };
+
+TraceReadyQueue next_ready_queue(const TraceSlot& slot) {
+  if (slot.in_flight || (slot.classification && !slot.classification->payload)) {
+    return TraceReadyQueue::None;
+  }
+  if (slot.classification || slot.cleanup_requested) {
+    return TraceReadyQueue::Write;
+  }
+  if (slot.queued.empty()) {
+    return TraceReadyQueue::None;
+  }
+  return std::holds_alternative<PromoteConfirmedRequest>(slot.queued.front()) ? TraceReadyQueue::Write
+                                                                              : TraceReadyQueue::General;
+}
+
+TraceReadyQueue next_queue_to_drain(std::size_t active_writes, bool has_ready_writes,
+                                    std::size_t general_ready_count, bool has_ready_traces) {
+  if (active_writes < kMaxConcurrentWrites && has_ready_writes) {
+    return TraceReadyQueue::Write;
+  }
+  if (general_ready_count > 0 && has_ready_traces) {
+    return TraceReadyQueue::General;
+  }
+  return TraceReadyQueue::None;
+}
+
+struct TraceProcessorQueueSnapshot {
+  std::size_t queued_updates{0};
+  std::size_t classifying{0};
+  std::size_t classified_waiting_write{0};
+  std::size_t in_flight_updates{0};
+  std::size_t in_flight_cleanups{0};
+  std::size_t cleanup_requested{0};
+  std::size_t promotions_waiting_write{0};
+  std::size_t scheduled_general{0};
+  std::size_t scheduled_writes{0};
+  std::size_t max_slot_queue{0};
+  std::string max_slot_trace;
+};
+
+TraceProcessorQueueSnapshot collect_queue_snapshot(const std::unordered_map<std::string, TraceSlot>& traces) {
+  TraceProcessorQueueSnapshot snapshot;
+  for (const auto& [trace_key, slot] : traces) {
+    std::size_t slot_updates = 0;
+    for (const auto& request : slot.queued) {
+      if (std::holds_alternative<InsertRequest>(request)) {
+        ++slot_updates;
+      }
+    }
+    snapshot.queued_updates += slot_updates;
+    if (slot_updates > snapshot.max_slot_queue) {
+      snapshot.max_slot_queue = slot_updates;
+      snapshot.max_slot_trace = trace_key;
+    }
+
+    if (slot.classification) {
+      if (slot.classification->payload) {
+        ++snapshot.classified_waiting_write;
+      } else {
+        ++snapshot.classifying;
+      }
+    }
+    if (slot.in_flight) {
+      if (slot.in_flight->kind == InFlightKind::Cleanup) {
+        ++snapshot.in_flight_cleanups;
+      } else if (slot.in_flight->counted_update) {
+        ++snapshot.in_flight_updates;
+      }
+    }
+    if (slot.cleanup_requested) {
+      ++snapshot.cleanup_requested;
+    }
+    if (!slot.classification && !slot.cleanup_requested && !slot.queued.empty() &&
+        std::holds_alternative<PromoteConfirmedRequest>(slot.queued.front())) {
+      ++snapshot.promotions_waiting_write;
+    }
+    if (slot.scheduled_queue == TraceReadyQueue::General) {
+      ++snapshot.scheduled_general;
+    } else if (slot.scheduled_queue == TraceReadyQueue::Write) {
+      ++snapshot.scheduled_writes;
+    }
+  }
+  return snapshot;
+}
 
 void real_root_applied(TraceSlot& slot) {
   if (slot.cleanup_mode != TraceCleanupMode::ReplacedConfirmedTimeout) {
@@ -888,8 +979,10 @@ struct TraceProcessor::Impl {
   std::unordered_map<std::string, td::Timestamp> oversized_traces;
   CompetingTraceSet candidates;
   std::deque<std::string> ready_traces;
+  std::deque<std::string> ready_writes;
   std::size_t pending_updates{0};
   std::size_t active_writes{0};
+  td::Timestamp next_queue_full_log;
 };
 
 TraceProcessor::TraceProcessor(const std::string& redis_dsn, TraceRetentionConfig retention,
@@ -918,13 +1011,16 @@ void TraceProcessor::schedule_trace(const std::string& trace_key) {
     return;
   }
   auto& slot = it->second;
-  const bool classification_pending = slot.classification && !slot.classification->payload;
-  if (slot.scheduled || classification_pending || slot.in_flight ||
-      (!slot.classification && slot.queued.empty() && !slot.cleanup_requested)) {
+  const auto queue = next_ready_queue(slot);
+  if (slot.scheduled_queue == queue) {
     return;
   }
-  slot.scheduled = true;
-  impl_->ready_traces.push_back(trace_key);
+  slot.scheduled_queue = queue;
+  if (queue == TraceReadyQueue::General) {
+    impl_->ready_traces.push_back(trace_key);
+  } else if (queue == TraceReadyQueue::Write) {
+    impl_->ready_writes.push_back(trace_key);
+  }
 }
 
 void TraceProcessor::request_cleanup(const std::string& trace_key, TraceCleanupMode mode) {
@@ -1042,6 +1138,30 @@ void TraceProcessor::enqueue_trace_patch(Trace trace, bool confirmed, td::Promis
     return;
   }
   if (impl_->pending_updates >= kMaxPendingTraceUpdates) {
+    g_statistics.record_count(TRACE_PROCESSOR_QUEUE_FULL);
+    if (!impl_->next_queue_full_log || impl_->next_queue_full_log.is_in_past()) {
+      impl_->next_queue_full_log = td::Timestamp::in(kQueueFullLogIntervalSeconds);
+      const auto snapshot = collect_queue_snapshot(impl_->traces);
+      const auto accounted_updates = snapshot.queued_updates + snapshot.classifying +
+                                     snapshot.classified_waiting_write + snapshot.in_flight_updates;
+      LOG(ERROR) << "Trace processor queue is full: pending_updates=" << impl_->pending_updates
+                 << " accounted_updates=" << accounted_updates
+                 << " trace_slots=" << impl_->traces.size()
+                 << " queued_updates=" << snapshot.queued_updates
+                 << " classifying=" << snapshot.classifying
+                 << " classified_waiting_write=" << snapshot.classified_waiting_write
+                 << " in_flight_updates=" << snapshot.in_flight_updates
+                 << " in_flight_cleanups=" << snapshot.in_flight_cleanups
+                 << " cleanup_requested=" << snapshot.cleanup_requested
+                 << " promotions_waiting_write=" << snapshot.promotions_waiting_write
+                 << " active_writes=" << impl_->active_writes
+                 << " scheduled_general=" << snapshot.scheduled_general
+                 << " scheduled_writes=" << snapshot.scheduled_writes
+                 << " ready_general_entries=" << impl_->ready_traces.size()
+                 << " ready_write_entries=" << impl_->ready_writes.size()
+                 << " max_slot_queue=" << snapshot.max_slot_queue
+                 << " max_slot_trace=" << snapshot.max_slot_trace;
+    }
     completion.set_error(
         td::Status::Error("Trace processor queue is full (" + std::to_string(kMaxPendingTraceUpdates) + ")"));
     return;
@@ -1066,20 +1186,34 @@ void TraceProcessor::enqueue_trace_patch(Trace trace, bool confirmed, td::Promis
 }
 
 void TraceProcessor::start_next_operations() {
-  // Visit each currently ready trace at most once. Redis-bound work that
-  // cannot start yet is moved to the back without blocking other traces
-  // whose classification can still begin.
-  auto ready_count = impl_->ready_traces.size();
-  while (ready_count-- > 0 && !impl_->ready_traces.empty()) {
-    auto trace_key = std::move(impl_->ready_traces.front());
-    impl_->ready_traces.pop_front();
+  // Redis-ready traces stay in their own queue while all write slots are
+  // occupied. General work can still assemble and enter classification
+  // without repeatedly rotating the entire Redis backlog.
+  auto general_ready_count = impl_->ready_traces.size();
+  while (true) {
+    const auto source_queue = next_queue_to_drain(impl_->active_writes, !impl_->ready_writes.empty(),
+                                                  general_ready_count, !impl_->ready_traces.empty());
+    std::string trace_key;
+    if (source_queue == TraceReadyQueue::Write) {
+      trace_key = std::move(impl_->ready_writes.front());
+      impl_->ready_writes.pop_front();
+    } else if (source_queue == TraceReadyQueue::General) {
+      --general_ready_count;
+      trace_key = std::move(impl_->ready_traces.front());
+      impl_->ready_traces.pop_front();
+    } else {
+      break;
+    }
 
     auto slot_it = impl_->traces.find(trace_key);
     if (slot_it == impl_->traces.end()) {
       continue;
     }
     auto& slot = slot_it->second;
-    slot.scheduled = false;
+    if (slot.scheduled_queue != source_queue) {
+      continue;
+    }
+    slot.scheduled_queue = TraceReadyQueue::None;
     if ((slot.classification && !slot.classification->payload) || slot.in_flight ||
         (!slot.classification && slot.queued.empty() && !slot.cleanup_requested)) {
       continue;
@@ -1727,5 +1861,6 @@ void TraceProcessor::tear_down() {
   impl_->traces.clear();
   impl_->oversized_traces.clear();
   impl_->ready_traces.clear();
+  impl_->ready_writes.clear();
   impl_->pending_updates = 0;
 }
