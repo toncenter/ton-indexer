@@ -82,6 +82,13 @@ PreparedTraceUpdate promote(ActiveTrace current, bool materialize_full_state = f
 
 }  // namespace
 
+TEST(TraceProcessor, classification_telemetry_names_are_stable) {
+  ASSERT_EQ(std::string("classified"), classification_outcome_name(mch::EmuClassifyOutcome::classified));
+  ASSERT_EQ(std::string("classify_failed"), classification_outcome_name(mch::EmuClassifyOutcome::classify_failed));
+  ASSERT_EQ(std::string("convert_failed"), classification_outcome_name(mch::EmuClassifyOutcome::convert_failed));
+  ASSERT_EQ(std::string_view("emulator.classify.trace.micros"), histogram_names.at(CLASSIFY_TRACE));
+}
+
 TEST(TraceProcessor, promotion_rewrites_all_action_finalities_and_keeps_content) {
   auto prepared = promote(trace_with_actions(FinalityState::Finalized, 1));
 

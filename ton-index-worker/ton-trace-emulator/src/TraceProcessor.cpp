@@ -60,6 +60,18 @@ std::string trace_emulator_operation(FinalityState finality) {
   return finality == FinalityState::Emulated ? "emulate" : "read_finalized";
 }
 
+const char* classification_outcome_name(mch::EmuClassifyOutcome outcome) {
+  switch (outcome) {
+    case mch::EmuClassifyOutcome::classified:
+      return "classified";
+    case mch::EmuClassifyOutcome::classify_failed:
+      return "classify_failed";
+    case mch::EmuClassifyOutcome::convert_failed:
+      return "convert_failed";
+  }
+  return "unknown";
+}
+
 bool contains_real_root(const Trace& trace) {
   return trace.contains_root_transaction() && trace.root->finality_state != FinalityState::Emulated;
 }
@@ -195,7 +207,6 @@ struct InsertRequest {
   Trace trace;
   InsertCompletion completion;
   MeasurementPtr measurement;
-  td::Timer timer;
   bool contains_real_root{false};
 };
 
@@ -204,9 +215,10 @@ struct ClassificationWork {
   TraceTransition transition;
   InsertCompletion completion;
   MeasurementPtr measurement;
-  td::Timer timer;
   bool contains_real_root{false};
   std::optional<mch::EmuActionPayload> payload;
+  std::optional<td::Timer> classification_timer;
+  td::Timer insert_timer{true};
 };
 
 struct PromoteConfirmedRequest {
@@ -249,7 +261,6 @@ std::deque<TraceRequest> resolve_terminal_queue(std::deque<TraceRequest> queued,
 
     if (auto* request = std::get_if<InsertRequest>(&work)) {
       --pending_updates;
-      g_statistics.record_time(INSERT_TRACE, request->timer.elapsed() * 1e3);
       if (mode == TraceCleanupMode::Invalidation && request->completion.confirmed) {
         request->completion.set_error(td::Status::Error("Confirmed trace was invalidated before insertion"));
       } else {
@@ -570,6 +581,20 @@ void fill_measurement(const TraceTransition& transition, const Trace& trace, con
                                   static_cast<std::int64_t>(transition.node_delta.removed_node_keys.size()));
   measurement->set_otel_attribute("ton.trace_state.update_seq",
                                   static_cast<std::int64_t>(transition.next_trace.update_seq));
+}
+
+void fill_classification_measurement(const mch::EmuClassifyResult& result, const MeasurementPtr& measurement) {
+  if (!measurement) {
+    return;
+  }
+
+  measurement->set_otel_attribute("ton.trace.classification.outcome", classification_outcome_name(result.outcome));
+  measurement->set_otel_attribute("ton.trace.classification.failed", result.failure);
+  measurement->set_otel_attribute("ton.trace.classification.used_fallback", result.used_fallback);
+  measurement->set_otel_attribute("ton.trace.classification.queue_us", result.queue_us);
+  measurement->set_otel_attribute("ton.trace.classification.duration_us", result.classify_us);
+  measurement->set_otel_attribute("ton.trace.classification.serialize_us", result.serialize_us);
+  measurement->set_otel_attribute("ton.actions.count", static_cast<std::int64_t>(result.payload.action_count));
 }
 
 void append_otel_propagation(const MeasurementPtr& measurement, RedisWritePlan& redis_plan) {
@@ -1033,7 +1058,6 @@ void TraceProcessor::enqueue_trace_patch(Trace trace, bool confirmed, td::Promis
       .trace = std::move(trace),
       .completion = std::move(completion),
       .measurement = std::move(measurement),
-      .timer = td::Timer(),
       .contains_real_root = real_root,
   });
   ++impl_->pending_updates;
@@ -1115,7 +1139,6 @@ void TraceProcessor::start_next_operations() {
       auto trace = std::move(request->trace);
       auto completion = std::move(request->completion);
       auto measurement = std::move(request->measurement);
-      auto timer = request->timer;
       const bool real_root = request->contains_real_root;
 
       td::Result<TraceTransition> transition_result;
@@ -1130,7 +1153,6 @@ void TraceProcessor::start_next_operations() {
       if (transition_result.is_error()) {
         --impl_->pending_updates;
         completion.set_error(transition_result.move_as_error());
-        g_statistics.record_time(INSERT_TRACE, timer.elapsed() * 1e3);
         schedule_trace(trace_key);
         continue;
       }
@@ -1148,7 +1170,6 @@ void TraceProcessor::start_next_operations() {
         } else {
           completion.set_value();
         }
-        g_statistics.record_time(INSERT_TRACE, timer.elapsed() * 1e3);
         schedule_trace(trace_key);
         continue;
       }
@@ -1166,7 +1187,6 @@ void TraceProcessor::start_next_operations() {
         request_cleanup(trace_key, TraceCleanupMode::Oversized);
         --impl_->pending_updates;
         completion.set_value();
-        g_statistics.record_time(INSERT_TRACE, timer.elapsed() * 1e3);
         continue;
       }
 
@@ -1174,7 +1194,6 @@ void TraceProcessor::start_next_operations() {
       if (full_trace_result.is_error()) {
         --impl_->pending_updates;
         completion.set_error(full_trace_result.move_as_error());
-        g_statistics.record_time(INSERT_TRACE, timer.elapsed() * 1e3);
         schedule_trace(trace_key);
         continue;
       }
@@ -1187,11 +1206,13 @@ void TraceProcessor::start_next_operations() {
           .transition = std::move(transition),
           .completion = std::move(completion),
           .measurement = std::move(measurement),
-          .timer = timer,
           .contains_real_root = real_root,
       });
 
       if (impl_->classifiers.empty()) {
+        if (slot.classification->measurement) {
+          slot.classification->measurement->set_otel_attribute("ton.trace.classification.outcome", "disabled");
+        }
         mch::EmuActionPayload payload;
         payload.finality = static_cast<std::uint8_t>(full_trace_finality);
         payload.update_seq = update_seq;
@@ -1199,6 +1220,10 @@ void TraceProcessor::start_next_operations() {
         continue;
       }
 
+      slot.classification->classification_timer.emplace();
+      if (slot.classification->measurement) {
+        slot.classification->measurement->start_otel_child_span("classify_trace");
+      }
       const auto enqueued_us = mch::emu_now_us();
       auto classification_promise = td::PromiseCreator::lambda(
           [self = actor_id(this), trace_key](td::Result<mch::EmuClassifyResult> result) mutable {
@@ -1318,7 +1343,12 @@ void TraceProcessor::classification_finished(std::string trace_key, td::Result<m
 
   auto& work = *slot_it->second.classification;
   if (result.is_error()) {
-    LOG(WARNING) << "[mch-emu] classify response lost for trace " << trace_key << ": " << result.move_as_error();
+    if (work.measurement) {
+      work.measurement->set_otel_attribute("ton.trace.classification.outcome", "response_lost");
+      work.measurement->set_otel_attribute("ton.trace.classification.failed", true);
+    }
+    auto error = result.move_as_error();
+    LOG(WARNING) << "[mch-emu] classify response lost for trace " << trace_key << ": " << error;
     mch::EmuActionPayload payload;
     payload.state = "response_lost";
     payload.finality = trace_finality(work.transition.next_trace);
@@ -1328,6 +1358,7 @@ void TraceProcessor::classification_finished(std::string trace_key, td::Result<m
   }
 
   auto classified = result.move_as_ok();
+  fill_classification_measurement(classified, work.measurement);
   if (classified.trace_id != trace_key) {
     LOG(FATAL) << "Classifier returned trace " << classified.trace_id << " while processing " << trace_key;
   }
@@ -1341,19 +1372,32 @@ void TraceProcessor::classification_ready(std::string trace_key, mch::EmuActionP
   }
 
   auto& slot = slot_it->second;
+  if (slot.classification->classification_timer) {
+    g_statistics.record_time(CLASSIFY_TRACE, slot.classification->classification_timer->elapsed() * 1e6);
+    slot.classification->classification_timer.reset();
+  }
   const auto expected_update_seq = slot.classification->transition.next_trace.update_seq;
   const auto expected_finality = trace_finality(slot.classification->transition.next_trace);
   if (payload.update_seq != expected_update_seq || payload.finality != expected_finality) {
+    if (slot.classification->measurement) {
+      slot.classification->measurement->set_otel_attribute("ton.trace.classification.outcome", "invalid_result");
+      slot.classification->measurement->set_otel_attribute("ton.trace.classification.failed", true);
+    }
     auto work = std::move(*slot.classification);
     slot.classification.reset();
     --impl_->pending_updates;
     work.completion.set_error(td::Status::Error("Classifier result does not match the assembled full trace"));
-    g_statistics.record_time(INSERT_TRACE, work.timer.elapsed() * 1e3);
     schedule_trace(trace_key);
     start_next_operations();
     return;
   }
 
+  slot.classification->insert_timer.resume();
+  if (slot.classification->measurement) {
+    slot.classification->measurement->end_otel_child_span("classify_trace");
+    // The producer callback ends this span after attaching any insertion error.
+    slot.classification->measurement->start_otel_child_span("insert_trace");
+  }
   slot.classification->payload = std::move(payload);
   schedule_trace(trace_key);
   start_next_operations();
@@ -1383,7 +1427,7 @@ void TraceProcessor::materialize_classified_trace(std::string trace_key) {
   if (prepared_result.is_error()) {
     --impl_->pending_updates;
     work.completion.set_error(prepared_result.move_as_error());
-    g_statistics.record_time(INSERT_TRACE, work.timer.elapsed() * 1e3);
+    g_statistics.record_time(INSERT_TRACE, work.insert_timer.elapsed() * 1e3);
     schedule_trace(trace_key);
     start_next_operations();
     return;
@@ -1397,7 +1441,7 @@ void TraceProcessor::materialize_classified_trace(std::string trace_key) {
     if (confirmed_result.is_error()) {
       --impl_->pending_updates;
       work.completion.set_error(confirmed_result.move_as_error());
-      g_statistics.record_time(INSERT_TRACE, work.timer.elapsed() * 1e3);
+      g_statistics.record_time(INSERT_TRACE, work.insert_timer.elapsed() * 1e3);
       schedule_trace(trace_key);
       start_next_operations();
       return;
@@ -1416,7 +1460,7 @@ void TraceProcessor::materialize_classified_trace(std::string trace_key) {
     } else {
       work.completion.set_value();
     }
-    g_statistics.record_time(INSERT_TRACE, work.timer.elapsed() * 1e3);
+    g_statistics.record_time(INSERT_TRACE, work.insert_timer.elapsed() * 1e3);
     schedule_trace(trace_key);
     start_next_operations();
     return;
@@ -1443,7 +1487,7 @@ void TraceProcessor::materialize_classified_trace(std::string trace_key) {
       .confirmed_trace = std::move(confirmed_trace),
   });
   ++impl_->active_writes;
-  impl_->materializer.write(std::move(batch), std::move(completion), work.timer);
+  impl_->materializer.write(std::move(batch), std::move(completion), work.insert_timer);
 }
 
 void TraceProcessor::write_finished(std::string trace_key, td::Status status, RedisWriteBatch batch) {

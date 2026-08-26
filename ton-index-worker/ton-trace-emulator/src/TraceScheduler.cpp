@@ -431,7 +431,6 @@ void TraceEmulatorScheduler::commit_finalized_block(
 
         auto trace_root_tx_hash = trace.root_tx_hash;
         auto measurement = std::move(patch.measurement);
-        measurement->start_otel_child_span("insert_trace");
         auto P = td::PromiseCreator::lambda([
             SelfId = actor_id(this),
             seqno,

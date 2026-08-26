@@ -218,7 +218,6 @@ void OverlayListener::finish_processing(Trace trace, MeasurementPtr measurement)
     }
     trace.config = mc_data_state_.config_;
     measurement->end_otel_child_span("detect_interfaces");
-    measurement->start_otel_child_span("insert_trace");
     auto P = td::PromiseCreator::lambda([ext_in_msg_hash_norm = trace.ext_in_msg_hash_norm, measurement](td::Result<td::Unit> R) {
         if (R.is_error()) {
             auto error = R.move_as_error();

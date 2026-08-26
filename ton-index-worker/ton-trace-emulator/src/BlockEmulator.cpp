@@ -776,7 +776,6 @@ void ConfirmedBlockEmulator::trace_emulated(Trace trace, MeasurementPtr measurem
     }
     trace.config = config_;
     measurement->end_otel_child_span("detect_interfaces");
-    measurement->start_otel_child_span("insert_trace");
     auto root_hash = trace.root_tx_hash;
     auto P = td::PromiseCreator::lambda([SelfId = actor_id(this), root_hash, label = std::string(finality_label()), measurement](td::Result<ConfirmedTraceSnapshot> R) {
         bool success = true;

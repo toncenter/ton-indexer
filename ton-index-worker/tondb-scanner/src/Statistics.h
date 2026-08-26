@@ -129,6 +129,7 @@ enum Histogram : uint32_t {
   INSERT_BATCH_COMMIT,
 
   EMULATE_TRACE,
+  CLASSIFY_TRACE,
   INSERT_TRACE,
   
   HISTOGRAMS_COUNT
@@ -167,6 +168,7 @@ const std::unordered_map<uint32_t, std::string_view> histogram_names = {
     {INSERT_BATCH_EXEC_STATES, "indexer.insert.batch.exec_states.millis"},
     {INSERT_BATCH_COMMIT, "indexer.insert.batch.commit.millis"},
     {EMULATE_TRACE, "emulator.emulate.trace.millis"},
+    {CLASSIFY_TRACE, "emulator.classify.trace.micros"},
     {INSERT_TRACE, "emulator.insert.trace.millis"},
 };
 
