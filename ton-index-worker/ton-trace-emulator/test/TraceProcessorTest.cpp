@@ -152,6 +152,12 @@ TEST(TraceProcessor, queue_snapshot_accounts_for_pending_updates) {
   ASSERT_EQ(1u, snapshot.scheduled_writes);
   ASSERT_EQ(2u, snapshot.max_slot_queue);
   ASSERT_EQ(std::string("queued"), snapshot.max_slot_trace);
+
+  const auto formatted = format_queue_snapshot(snapshot, 5, traces.size(), 1, 1, 1);
+  ASSERT_TRUE(formatted.find("pending_updates=5") != std::string::npos);
+  ASSERT_TRUE(formatted.find("classifying=1") != std::string::npos);
+  ASSERT_TRUE(formatted.find("classified_waiting_write=1") != std::string::npos);
+  ASSERT_TRUE(formatted.find("active_writes=1") != std::string::npos);
 }
 
 TEST(TraceProcessor, promotion_rewrites_all_action_finalities_and_keeps_content) {

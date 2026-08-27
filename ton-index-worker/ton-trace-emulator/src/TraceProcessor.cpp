@@ -36,6 +36,7 @@ constexpr std::size_t kMaxCachedTraceNodes = 1000;
 constexpr double kCleanupRetrySeconds = 1.0;
 constexpr double kExpirySweepSeconds = 1.0;
 constexpr double kQueueFullLogIntervalSeconds = 5.0;
+constexpr double kQueueStatsLogIntervalSeconds = 10.0;
 
 constexpr const char* kInvalidatedTraceChannel = "invalidated_traces";
 constexpr const char* kStreamingTransactionsChannel = "streaming_transactions";
@@ -402,6 +403,32 @@ TraceProcessorQueueSnapshot collect_queue_snapshot(const std::unordered_map<std:
     }
   }
   return snapshot;
+}
+
+std::string format_queue_snapshot(const TraceProcessorQueueSnapshot& snapshot, std::size_t pending_updates,
+                                  std::size_t trace_slots, std::size_t active_writes,
+                                  std::size_t ready_general_entries, std::size_t ready_write_entries) {
+  const auto accounted_updates = snapshot.queued_updates + snapshot.classifying +
+                                 snapshot.classified_waiting_write + snapshot.in_flight_updates;
+  std::ostringstream result;
+  result << "pending_updates=" << pending_updates
+         << " accounted_updates=" << accounted_updates
+         << " trace_slots=" << trace_slots
+         << " queued_updates=" << snapshot.queued_updates
+         << " classifying=" << snapshot.classifying
+         << " classified_waiting_write=" << snapshot.classified_waiting_write
+         << " in_flight_updates=" << snapshot.in_flight_updates
+         << " in_flight_cleanups=" << snapshot.in_flight_cleanups
+         << " cleanup_requested=" << snapshot.cleanup_requested
+         << " promotions_waiting_write=" << snapshot.promotions_waiting_write
+         << " active_writes=" << active_writes
+         << " scheduled_general=" << snapshot.scheduled_general
+         << " scheduled_writes=" << snapshot.scheduled_writes
+         << " ready_general_entries=" << ready_general_entries
+         << " ready_write_entries=" << ready_write_entries
+         << " max_slot_queue=" << snapshot.max_slot_queue
+         << " max_slot_trace=" << snapshot.max_slot_trace;
+  return result.str();
 }
 
 void real_root_applied(TraceSlot& slot) {
@@ -983,6 +1010,7 @@ struct TraceProcessor::Impl {
   std::size_t pending_updates{0};
   std::size_t active_writes{0};
   td::Timestamp next_queue_full_log;
+  td::Timestamp next_queue_stats_log;
 };
 
 TraceProcessor::TraceProcessor(const std::string& redis_dsn, TraceRetentionConfig retention,
@@ -1142,25 +1170,10 @@ void TraceProcessor::enqueue_trace_patch(Trace trace, bool confirmed, td::Promis
     if (!impl_->next_queue_full_log || impl_->next_queue_full_log.is_in_past()) {
       impl_->next_queue_full_log = td::Timestamp::in(kQueueFullLogIntervalSeconds);
       const auto snapshot = collect_queue_snapshot(impl_->traces);
-      const auto accounted_updates = snapshot.queued_updates + snapshot.classifying +
-                                     snapshot.classified_waiting_write + snapshot.in_flight_updates;
-      LOG(ERROR) << "Trace processor queue is full: pending_updates=" << impl_->pending_updates
-                 << " accounted_updates=" << accounted_updates
-                 << " trace_slots=" << impl_->traces.size()
-                 << " queued_updates=" << snapshot.queued_updates
-                 << " classifying=" << snapshot.classifying
-                 << " classified_waiting_write=" << snapshot.classified_waiting_write
-                 << " in_flight_updates=" << snapshot.in_flight_updates
-                 << " in_flight_cleanups=" << snapshot.in_flight_cleanups
-                 << " cleanup_requested=" << snapshot.cleanup_requested
-                 << " promotions_waiting_write=" << snapshot.promotions_waiting_write
-                 << " active_writes=" << impl_->active_writes
-                 << " scheduled_general=" << snapshot.scheduled_general
-                 << " scheduled_writes=" << snapshot.scheduled_writes
-                 << " ready_general_entries=" << impl_->ready_traces.size()
-                 << " ready_write_entries=" << impl_->ready_writes.size()
-                 << " max_slot_queue=" << snapshot.max_slot_queue
-                 << " max_slot_trace=" << snapshot.max_slot_trace;
+      LOG(ERROR) << "Trace processor queue is full: "
+                 << format_queue_snapshot(snapshot, impl_->pending_updates, impl_->traces.size(),
+                                          impl_->active_writes, impl_->ready_traces.size(),
+                                          impl_->ready_writes.size());
     }
     completion.set_error(
         td::Status::Error("Trace processor queue is full (" + std::to_string(kMaxPendingTraceUpdates) + ")"));
@@ -1764,6 +1777,14 @@ void TraceProcessor::promote_confirmed(std::vector<ConfirmedTraceSnapshot> snaps
 
 void TraceProcessor::alarm() {
   auto now = td::Timestamp::now();
+  if (!impl_->next_queue_stats_log || impl_->next_queue_stats_log.is_in_past(now)) {
+    impl_->next_queue_stats_log = td::Timestamp::in(kQueueStatsLogIntervalSeconds);
+    const auto snapshot = collect_queue_snapshot(impl_->traces);
+    LOG(INFO) << "Trace processor queues: "
+              << format_queue_snapshot(snapshot, impl_->pending_updates, impl_->traces.size(), impl_->active_writes,
+                                       impl_->ready_traces.size(), impl_->ready_writes.size());
+  }
+
   std::vector<std::pair<std::string, TraceCleanupMode>> expired;
   for (const auto& [trace_key, slot] : impl_->traces) {
     if (slot.cleanup_requested || !slot.deadline || !slot.deadline.is_in_past(now)) {
