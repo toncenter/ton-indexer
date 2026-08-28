@@ -112,12 +112,22 @@ public:
                         auto msg = trans.r1.in_msg->prefetch_ref();
                         tx_info.in_msg_hash = msg->get_hash().bits();
                         auto message_cs = vm::load_cell_slice(trans.r1.in_msg->prefetch_ref());
-                        if (block::gen::t_CommonMsgInfo.get_tag(message_cs) == block::gen::CommonMsgInfo::ext_in_msg_info) {
+                        auto msg_tag = block::gen::t_CommonMsgInfo.get_tag(message_cs);
+                        if (msg_tag == block::gen::CommonMsgInfo::ext_in_msg_info) {
                             tx_info.trace_ids = TraceIds{
                                 .root_tx_hash = tx_info.hash,
                                 .ext_in_msg_hash = msg->get_hash().bits(),
                                 .ext_in_msg_hash_norm = ext_in_msg_get_normalized_hash(msg).move_as_ok()
                             };
+                        } else if (msg_tag == block::gen::CommonMsgInfo::int_msg_info) {
+                            block::gen::CommonMsgInfo::Record_int_msg_info msg_info;
+                            block::StdAddress source;
+                            if (tlb::unpack(message_cs, msg_info) &&
+                                block::tlb::t_MsgAddressInt.extract_std_address(msg_info.src, source) &&
+                                source.workchain == ton::masterchainId && source.addr.is_zero()) {
+                                // Protocol-generated masterchain messages have no external-message trace root.
+                                continue;
+                            }
                         }
                     } else {
                         LOG(ERROR) << "Ordinary transaction without in_msg, skipping";
