@@ -1,6 +1,9 @@
 #pragma once
 #include <any>
 #include <cstdint>
+#include <memory>
+#include <mutex>
+#include <unordered_map>
 #include <td/actor/actor.h>
 #include <emulator/transaction-emulator.h>
 #include "DbScanner.h"
@@ -199,26 +202,27 @@ struct EmulationMessage {
     size_t depth{1};
 };
 
+struct ShardEmulationState;
+
 class TraceEmulatorImpl: public td::actor::Actor {
 private:
     ton::BlockId block_id_;
-    EmulationContext& context_;
-    
-    std::unordered_map<block::StdAddress, td::actor::ActorOwn<TraceEmulatorImpl>>& emulator_actors_;
-    std::mutex& emulator_actors_mutex_;
+    std::shared_ptr<EmulationContext> context_;
+    std::weak_ptr<ShardEmulationState> shard_emulation_state_;
 
     std::shared_ptr<emulator::TransactionEmulator> emulator_;
 
     std::unordered_map<TraceNode *, std::pair<std::unique_ptr<TraceNode>, td::Promise<std::unique_ptr<TraceNode>>>> result_promises_;
 public:
-    TraceEmulatorImpl(ton::BlockId block_id, EmulationContext& context,
-        std::unordered_map<block::StdAddress, td::actor::ActorOwn<TraceEmulatorImpl>>& emulator_actors, std::mutex& emulator_actors_mutex)
-        : block_id_(block_id), context_(context), emulator_actors_(emulator_actors), emulator_actors_mutex_(emulator_actors_mutex) {
-            emulator_ = std::make_shared<emulator::TransactionEmulator>(context.get_config(), 0);
-            auto libraries_root = context.get_config()->get_libraries_root();
-            emulator_->set_libs(vm::Dictionary(libraries_root, 256));
-            emulator_->set_ignore_chksig(context.get_ignore_chksig());
-            context.set_ignore_chksig(false); // ignore chksig only on root tx
+    TraceEmulatorImpl(ton::BlockId block_id, std::shared_ptr<EmulationContext> context,
+                      std::weak_ptr<ShardEmulationState> shard_emulation_state)
+        : block_id_(block_id), context_(std::move(context)),
+          shard_emulation_state_(std::move(shard_emulation_state)) {
+        emulator_ = std::make_shared<emulator::TransactionEmulator>(context_->get_config(), 0);
+        auto libraries_root = context_->get_config()->get_libraries_root();
+        emulator_->set_libs(vm::Dictionary(libraries_root, 256));
+        // Ignore chksig only on the root transaction.
+        emulator_->set_ignore_chksig(context_->consume_ignore_chksig());
     }
 
     void emulate(td::Ref<vm::Cell> in_msg, block::StdAddress address, ton::LogicalTime lt, size_t depth,
@@ -229,25 +233,34 @@ private:
     void child_error(TraceNode *parent_node_raw, td::Status error);
 };
 
+struct ShardEmulationState {
+    std::mutex mutex;
+    std::unordered_map<block::StdAddress, td::actor::ActorOwn<TraceEmulatorImpl>> actors;
+    bool cancelled{false};
+};
+
 class ShardBlockEmulator: public td::actor::Actor {
 private:
     ton::BlockId block_id_;
-    EmulationContext& context_;
+    std::shared_ptr<EmulationContext> context_;
     std::vector<EmulationMessage> in_msgs_; // only msgs to accounts in current shard
     td::Promise<std::vector<std::unique_ptr<TraceNode>>> promise_;
 
-    std::unordered_map<block::StdAddress, td::actor::ActorOwn<TraceEmulatorImpl>> emulator_actors_;
-    std::mutex emulator_actors_mutex_;
+    std::shared_ptr<ShardEmulationState> shard_emulation_state_;
     std::vector<std::unique_ptr<TraceNode>> result_{};
 
     MeasurementPtr measurement_;
 public:
-    ShardBlockEmulator(ton::BlockId block_id, EmulationContext& context, std::vector<EmulationMessage> in_msgs,
-                    td::Promise<std::vector<std::unique_ptr<TraceNode>>> promise, const MeasurementPtr& measurement)
-        : block_id_(block_id), context_(context), in_msgs_(std::move(in_msgs)), promise_(std::move(promise)), measurement_(measurement) {
+    ShardBlockEmulator(ton::BlockId block_id, std::shared_ptr<EmulationContext> context,
+                       std::vector<EmulationMessage> in_msgs,
+                       td::Promise<std::vector<std::unique_ptr<TraceNode>>> promise,
+                       const MeasurementPtr& measurement)
+        : block_id_(block_id), context_(std::move(context)), in_msgs_(std::move(in_msgs)), promise_(std::move(promise)),
+          shard_emulation_state_(std::make_shared<ShardEmulationState>()), measurement_(measurement) {
     }
 
     void start_up() override;
+    void tear_down() override;
 
 private:
     void error(td::Status error);
@@ -262,7 +275,7 @@ struct ShardIdHash {
 
 class MasterchainBlockEmulator: public td::actor::Actor {
     std::shared_ptr<emulator::TransactionEmulator> emulator_;
-    EmulationContext& context_;
+    std::shared_ptr<EmulationContext> context_;
     std::vector<EmulationMessage> in_msgs_;
     td::Promise<std::vector<std::unique_ptr<TraceNode>>> promise_;
     std::vector<std::unique_ptr<TraceNode>> result_{};
@@ -273,10 +286,11 @@ class MasterchainBlockEmulator: public td::actor::Actor {
     MeasurementPtr measurement_;
 
 public:
-    MasterchainBlockEmulator(EmulationContext& context, std::vector<EmulationMessage> in_msgs,
+    MasterchainBlockEmulator(std::shared_ptr<EmulationContext> context, std::vector<EmulationMessage> in_msgs,
                             td::Promise<std::vector<std::unique_ptr<TraceNode>>> promise,
                             const MeasurementPtr& measurement)
-        : context_(context), in_msgs_(std::move(in_msgs)), promise_(std::move(promise)), measurement_(measurement) {
+        : context_(std::move(context)), in_msgs_(std::move(in_msgs)), promise_(std::move(promise)),
+          measurement_(measurement) {
     }
 
     void start_up() override;
@@ -298,7 +312,7 @@ private:
     td::Bits256 rand_seed_;
     MeasurementPtr measurement_;
 
-    std::unique_ptr<EmulationContext> context_;
+    std::shared_ptr<EmulationContext> context_;
 
     td::Timer timer_{false};
 public:

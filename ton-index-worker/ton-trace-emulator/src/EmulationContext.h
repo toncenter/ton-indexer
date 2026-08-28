@@ -1,4 +1,5 @@
 #pragma once
+#include <atomic>
 #include <vector>
 #include <map>
 #include <mutex>
@@ -31,7 +32,7 @@ private:
     std::multimap<block::StdAddress, block::Account, AddrCmp> emulated_accounts_;
     std::mutex emulated_accounts_mutex_;
     std::shared_ptr<block::ConfigInfo> config_;
-    bool ignore_chksig_{false};
+    std::atomic<bool> ignore_chksig_{false};
     td::Bits256 rand_seed_;
     const size_t txs_count_limit_{256};
     const size_t trace_depth_limit_{32};
@@ -131,12 +132,8 @@ public:
         return config_;
     }
 
-    bool get_ignore_chksig() const {
-        return ignore_chksig_;
-    }
-
-    void set_ignore_chksig(bool ignore_chksig) {
-        ignore_chksig_ = ignore_chksig;
+    bool consume_ignore_chksig() {
+        return ignore_chksig_.exchange(false);
     }
 
     const std::vector<ShardState>& get_shard_states() const {

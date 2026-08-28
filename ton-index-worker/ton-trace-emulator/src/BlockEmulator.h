@@ -101,7 +101,7 @@ private:
                             std::vector<std::unique_ptr<TraceNode>> child_nodes,
                             TraceIds trace_ids,
                             std::vector<EmuRequest> reqs,
-                            std::unique_ptr<EmulationContext> context,
+                            std::shared_ptr<EmulationContext> context,
                             MeasurementPtr measurement);
     void trace_error(td::Bits256 tx_hash, td::Bits256 trace_root_tx_hash, td::Status error, MeasurementPtr measurement);
     void trace_interfaces_error(td::Bits256 trace_root_tx_hash, td::Status error, MeasurementPtr measurement);
@@ -150,7 +150,7 @@ private:
                            std::vector<std::unique_ptr<TraceNode>> child_nodes,
                            TraceIds trace_ids,
                            std::vector<EmuRequest> reqs,
-                           std::unique_ptr<EmulationContext> context,
+                           std::shared_ptr<EmulationContext> context,
                            MeasurementPtr measurement);
     void trace_error(td::Bits256 tx_hash, td::Bits256 trace_root_tx_hash, td::Status error, MeasurementPtr measurement);
     void trace_interfaces_error(td::Bits256 trace_root_tx_hash, td::Status error, MeasurementPtr measurement);

@@ -350,7 +350,8 @@ void McBlockEmulator::emulate_traces(MeasurementPtr measurement) {
             continue;
         }
 
-        auto context = std::make_unique<EmulationContext>(mc_data_state_.shard_blocks_[0].handle->id().id.seqno, mc_data_state_.config_);
+        auto context = std::make_shared<EmulationContext>(mc_data_state_.shard_blocks_[0].handle->id().id.seqno,
+                                                          mc_data_state_.config_);
         for (const auto& shard_state : mc_data_state_.shard_blocks_) {
             auto blkid = shard_state.handle->id().id;
             auto timestamp = shard_state.handle->unix_time();
@@ -359,8 +360,6 @@ void McBlockEmulator::emulate_traces(MeasurementPtr measurement) {
             context->add_shard_state(blkid, timestamp, lt, shard_state.block_state);
         }
         context->increase_seqno(3);
-        EmulationContext& context_ref = *context;
-
         std::vector<EmulationMessage> msgs_to_emulate;
         msgs_to_emulate.reserve(reqs.size());
         for (auto& r : reqs) {
@@ -371,7 +370,7 @@ void McBlockEmulator::emulate_traces(MeasurementPtr measurement) {
         auto P = td::PromiseCreator::lambda([SelfId = actor_id(this),
                                              parent_node = std::move(parent_node),
                                              tx_info = tx,
-                                             context = std::move(context),
+                                             context,
                                              reqs = std::move(reqs),
                                              tx_measurement](td::Result<std::vector<std::unique_ptr<TraceNode>>> R) mutable {
             if (R.is_error()) {
@@ -384,7 +383,9 @@ void McBlockEmulator::emulate_traces(MeasurementPtr measurement) {
             }
         });
 
-        td::actor::create_actor<MasterchainBlockEmulator>("MasterchainBlockEmulator", context_ref, std::move(msgs_to_emulate), std::move(P), tx_measurement).release();
+        td::actor::create_actor<MasterchainBlockEmulator>("MasterchainBlockEmulator", context,
+                                                           std::move(msgs_to_emulate), std::move(P), tx_measurement)
+            .release();
     }
     finish_block_if_done();
 }
@@ -393,7 +394,7 @@ void McBlockEmulator::children_emulated(std::unique_ptr<TraceNode> parent_node,
                                         std::vector<std::unique_ptr<TraceNode>> child_nodes,
                                         TraceIds trace_ids,
                                         std::vector<EmuRequest> reqs,
-                                        std::unique_ptr<EmulationContext> context,
+                                        std::shared_ptr<EmulationContext> context,
                                         MeasurementPtr measurement) {
     for (size_t i = 0; i < child_nodes.size(); ++i) {
         auto& slot = reqs[i];
@@ -607,14 +608,12 @@ void ConfirmedBlockEmulator::emulate_traces(MeasurementPtr measurement) {
             continue;
         }
 
-        auto context = std::make_unique<EmulationContext>(config_->block_id.id.seqno + 1, config_);
+        auto context = std::make_shared<EmulationContext>(config_->block_id.id.seqno + 1, config_);
         for (const auto& snapshot : shard_states_snapshot_) {
             auto lt = snapshot.logical_time - snapshot.logical_time % block::ConfigInfo::get_lt_align();
             context->add_shard_state(snapshot.blkid, snapshot.timestamp, lt, snapshot.state);
         }
         context->increase_seqno(3);
-        EmulationContext& context_ref = *context;
-
         std::vector<EmulationMessage> msgs_to_emulate;
         msgs_to_emulate.reserve(reqs.size());
         for (auto& r : reqs) {
@@ -625,7 +624,7 @@ void ConfirmedBlockEmulator::emulate_traces(MeasurementPtr measurement) {
         auto P = td::PromiseCreator::lambda([SelfId = actor_id(this),
                                              parent_node = std::move(parent_node),
                                              tx_info = tx,
-                                             context = std::move(context),
+                                             context,
                                              reqs = std::move(reqs),
                                              tx_measurement](td::Result<std::vector<std::unique_ptr<TraceNode>>> R) mutable {
             if (R.is_error()) {
@@ -639,7 +638,7 @@ void ConfirmedBlockEmulator::emulate_traces(MeasurementPtr measurement) {
         });
 
         auto actor_name = PSLICE() << finality_label() << "TailEmulator";
-        td::actor::create_actor<MasterchainBlockEmulator>(actor_name, context_ref,
+        td::actor::create_actor<MasterchainBlockEmulator>(actor_name, context,
                                                           std::move(msgs_to_emulate), std::move(P), tx_measurement)
             .release();
     }
@@ -698,7 +697,7 @@ void ConfirmedBlockEmulator::children_emulated(std::unique_ptr<TraceNode> parent
                                                std::vector<std::unique_ptr<TraceNode>> child_nodes,
                                                TraceIds trace_ids,
                                                std::vector<EmuRequest> reqs,
-                                               std::unique_ptr<EmulationContext> context,
+                                               std::shared_ptr<EmulationContext> context,
                                                MeasurementPtr measurement) {
     for (size_t i = 0; i < child_nodes.size(); ++i) {
         auto& slot = reqs[i];
