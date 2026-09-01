@@ -134,14 +134,14 @@ return 1
 //
 // idx_pending is the crash marker: the (key,member) pairs this write will ZADD, netstring-framed
 // ("<len>:<key><len>:<member>") because keys and members can hold raw contract bytes
-// (dns_entries.domain). Set before the first zset write, cleared after the mirror HSET — so
-// after a crash every zset entry of the row is in the mirror or in the marker, and the rebuild
+// (dns_entries.domain). Set before the first zset write, cleared after the snapshot HSET — so
+// after a crash every zset entry of the row is in the snapshot or in the marker, and the rebuild
 // script can find the leftovers. A marker already set on entry means an earlier write crashed
 // here: return -1, touch nothing. C++ reruns the row through kvrocks_set_indexed_rebuild_script.
 //
-// ARGV[7] is the expected idx_rev. '' = row without idx_rev yet: check the whole mirror against
+// ARGV[7] is the expected idx_rev. '' = row without idx_rev yet: check the whole snapshot against
 // the old-pairs ARGV section. Otherwise one HGET idx_rev is enough — idx_count and idx_rev go in
-// a single HSET, so same rev means same mirror. The rev moves only on a non-empty diff, so
+// a single HSET, so same rev means same snapshot. The rev moves only on a non-empty diff, so
 // no-op writes don't trip concurrent writers. Cap is 1e14 (LuaJIT number formatting),
 // unreachable in practice.
 //
@@ -153,12 +153,12 @@ return 1
 //       next added_count=added index keys
 // ARGV: [1]=seqno [2]=payload [3]=old_count [4]=removed_count [5]=added_count [6]=new_count
 //       [7]=expected_rev ('' = row without idx_rev)
-//       only then: [8 .. 7+2*old_count]=(old_key,old_member) mirror pairs; duplicates from
+//       only then: [8 .. 7+2*old_count]=(old_key,old_member) snapshot pairs; duplicates from
 //       build_indexes are possible (a signer who is also a proposer) — send them as-is
 //       next removed_count=removed members (aligned with the removed KEYS)
 //       next 2*added_count=(added_member,added_score) (aligned with the added KEYS; the marker
 //       takes its key from KEYS, its member from here)
-//       last 2*new_count=(new_key,new_member) mirror pairs, build_indexes order; new_count
+//       last 2*new_count=(new_key,new_member) snapshot pairs, build_indexes order; new_count
 //       (ARGV[6]) is the deduped length, not old_count-removed+added — a duplicate pair changes
 //       multiplicity without being an addition or a removal
 const std::string& kvrocks_set_indexed_current_script() {
@@ -204,7 +204,7 @@ end
 local old_pairs_len = legacy and (2 * old_count) or 0
 local removed_base = 7 + old_pairs_len
 local added_base = removed_base + removed_count
-local mirror_base = added_base + 2 * added_count
+local snapshot_base = added_base + 2 * added_count
 local has_diff = removed_count > 0 or added_count > 0
 
 if has_diff then
@@ -251,9 +251,9 @@ if has_diff then
   local fields = {'idx_count', new_count, 'idx_rev', next_rev}
   for i = 1, new_count do
     fields[#fields + 1] = 'idx_key_' .. i
-    fields[#fields + 1] = ARGV[mirror_base + 2 * i - 1]
+    fields[#fields + 1] = ARGV[snapshot_base + 2 * i - 1]
     fields[#fields + 1] = 'idx_member_' .. i
-    fields[#fields + 1] = ARGV[mirror_base + 2 * i]
+    fields[#fields + 1] = ARGV[snapshot_base + 2 * i]
   end
   redis.call('HSET', KEYS[1], unpack(fields))
   for i = new_count + 1, old_count do
@@ -311,7 +311,7 @@ end
 local old_pairs_len = legacy and (2 * old_count) or 0
 local removed_base = 7 + old_pairs_len
 local added_base = removed_base + removed_count
-local mirror_base = added_base + 2 * added_count
+local snapshot_base = added_base + 2 * added_count
 local has_diff = removed_count > 0 or added_count > 0
 
 if has_diff then
@@ -358,9 +358,9 @@ if has_diff then
   local fields = {'idx_count', new_count, 'idx_rev', next_rev}
   for i = 1, new_count do
     fields[#fields + 1] = 'idx_key_' .. i
-    fields[#fields + 1] = ARGV[mirror_base + 2 * i - 1]
+    fields[#fields + 1] = ARGV[snapshot_base + 2 * i - 1]
     fields[#fields + 1] = 'idx_member_' .. i
-    fields[#fields + 1] = ARGV[mirror_base + 2 * i]
+    fields[#fields + 1] = ARGV[snapshot_base + 2 * i]
   end
   redis.call('HSET', KEYS[1], unpack(fields))
   for i = new_count + 1, old_count do
@@ -396,7 +396,7 @@ local legacy = expected_rev == ''
 local old_pairs_len = legacy and (2 * old_count) or 0
 local removed_base = 7 + old_pairs_len
 local added_base = removed_base + removed_count
-local mirror_base = added_base + 2 * added_count
+local snapshot_base = added_base + 2 * added_count
 local has_diff = removed_count > 0 or added_count > 0
 
 if has_diff then
@@ -433,9 +433,9 @@ local fields = {
 }
 for i = 1, new_count do
   fields[#fields + 1] = 'idx_key_' .. i
-  fields[#fields + 1] = ARGV[mirror_base + 2 * i - 1]
+  fields[#fields + 1] = ARGV[snapshot_base + 2 * i - 1]
   fields[#fields + 1] = 'idx_member_' .. i
-  fields[#fields + 1] = ARGV[mirror_base + 2 * i]
+  fields[#fields + 1] = ARGV[snapshot_base + 2 * i]
 end
 redis.call('HSET', KEYS[1], unpack(fields))
 
@@ -449,25 +449,25 @@ return 1
 }
 
 // Recovery script, run when the marker was live at pre-read: an earlier write crashed between
-// setting the marker and committing the mirror. ZREMs everything from the old mirror or the
+// setting the marker and committing the snapshot. ZREMs everything from the old snapshot or the
 // marker that the new list doesn't want, then ZADDs the full new list — the row comes out right
 // no matter how far the crashed write got.
-// Guards: full mirror CAS, plus the marker must still equal ARGV[#ARGV] (the bytes read at
+// Guards: full snapshot CAS, plus the marker must still equal ARGV[#ARGV] (the bytes read at
 // pre-read); anything else returns -1 like a normal conflict.
 // The marker is re-armed only after the ZREM loop and before ZADD. Overwriting it earlier would
 // drop the old marker's entries, and a crash would leave them orphaned.
 // Serves rows from both _current and _existing: a marker means the row already passed its seqno
 // guard, so the lenient seqno check here is fine.
-// idx_rev comes from a fresh HGET — this script always does the full mirror check.
+// idx_rev comes from a fresh HGET — this script always does the full snapshot check.
 // KEYS: [1]=entity [2]=payload
-//       [3 .. 2+remove_count]=keys to ZREM (old mirror plus marker, minus new)
-//       next new_count=keys for every new entry (ZADD + mirror)
+//       [3 .. 2+remove_count]=keys to ZREM (old snapshot plus marker, minus new)
+//       next new_count=keys for every new entry (ZADD + snapshot)
 // ARGV: [1]=seqno [2]=payload [3]=old_count [4]=remove_count [5]=new_count [6]=rearm_count
-//       [7 .. 6+2*old_count]=(old_key,old_member) pairs, re-read from the mirror, for CAS
+//       [7 .. 6+2*old_count]=(old_key,old_member) pairs, re-read from the snapshot, for CAS
 //       next remove_count=members to ZREM (aligned with the remove KEYS)
 //       next 2*new_count=(new_member,new_score) (aligned with the new KEYS): ZADD input and
-//       mirror content
-//       next 2*rearm_count=(rearm_key,rearm_member): new entries minus the old mirror, plain
+//       snapshot content
+//       next 2*rearm_count=(rearm_key,rearm_member): new entries minus the old snapshot, plain
 //       string values for the marker — no KEYS alignment
 //       last ARGV=the idx_pending bytes the marker guard expects
 const std::string& kvrocks_set_indexed_rebuild_script() {
@@ -3478,7 +3478,7 @@ void KvrocksBatchWriter::queue_indexed_write_rebuild(const IndexedWrite& write,
     }
   }
 
-  // ZREM everything the old mirror or the marker lists that the new list doesn't want —
+  // ZREM everything the old snapshot or the marker lists that the new list doesn't want —
   // leftovers of a crashed ZADD or ZREM alike.
   std::set<std::pair<std::string, std::string>> remove_set;
   std::vector<std::pair<std::string, std::string>> remove_list;
@@ -3497,8 +3497,8 @@ void KvrocksBatchWriter::queue_indexed_write_rebuild(const IndexedWrite& write,
     consider_remove(pending_index.key, pending_index.member);
   }
 
-  // Re-arm list = new entries minus the old mirror: what this attempt ZADDs beyond what the
-  // mirror already records.
+  // Re-arm list = new entries minus the old snapshot: what this attempt ZADDs beyond what the
+  // snapshot already records.
   std::vector<const KvrocksIndexEntry*> rearm_list;
   for (const auto* index : new_indexes) {
     if (old_set.find({index->key, index->member}) == old_set.end()) {
@@ -3605,7 +3605,7 @@ KvrocksBatchWriter::OldIndexSnapshotReadResult KvrocksBatchWriter::read_old_inde
         result.pending_indexes[offset] = parse_kvrocks_pending_list(*count_and_pending[1], key);
       } catch (const std::exception& e) {
         LOG(ERROR) << "Kvrocks idx_pending marker corrupt for " << key
-                   << ", degrading to mirror-only rebuild: " << e.what();
+                   << ", degrading to snapshot-only rebuild: " << e.what();
         result.pending_indexes[offset].clear();
       }
     }
