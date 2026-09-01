@@ -492,6 +492,7 @@ public:
 
   void write();
   double exec_elapsed_millis() const;
+  std::size_t rebuild_count() const;
 
 private:
   struct IndexedWrite {
@@ -507,6 +508,21 @@ private:
   struct OldIndexSnapshotReadResult {
     std::vector<std::vector<KvrocksIndexSnapshotEntry>> snapshots;
     std::vector<std::size_t> conflict_offsets;
+    // idx_pending as read at pre-read: pending[] flags the row for the rebuild path,
+    // pending_indexes[] is the parsed marker (empty on parse failure), pending_raw[] the exact
+    // bytes the rebuild script matches the marker against.
+    std::vector<bool> pending;
+    std::vector<std::vector<KvrocksIndexSnapshotEntry>> pending_indexes;
+    std::vector<std::string> pending_raw;
+    // idx_rev read at pre-read; "" if the row has none yet — then queue_indexed_write sends
+    // the old-pairs CAS section instead of just the rev.
+    std::vector<std::string> rev;
+  };
+
+  // Offsets into the pipeline just flushed, in command order.
+  struct FlushResult {
+    std::vector<std::size_t> conflict_offsets;
+    std::vector<std::size_t> success_offsets;
   };
 
   void write_once();
@@ -523,14 +539,17 @@ private:
                          const std::vector<KvrocksIndexEntry>& indexes, bool read_old_indexes);
   void queue_indexed_writes(const std::vector<IndexedWrite>& writes);
   void queue_indexed_write(const IndexedWrite& write, const std::vector<KvrocksIndexSnapshotEntry>& old_indexes,
-                           bool auto_flush = true, bool count_queued = true);
+                           const std::string& rev = "", bool auto_flush = true, bool count_queued = true);
+  void queue_indexed_write_rebuild(const IndexedWrite& write, const std::vector<KvrocksIndexSnapshotEntry>& old_indexes,
+                                   const std::vector<KvrocksIndexSnapshotEntry>& pending_indexes,
+                                   const std::string& pending_raw, bool auto_flush = true, bool count_queued = true);
   OldIndexSnapshotReadResult read_old_index_snapshots(const std::vector<IndexedWrite>& writes,
                                                        const std::vector<std::size_t>& write_indexes);
   void record_pending_command(const std::string& op, const std::string& key, std::uint32_t source_mc_seqno,
                               bool count_queued = true);
   void reset_pipeline();
   void flush_if_needed();
-  std::vector<std::size_t> flush(bool throw_on_snapshot_conflict);
+  FlushResult flush(bool throw_on_snapshot_conflict);
   void flush();
 
   sw::redis::Redis& redis_;
@@ -540,6 +559,7 @@ private:
   std::size_t queued_{0};
   std::vector<std::string> pending_debug_;
   double exec_elapsed_millis_{0.0};
+  std::size_t rebuild_count_{0};
 };
 
 void write_batch_with_script_reload(sw::redis::Redis& redis, const StateBatch& batch);
