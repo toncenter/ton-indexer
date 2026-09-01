@@ -789,6 +789,14 @@ func getInterfaces() []Interface {
 				},
 			},
 			{
+				// Telegram wallet: an immutable trampoline that jumps to the code stored in config[-123],
+				// so the code hash is the same for all wallet revisions and there are no get-methods in the code itself
+				Name: "tg_wallet",
+				CodeHashes: []string{
+					"kUmuUcHkaJcQzr94MCl7Fqz7rbNjqSClN4k+f/7sp2g=",
+				},
+			},
+			{
 				Name: "wallet_highload_v1r1",
 				CodeHashes: []string{
 					"2M27t58sXKpnesRQdwvgNRviHhJQSG3oXMUqoz3RZIQ=",
@@ -888,6 +896,20 @@ func getInterfaces() []Interface {
 	return interfacesCache
 }
 
+// Get-method ids of contracts whose account code is only a trampoline: the real code with the
+// methods dict lives elsewhere (in config), so there is nothing to parse in the account code and
+// contract_methods stays empty. Taken from the contract sources, kept sorted as method ids read
+// from the database are.
+var trampolineContractMethods = map[string][]uint32{
+	// Telegram wallet (https://github.com/ton-blockchain/tg-wallet-contract): jumps to WalletTg in config[-123]
+	"kUmuUcHkaJcQzr94MCl7Fqz7rbNjqSClN4k+f/7sp2g=": {
+		uint32(tlb.MethodNameHash("get_public_key")),
+		uint32(tlb.MethodNameHash("get_subwallet_id")),
+		uint32(tlb.MethodNameHash("seqno")),
+		uint32(tlb.MethodNameHash("revision")),
+	},
+}
+
 func DetectInterface(codeHash string, methodIDs []uint32) []string {
 	var matchingInterfaces []string
 	interfaces := getInterfaces()
@@ -942,6 +964,12 @@ func MarkAccountStates(states []models.AccountStateFull) error {
 		codeHash := ""
 		if states[i].CodeHash != nil {
 			codeHash = string(*states[i].CodeHash)
+		}
+		if len(methods) == 0 {
+			if known, ok := trampolineContractMethods[codeHash]; ok {
+				methods = slices.Clone(known)
+				states[i].ContractMethods = &methods
+			}
 		}
 		interfaces := DetectInterface(codeHash, methods)
 		states[i].Interfaces = &interfaces
