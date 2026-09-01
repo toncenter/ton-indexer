@@ -148,7 +148,7 @@ return 1
 // Payload and seqno go between ZREM and ZADD: a reader following an index never sees a member
 // with a stale or missing payload.
 //
-// KEYS: [1]=entity [2]=payload
+// KEYS: [1]=row hash [2]=payload
 //       [3 .. 2+removed_count]=removed index keys
 //       next added_count=added index keys
 // ARGV: [1]=seqno [2]=payload [3]=old_count [4]=removed_count [5]=added_count [6]=new_count
@@ -375,8 +375,8 @@ return 1
 }
 
 // KEYS/ARGV layout: same as kvrocks_set_indexed_current_script above, but old_count and
-// removed_count are always 0. The guard is source_mc_seqno: only the commit HSET at the end
-// writes it, so if it is missing the row never committed and a replay just overwrites any
+// removed_count are always 0. The guard is source_mc_seqno: only the final HSET at the end
+// writes it, so if it is missing the row never finished and a replay just overwrites any
 // leftover marker. No idx_pending guard here on purpose — once-writes never retry, a -1 would
 // abort the whole batch. Payload SET comes before ZADD, same reader-visibility reason as above.
 const std::string& kvrocks_set_indexed_once_script() {
@@ -448,8 +448,8 @@ return 1
   return script;
 }
 
-// Recovery script, run when the marker was live at pre-read: an earlier write crashed between
-// setting the marker and committing the snapshot. ZREMs everything from the old snapshot or the
+// Rebuild script, run when the marker was live at pre-read: an earlier write crashed between
+// setting the marker and writing the snapshot. ZREMs everything from the old snapshot or the
 // marker that the new list doesn't want, then ZADDs the full new list — the row comes out right
 // no matter how far the crashed write got.
 // Guards: full snapshot CAS, plus the marker must still equal ARGV[#ARGV] (the bytes read at
@@ -459,7 +459,7 @@ return 1
 // Serves rows from both _current and _existing: a marker means the row already passed its seqno
 // guard, so the lenient seqno check here is fine.
 // idx_rev comes from a fresh HGET — this script always does the full snapshot check.
-// KEYS: [1]=entity [2]=payload
+// KEYS: [1]=row hash [2]=payload
 //       [3 .. 2+remove_count]=keys to ZREM (old snapshot plus marker, minus new)
 //       next new_count=keys for every new entry (ZADD + snapshot)
 // ARGV: [1]=seqno [2]=payload [3]=old_count [4]=remove_count [5]=new_count [6]=rearm_count
@@ -3266,7 +3266,7 @@ void KvrocksBatchWriter::queue_indexed_writes(const std::vector<IndexedWrite>& w
     next_pending_write_indexes.reserve(pending_write_indexes.size());
     std::size_t snapshot_read_conflicts = 0;
     std::size_t script_exec_conflicts = 0;
-    std::size_t pending_recoveries = 0;
+    std::size_t pending_rebuilds = 0;
     std::size_t rebuild_successes = 0;
 
     std::size_t begin = 0;
@@ -3310,7 +3310,7 @@ void KvrocksBatchWriter::queue_indexed_writes(const std::vector<IndexedWrite>& w
         const auto write_index = chunk_write_indexes[offset];
         const bool is_rebuild = snapshot_result.pending[offset];
         if (is_rebuild) {
-          ++pending_recoveries;
+          ++pending_rebuilds;
           queue_indexed_write_rebuild(writes[write_index], snapshot_result.snapshots[offset],
                                       snapshot_result.pending_indexes[offset], snapshot_result.pending_raw[offset],
                                       /*auto_flush=*/false, /*count_queued=*/false);
@@ -3347,10 +3347,10 @@ void KvrocksBatchWriter::queue_indexed_writes(const std::vector<IndexedWrite>& w
       begin = end;
     }
 
-    if (pending_recoveries > 0) {
-      LOG(WARNING) << "Kvrocks idx_pending recovery: " << pending_recoveries
-                   << " row(s) with an in-flight crash marker routed to rebuild on attempt " << attempt
-                   << ", " << rebuild_successes << " committed";
+    if (pending_rebuilds > 0) {
+      LOG(WARNING) << "Kvrocks idx_pending rebuild: " << pending_rebuilds
+                   << " row(s) with a live crash marker routed to the rebuild script on attempt " << attempt
+                   << ", " << rebuild_successes << " succeeded";
     }
     rebuild_count_ += rebuild_successes;
 
