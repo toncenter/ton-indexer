@@ -246,7 +246,7 @@ if has_diff then
   if legacy then
     next_rev = tostring((tonumber(redis.call('HGET', KEYS[1], 'idx_rev')) or 0) + 1)
   else
-    next_rev = tostring(tonumber(expected_rev) + 1)
+    next_rev = tostring((tonumber(expected_rev) or 0) + 1)
   end
   local fields = {'idx_count', new_count, 'idx_rev', next_rev}
   for i = 1, new_count do
@@ -353,7 +353,7 @@ if has_diff then
   if legacy then
     next_rev = tostring((tonumber(redis.call('HGET', KEYS[1], 'idx_rev')) or 0) + 1)
   else
-    next_rev = tostring(tonumber(expected_rev) + 1)
+    next_rev = tostring((tonumber(expected_rev) or 0) + 1)
   end
   local fields = {'idx_count', new_count, 'idx_rev', next_rev}
   for i = 1, new_count do
