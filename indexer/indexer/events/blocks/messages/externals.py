@@ -137,9 +137,46 @@ class WalletV5R1ExternalMessage:
             current_ref = s.load_ref()
             self.payload.append(PayloadMessage(s.load_ref()))
 
+class WalletTgExternalMessage:
+    """
+    Telegram wallet (https://github.com/ton-blockchain/tg-wallet-contract).
+
+    The body is a SignedRequest: the signature goes first (unlike wallet v5, where it is at the
+    end), then the request itself. Messages come either inline (SendOneMessageRequestE) or as a
+    tolk-encoded array<MessageToSend> (SendBulkMessagesRequestE): uint8 len + maybe ref to the
+    first chunk, every chunk being a maybe ref to the next one followed by its items
+    (sendMode:uint8 + ^messageCell).
+    """
+    SEND_ONE_MESSAGE = 0x63896E75
+    SEND_BULK_MESSAGES = 0x73896E75
+    CHANGE_PUBLIC_KEY = 0xFBBA99C8
+
+    def __init__(self, slice: Slice):
+        self.signature = slice.load_bits(512)
+        self.opcode = slice.load_uint(32)
+        if self.opcode not in (self.SEND_ONE_MESSAGE, self.SEND_BULK_MESSAGES, self.CHANGE_PUBLIC_KEY):
+            raise ValueError(f'unknown tg-wallet request: {self.opcode:#010x}')
+        self.subwallet_id = slice.load_uint(32)
+        self.valid_until = slice.load_uint(32)
+        self.seqno = slice.load_uint(32)
+        self.payload = []
+        if self.opcode == self.SEND_ONE_MESSAGE:
+            slice.load_uint(8)  # send mode
+            self.payload.append(PayloadMessage(slice.load_ref()))
+        elif self.opcode == self.SEND_BULK_MESSAGES:
+            slice.load_uint(8)  # number of messages, checked by the contract itself
+            chunk = slice.load_maybe_ref()
+            while chunk is not None:
+                s = chunk.to_slice()
+                chunk = s.load_maybe_ref()
+                for _ in range(s.remaining_refs):
+                    s.load_uint(8)  # send mode
+                    self.payload.append(PayloadMessage(s.load_ref()))
+
 def extract_payload_from_wallet_message(body: bytes) -> tuple[list[PayloadMessage], str|None]:
-    wallets = [WalletV3ExternalMessage, WalletV4ExternalMessage, WalletV5R1ExternalMessage]
-    wallet_types = ["v3", "v4", "v5r1"]
+    # the v3/v4 parsers accept almost any body, so the ones checking an opcode go first
+    wallets = [WalletTgExternalMessage, WalletV3ExternalMessage, WalletV4ExternalMessage, WalletV5R1ExternalMessage]
+    wallet_types = ["tg-wallet", "v3", "v4", "v5r1"]
     external_message = None
     wallet_type = None
     
