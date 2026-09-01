@@ -5,6 +5,7 @@
 #include <cctype>
 #include <iterator>
 #include <limits>
+#include <set>
 #include <sstream>
 #include <stdexcept>
 #include <tuple>
@@ -129,6 +130,37 @@ return 1
   return script;
 }
 
+// KEYS/ARGV layout shared by kvrocks_set_indexed_current_script/_existing/_once.
+//
+// idx_pending is the crash marker: the (key,member) pairs this write will ZADD, netstring-framed
+// ("<len>:<key><len>:<member>") because keys and members can hold raw contract bytes
+// (dns_entries.domain). Set before the first zset write, cleared after the mirror HSET — so
+// after a crash every zset entry of the row is in the mirror or in the marker, and the rebuild
+// script can find the leftovers. A marker already set on entry means an earlier write crashed
+// here: return -1, touch nothing. C++ reruns the row through kvrocks_set_indexed_rebuild_script.
+//
+// ARGV[7] is the expected idx_rev. '' = row without idx_rev yet: check the whole mirror against
+// the old-pairs ARGV section. Otherwise one HGET idx_rev is enough — idx_count and idx_rev go in
+// a single HSET, so same rev means same mirror. The rev moves only on a non-empty diff, so
+// no-op writes don't trip concurrent writers. Cap is 1e14 (LuaJIT number formatting),
+// unreachable in practice.
+//
+// Payload and seqno go between ZREM and ZADD: a reader following an index never sees a member
+// with a stale or missing payload.
+//
+// KEYS: [1]=entity [2]=payload
+//       [3 .. 2+removed_count]=removed index keys
+//       next added_count=added index keys
+// ARGV: [1]=seqno [2]=payload [3]=old_count [4]=removed_count [5]=added_count [6]=new_count
+//       [7]=expected_rev ('' = row without idx_rev)
+//       only then: [8 .. 7+2*old_count]=(old_key,old_member) mirror pairs; duplicates from
+//       build_indexes are possible (a signer who is also a proposer) — send them as-is
+//       next removed_count=removed members (aligned with the removed KEYS)
+//       next 2*added_count=(added_member,added_score) (aligned with the added KEYS; the marker
+//       takes its key from KEYS, its member from here)
+//       last 2*new_count=(new_key,new_member) mirror pairs, build_indexes order; new_count
+//       (ARGV[6]) is the deduped length, not old_count-removed+added — a duplicate pair changes
+//       multiplicity without being an addition or a removal
 const std::string& kvrocks_set_indexed_current_script() {
   static const std::string script = R"(
 local current = redis.call('HGET', KEYS[1], 'source_mc_seqno')
@@ -137,26 +169,56 @@ if current and tonumber(current) > tonumber(ARGV[1]) then
 end
 
 local old_count = tonumber(ARGV[3])
-local idx_count = tonumber(ARGV[4])
-local actual_old_count = tonumber(redis.call('HGET', KEYS[1], 'idx_count') or '0')
-if actual_old_count ~= old_count then
-  return -1
-end
+local removed_count = tonumber(ARGV[4])
+local added_count = tonumber(ARGV[5])
+local new_count = tonumber(ARGV[6])
+local expected_rev = ARGV[7]
+local legacy = expected_rev == ''
 
-for i = 1, old_count do
-  local old_key = KEYS[2 + i]
-  local old_member = ARGV[4 + i]
-  local actual_old_key = redis.call('HGET', KEYS[1], 'idx_key_' .. i)
-  local actual_old_member = redis.call('HGET', KEYS[1], 'idx_member_' .. i)
-  if (not actual_old_key) or actual_old_key ~= old_key or (not actual_old_member) or actual_old_member ~= old_member then
+if legacy then
+  local actual_old_count = tonumber(redis.call('HGET', KEYS[1], 'idx_count') or '0')
+  if actual_old_count ~= old_count then
+    return -1
+  end
+
+  for i = 1, old_count do
+    local old_key = ARGV[7 + 2 * i - 1]
+    local old_member = ARGV[7 + 2 * i]
+    local actual_old_key = redis.call('HGET', KEYS[1], 'idx_key_' .. i)
+    local actual_old_member = redis.call('HGET', KEYS[1], 'idx_member_' .. i)
+    if (not actual_old_key) or actual_old_key ~= old_key or (not actual_old_member) or actual_old_member ~= old_member then
+      return -1
+    end
+  end
+else
+  local actual_rev = redis.call('HGET', KEYS[1], 'idx_rev')
+  if actual_rev ~= expected_rev then
     return -1
   end
 end
 
-for i = 1, old_count do
-  local old_key = KEYS[2 + i]
-  local old_member = ARGV[4 + i]
-  redis.call('ZREM', old_key, old_member)
+if redis.call('HGET', KEYS[1], 'idx_pending') then
+  return -1
+end
+
+local old_pairs_len = legacy and (2 * old_count) or 0
+local removed_base = 7 + old_pairs_len
+local added_base = removed_base + removed_count
+local mirror_base = added_base + 2 * added_count
+local has_diff = removed_count > 0 or added_count > 0
+
+if has_diff then
+  local pending_parts = {}
+  for i = 1, added_count do
+    local pk = KEYS[2 + removed_count + i]
+    local pm = ARGV[added_base + 2 * i - 1]
+    pending_parts[#pending_parts + 1] = #pk .. ':' .. pk .. #pm .. ':' .. pm
+  end
+  redis.call('HSET', KEYS[1], 'idx_pending', table.concat(pending_parts))
+end
+
+for i = 1, removed_count do
+  redis.call('ZREM', KEYS[2 + i], ARGV[removed_base + i])
 end
 
 local first_seen = redis.call('HGET', KEYS[1], 'first_seen_seqno')
@@ -169,26 +231,35 @@ redis.call('HSET', KEYS[1],
   'first_seen_seqno', first_seen)
 redis.call('SET', KEYS[2], ARGV[2])
 
-redis.call('HSET', KEYS[1], 'idx_count', idx_count)
-local key_pos = 3 + old_count
-local arg_pos = 5 + old_count
-for i = 1, idx_count do
-  local idx_key = KEYS[key_pos]
-  local idx_member = ARGV[arg_pos]
-  local idx_score = ARGV[arg_pos + 1]
-  if idx_score == '__first_seen__' then
-    idx_score = first_seen
+for i = 1, added_count do
+  local added_key = KEYS[2 + removed_count + i]
+  local added_member = ARGV[added_base + 2 * i - 1]
+  local added_score = ARGV[added_base + 2 * i]
+  if added_score == '__first_seen__' then
+    added_score = first_seen
   end
-  redis.call('ZADD', idx_key, idx_score, idx_member)
-  redis.call('HSET', KEYS[1],
-    'idx_key_' .. i, idx_key,
-    'idx_member_' .. i, idx_member)
-  key_pos = key_pos + 1
-  arg_pos = arg_pos + 2
+  redis.call('ZADD', added_key, added_score, added_member)
 end
 
-for i = idx_count + 1, old_count do
-  redis.call('HDEL', KEYS[1], 'idx_key_' .. i, 'idx_member_' .. i)
+if has_diff then
+  local next_rev
+  if legacy then
+    next_rev = tostring((tonumber(redis.call('HGET', KEYS[1], 'idx_rev')) or 0) + 1)
+  else
+    next_rev = tostring(tonumber(expected_rev) + 1)
+  end
+  local fields = {'idx_count', new_count, 'idx_rev', next_rev}
+  for i = 1, new_count do
+    fields[#fields + 1] = 'idx_key_' .. i
+    fields[#fields + 1] = ARGV[mirror_base + 2 * i - 1]
+    fields[#fields + 1] = 'idx_member_' .. i
+    fields[#fields + 1] = ARGV[mirror_base + 2 * i]
+  end
+  redis.call('HSET', KEYS[1], unpack(fields))
+  for i = new_count + 1, old_count do
+    redis.call('HDEL', KEYS[1], 'idx_key_' .. i, 'idx_member_' .. i)
+  end
+  redis.call('HDEL', KEYS[1], 'idx_pending')
 end
 
 return 1
@@ -196,6 +267,7 @@ return 1
   return script;
 }
 
+// KEYS/ARGV layout: same as kvrocks_set_indexed_current_script above.
 const std::string& kvrocks_set_indexed_current_existing_script() {
   static const std::string script = R"(
 local current = redis.call('HGET', KEYS[1], 'source_mc_seqno')
@@ -204,26 +276,56 @@ if (not current) or tonumber(current) > tonumber(ARGV[1]) then
 end
 
 local old_count = tonumber(ARGV[3])
-local idx_count = tonumber(ARGV[4])
-local actual_old_count = tonumber(redis.call('HGET', KEYS[1], 'idx_count') or '0')
-if actual_old_count ~= old_count then
-  return -1
-end
+local removed_count = tonumber(ARGV[4])
+local added_count = tonumber(ARGV[5])
+local new_count = tonumber(ARGV[6])
+local expected_rev = ARGV[7]
+local legacy = expected_rev == ''
 
-for i = 1, old_count do
-  local old_key = KEYS[2 + i]
-  local old_member = ARGV[4 + i]
-  local actual_old_key = redis.call('HGET', KEYS[1], 'idx_key_' .. i)
-  local actual_old_member = redis.call('HGET', KEYS[1], 'idx_member_' .. i)
-  if (not actual_old_key) or actual_old_key ~= old_key or (not actual_old_member) or actual_old_member ~= old_member then
+if legacy then
+  local actual_old_count = tonumber(redis.call('HGET', KEYS[1], 'idx_count') or '0')
+  if actual_old_count ~= old_count then
+    return -1
+  end
+
+  for i = 1, old_count do
+    local old_key = ARGV[7 + 2 * i - 1]
+    local old_member = ARGV[7 + 2 * i]
+    local actual_old_key = redis.call('HGET', KEYS[1], 'idx_key_' .. i)
+    local actual_old_member = redis.call('HGET', KEYS[1], 'idx_member_' .. i)
+    if (not actual_old_key) or actual_old_key ~= old_key or (not actual_old_member) or actual_old_member ~= old_member then
+      return -1
+    end
+  end
+else
+  local actual_rev = redis.call('HGET', KEYS[1], 'idx_rev')
+  if actual_rev ~= expected_rev then
     return -1
   end
 end
 
-for i = 1, old_count do
-  local old_key = KEYS[2 + i]
-  local old_member = ARGV[4 + i]
-  redis.call('ZREM', old_key, old_member)
+if redis.call('HGET', KEYS[1], 'idx_pending') then
+  return -1
+end
+
+local old_pairs_len = legacy and (2 * old_count) or 0
+local removed_base = 7 + old_pairs_len
+local added_base = removed_base + removed_count
+local mirror_base = added_base + 2 * added_count
+local has_diff = removed_count > 0 or added_count > 0
+
+if has_diff then
+  local pending_parts = {}
+  for i = 1, added_count do
+    local pk = KEYS[2 + removed_count + i]
+    local pm = ARGV[added_base + 2 * i - 1]
+    pending_parts[#pending_parts + 1] = #pk .. ':' .. pk .. #pm .. ':' .. pm
+  end
+  redis.call('HSET', KEYS[1], 'idx_pending', table.concat(pending_parts))
+end
+
+for i = 1, removed_count do
+  redis.call('ZREM', KEYS[2 + i], ARGV[removed_base + i])
 end
 
 local first_seen = redis.call('HGET', KEYS[1], 'first_seen_seqno')
@@ -236,26 +338,35 @@ redis.call('HSET', KEYS[1],
   'first_seen_seqno', first_seen)
 redis.call('SET', KEYS[2], ARGV[2])
 
-redis.call('HSET', KEYS[1], 'idx_count', idx_count)
-local key_pos = 3 + old_count
-local arg_pos = 5 + old_count
-for i = 1, idx_count do
-  local idx_key = KEYS[key_pos]
-  local idx_member = ARGV[arg_pos]
-  local idx_score = ARGV[arg_pos + 1]
-  if idx_score == '__first_seen__' then
-    idx_score = first_seen
+for i = 1, added_count do
+  local added_key = KEYS[2 + removed_count + i]
+  local added_member = ARGV[added_base + 2 * i - 1]
+  local added_score = ARGV[added_base + 2 * i]
+  if added_score == '__first_seen__' then
+    added_score = first_seen
   end
-  redis.call('ZADD', idx_key, idx_score, idx_member)
-  redis.call('HSET', KEYS[1],
-    'idx_key_' .. i, idx_key,
-    'idx_member_' .. i, idx_member)
-  key_pos = key_pos + 1
-  arg_pos = arg_pos + 2
+  redis.call('ZADD', added_key, added_score, added_member)
 end
 
-for i = idx_count + 1, old_count do
-  redis.call('HDEL', KEYS[1], 'idx_key_' .. i, 'idx_member_' .. i)
+if has_diff then
+  local next_rev
+  if legacy then
+    next_rev = tostring((tonumber(redis.call('HGET', KEYS[1], 'idx_rev')) or 0) + 1)
+  else
+    next_rev = tostring(tonumber(expected_rev) + 1)
+  end
+  local fields = {'idx_count', new_count, 'idx_rev', next_rev}
+  for i = 1, new_count do
+    fields[#fields + 1] = 'idx_key_' .. i
+    fields[#fields + 1] = ARGV[mirror_base + 2 * i - 1]
+    fields[#fields + 1] = 'idx_member_' .. i
+    fields[#fields + 1] = ARGV[mirror_base + 2 * i]
+  end
+  redis.call('HSET', KEYS[1], unpack(fields))
+  for i = new_count + 1, old_count do
+    redis.call('HDEL', KEYS[1], 'idx_key_' .. i, 'idx_member_' .. i)
+  end
+  redis.call('HDEL', KEYS[1], 'idx_pending')
 end
 
 return 1
@@ -263,36 +374,181 @@ return 1
   return script;
 }
 
+// KEYS/ARGV layout: same as kvrocks_set_indexed_current_script above, but old_count and
+// removed_count are always 0. The guard is source_mc_seqno: only the commit HSET at the end
+// writes it, so if it is missing the row never committed and a replay just overwrites any
+// leftover marker. No idx_pending guard here on purpose — once-writes never retry, a -1 would
+// abort the whole batch. Payload SET comes before ZADD, same reader-visibility reason as above.
 const std::string& kvrocks_set_indexed_once_script() {
   static const std::string script = R"(
-local exists = redis.call('EXISTS', KEYS[1])
-if exists ~= 0 then
+local current = redis.call('HGET', KEYS[1], 'source_mc_seqno')
+if current then
   return 0
+end
+
+local old_count = tonumber(ARGV[3])
+local removed_count = tonumber(ARGV[4])
+local added_count = tonumber(ARGV[5])
+local new_count = tonumber(ARGV[6])
+local expected_rev = ARGV[7]
+local legacy = expected_rev == ''
+
+local old_pairs_len = legacy and (2 * old_count) or 0
+local removed_base = 7 + old_pairs_len
+local added_base = removed_base + removed_count
+local mirror_base = added_base + 2 * added_count
+local has_diff = removed_count > 0 or added_count > 0
+
+if has_diff then
+  local pending_parts = {}
+  for i = 1, added_count do
+    local pk = KEYS[2 + removed_count + i]
+    local pm = ARGV[added_base + 2 * i - 1]
+    pending_parts[#pending_parts + 1] = #pk .. ':' .. pk .. #pm .. ':' .. pm
+  end
+  redis.call('HSET', KEYS[1], 'idx_pending', table.concat(pending_parts))
+end
+
+for i = 1, removed_count do
+  redis.call('ZREM', KEYS[2 + i], ARGV[removed_base + i])
+end
+
+redis.call('SET', KEYS[2], ARGV[2])
+
+for i = 1, added_count do
+  local added_key = KEYS[2 + removed_count + i]
+  local added_member = ARGV[added_base + 2 * i - 1]
+  local added_score = ARGV[added_base + 2 * i]
+  if added_score == '__first_seen__' then
+    added_score = ARGV[1]
+  end
+  redis.call('ZADD', added_key, added_score, added_member)
+end
+
+local fields = {
+  'source_mc_seqno', ARGV[1],
+  'first_seen_seqno', ARGV[1],
+  'idx_count', new_count,
+  'idx_rev', '1',
+}
+for i = 1, new_count do
+  fields[#fields + 1] = 'idx_key_' .. i
+  fields[#fields + 1] = ARGV[mirror_base + 2 * i - 1]
+  fields[#fields + 1] = 'idx_member_' .. i
+  fields[#fields + 1] = ARGV[mirror_base + 2 * i]
+end
+redis.call('HSET', KEYS[1], unpack(fields))
+
+if has_diff then
+  redis.call('HDEL', KEYS[1], 'idx_pending')
+end
+
+return 1
+)";
+  return script;
+}
+
+// Recovery script, run when the marker was live at pre-read: an earlier write crashed between
+// setting the marker and committing the mirror. ZREMs everything from the old mirror or the
+// marker that the new list doesn't want, then ZADDs the full new list — the row comes out right
+// no matter how far the crashed write got.
+// Guards: full mirror CAS, plus the marker must still equal ARGV[#ARGV] (the bytes read at
+// pre-read); anything else returns -1 like a normal conflict.
+// The marker is re-armed only after the ZREM loop and before ZADD. Overwriting it earlier would
+// drop the old marker's entries, and a crash would leave them orphaned.
+// Serves rows from both _current and _existing: a marker means the row already passed its seqno
+// guard, so the lenient seqno check here is fine.
+// idx_rev comes from a fresh HGET — this script always does the full mirror check.
+// KEYS: [1]=entity [2]=payload
+//       [3 .. 2+remove_count]=keys to ZREM (old mirror plus marker, minus new)
+//       next new_count=keys for every new entry (ZADD + mirror)
+// ARGV: [1]=seqno [2]=payload [3]=old_count [4]=remove_count [5]=new_count [6]=rearm_count
+//       [7 .. 6+2*old_count]=(old_key,old_member) pairs, re-read from the mirror, for CAS
+//       next remove_count=members to ZREM (aligned with the remove KEYS)
+//       next 2*new_count=(new_member,new_score) (aligned with the new KEYS): ZADD input and
+//       mirror content
+//       next 2*rearm_count=(rearm_key,rearm_member): new entries minus the old mirror, plain
+//       string values for the marker — no KEYS alignment
+//       last ARGV=the idx_pending bytes the marker guard expects
+const std::string& kvrocks_set_indexed_rebuild_script() {
+  static const std::string script = R"(
+local current = redis.call('HGET', KEYS[1], 'source_mc_seqno')
+if current and tonumber(current) > tonumber(ARGV[1]) then
+  return 0
+end
+
+local old_count = tonumber(ARGV[3])
+local remove_count = tonumber(ARGV[4])
+local new_count = tonumber(ARGV[5])
+local rearm_count = tonumber(ARGV[6])
+
+local actual_old_count = tonumber(redis.call('HGET', KEYS[1], 'idx_count') or '0')
+if actual_old_count ~= old_count then
+  return -1
+end
+
+for i = 1, old_count do
+  local old_key = ARGV[6 + 2 * i - 1]
+  local old_member = ARGV[6 + 2 * i]
+  local actual_old_key = redis.call('HGET', KEYS[1], 'idx_key_' .. i)
+  local actual_old_member = redis.call('HGET', KEYS[1], 'idx_member_' .. i)
+  if (not actual_old_key) or actual_old_key ~= old_key or (not actual_old_member) or actual_old_member ~= old_member then
+    return -1
+  end
+end
+
+if redis.call('HGET', KEYS[1], 'idx_pending') ~= ARGV[#ARGV] then
+  return -1
+end
+
+local remove_base = 6 + 2 * old_count
+local new_base = remove_base + remove_count
+local rearm_base = new_base + 2 * new_count
+
+for i = 1, remove_count do
+  redis.call('ZREM', KEYS[2 + i], ARGV[remove_base + i])
+end
+
+local rearm_parts = {}
+for i = 1, rearm_count do
+  local rk = ARGV[rearm_base + 2 * i - 1]
+  local rm = ARGV[rearm_base + 2 * i]
+  rearm_parts[#rearm_parts + 1] = #rk .. ':' .. rk .. #rm .. ':' .. rm
+end
+redis.call('HSET', KEYS[1], 'idx_pending', table.concat(rearm_parts))
+
+local first_seen = redis.call('HGET', KEYS[1], 'first_seen_seqno')
+if not first_seen then
+  first_seen = ARGV[1]
 end
 
 redis.call('HSET', KEYS[1],
   'source_mc_seqno', ARGV[1],
-  'first_seen_seqno', ARGV[1])
+  'first_seen_seqno', first_seen)
 redis.call('SET', KEYS[2], ARGV[2])
 
-local idx_count = tonumber(ARGV[4])
-redis.call('HSET', KEYS[1], 'idx_count', idx_count)
-local key_pos = 3
-local arg_pos = 5
-for i = 1, idx_count do
-  local idx_key = KEYS[key_pos]
-  local idx_member = ARGV[arg_pos]
-  local idx_score = ARGV[arg_pos + 1]
-  if idx_score == '__first_seen__' then
-    idx_score = ARGV[1]
+local next_rev = tostring((tonumber(redis.call('HGET', KEYS[1], 'idx_rev')) or 0) + 1)
+
+local fields = {'idx_count', new_count, 'idx_rev', next_rev}
+for i = 1, new_count do
+  local new_key = KEYS[2 + remove_count + i]
+  local new_member = ARGV[new_base + 2 * i - 1]
+  local new_score = ARGV[new_base + 2 * i]
+  if new_score == '__first_seen__' then
+    new_score = first_seen
   end
-  redis.call('ZADD', idx_key, idx_score, idx_member)
-  redis.call('HSET', KEYS[1],
-    'idx_key_' .. i, idx_key,
-    'idx_member_' .. i, idx_member)
-  key_pos = key_pos + 1
-  arg_pos = arg_pos + 2
+  redis.call('ZADD', new_key, new_score, new_member)
+  fields[#fields + 1] = 'idx_key_' .. i
+  fields[#fields + 1] = new_key
+  fields[#fields + 1] = 'idx_member_' .. i
+  fields[#fields + 1] = new_member
 end
+
+redis.call('HSET', KEYS[1], unpack(fields))
+for i = new_count + 1, old_count do
+  redis.call('HDEL', KEYS[1], 'idx_key_' .. i, 'idx_member_' .. i)
+end
+redis.call('HDEL', KEYS[1], 'idx_pending')
 
 return 1
 )";
@@ -335,6 +591,11 @@ const std::string& kvrocks_set_indexed_once_script_sha() {
   return sha;
 }
 
+const std::string& kvrocks_set_indexed_rebuild_script_sha() {
+  static const std::string sha = redis_script_sha1(kvrocks_set_indexed_rebuild_script());
+  return sha;
+}
+
 std::string kvrocks_key(const std::string& table, const std::string& id) {
   return "ton-index:v1:" + table + ":" + id;
 }
@@ -363,6 +624,37 @@ std::size_t parse_kvrocks_index_count(const sw::redis::OptionalString& value, co
     throw std::runtime_error("Invalid Kvrocks idx_count for " + key + ": " + *value);
   }
   return static_cast<std::size_t>(count);
+}
+
+// Parses the crash marker: repeated "<len>:<bytes>" netstrings, key then member.
+std::vector<KvrocksIndexSnapshotEntry> parse_kvrocks_pending_list(const std::string& value, const std::string& key) {
+  std::vector<KvrocksIndexSnapshotEntry> result;
+  std::size_t pos = 0;
+  auto read_chunk = [&]() {
+    const auto colon = value.find(':', pos);
+    if (colon == std::string::npos) {
+      throw std::runtime_error("Invalid Kvrocks idx_pending for " + key);
+    }
+    std::size_t len = 0;
+    std::size_t parsed = 0;
+    try {
+      len = std::stoull(value.substr(pos, colon - pos), &parsed);
+    } catch (const std::exception&) {
+      throw std::runtime_error("Invalid Kvrocks idx_pending for " + key);
+    }
+    if (parsed != colon - pos || len > value.size() - (colon + 1)) {
+      throw std::runtime_error("Invalid Kvrocks idx_pending for " + key);
+    }
+    auto chunk = value.substr(colon + 1, len);
+    pos = colon + 1 + len;
+    return chunk;
+  };
+  while (pos < value.size()) {
+    auto index_key = read_chunk();
+    auto index_member = read_chunk();
+    result.push_back({std::move(index_key), std::move(index_member)});
+  }
+  return result;
 }
 
 std::string address_key(const block::StdAddress& address) {
@@ -2769,11 +3061,13 @@ void load_kvrocks_scripts(sw::redis::Redis& redis) {
   auto set_indexed_current_sha = redis.script_load(kvrocks_set_indexed_current_script());
   auto set_indexed_current_existing_sha = redis.script_load(kvrocks_set_indexed_current_existing_script());
   auto set_indexed_once_sha = redis.script_load(kvrocks_set_indexed_once_script());
+  auto set_indexed_rebuild_sha = redis.script_load(kvrocks_set_indexed_rebuild_script());
   if (set_once_sha != kvrocks_set_once_script_sha() || set_current_sha != kvrocks_set_current_script_sha() ||
       set_current_existing_sha != kvrocks_set_current_existing_script_sha() ||
       set_indexed_current_sha != kvrocks_set_indexed_current_script_sha() ||
       set_indexed_current_existing_sha != kvrocks_set_indexed_current_existing_script_sha() ||
-      set_indexed_once_sha != kvrocks_set_indexed_once_script_sha()) {
+      set_indexed_once_sha != kvrocks_set_indexed_once_script_sha() ||
+      set_indexed_rebuild_sha != kvrocks_set_indexed_rebuild_script_sha()) {
     throw std::runtime_error("Kvrocks returned an unexpected script SHA");
   }
 }
@@ -2902,6 +3196,10 @@ double KvrocksBatchWriter::exec_elapsed_millis() const {
   return exec_elapsed_millis_;
 }
 
+std::size_t KvrocksBatchWriter::rebuild_count() const {
+  return rebuild_count_;
+}
+
 void KvrocksBatchWriter::queue_set_once(const std::string& table, const std::string& id, std::uint32_t source_mc_seqno,
                                         const std::string& payload) {
   const auto key = kvrocks_key(table, id);
@@ -2968,6 +3266,8 @@ void KvrocksBatchWriter::queue_indexed_writes(const std::vector<IndexedWrite>& w
     next_pending_write_indexes.reserve(pending_write_indexes.size());
     std::size_t snapshot_read_conflicts = 0;
     std::size_t script_exec_conflicts = 0;
+    std::size_t pending_recoveries = 0;
+    std::size_t rebuild_successes = 0;
 
     std::size_t begin = 0;
     while (begin < pending_write_indexes.size()) {
@@ -3000,24 +3300,43 @@ void KvrocksBatchWriter::queue_indexed_writes(const std::vector<IndexedWrite>& w
       }
 
       std::vector<std::size_t> command_offsets;
+      std::vector<bool> command_is_rebuild;
       command_offsets.reserve(chunk_write_indexes.size() - snapshot_result.conflict_offsets.size());
+      command_is_rebuild.reserve(chunk_write_indexes.size() - snapshot_result.conflict_offsets.size());
       for (std::size_t offset = 0; offset < chunk_write_indexes.size(); ++offset) {
         if (retry[offset]) {
           continue;
         }
         const auto write_index = chunk_write_indexes[offset];
-        queue_indexed_write(writes[write_index], snapshot_result.snapshots[offset],
-                            /*auto_flush=*/false, /*count_queued=*/false);
+        const bool is_rebuild = snapshot_result.pending[offset];
+        if (is_rebuild) {
+          ++pending_recoveries;
+          queue_indexed_write_rebuild(writes[write_index], snapshot_result.snapshots[offset],
+                                      snapshot_result.pending_indexes[offset], snapshot_result.pending_raw[offset],
+                                      /*auto_flush=*/false, /*count_queued=*/false);
+        } else {
+          queue_indexed_write(writes[write_index], snapshot_result.snapshots[offset], snapshot_result.rev[offset],
+                              /*auto_flush=*/false, /*count_queued=*/false);
+        }
         command_offsets.push_back(offset);
+        command_is_rebuild.push_back(is_rebuild);
       }
 
-      const auto command_conflicts = flush(/*throw_on_snapshot_conflict=*/false);
-      script_exec_conflicts += command_conflicts.size();
-      for (const auto command_offset : command_conflicts) {
+      const auto flush_result = flush(/*throw_on_snapshot_conflict=*/false);
+      script_exec_conflicts += flush_result.conflict_offsets.size();
+      for (const auto command_offset : flush_result.conflict_offsets) {
         if (command_offset >= command_offsets.size()) {
           throw std::runtime_error("Kvrocks indexed write conflict reply offset mismatch");
         }
         retry[command_offsets[command_offset]] = true;
+      }
+      for (const auto command_offset : flush_result.success_offsets) {
+        if (command_offset >= command_is_rebuild.size()) {
+          throw std::runtime_error("Kvrocks indexed write success reply offset mismatch");
+        }
+        if (command_is_rebuild[command_offset]) {
+          ++rebuild_successes;
+        }
       }
 
       for (std::size_t offset = 0; offset < retry.size(); ++offset) {
@@ -3027,6 +3346,13 @@ void KvrocksBatchWriter::queue_indexed_writes(const std::vector<IndexedWrite>& w
       }
       begin = end;
     }
+
+    if (pending_recoveries > 0) {
+      LOG(WARNING) << "Kvrocks idx_pending recovery: " << pending_recoveries
+                   << " row(s) with an in-flight crash marker routed to rebuild on attempt " << attempt
+                   << ", " << rebuild_successes << " committed";
+    }
+    rebuild_count_ += rebuild_successes;
 
     if (next_pending_write_indexes.empty()) {
       return;
@@ -3052,34 +3378,175 @@ void KvrocksBatchWriter::queue_indexed_writes(const std::vector<IndexedWrite>& w
 
 void KvrocksBatchWriter::queue_indexed_write(const IndexedWrite& write,
                                              const std::vector<KvrocksIndexSnapshotEntry>& old_indexes,
-                                             bool auto_flush, bool count_queued) {
+                                             const std::string& rev, bool auto_flush, bool count_queued) {
+  const bool legacy = rev.empty();
+  std::set<std::pair<std::string, std::string>> old_set;
+  for (const auto& old_index : old_indexes) {
+    old_set.emplace(old_index.key, old_index.member);
+  }
+
+  // write.indexes may hold duplicate (key,member) pairs (a signer who is also a proposer);
+  // dedupe, first occurrence wins — the new_count sent to the script is this deduped length.
+  std::set<std::pair<std::string, std::string>> new_set;
+  std::vector<const KvrocksIndexEntry*> new_indexes;
+  new_indexes.reserve(write.indexes.size());
+  for (const auto& index : write.indexes) {
+    if (new_set.emplace(index.key, index.member).second) {
+      new_indexes.push_back(&index);
+    }
+  }
+
+  std::vector<const KvrocksIndexSnapshotEntry*> removed;
+  for (const auto& old_index : old_indexes) {
+    if (new_set.find({old_index.key, old_index.member}) == new_set.end()) {
+      removed.push_back(&old_index);
+    }
+  }
+  std::vector<const KvrocksIndexEntry*> added;
+  for (const auto* index : new_indexes) {
+    if (old_set.find({index->key, index->member}) == old_set.end()) {
+      added.push_back(index);
+    }
+  }
+
   std::vector<std::string> keys;
-  keys.reserve(2 + old_indexes.size() + write.indexes.size());
+  keys.reserve(2 + removed.size() + added.size());
   keys.push_back(write.key);
   keys.push_back(write.payload_key);
-  for (const auto& old_index : old_indexes) {
-    keys.push_back(old_index.key);
+  for (const auto* removed_index : removed) {
+    keys.push_back(removed_index->key);
   }
-  for (const auto& index : write.indexes) {
-    keys.push_back(index.key);
+  for (const auto* added_index : added) {
+    keys.push_back(added_index->key);
   }
 
   std::vector<std::string> args;
-  args.reserve(4 + old_indexes.size() + write.indexes.size() * 2);
+  args.reserve(7 + (legacy ? old_indexes.size() * 2 : 0) + removed.size() + added.size() * 2 +
+              new_indexes.size() * 2);
   args.push_back(std::to_string(write.source_mc_seqno));
   args.push_back(write.payload);
   args.push_back(std::to_string(old_indexes.size()));
-  args.push_back(std::to_string(write.indexes.size()));
-  for (const auto& old_index : old_indexes) {
-    args.push_back(old_index.member);
+  args.push_back(std::to_string(removed.size()));
+  args.push_back(std::to_string(added.size()));
+  args.push_back(std::to_string(new_indexes.size()));
+  args.push_back(rev);
+  if (legacy) {
+    for (const auto& old_index : old_indexes) {
+      args.push_back(old_index.key);
+      args.push_back(old_index.member);
+    }
   }
-  for (const auto& index : write.indexes) {
-    args.push_back(index.member);
-    args.push_back(index.score);
+  for (const auto* removed_index : removed) {
+    args.push_back(removed_index->member);
+  }
+  for (const auto* added_index : added) {
+    args.push_back(added_index->member);
+    args.push_back(added_index->score);
+  }
+  for (const auto* index : new_indexes) {
+    args.push_back(index->key);
+    args.push_back(index->member);
   }
   pipeline_.evalsha(write.script_sha, keys.begin(), keys.end(), args.begin(), args.end());
-  record_pending_command("set_indexed old_indexes=" + std::to_string(old_indexes.size()) +
-                             " new_indexes=" + std::to_string(write.indexes.size()),
+  record_pending_command("set_indexed mode=" + std::string(legacy ? "legacy" : "fast") +
+                             " old_count=" + std::to_string(old_indexes.size()) +
+                             " removed=" + std::to_string(removed.size()) +
+                             " added=" + std::to_string(added.size()) +
+                             " new_count=" + std::to_string(new_indexes.size()),
+                         write.key, write.source_mc_seqno, count_queued);
+  if (auto_flush) {
+    flush_if_needed();
+  }
+}
+
+void KvrocksBatchWriter::queue_indexed_write_rebuild(const IndexedWrite& write,
+                                                     const std::vector<KvrocksIndexSnapshotEntry>& old_indexes,
+                                                     const std::vector<KvrocksIndexSnapshotEntry>& pending_indexes,
+                                                     const std::string& pending_raw, bool auto_flush,
+                                                     bool count_queued) {
+  std::set<std::pair<std::string, std::string>> old_set;
+  for (const auto& old_index : old_indexes) {
+    old_set.emplace(old_index.key, old_index.member);
+  }
+
+  std::set<std::pair<std::string, std::string>> new_set;
+  std::vector<const KvrocksIndexEntry*> new_indexes;
+  new_indexes.reserve(write.indexes.size());
+  for (const auto& index : write.indexes) {
+    if (new_set.emplace(index.key, index.member).second) {
+      new_indexes.push_back(&index);
+    }
+  }
+
+  // ZREM everything the old mirror or the marker lists that the new list doesn't want —
+  // leftovers of a crashed ZADD or ZREM alike.
+  std::set<std::pair<std::string, std::string>> remove_set;
+  std::vector<std::pair<std::string, std::string>> remove_list;
+  auto consider_remove = [&](const std::string& key, const std::string& member) {
+    if (new_set.find({key, member}) != new_set.end()) {
+      return;
+    }
+    if (remove_set.emplace(key, member).second) {
+      remove_list.emplace_back(key, member);
+    }
+  };
+  for (const auto& old_index : old_indexes) {
+    consider_remove(old_index.key, old_index.member);
+  }
+  for (const auto& pending_index : pending_indexes) {
+    consider_remove(pending_index.key, pending_index.member);
+  }
+
+  // Re-arm list = new entries minus the old mirror: what this attempt ZADDs beyond what the
+  // mirror already records.
+  std::vector<const KvrocksIndexEntry*> rearm_list;
+  for (const auto* index : new_indexes) {
+    if (old_set.find({index->key, index->member}) == old_set.end()) {
+      rearm_list.push_back(index);
+    }
+  }
+
+  std::vector<std::string> keys;
+  keys.reserve(2 + remove_list.size() + new_indexes.size());
+  keys.push_back(write.key);
+  keys.push_back(write.payload_key);
+  for (const auto& removed : remove_list) {
+    keys.push_back(removed.first);
+  }
+  for (const auto* index : new_indexes) {
+    keys.push_back(index->key);
+  }
+
+  std::vector<std::string> args;
+  args.reserve(6 + old_indexes.size() * 2 + remove_list.size() + new_indexes.size() * 2 + rearm_list.size() * 2 + 1);
+  args.push_back(std::to_string(write.source_mc_seqno));
+  args.push_back(write.payload);
+  args.push_back(std::to_string(old_indexes.size()));
+  args.push_back(std::to_string(remove_list.size()));
+  args.push_back(std::to_string(new_indexes.size()));
+  args.push_back(std::to_string(rearm_list.size()));
+  for (const auto& old_index : old_indexes) {
+    args.push_back(old_index.key);
+    args.push_back(old_index.member);
+  }
+  for (const auto& removed : remove_list) {
+    args.push_back(removed.second);
+  }
+  for (const auto* index : new_indexes) {
+    args.push_back(index->member);
+    args.push_back(index->score);
+  }
+  for (const auto* index : rearm_list) {
+    args.push_back(index->key);
+    args.push_back(index->member);
+  }
+  args.push_back(pending_raw);
+  pipeline_.evalsha(kvrocks_set_indexed_rebuild_script_sha(), keys.begin(), keys.end(), args.begin(), args.end());
+  record_pending_command("set_indexed_rebuild old_count=" + std::to_string(old_indexes.size()) +
+                             " pending=" + std::to_string(pending_indexes.size()) +
+                             " remove=" + std::to_string(remove_list.size()) +
+                             " new_count=" + std::to_string(new_indexes.size()) +
+                             " rearm=" + std::to_string(rearm_list.size()),
                          write.key, write.source_mc_seqno, count_queued);
   if (auto_flush) {
     flush_if_needed();
@@ -3090,6 +3557,10 @@ KvrocksBatchWriter::OldIndexSnapshotReadResult KvrocksBatchWriter::read_old_inde
     const std::vector<IndexedWrite>& writes, const std::vector<std::size_t>& write_indexes) {
   OldIndexSnapshotReadResult result;
   result.snapshots.resize(write_indexes.size());
+  result.pending.resize(write_indexes.size(), false);
+  result.pending_indexes.resize(write_indexes.size());
+  result.pending_raw.resize(write_indexes.size());
+  result.rev.resize(write_indexes.size());
   auto& snapshots = result.snapshots;
   std::vector<std::size_t> count_offsets;
   count_offsets.reserve(write_indexes.size());
@@ -3101,7 +3572,7 @@ KvrocksBatchWriter::OldIndexSnapshotReadResult KvrocksBatchWriter::read_old_inde
     if (!write.read_old_indexes) {
       continue;
     }
-    count_pipeline.hget(write.key, "idx_count");
+    count_pipeline.hmget(write.key, {"idx_count", "idx_pending", "idx_rev"});
     count_offsets.push_back(offset);
   }
   if (count_offsets.empty()) {
@@ -3113,14 +3584,34 @@ KvrocksBatchWriter::OldIndexSnapshotReadResult KvrocksBatchWriter::read_old_inde
   count_timer.pause();
   exec_elapsed_millis_ += count_timer.elapsed() * 1e3;
   if (count_replies.size() != count_offsets.size()) {
-    throw std::runtime_error("Kvrocks HGET old index snapshot reply count mismatch");
+    throw std::runtime_error("Kvrocks HMGET idx_count/idx_pending/idx_rev reply count mismatch");
   }
 
   std::vector<std::size_t> old_counts(snapshots.size(), 0);
   for (std::size_t i = 0; i < count_replies.size(); ++i) {
     const auto offset = count_offsets[i];
-    old_counts[offset] = parse_kvrocks_index_count(count_replies.get<sw::redis::OptionalString>(i),
-                                                   writes[write_indexes[offset]].key);
+    const auto& key = writes[write_indexes[offset]].key;
+    std::vector<sw::redis::OptionalString> count_and_pending;
+    count_and_pending.reserve(3);
+    count_replies.get(i, std::back_inserter(count_and_pending));
+    if (count_and_pending.size() != 3) {
+      throw std::runtime_error("Kvrocks HMGET idx_count/idx_pending/idx_rev reply count mismatch for " + key);
+    }
+    old_counts[offset] = parse_kvrocks_index_count(count_and_pending[0], key);
+    if (count_and_pending[1]) {
+      result.pending[offset] = true;
+      result.pending_raw[offset] = *count_and_pending[1];
+      try {
+        result.pending_indexes[offset] = parse_kvrocks_pending_list(*count_and_pending[1], key);
+      } catch (const std::exception& e) {
+        LOG(ERROR) << "Kvrocks idx_pending marker corrupt for " << key
+                   << ", degrading to mirror-only rebuild: " << e.what();
+        result.pending_indexes[offset].clear();
+      }
+    }
+    if (count_and_pending[2]) {
+      result.rev[offset] = *count_and_pending[2];
+    }
   }
 
   std::vector<std::size_t> value_offsets;
@@ -3206,10 +3697,10 @@ void KvrocksBatchWriter::flush_if_needed() {
   }
 }
 
-std::vector<std::size_t> KvrocksBatchWriter::flush(bool throw_on_snapshot_conflict) {
-  std::vector<std::size_t> snapshot_conflicts;
+KvrocksBatchWriter::FlushResult KvrocksBatchWriter::flush(bool throw_on_snapshot_conflict) {
+  FlushResult result;
   if (pending_ == 0) {
-    return snapshot_conflicts;
+    return result;
   }
 
   td::Timer exec_timer;
@@ -3219,21 +3710,24 @@ std::vector<std::size_t> KvrocksBatchWriter::flush(bool throw_on_snapshot_confli
   }
   std::string snapshot_conflict_detail;
   for (std::size_t i = 0; i < replies.size(); ++i) {
-    if (replies.get<long long>(i) == KVROCKS_INDEX_SNAPSHOT_CONFLICT) {
-      if (snapshot_conflicts.empty()) {
+    const auto reply = replies.get<long long>(i);
+    if (reply == KVROCKS_INDEX_SNAPSHOT_CONFLICT) {
+      if (result.conflict_offsets.empty()) {
         snapshot_conflict_detail = i < pending_debug_.size() ? pending_debug_[i] : "unknown pending command";
       }
-      snapshot_conflicts.push_back(i);
+      result.conflict_offsets.push_back(i);
+    } else if (reply == 1) {
+      result.success_offsets.push_back(i);
     }
   }
   exec_timer.pause();
   exec_elapsed_millis_ += exec_timer.elapsed() * 1e3;
   pending_ = 0;
   pending_debug_.clear();
-  if (throw_on_snapshot_conflict && !snapshot_conflicts.empty()) {
+  if (throw_on_snapshot_conflict && !result.conflict_offsets.empty()) {
     throw KvrocksIndexSnapshotConflict("Kvrocks indexed write snapshot conflict: " + snapshot_conflict_detail);
   }
-  return snapshot_conflicts;
+  return result;
 }
 
 void KvrocksBatchWriter::flush() {
