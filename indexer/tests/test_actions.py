@@ -61,6 +61,12 @@ class TestEthenaActions(BaseGenericActionTest):
 class TestCocoonActions(BaseGenericActionTest):
     yaml_file = "cocoon.yaml"
 
+class TestChangeWalletKeyActions(BaseGenericActionTest):
+    yaml_file = "tg-wallet.yaml"
+
+class TestGaslessRequestActions(BaseGenericActionTest):
+    yaml_file = "gasless.yaml"
+
 class TestClassificationCommon:
 
     def load_trace(self, trace_id, traces_dir) -> Trace:
