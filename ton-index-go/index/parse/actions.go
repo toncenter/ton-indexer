@@ -232,6 +232,7 @@ func ParseRawAction(raw *models.RawAction) (*models.Action, error) {
 	act.TraceExternalHash = raw.TraceExternalHash
 	act.TraceExternalHashNorm = raw.TraceExternalHashNorm
 	act.Accounts = raw.Accounts
+	act.ParentGaslessAction = extraString(raw.Extra, "parent_gasless_action")
 
 	switch act.Type {
 	case "call_contract":

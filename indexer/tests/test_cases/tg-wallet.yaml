@@ -7,6 +7,7 @@ cases:
       - type: change_wallet_key
         values:
           success: true
+          extra.parent_gasless_action: null
           source: null
           destination: "0:E55E63B850B71B8FF5AD44E1B8271237AFAF31900B2B6D41233707BB585B8091"
           accounts:
@@ -21,6 +22,7 @@ cases:
       - type: change_wallet_key
         values:
           success: true
+          extra.parent_gasless_action: "b5cLv1FsgTThSFHBjzqJteDep4FS/Xe+Wp3w1XvRtRc="
           source: "0:E15488B65F7E904F1D14C84AC6F603CCC4A404B03BEFB568D5F5CC8ED6866887"
           destination: "0:E55E63B850B71B8FF5AD44E1B8271237AFAF31900B2B6D41233707BB585B8091"
           value: 5000000
@@ -34,6 +36,8 @@ cases:
       - type: gasless_request
         values:
           success: true
+          action_id: "b5cLv1FsgTThSFHBjzqJteDep4FS/Xe+Wp3w1XvRtRc="
+          extra.parent_gasless_action: null
           source: "0:E15488B65F7E904F1D14C84AC6F603CCC4A404B03BEFB568D5F5CC8ED6866887"
           destination: "0:E55E63B850B71B8FF5AD44E1B8271237AFAF31900B2B6D41233707BB585B8091"
           value: 5000000
