@@ -1131,6 +1131,11 @@ type ActionDetailsCocoonClientWithdraw struct {
 	Amount         *string         `json:"amount"`
 }
 
+type ActionDetailsChangeWalletKey struct {
+	Source      *AccountAddress `json:"source"`
+	Destination *AccountAddress `json:"destination"`
+}
+
 type OrderAction struct {
 	Destination    *AccountAddress `json:"destination"`
 	Value          *string         `json:"value"`

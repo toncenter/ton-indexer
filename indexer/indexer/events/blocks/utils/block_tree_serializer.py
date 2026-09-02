@@ -79,6 +79,7 @@ from indexer.events.blocks.layerzero import (
     LayerZeroSendTokensBlock,
 )
 from indexer.events.blocks.tgbtc import TgBTCDkgLogBlock, TgBTCMintBlock, TgBTCBurnBlock, TgBTCNewKeyBlock
+from indexer.events.blocks.tgwallet import ChangeWalletKeyBlock
 
 logger = logging.getLogger(__name__)
 
@@ -1365,6 +1366,12 @@ def _fill_ethena_deposit_action(block: EthenaDepositBlock, action: Action):
     }
 
 
+def _fill_change_wallet_key_action(block: ChangeWalletKeyBlock, action: Action):
+    action.source = _addr(block.data['source'])
+    action.destination = _addr(block.data['destination'])
+    action.value = _value(block.data['value'])
+
+
 # noinspection PyCompatibility,PyTypeChecker
 def block_to_action(block: Block, trace_id: str, trace: Trace) -> Action:
     if trace is None:
@@ -1540,6 +1547,8 @@ def block_to_action(block: Block, trace_id: str, trace: Trace) -> Action:
             _fill_cancel_nft_trade_action(block, action)
         case 'dns_release':
             _fill_dns_release(block, action)
+        case 'change_wallet_key':
+            _fill_change_wallet_key_action(block, action)
         case 'nft_update_sale':
             _fill_sale_update_action(block, action)
         case _:
@@ -1603,7 +1612,8 @@ v1_ops = [
     'ethena_deposit',
     'tonco_deposit_liquidity',
     'tonco_withdraw_liquidity',
-    'coffee_deposit_liquidity'
+    'coffee_deposit_liquidity',
+    'change_wallet_key'
 ]
 
 def serialize_blocks(blocks: list[Block], trace_id, trace: Trace, parent_acton_id = None,

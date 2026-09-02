@@ -137,6 +137,7 @@ from indexer.events.blocks.layerzero import LayerZeroCommitPacketMatcher, LayerZ
 
 from indexer.events.blocks.tgbtc import TgBTCBurnBlockMatcher, TgBTCMintBlockMatcher, TgBTCNewKeyBlockMatcher
 from indexer.events.blocks.tgbtc import TgBTCMintLogOnlyMatcher, TgBTCBurnLogOnlyMatcher, TgBTCNewKeyLogOnlyMatcher, TgBTCDkgLogOnlyMatcher
+from indexer.events.blocks.tgwallet import ChangeWalletKeyMatcher
 
 async_session = sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
 logger = logging.getLogger(__name__)
@@ -303,6 +304,8 @@ matchers = [
     CocoonGrantRefundMatcher(),
     CocoonClientIncreaseStakeMatcher(),
     CocoonClientWithdrawMatcher(),
+    # last: only claims a change key call_contract block that no composite matcher wanted
+    ChangeWalletKeyMatcher(),
 ]
 
 trace_post_processors = [

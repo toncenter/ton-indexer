@@ -1137,6 +1137,11 @@ func ParseRawAction(raw *models.RawAction) (*models.Action, error) {
 			Destination:    raw.Destination,
 			Amount:         raw.Amount,
 		}
+	case "change_wallet_key":
+		act.Details = models.ActionDetailsChangeWalletKey{
+			Source:      raw.Source,
+			Destination: raw.Destination,
+		}
 	default:
 		details := map[string]string{}
 		details["error"] = fmt.Sprintf("unsupported action type: '%s'", act.Type)
