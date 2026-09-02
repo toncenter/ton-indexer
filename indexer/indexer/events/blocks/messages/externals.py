@@ -137,6 +137,46 @@ class WalletV5R1ExternalMessage:
             current_ref = s.load_ref()
             self.payload.append(PayloadMessage(s.load_ref()))
 
+# Telegram wallet (https://github.com/ton-blockchain/tg-wallet-contract) request opcodes.
+# Requests arrive either as externals (the "E" ones) or, when someone else pays for the gas,
+# as internal messages (the "I" ones).
+TG_WALLET_SEND_ONE_MESSAGE_INTERNAL = 0x63896E74
+TG_WALLET_SEND_ONE_MESSAGE_EXTERNAL = 0x63896E75
+TG_WALLET_SEND_BULK_MESSAGES_INTERNAL = 0x73896E74
+TG_WALLET_SEND_BULK_MESSAGES_EXTERNAL = 0x73896E75
+TG_WALLET_CHANGE_PUBLIC_KEY_INTERNAL = 0xFBBA99C7
+TG_WALLET_CHANGE_PUBLIC_KEY_EXTERNAL = 0xFBBA99C8
+
+TG_WALLET_REQUEST_OPCODES = frozenset({
+    TG_WALLET_SEND_ONE_MESSAGE_INTERNAL,
+    TG_WALLET_SEND_ONE_MESSAGE_EXTERNAL,
+    TG_WALLET_SEND_BULK_MESSAGES_INTERNAL,
+    TG_WALLET_SEND_BULK_MESSAGES_EXTERNAL,
+    TG_WALLET_CHANGE_PUBLIC_KEY_INTERNAL,
+    TG_WALLET_CHANGE_PUBLIC_KEY_EXTERNAL,
+})
+
+# signature(512) + opcode(32) + SeqnoHeader(96) = 640 bits, plus the boc header
+_TG_WALLET_MIN_REQUEST_LEN = 80
+
+
+def get_tg_wallet_request_opcode(body: bytes | None) -> int | None:
+    """
+    A request to a Telegram wallet starts with a 512 bit signature, so the first 32 bits of its
+    body - the ones stored as the message opcode - are just a piece of that signature. Return the
+    real opcode that follows the signature, or None if the body is not a tg-wallet request.
+    """
+    if body is None or len(body) < _TG_WALLET_MIN_REQUEST_LEN:
+        return None
+    try:
+        slice = Slice.one_from_boc(body)
+        slice.skip_bits(512)
+        opcode = slice.load_uint(32)
+    except Exception:
+        return None
+    return opcode if opcode in TG_WALLET_REQUEST_OPCODES else None
+
+
 class WalletTgExternalMessage:
     """
     Telegram wallet (https://github.com/ton-blockchain/tg-wallet-contract).
@@ -147,9 +187,9 @@ class WalletTgExternalMessage:
     first chunk, every chunk being a maybe ref to the next one followed by its items
     (sendMode:uint8 + ^messageCell).
     """
-    SEND_ONE_MESSAGE = 0x63896E75
-    SEND_BULK_MESSAGES = 0x73896E75
-    CHANGE_PUBLIC_KEY = 0xFBBA99C8
+    SEND_ONE_MESSAGE = TG_WALLET_SEND_ONE_MESSAGE_EXTERNAL
+    SEND_BULK_MESSAGES = TG_WALLET_SEND_BULK_MESSAGES_EXTERNAL
+    CHANGE_PUBLIC_KEY = TG_WALLET_CHANGE_PUBLIC_KEY_EXTERNAL
 
     def __init__(self, slice: Slice):
         self.signature = slice.load_bits(512)

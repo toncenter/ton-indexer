@@ -6,6 +6,7 @@ from pytoniq_core import Slice
 
 from indexer.core.database import Message
 from indexer.events.blocks.messages import TonTransferMessage
+from indexer.events.blocks.messages.externals import get_tg_wallet_request_opcode
 from indexer.events.blocks.core import Block, AccountValueFlow
 from indexer.events.blocks.utils import AccountId, Amount
 from indexer.events.blocks.utils.tree_utils import EventNode
@@ -68,13 +69,24 @@ class TonTransferBlock(Block):
         if tx is not None and tx.end_status == 'active' and tx.orig_status not in ('active', 'frozen'):
             self.children_blocks.append(ContractDeploy(node))
 
+def get_call_contract_opcode(node: EventNode) -> int | None:
+    # a tg-wallet request keeps its opcode behind the signature, so the stored one is meaningless.
+    # this holds for externals too - there the stored opcode is a slice of the signature as well.
+    if node.message.message_content is not None:
+        tg_wallet_opcode = get_tg_wallet_request_opcode(node.message.message_content.body)
+        if tg_wallet_opcode is not None:
+            return tg_wallet_opcode
+    return node.get_opcode()
+
+
 class CallContractBlock(Block):
     opcode: int
 
     def __init__(self, node: EventNode):
+        opcode = get_call_contract_opcode(node)
         super().__init__('call_contract', [node], {
             'extra_currencies': node.message.value_extra_currencies,
-            'opcode': node.get_opcode(),
+            'opcode': opcode,
             'source': AccountId(node.message.source) if node.message.source is not None else None,
             'destination': AccountId(
                 node.message.destination) if node.message.destination is not None else None,
@@ -82,7 +94,7 @@ class CallContractBlock(Block):
         })
         self.failed = node.failed
         self.is_external = node.message.source is None
-        self.opcode = node.get_opcode()
+        self.opcode = opcode
         if self.failed and not node.message.value and self.opcode and not node.message.value_extra_currencies:
             self.failed = False
         _fill_flow_from_node(self.value_flow, node)
