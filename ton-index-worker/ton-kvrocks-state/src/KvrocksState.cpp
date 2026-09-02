@@ -25,6 +25,7 @@ constexpr std::size_t KVROCKS_PIPELINE_FLUSH_SIZE = 1000;
 constexpr std::size_t KVROCKS_INDEX_SNAPSHOT_CHUNK_SIZE = 1000;
 constexpr long long KVROCKS_INDEX_SNAPSHOT_CONFLICT = -1;
 constexpr std::size_t KVROCKS_INDEX_SNAPSHOT_MAX_RETRIES = 5;
+constexpr std::size_t KVROCKS_INDEX_MAX_PAIRS_PER_ROW = 1800;
 
 class KvrocksIndexSnapshotConflict final : public std::runtime_error {
 public:
@@ -3100,6 +3101,11 @@ void KvrocksBatchWriter::write_once() {
   auto make_indexed_write = [](const std::string& script_sha, const std::string& table, const std::string& id,
                                std::uint32_t source_mc_seqno, std::string payload,
                                std::vector<KvrocksIndexEntry> indexes, bool read_old_indexes) {
+    if (indexes.size() > KVROCKS_INDEX_MAX_PAIRS_PER_ROW) {
+      LOG(WARNING) << "Kvrocks " << table << " row " << id << " has " << indexes.size()
+                   << " index pairs, keeping the first " << KVROCKS_INDEX_MAX_PAIRS_PER_ROW;
+      indexes.resize(KVROCKS_INDEX_MAX_PAIRS_PER_ROW);
+    }
     const auto key = kvrocks_key(table, id);
     return IndexedWrite{script_sha, key, kvrocks_payload_key(table, id), source_mc_seqno, std::move(payload),
                         std::move(indexes), read_old_indexes};
