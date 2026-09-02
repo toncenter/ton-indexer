@@ -30,3 +30,16 @@ cases:
           tx_hashes:
             - "CaitzDiXgDuUMWIvvPLZwCI8YcDfz/M5dbXyaOs7Occ="
             - "0XU5v5zYu0IYjsLX1pXc77isPyzQhEcOJoRjRrAuHtE="
+      # the relayed request is also marked as gasless_request, next to the rotation itself
+      - type: gasless_request
+        values:
+          success: true
+          source: "0:E15488B65F7E904F1D14C84AC6F603CCC4A404B03BEFB568D5F5CC8ED6866887"
+          destination: "0:E55E63B850B71B8FF5AD44E1B8271237AFAF31900B2B6D41233707BB585B8091"
+          value: 5000000
+          accounts:
+            - "0:E15488B65F7E904F1D14C84AC6F603CCC4A404B03BEFB568D5F5CC8ED6866887"
+            - "0:E55E63B850B71B8FF5AD44E1B8271237AFAF31900B2B6D41233707BB585B8091"
+          tx_hashes:
+            - "CaitzDiXgDuUMWIvvPLZwCI8YcDfz/M5dbXyaOs7Occ="
+            - "0XU5v5zYu0IYjsLX1pXc77isPyzQhEcOJoRjRrAuHtE="

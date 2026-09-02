@@ -58,6 +58,7 @@ var ActionTypeShortcuts = map[string][]string{
 	"v6": {
 		"v5",
 		"change_wallet_key",
+		"gasless_request",
 	},
 	"latest": {"v6"},
 	"staking": {

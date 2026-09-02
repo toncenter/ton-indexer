@@ -1,0 +1,68 @@
+cases:
+  Gasless send by a Telegram wallet:
+    # Testnet. A relayer pays the gas: it forwards the owner's SendBulkMessagesRequestI
+    # (0x73896E74) to the Telegram wallet as an internal message carrying 0.005 TON.
+    # The wallet's own transfer stays a separate action - gasless_request is only a marker
+    # on the relayed request, the way contract_deploy marks a deploying transfer.
+    trace-id: jFObmtSqr6Fzn6QnPonxGlzgTWjWvRcoi0BF_wSCjcM=
+    expected-actions:
+      - type: gasless_request
+        values:
+          success: true
+          source: "0:E15488B65F7E904F1D14C84AC6F603CCC4A404B03BEFB568D5F5CC8ED6866887"
+          destination: "0:E55E63B850B71B8FF5AD44E1B8271237AFAF31900B2B6D41233707BB585B8091"
+          value: 5000000
+          accounts:
+            - "0:E15488B65F7E904F1D14C84AC6F603CCC4A404B03BEFB568D5F5CC8ED6866887"
+            - "0:E55E63B850B71B8FF5AD44E1B8271237AFAF31900B2B6D41233707BB585B8091"
+          tx_hashes:
+            - "jFObmtSqr6Fzn6QnPonxGlzgTWjWvRcoi0BF/wSCjcM="
+            - "0H5D3xdC6NdacUiYr8+UxD8GXdXeo5VTWS7fnhO5PrY="
+      # the message the wallet actually sent out, untouched by the marker
+      - type: ton_transfer
+        values:
+          success: true
+          source: "0:E55E63B850B71B8FF5AD44E1B8271237AFAF31900B2B6D41233707BB585B8091"
+          destination: "0:274BBBC78DFA3093C1BDA033A0B7F649B6268E61C53E9E019CCFC4B17CACC251"
+          value: 1000000
+  Gasless jetton transfer by a wallet v5:
+    # Mainnet. The relayer forwards the owner's signed request as an internal 'sint'
+    # (0x73696E74) message with 0.025583249 TON attached, and the wallet v5 then makes a
+    # jetton transfer, which must still be classified on its own.
+    trace-id: tF9rJ18uKOZuwJaQ0z2ZB2ln0OcFMEa0fy6rYxMgQNY=
+    expected-actions:
+      - type: gasless_request
+        values:
+          success: true
+          source: "0:147CB558F69A4D95D99F76A6D600E839172EECBF4C06D1A2695F430274FA956F"
+          destination: "0:16C2A925BAEEA63544C029E30A88868D1C0372E21DFD3BDB06707CED83733FEE"
+          value: 25583249
+          accounts:
+            - "0:147CB558F69A4D95D99F76A6D600E839172EECBF4C06D1A2695F430274FA956F"
+            - "0:16C2A925BAEEA63544C029E30A88868D1C0372E21DFD3BDB06707CED83733FEE"
+          tx_hashes:
+            - "tF9rJ18uKOZuwJaQ0z2ZB2ln0OcFMEa0fy6rYxMgQNY="
+            - "EirR598TMc1bzh+VfytIF+bHNcEnZ2tcFifWUq8nNt0="
+      - type: jetton_transfer
+        values:
+          success: true
+          source: "0:16C2A925BAEEA63544C029E30A88868D1C0372E21DFD3BDB06707CED83733FEE"
+          source_secondary: "0:9D658EF06372815EBB62D02E6D338D1352275C0F962DF1E989E4C7866E0899C7"
+          destination: "0:79B40414D7B862E6B9C2852A683739A650C317C1AD4C014BC1AF986B27356883"
+          destination_secondary: "0:1D4383DB3209C1AEFE5DCDD8DA04148FEE5C42C66707CEFBB14F2ECEDB3B70BE"
+          asset: "0:B113A994B5024A16719F69139328EB759596C38A25F59028B146FECDC3621DFE"
+          amount: 2093172
+          jetton_transfer_data:
+            query_id: 0
+            response_destination: "0:7AE5056C3FD9406F9BBBE7C7089CD4C40801D9075486CBEDB7CE12DF119EACF1"
+            forward_amount: 1
+            custom_payload: null
+            forward_payload: null
+            comment: null
+            is_encrypted_comment: false
+          accounts:
+            - "0:16C2A925BAEEA63544C029E30A88868D1C0372E21DFD3BDB06707CED83733FEE"
+            - "0:9D658EF06372815EBB62D02E6D338D1352275C0F962DF1E989E4C7866E0899C7"
+            - "0:1D4383DB3209C1AEFE5DCDD8DA04148FEE5C42C66707CEFBB14F2ECEDB3B70BE"
+            - "0:79B40414D7B862E6B9C2852A683739A650C317C1AD4C014BC1AF986B27356883"
+            - "0:7AE5056C3FD9406F9BBBE7C7089CD4C40801D9075486CBEDB7CE12DF119EACF1"

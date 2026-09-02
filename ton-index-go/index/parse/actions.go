@@ -1142,6 +1142,12 @@ func ParseRawAction(raw *models.RawAction) (*models.Action, error) {
 			Source:      raw.Source,
 			Destination: raw.Destination,
 		}
+	case "gasless_request":
+		act.Details = models.ActionDetailsGaslessRequest{
+			Source:      raw.Source,
+			Destination: raw.Destination,
+			Value:       raw.Value,
+		}
 	default:
 		details := map[string]string{}
 		details["error"] = fmt.Sprintf("unsupported action type: '%s'", act.Type)

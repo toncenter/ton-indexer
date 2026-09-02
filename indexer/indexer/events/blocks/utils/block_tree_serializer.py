@@ -1372,6 +1372,12 @@ def _fill_change_wallet_key_action(block: ChangeWalletKeyBlock, action: Action):
     action.value = _value(block.data['value'])
 
 
+def _fill_gasless_request_action(block: Block, action: Action):
+    action.source = _addr(block.data['source'])
+    action.destination = _addr(block.data['destination'])
+    action.value = _value(block.data['value'])
+
+
 # noinspection PyCompatibility,PyTypeChecker
 def block_to_action(block: Block, trace_id: str, trace: Trace) -> Action:
     if trace is None:
@@ -1549,6 +1555,8 @@ def block_to_action(block: Block, trace_id: str, trace: Trace) -> Action:
             _fill_dns_release(block, action)
         case 'change_wallet_key':
             _fill_change_wallet_key_action(block, action)
+        case 'gasless_request':
+            _fill_gasless_request_action(block, action)
         case 'nft_update_sale':
             _fill_sale_update_action(block, action)
         case _:
@@ -1613,7 +1621,8 @@ v1_ops = [
     'tonco_deposit_liquidity',
     'tonco_withdraw_liquidity',
     'coffee_deposit_liquidity',
-    'change_wallet_key'
+    'change_wallet_key',
+    'gasless_request'
 ]
 
 def serialize_blocks(blocks: list[Block], trace_id, trace: Trace, parent_acton_id = None,

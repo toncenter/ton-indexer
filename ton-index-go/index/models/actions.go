@@ -1136,6 +1136,12 @@ type ActionDetailsChangeWalletKey struct {
 	Destination *AccountAddress `json:"destination"`
 }
 
+type ActionDetailsGaslessRequest struct {
+	Source      *AccountAddress `json:"source"`
+	Destination *AccountAddress `json:"destination"`
+	Value       *string         `json:"value"`
+}
+
 type OrderAction struct {
 	Destination    *AccountAddress `json:"destination"`
 	Value          *string         `json:"value"`

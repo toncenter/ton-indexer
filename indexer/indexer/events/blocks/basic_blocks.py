@@ -6,7 +6,7 @@ from pytoniq_core import Slice
 
 from indexer.core.database import Message
 from indexer.events.blocks.messages import TonTransferMessage
-from indexer.events.blocks.messages.externals import get_tg_wallet_request_opcode
+from indexer.events.blocks.messages.externals import GASLESS_REQUEST_OPCODES, get_tg_wallet_request_opcode
 from indexer.events.blocks.core import Block, AccountValueFlow
 from indexer.events.blocks.utils import AccountId, Amount
 from indexer.events.blocks.utils.tree_utils import EventNode
@@ -97,6 +97,8 @@ class CallContractBlock(Block):
         self.opcode = opcode
         if self.failed and not node.message.value and self.opcode and not node.message.value_extra_currencies:
             self.failed = False
+        if node.message.source is not None and opcode in GASLESS_REQUEST_OPCODES:
+            self.children_blocks.append(GaslessRequestBlock(node))
         _fill_flow_from_node(self.value_flow, node)
         tx = node.get_tx()
         if tx is not None and tx.end_status == 'active' and tx.orig_status not in ('active', 'frozen'):
@@ -123,6 +125,23 @@ class ContractDeploy(Block):
         self.failed = node.failed
         self.is_external = node.message.source is None
         self.opcode = node.get_opcode()
+
+class GaslessRequestBlock(Block):
+    """
+    A signed wallet request that arrived as an internal message: a relayer sent the owner's request
+    and attached the TON that pays for the gas. This is only a marker on that internal message -
+    everything the wallet sends out stays a separate action of its own.
+    """
+
+    def __init__(self, node: EventNode):
+        super().__init__('gasless_request', [node], {
+            'source': AccountId(node.message.source) if node.message.source is not None else None,
+            'destination': AccountId(
+                node.message.destination) if node.message.destination is not None else None,
+            'value': Amount(node.message.value),
+        })
+        self.failed = node.failed
+        self.is_external = node.message.source is None
 
 class TickTockBlock(Block):
     def __init__(self, node: EventNode):

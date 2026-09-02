@@ -38,6 +38,7 @@ from indexer.events.blocks.cocoon import (
 from indexer.events.blocks.basic_blocks import (
     CallContractBlock,
     ContractDeploy,
+    GaslessRequestBlock,
     TickTockBlock,
     TonTransferBlock,
 )
@@ -210,6 +211,19 @@ async def unwind_deployments(blocks: list[Block]) -> list[Block]:
             visited.add(child)
     return blocks
 
+async def unwind_gasless_requests(blocks: list[Block]) -> list[Block]:
+    visited = set()
+    for block in blocks:
+        queue = block.children_blocks.copy()
+        while len(queue) > 0:
+            child = queue.pop(0)
+            if isinstance(child, GaslessRequestBlock) and child not in visited:
+                blocks.append(child)
+            else:
+                queue.extend(child.children_blocks)
+            visited.add(child)
+    return blocks
+
 matchers = [
     NftMintBlockMatcher(),
     TONStakersDelayedWithdrawalMatcher(),
@@ -311,7 +325,8 @@ matchers = [
 trace_post_processors = [
     post_process_dedust_liquidity,
     post_process_dedust_v2_liquidity,
-    unwind_deployments
+    unwind_deployments,
+    unwind_gasless_requests
 ]
 
 matchers_for_failed_externals = [

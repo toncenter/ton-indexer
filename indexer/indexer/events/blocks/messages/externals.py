@@ -156,6 +156,19 @@ TG_WALLET_REQUEST_OPCODES = frozenset({
     TG_WALLET_CHANGE_PUBLIC_KEY_EXTERNAL,
 })
 
+# Wallet v5 signed request delivered as an internal message ('sint'). Its external counterpart
+# ('sign', 0x7369676E) and the extension request ('extn', 0x6578746E) are not relayed requests.
+WALLET_V5_SIGNED_REQUEST_INTERNAL = 0x73696E74
+
+# A signed wallet request that arrived as an internal message: somebody else relayed the owner's
+# request and attached the TON that pays for the gas.
+GASLESS_REQUEST_OPCODES = frozenset({
+    TG_WALLET_SEND_ONE_MESSAGE_INTERNAL,
+    TG_WALLET_SEND_BULK_MESSAGES_INTERNAL,
+    TG_WALLET_CHANGE_PUBLIC_KEY_INTERNAL,
+    WALLET_V5_SIGNED_REQUEST_INTERNAL,
+})
+
 # signature(512) + opcode(32) + SeqnoHeader(96) = 640 bits, plus the boc header
 _TG_WALLET_MIN_REQUEST_LEN = 80
 
