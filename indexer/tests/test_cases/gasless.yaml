@@ -73,3 +73,64 @@ cases:
             - "0:1D4383DB3209C1AEFE5DCDD8DA04148FEE5C42C66707CEFBB14F2ECEDB3B70BE"
             - "0:79B40414D7B862E6B9C2852A683739A650C317C1AD4C014BC1AF986B27356883"
             - "0:7AE5056C3FD9406F9BBBE7C7089CD4C40801D9075486CBEDB7CE12DF119EACF1"
+  Fan-out and recursive gasless requests:
+    # Testnet, hand-built. One relayer transaction emits TWO gasless requests
+    # (SendOneMessageRequestI, 0x63896E74) - to wallet A with 0.15 TON and to wallet C with
+    # 0.05 TON, both deploying - and A's request tells A to relay yet another request onward
+    # to wallet B. B and C then each send 0.001 TON back to the relayer.
+    # The point of the case: every marker links only its own subtree. The two markers born
+    # from the ordinary external have no gasless parent, the nested one points at the marker
+    # that carried it, and neither transfer is attributed to the wrong branch.
+    trace-id: Uc8KYt0t3y8-gnvbfOxMZBW8F5k945xqkllMS-ZMISE=
+    expected-actions:
+      # fan-out, first request: relayer -> A
+      - type: gasless_request
+        selector: "{{ value.destination == '0:D6CDA9F17B81D220A5C4D50DDCB9E078CA5ECACDE79198AF7AA534F0A0B65511' }}"
+        values:
+          success: true
+          action_id: "gO97CeOTBPYim5SwqUyDtArsh23/58t3YNzdbBfKOV4="
+          # came from a plain external, so no gasless parent
+          extra.parent_gasless_action: null
+          source: "0:646F6F1F13124496504BD65441BC0D0677645A3B1E460896F0A299F13E53625A"
+          destination: "0:D6CDA9F17B81D220A5C4D50DDCB9E078CA5ECACDE79198AF7AA534F0A0B65511"
+          value: 150000000
+      # fan-out, second request: relayer -> C, a sibling of the one above, equally unparented
+      - type: gasless_request
+        selector: "{{ value.destination == '0:66F41CE49EE0B793F757811074B3B4852CCC4A47B4830350E45A2C7AEF6B8DB2' }}"
+        values:
+          success: true
+          action_id: "pbaynrSWUYvhDe7sJzeqLyX9rZaWttGq163n2OxGnvE="
+          extra.parent_gasless_action: null
+          source: "0:646F6F1F13124496504BD65441BC0D0677645A3B1E460896F0A299F13E53625A"
+          destination: "0:66F41CE49EE0B793F757811074B3B4852CCC4A47B4830350E45A2C7AEF6B8DB2"
+          value: 50000000
+      # recursion: A relays a request of its own to B, chained to the request A received
+      - type: gasless_request
+        selector: "{{ value.destination == '0:8DB949996FE334BA5F8D80A8DFE06C0FED3282A12F4AEA34D07F49AA6319439A' }}"
+        values:
+          success: true
+          action_id: "UG1NzQKEpYWcH3pNCrU+lS90yMtBRlIvW3dLN09wfKU="
+          extra.parent_gasless_action: "gO97CeOTBPYim5SwqUyDtArsh23/58t3YNzdbBfKOV4="
+          source: "0:D6CDA9F17B81D220A5C4D50DDCB9E078CA5ECACDE79198AF7AA534F0A0B65511"
+          destination: "0:8DB949996FE334BA5F8D80A8DFE06C0FED3282A12F4AEA34D07F49AA6319439A"
+          value: 50000000
+      # B's own transfer belongs to the innermost request, not to the outer one that spawned it
+      - type: ton_transfer
+        selector: "{{ value.source == '0:8DB949996FE334BA5F8D80A8DFE06C0FED3282A12F4AEA34D07F49AA6319439A' }}"
+        values:
+          success: true
+          action_id: "0L8ZiHtTpDGOKnxWMAfFLtxZn0DetaZ5n6QrNTuixlw="
+          extra.parent_gasless_action: "UG1NzQKEpYWcH3pNCrU+lS90yMtBRlIvW3dLN09wfKU="
+          source: "0:8DB949996FE334BA5F8D80A8DFE06C0FED3282A12F4AEA34D07F49AA6319439A"
+          destination: "0:646F6F1F13124496504BD65441BC0D0677645A3B1E460896F0A299F13E53625A"
+          value: 1000000
+      # C's transfer belongs to the other branch of the fan-out
+      - type: ton_transfer
+        selector: "{{ value.source == '0:66F41CE49EE0B793F757811074B3B4852CCC4A47B4830350E45A2C7AEF6B8DB2' }}"
+        values:
+          success: true
+          action_id: "blowbcYmG3c9OTHg94LMVaE1TfBGvBJiIN4+EzVaoec="
+          extra.parent_gasless_action: "pbaynrSWUYvhDe7sJzeqLyX9rZaWttGq163n2OxGnvE="
+          source: "0:66F41CE49EE0B793F757811074B3B4852CCC4A47B4830350E45A2C7AEF6B8DB2"
+          destination: "0:646F6F1F13124496504BD65441BC0D0677645A3B1E460896F0A299F13E53625A"
+          value: 1000000
