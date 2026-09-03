@@ -3,11 +3,12 @@
 //
 // The wallet-external decoder below is a port of
 // indexer/events/blocks/messages/externals.py, kept pytoniq-faithful down to
-// the failure modes because the fallback chain DEPENDS on them: a v5 body is
-// tried as v3 first and must FAIL (its single ref is an OutList node, not a
-// message), and a v4 body is accepted BY the v3 reader (v4 is v3 + an op byte,
-// and the message refs sit at the same place), which is why the decoder is
-// three whole-body attempts in order, not a tag sniff.
+// the failure modes because the fallback chain DEPENDS on them: the
+// opcode-checked tg-wallet reader must run before the permissive v3/v4 readers;
+// a v5 body is then tried as v3 first and must FAIL (its single ref is an
+// OutList node, not a message), and a v4 body is accepted BY the v3 reader (v4
+// is v3 + an op byte, and the message refs sit at the same place). The decoder
+// is therefore four whole-body attempts in a deliberate order, not a tag sniff.
 #include "GhostExternal.h"
 
 #include "BuildRuntime.h"  // LookupSource
@@ -32,6 +33,9 @@ namespace mch {
 namespace {
 
 constexpr std::uint32_t kJettonTransferOpcode = 0x0F8A7EA5;
+constexpr std::uint32_t kTgSendOneMessageExternal = 0x63896E75;
+constexpr std::uint32_t kTgSendBulkMessagesExternal = 0x73896E75;
+constexpr std::uint32_t kTgChangePublicKeyExternal = 0xFBBA99C8;
 
 // externals.py PayloadMessage: ONE unsent outgoing message from a wallet body.
 struct WalletPayload {
@@ -130,6 +134,72 @@ td::Result<std::vector<WalletPayload>> payloads_from_refs(vm::CellSlice &cs) {
   return out;
 }
 
+// WalletTgExternalMessage: signature:bits512 opcode:uint32, then the common
+// subwallet_id/valid_until/seqno header. SendOneMessageRequestE carries one
+// inline mode + message ref. SendBulkMessagesRequestE carries a Tolk array:
+// uint8 length + Maybe ^first_chunk; each chunk starts with Maybe ^next_chunk
+// and stores every remaining ref as one mode:uint8 + ^message item.
+//
+// The declared array length and send modes are intentionally consumed but not
+// validated. This mirrors externals.py; the wallet contract validates them.
+td::Result<std::vector<WalletPayload>> parse_wallet_tg(vm::CellSlice cs) {
+  constexpr unsigned kSignedRequestHeaderBits = 512 + 32 + 96;
+  if (!cs.have(kSignedRequestHeaderBits)) {
+    return td::Status::Error("tg-wallet: header underflow");
+  }
+
+  cs.advance(512);  // signature
+  const auto opcode = static_cast<std::uint32_t>(cs.fetch_ulong(32));
+  if (opcode != kTgSendOneMessageExternal && opcode != kTgSendBulkMessagesExternal &&
+      opcode != kTgChangePublicKeyExternal) {
+    return td::Status::Error("tg-wallet: unknown request");
+  }
+  cs.advance(96);  // subwallet_id, valid_until, seqno
+
+  std::vector<WalletPayload> out;
+  if (opcode == kTgChangePublicKeyExternal) {
+    return out;
+  }
+
+  if (!cs.have(8)) return td::Status::Error("tg-wallet: payload header underflow");
+  cs.advance(8);  // send mode for one message, declared array length for bulk
+
+  if (opcode == kTgSendOneMessageExternal) {
+    if (cs.size_refs() == 0) return td::Status::Error("tg-wallet: message ref missing");
+    TRY_RESULT(p, parse_payload(cs.fetch_ref()));
+    out.push_back(std::move(p));
+    return out;
+  }
+
+  if (!cs.have(1)) return td::Status::Error("tg-wallet: array maybe-ref underflow");
+  td::Ref<vm::Cell> chunk;
+  if (cs.fetch_ulong(1)) {
+    if (cs.size_refs() == 0) return td::Status::Error("tg-wallet: first chunk ref missing");
+    chunk = cs.fetch_ref();
+  }
+
+  while (chunk.not_null()) {
+    TRY_RESULT(s, open_ref_cell(chunk));
+    if (!s.have(1)) return td::Status::Error("tg-wallet: next chunk maybe-ref underflow");
+
+    td::Ref<vm::Cell> next;
+    if (s.fetch_ulong(1)) {
+      if (s.size_refs() == 0) return td::Status::Error("tg-wallet: next chunk ref missing");
+      next = s.fetch_ref();
+    }
+
+    const unsigned items = s.size_refs();
+    for (unsigned i = 0; i < items; ++i) {
+      if (!s.have(8)) return td::Status::Error("tg-wallet: send mode underflow");
+      s.advance(8);
+      TRY_RESULT(p, parse_payload(s.fetch_ref()));
+      out.push_back(std::move(p));
+    }
+    chunk = std::move(next);
+  }
+  return out;
+}
+
 // WalletV3ExternalMessage: signature:bits512 subwallet_id valid_until seqno.
 td::Result<std::vector<WalletPayload>> parse_wallet_v3(vm::CellSlice cs) {
   if (!cs.have(512 + 96)) return td::Status::Error("v3: header underflow");
@@ -169,14 +239,16 @@ td::Result<std::vector<WalletPayload>> parse_wallet_v5r1(vm::CellSlice cs) {
   return out;
 }
 
-// extract_payload_from_wallet_message (externals.py:140-158): v3, v4, v5r1 in
-// order, first whole-body success wins; none -> no payloads.
+// extract_payload_from_wallet_message: tg-wallet, v3, v4, v5r1 in that order;
+// first whole-body success wins, none -> no payloads. Tg-wallet has to precede
+// v3/v4 because their readers accept almost any sufficiently large body.
 std::vector<WalletPayload> extract_payload_from_wallet_message(const td::Ref<vm::Cell> &body) {
   auto r_cs = open_ref_cell(body);
   if (r_cs.is_error()) return {};
   const vm::CellSlice cs = r_cs.move_as_ok();
   using Attempt = td::Result<std::vector<WalletPayload>> (*)(vm::CellSlice);
-  static const Attempt kAttempts[] = {parse_wallet_v3, parse_wallet_v4, parse_wallet_v5r1};
+  static const Attempt kAttempts[] = {parse_wallet_tg, parse_wallet_v3, parse_wallet_v4,
+                                      parse_wallet_v5r1};
   for (Attempt attempt : kAttempts) {
     auto r = attempt(cs);
     if (r.is_ok()) return r.move_as_ok();

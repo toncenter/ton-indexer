@@ -10,6 +10,7 @@
 #include "Classify.h"
 #include "EmuActionSerializeTest.h"
 #include "EmuCelldbLookupTest.h"
+#include "GhostExternalTest.h"
 #include "MsgParse.h"
 
 #include <cstdlib>
@@ -27,6 +28,7 @@ int main(int argc, char *argv[]) {
   bool abi_bridge_test_mode = false;
   bool actions_msgpack_test_mode = false;
   bool celldb_tier2_test_mode = false;
+  bool ghost_external_test_mode = false;
   std::vector<std::string> trace_paths;
 
   td::OptionParser p;
@@ -43,6 +45,9 @@ int main(int argc, char *argv[]) {
   p.add_option('\0', "celldb-tier2-test",
                "Celldb tier-2 lookup self-test (tier shape equality, jvault chain, memo/budget)",
                [&]() { celldb_tier2_test_mode = true; });
+  p.add_option('\0', "ghost-external-test",
+               "Wallet external ghost-synthesis self-test (tg-wallet single/bulk/errors)",
+               [&]() { ghost_external_test_mode = true; });
   p.add_option('\0', "help", "prints help", [&]() {
     char b[10240];
     td::StringBuilder sb(td::MutableSlice{b, 10000});
@@ -79,6 +84,9 @@ int main(int argc, char *argv[]) {
   }
   if (celldb_tier2_test_mode) {
     return mch::run_celldb_tier2_test();
+  }
+  if (ghost_external_test_mode) {
+    return mch::run_ghost_external_test();
   }
   return 0;
 }

@@ -332,6 +332,7 @@ add_executable(ton-mch-engine
     src/AbiBridgeTest.cpp
     src/EmuActionSerializeTest.cpp
     src/EmuCelldbLookupTest.cpp
+    src/GhostExternalTest.cpp
     ${ABI_BRIDGE_TEST_FIXTURES}
 )
 target_include_directories(ton-mch-engine PRIVATE src ${CMAKE_CURRENT_BINARY_DIR} ${TON_ABI_GENERATED_DIR})
@@ -357,7 +358,8 @@ add_test(NAME mch_actions_msgpack
     COMMAND ton-mch-engine --actions-msgpack-test)
 add_test(NAME mch_celldb_tier2
     COMMAND ton-mch-engine --celldb-tier2-test)
+add_test(NAME mch_ghost_external
+    COMMAND ton-mch-engine --ghost-external-test)
 add_test(NAME mch_ir_equivalence
     COMMAND "${CMAKE_COMMAND}" -E compare_files
             "${MCH_GENERATED_IR}" "${MCH_GENERATED_IR_SECOND}")
-

@@ -47,6 +47,7 @@ var WalletsHashMap = map[string]bool{
 	"/rX/aCDi/w2Ug+fg1iyBfYRniftK5YDIeIZtlZ2r1cA=": true,
 	"89fKU0k97trCizgZhqhJQDy6w9LFhHea8IEGWvCsS5M=": true,
 	"IINLe3KxEhR+Gy+0V7hOdNGjDwT3N9T2KmaOlVLSty8=": true,
+	"kUmuUcHkaJcQzr94MCl7Fqz7rbNjqSClN4k+f/7sp2g=": true,
 }
 
 // errors
