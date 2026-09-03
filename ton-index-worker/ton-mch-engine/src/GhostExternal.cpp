@@ -12,6 +12,7 @@
 #include "GhostExternal.h"
 
 #include "BuildRuntime.h"  // LookupSource
+#include "WalletRequest.h"
 #include "host/HostCommon.h"
 #include "parse/PSlice.h"
 #include "parse/Parsers.h"
@@ -33,9 +34,6 @@ namespace mch {
 namespace {
 
 constexpr std::uint32_t kJettonTransferOpcode = 0x0F8A7EA5;
-constexpr std::uint32_t kTgSendOneMessageExternal = 0x63896E75;
-constexpr std::uint32_t kTgSendBulkMessagesExternal = 0x73896E75;
-constexpr std::uint32_t kTgChangePublicKeyExternal = 0xFBBA99C8;
 
 // externals.py PayloadMessage: ONE unsent outgoing message from a wallet body.
 struct WalletPayload {
@@ -150,21 +148,22 @@ td::Result<std::vector<WalletPayload>> parse_wallet_tg(vm::CellSlice cs) {
 
   cs.advance(512);  // signature
   const auto opcode = static_cast<std::uint32_t>(cs.fetch_ulong(32));
-  if (opcode != kTgSendOneMessageExternal && opcode != kTgSendBulkMessagesExternal &&
-      opcode != kTgChangePublicKeyExternal) {
+  if (opcode != kTgWalletSendOneMessageExternal &&
+      opcode != kTgWalletSendBulkMessagesExternal &&
+      opcode != kTgWalletChangePublicKeyExternal) {
     return td::Status::Error("tg-wallet: unknown request");
   }
   cs.advance(96);  // subwallet_id, valid_until, seqno
 
   std::vector<WalletPayload> out;
-  if (opcode == kTgChangePublicKeyExternal) {
+  if (opcode == kTgWalletChangePublicKeyExternal) {
     return out;
   }
 
   if (!cs.have(8)) return td::Status::Error("tg-wallet: payload header underflow");
   cs.advance(8);  // send mode for one message, declared array length for bulk
 
-  if (opcode == kTgSendOneMessageExternal) {
+  if (opcode == kTgWalletSendOneMessageExternal) {
     if (cs.size_refs() == 0) return td::Status::Error("tg-wallet: message ref missing");
     TRY_RESULT(p, parse_payload(cs.fetch_ref()));
     out.push_back(std::move(p));

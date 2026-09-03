@@ -737,6 +737,8 @@ type Action struct {
 	Accounts              []AccountAddress `json:"accounts,omitempty"`
 	Transactions          []*Transaction   `json:"transactions_full,omitempty"`
 	Finality              FinalityState    `json:"finality"`
+	// action_id of the gasless_request action this action is an immediate result of
+	ParentGaslessAction *string `json:"parent_gasless_action,omitempty"`
 } // @name Action
 
 type ActionDetailsMultisigCreateOrder struct {
@@ -1133,6 +1135,17 @@ type ActionDetailsCocoonClientWithdraw struct {
 	Source         *AccountAddress `json:"source"`
 	Destination    *AccountAddress `json:"destination"`
 	Amount         *string         `json:"amount"`
+}
+
+type ActionDetailsChangeWalletKey struct {
+	Source      *AccountAddress `json:"source"`
+	Destination *AccountAddress `json:"destination"`
+}
+
+type ActionDetailsGaslessRequest struct {
+	Source      *AccountAddress `json:"source"`
+	Destination *AccountAddress `json:"destination"`
+	Value       *string         `json:"value"`
 }
 
 type OrderAction struct {

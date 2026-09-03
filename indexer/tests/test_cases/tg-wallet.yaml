@@ -1,0 +1,49 @@
+cases:
+  Change wallet key requested by external message:
+    # Telegram wallet key rotation asked for directly by the owner:
+    # ChangePublicKeyRequestE (0xFBBA99C8) arrives as an external, so the action has no source.
+    trace-id: QilH-V1kzvOH8jquiL-36pCaUWypDuKINlUHbE3j79s=
+    expected-actions:
+      - type: change_wallet_key
+        values:
+          success: true
+          extra.parent_gasless_action: null
+          source: null
+          destination: "0:E55E63B850B71B8FF5AD44E1B8271237AFAF31900B2B6D41233707BB585B8091"
+          accounts:
+            - "0:E55E63B850B71B8FF5AD44E1B8271237AFAF31900B2B6D41233707BB585B8091"
+          tx_hashes:
+            - "QilH+V1kzvOH8jquiL+36pCaUWypDuKINlUHbE3j79s="
+  Change wallet key requested by internal message:
+    # Same rotation, but a relayer pays the gas: it forwards
+    # ChangePublicKeyRequestI (0xFBBA99C7) to the wallet as an internal message.
+    trace-id: CaitzDiXgDuUMWIvvPLZwCI8YcDfz_M5dbXyaOs7Occ=
+    expected-actions:
+      - type: change_wallet_key
+        values:
+          success: true
+          extra.parent_gasless_action: "b5cLv1FsgTThSFHBjzqJteDep4FS/Xe+Wp3w1XvRtRc="
+          source: "0:E15488B65F7E904F1D14C84AC6F603CCC4A404B03BEFB568D5F5CC8ED6866887"
+          destination: "0:E55E63B850B71B8FF5AD44E1B8271237AFAF31900B2B6D41233707BB585B8091"
+          value: 5000000
+          accounts:
+            - "0:E15488B65F7E904F1D14C84AC6F603CCC4A404B03BEFB568D5F5CC8ED6866887"
+            - "0:E55E63B850B71B8FF5AD44E1B8271237AFAF31900B2B6D41233707BB585B8091"
+          tx_hashes:
+            - "CaitzDiXgDuUMWIvvPLZwCI8YcDfz/M5dbXyaOs7Occ="
+            - "0XU5v5zYu0IYjsLX1pXc77isPyzQhEcOJoRjRrAuHtE="
+      # the relayed request is also marked as gasless_request, next to the rotation itself
+      - type: gasless_request
+        values:
+          success: true
+          action_id: "b5cLv1FsgTThSFHBjzqJteDep4FS/Xe+Wp3w1XvRtRc="
+          extra.parent_gasless_action: null
+          source: "0:E15488B65F7E904F1D14C84AC6F603CCC4A404B03BEFB568D5F5CC8ED6866887"
+          destination: "0:E55E63B850B71B8FF5AD44E1B8271237AFAF31900B2B6D41233707BB585B8091"
+          value: 5000000
+          accounts:
+            - "0:E15488B65F7E904F1D14C84AC6F603CCC4A404B03BEFB568D5F5CC8ED6866887"
+            - "0:E55E63B850B71B8FF5AD44E1B8271237AFAF31900B2B6D41233707BB585B8091"
+          tx_hashes:
+            - "CaitzDiXgDuUMWIvvPLZwCI8YcDfz/M5dbXyaOs7Occ="
+            - "0XU5v5zYu0IYjsLX1pXc77isPyzQhEcOJoRjRrAuHtE="

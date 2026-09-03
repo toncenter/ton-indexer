@@ -1,9 +1,14 @@
-// --ghost-external-test: exercises the production synthesis entry point over
-// synthetic Telegram-wallet bodies. No fixture corpus, database, or node is
-// needed.
+// --ghost-external-test: exercises production wallet-request opcode recovery,
+// gasless marker construction, and ghost synthesis over synthetic wallet
+// bodies. No fixture corpus, database, or node is needed.
 #include "GhostExternalTest.h"
 
+#include "ActionBuild.h"
+#include "ClassifyCore.h"
 #include "GhostExternal.h"
+#include "GenMatchers.h"
+#include "WalletRequest.h"
+#include "fixtures/FixtureLookupSource.h"
 
 #include "td/utils/base64.h"
 #include "vm/boc.h"
@@ -13,6 +18,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -21,9 +27,6 @@ namespace mch {
 
 namespace {
 
-constexpr std::uint32_t kSendOneMessageExternal = 0x63896E75;
-constexpr std::uint32_t kSendBulkMessagesExternal = 0x73896E75;
-constexpr std::uint32_t kChangePublicKeyExternal = 0xFBBA99C8;
 constexpr std::uint8_t kSendMode = 3;
 
 int g_fail = 0;
@@ -69,7 +72,7 @@ void store_signed_request_header(vm::CellBuilder &body, std::uint32_t opcode) {
 
 td::Ref<vm::Cell> send_one_body(const td::Ref<vm::Cell> &message) {
   vm::CellBuilder body;
-  store_signed_request_header(body, kSendOneMessageExternal);
+  store_signed_request_header(body, kTgWalletSendOneMessageExternal);
   body.store_long(kSendMode, 8).store_ref(message);
   return body.finalize();
 }
@@ -90,7 +93,7 @@ td::Ref<vm::Cell> five_message_bulk_body(
   head.store_long(kSendMode, 8).store_ref(messages[0]);
 
   vm::CellBuilder body;
-  store_signed_request_header(body, kSendBulkMessagesExternal);
+  store_signed_request_header(body, kTgWalletSendBulkMessagesExternal);
   body.store_long(declared_length, 8).store_ones(1).store_ref(head.finalize());
   return body.finalize();
 }
@@ -150,6 +153,13 @@ std::vector<std::uint32_t> child_opcodes(const SynthesisCase &c) {
   return out;
 }
 
+Block *child_with_type(Block *block, const std::string &btype) {
+  for (Block *child : block->children_blocks) {
+    if (child->btype == btype) return child;
+  }
+  return nullptr;
+}
+
 void test_send_one() {
   SynthesisCase c(send_one_body(payload(0x01020304)));
   check("tg_external/send_one/count", c.synthesize() == 1);
@@ -179,12 +189,12 @@ void test_bulk_chunk_order_and_ignored_count() {
 
 void test_no_payload_requests_and_malformed_bodies() {
   {
-    SynthesisCase c(header_only_body(kChangePublicKeyExternal));
+    SynthesisCase c(header_only_body(kTgWalletChangePublicKeyExternal));
     check("tg_external/change_key/no_ghosts",
           c.synthesize() == 0 && c.tree.root->children.empty());
   }
   {
-    SynthesisCase c(header_only_body(kSendOneMessageExternal));
+    SynthesisCase c(header_only_body(kTgWalletSendOneMessageExternal));
     check("tg_external/send_one_truncated/no_ghosts",
           c.synthesize() == 0 && c.tree.root->children.empty());
   }
@@ -202,6 +212,115 @@ void test_no_payload_requests_and_malformed_bodies() {
   }
 }
 
+void test_opcode_recovery_and_gasless_markers() {
+  const std::string source = "0:" + std::string(64, 'A');
+  const std::string destination = "0:" + std::string(64, 'B');
+
+  {
+    SynthesisCase c(header_only_body(kTgWalletSendOneMessageInternal));
+    c.external.opcode = 0x01020304;  // signature fragment stored in the DB row
+    c.external.source = source;
+    c.external.destination = destination;
+    c.external.value = 5;
+
+    check("wallet_request/tg_internal/recovered",
+          get_tg_wallet_request_opcode(&c.external) ==
+              std::optional<std::uint32_t>(kTgWalletSendOneMessageInternal));
+
+    BlockArena arena;
+    Block *request = init_block(arena, c.tree.root);
+    Block *marker = child_with_type(request, "gasless_request");
+    check("wallet_request/tg_internal/call_opcode",
+          request->btype == "call_contract" && request->opcode ==
+                                                   kTgWalletSendOneMessageInternal);
+    check("wallet_request/tg_internal/marker", marker != nullptr);
+    check("wallet_request/tg_internal/marker_has_no_opcode",
+          marker != nullptr && marker->data.field("opcode") == nullptr);
+  }
+
+  {
+    SynthesisCase c(header_only_body(kTgWalletSendOneMessageExternal));
+    c.external.opcode = 0x05060708;
+    c.external.destination = destination;
+
+    BlockArena arena;
+    Block *request = init_block(arena, c.tree.root);
+    check("wallet_request/tg_external/call_opcode",
+          request->btype == "call_contract" && request->opcode ==
+                                                   kTgWalletSendOneMessageExternal);
+    check("wallet_request/tg_external/no_marker",
+          child_with_type(request, "gasless_request") == nullptr);
+  }
+
+  {
+    vm::CellBuilder body;
+    body.store_long(kWalletV5SignedRequestInternal, 32);
+    SynthesisCase c(body.finalize());
+    c.external.opcode = kWalletV5SignedRequestInternal;
+    c.external.source = source;
+    c.external.destination = destination;
+
+    check("wallet_request/v5/not_tg",
+          get_tg_wallet_request_opcode(&c.external) == std::nullopt);
+    BlockArena arena;
+    Block *request = init_block(arena, c.tree.root);
+    check("wallet_request/v5/marker",
+          child_with_type(request, "gasless_request") != nullptr);
+  }
+}
+
+void test_failed_external_change_key() {
+  TraceContext ctx;
+  ctx.trace.trace_id = "failed-change-key-trace";
+
+  auto tx = std::make_unique<Transaction>();
+  tx->hash = "failed-change-key-tx";
+  tx->lt = 100;
+  tx->now = 200;
+  tx->mc_block_seqno = 300;
+  tx->account = "0:" + std::string(64, 'B');
+  tx->descr = "ord";
+  tx->orig_status = "active";
+  tx->end_status = "active";
+  tx->aborted = true;
+
+  auto request = std::make_unique<Message>();
+  request->msg_hash = "failed-change-key-message";
+  request->tx_hash = tx->hash;
+  request->tx_lt = tx->lt;
+  request->direction = "in";
+  request->destination = tx->account;
+  request->opcode = 0x01020304;  // signature fragment stored in the DB row
+  request->content = MsgContent{
+      "body-hash", boc_base64(header_only_body(kTgWalletChangePublicKeyExternal))};
+  request->tx = tx.get();
+  tx->messages.push_back(std::move(request));
+  ctx.trace.transactions.push_back(std::move(tx));
+
+  ctx.tree = to_tree(ctx.trace);
+  ctx.root = init_block(ctx.arena, ctx.tree.root);
+  check("wallet_request/change_key/aborted_leaf_is_normalized",
+        ctx.root != nullptr && !ctx.root->failed);
+
+  const std::vector<CompiledMatcher> &matchers = gen_matchers_ir();
+  ClassifySetup setup = prepare_classify(matchers);
+  FixtureLookupSource source(&ctx.trace.interfaces);
+  ClassifyResult result = classify_trace(ctx, matchers, setup, source);
+
+  bool found = false;
+  bool success = true;
+  for (const ActionRow &row : result.action_rows) {
+    if (row.block == nullptr || row.block->btype != "change_wallet_key") continue;
+    Action action;
+    if (build_action(row, action)) {
+      found = true;
+      success = action.success;
+    }
+  }
+  check("wallet_request/change_key/aborted_action_found", found);
+  check("wallet_request/change_key/aborted_action_failed", found && !success);
+}
+
 }  // namespace
 
 int run_ghost_external_test() {
@@ -209,6 +328,8 @@ int run_ghost_external_test() {
   test_send_one();
   test_bulk_chunk_order_and_ignored_count();
   test_no_payload_requests_and_malformed_bodies();
+  test_opcode_recovery_and_gasless_markers();
+  test_failed_external_change_key();
   std::printf("GHOST-EXTERNAL-TEST %s\n",
               g_fail == 0 ? "ALL PASS" : "FAILURES");
   return g_fail == 0 ? 0 : 1;

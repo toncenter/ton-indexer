@@ -54,6 +54,7 @@ var ActionTypeShortcuts = map[string][]string{
 	"v5": {
 		"v4",
 		"dedust_v2_claim_fees", "dedust_v2_claim_reward",
+		"change_wallet_key", "gasless_request",
 	},
 	"latest": {"v5"},
 	"staking": {

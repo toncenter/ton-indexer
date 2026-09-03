@@ -6,6 +6,7 @@
 #include "Value.h"
 
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -43,14 +44,17 @@ struct Action {
   std::vector<std::string> ancestor_type;
 };
 
-// One row serialize_blocks emits: the block plus the two fields that are NOT a
-// property of the block alone but of WHERE it sits in the consumption tree.
-// Lives here rather than in ClassifyCore.h so ActionBuild owns the whole Action
-// vocabulary (and the core can build a row without depending on rendering).
+// One row serialize_blocks emits: the block plus contextual relationships that
+// are NOT properties of the block alone. Lives here rather than in
+// ClassifyCore.h so ActionBuild owns the whole Action vocabulary (and the core
+// can build a row without depending on rendering).
 struct ActionRow {
   Block *block{nullptr};
   std::string parent_action_id;
   std::vector<std::string> ancestor_type;
+  // action_id of the gasless_request marker this row immediately resulted
+  // from. Materialized into Action.extra by build_action.
+  std::optional<std::string> parent_gasless_action;
 };
 
 // _calc_action_id (block_tree_serializer.py:110-120): base64(sha256(the lowest-lt

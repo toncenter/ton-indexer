@@ -76,6 +76,12 @@ class TestDnsActions(BaseGenericActionTest):
 class TestMultisigActions(BaseGenericActionTest):
     yaml_file = "multisig.yaml"
 
+class TestChangeWalletKeyActions(BaseGenericActionTest):
+    yaml_file = "tg-wallet.yaml"
+
+class TestGaslessRequestActions(BaseGenericActionTest):
+    yaml_file = "gasless.yaml"
+
 class TestClassificationCommon:
 
     def load_trace(self, trace_id, traces_dir) -> Trace:

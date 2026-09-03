@@ -1,4 +1,4 @@
-// --ghost-external-test: hermetic coverage for wallet-external ghost synthesis.
+// --ghost-external-test: hermetic wallet-request and ghost-synthesis coverage.
 #pragma once
 
 namespace mch {

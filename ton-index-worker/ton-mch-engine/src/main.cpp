@@ -46,7 +46,7 @@ int main(int argc, char *argv[]) {
                "Celldb tier-2 lookup self-test (tier shape equality, jvault chain, memo/budget)",
                [&]() { celldb_tier2_test_mode = true; });
   p.add_option('\0', "ghost-external-test",
-               "Wallet external ghost-synthesis self-test (tg-wallet single/bulk/errors)",
+               "Wallet request/ghost self-test (tg-wallet single/bulk/opcode/gasless)",
                [&]() { ghost_external_test_mode = true; });
   p.add_option('\0', "help", "prints help", [&]() {
     char b[10240];

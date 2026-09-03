@@ -218,6 +218,7 @@ add_library(mch-classify STATIC
     src/BuildRuntime.cpp
     src/BuildDriver.cpp
     src/ActionBuild.cpp
+    src/WalletRequest.cpp
     src/GhostExternal.cpp
     src/ClassifyCore.cpp
     src/SchemaTraceLoader.cpp
