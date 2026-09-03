@@ -15,7 +15,9 @@
 #include <exception>
 #include <limits>
 #include <map>
+#include <optional>
 #include <stdexcept>
+#include <unordered_map>
 #include <unordered_set>
 
 namespace mch {
@@ -449,6 +451,28 @@ void unwind_deployments(std::vector<Block *> &blocks) {
   }
 }
 
+// event_processing.py unwind_gasless_requests: the same promotion walk as
+// deployments, but for the marker child attached to every relayed signed
+// wallet request. A fresh visited set is intentional: these are two distinct
+// post-processors in the reference chain.
+void unwind_gasless_requests(std::vector<Block *> &blocks) {
+  std::set<Block *> visited;
+  for (std::size_t i = 0; i < blocks.size(); i++) {  // index loop: sees appends
+    std::deque<Block *> queue(blocks[i]->children_blocks.begin(),
+                              blocks[i]->children_blocks.end());
+    while (!queue.empty()) {
+      Block *child = queue.front();
+      queue.pop_front();
+      if (child->btype == "gasless_request" && visited.count(child) == 0) {
+        blocks.push_back(child);
+      } else {
+        for (Block *c : child->children_blocks) queue.push_back(c);
+      }
+      visited.insert(child);
+    }
+  }
+}
+
 // serialize_blocks' row filter (block_tree_serializer.py:1649-1655): a spine
 // block becomes a row UNLESS it is the root wrapper, an `empty` proxy, or a
 // call_contract whose message has a null source (the external-in leaf) or a null
@@ -504,13 +528,60 @@ bool is_v1_op(const std::string &t) {
       "tonco_deposit_liquidity",
       "tonco_withdraw_liquidity",
       "coffee_deposit_liquidity",
+      "change_wallet_key",
+      "gasless_request",
   };
   return ops.count(t) != 0;
 }
 
-// Filter and recursively serialize action rows.
-std::vector<ActionRow> serialize_rows(const std::vector<Block *> &blocks,
-                                      const std::string &parent_id) {
+const EventNode *root_event_node(const Block *b) {
+  const EventNode *root = nullptr;
+  for (const EventNode *n : b->event_nodes) {
+    if (root == nullptr || n->lt() < root->lt()) root = n;
+  }
+  return root;
+}
+
+using GaslessRequestIds = std::unordered_map<const EventNode *, std::string>;
+
+std::optional<std::string> parent_gasless_action(const Block *b,
+                                                 const GaslessRequestIds &ids) {
+  if (ids.empty()) return std::nullopt;
+  const EventNode *node = root_event_node(b);
+  if (node == nullptr) return std::nullopt;
+
+  if (b->btype != "gasless_request" && b->btype != "call_contract") {
+    auto own = ids.find(node);
+    if (own != ids.end()) return own->second;
+  }
+  if (node->parent != nullptr) {
+    auto parent = ids.find(node->parent);
+    if (parent != ids.end()) return parent->second;
+  }
+  return std::nullopt;
+}
+
+// Link the already-flattened row set in one pass. Keeping this out of recursive
+// row selection prevents gasless semantics from leaking into the generic
+// parent_action_id/ancestor_type traversal.
+void link_gasless_actions(std::vector<ActionRow> &rows) {
+  GaslessRequestIds ids;
+  for (const ActionRow &row : rows) {
+    if (row.block->btype == "gasless_request") {
+      if (const EventNode *node = root_event_node(row.block)) {
+        ids[node] = calc_action_id(row.block);
+      }
+    }
+  }
+  for (ActionRow &row : rows) {
+    row.parent_gasless_action = parent_gasless_action(row.block, ids);
+  }
+}
+
+// Filter and recursively serialize action rows. Gasless causality is enriched
+// only after this generic structural traversal has produced the complete set.
+std::vector<ActionRow> serialize_rows_impl(const std::vector<Block *> &blocks,
+                                           const std::string &parent_id) {
   std::vector<ActionRow> out;
   std::set<std::string> ids;
   for (Block *b : blocks) {
@@ -520,7 +591,7 @@ std::vector<ActionRow> serialize_rows(const std::vector<Block *> &blocks,
     out.push_back(ActionRow{b, parent_id, {}});
     ids.insert(id);
     if (is_v1_op(b->btype)) continue;
-    for (ActionRow &c : serialize_rows(b->children_blocks, id)) {
+    for (ActionRow &c : serialize_rows_impl(b->children_blocks, id)) {
       if (c.block->btype == "contract_deploy") continue;
       c.ancestor_type.push_back(b->btype);
       std::sort(c.ancestor_type.begin(), c.ancestor_type.end());
@@ -537,6 +608,12 @@ std::vector<ActionRow> serialize_rows(const std::vector<Block *> &blocks,
   return out;
 }
 
+std::vector<ActionRow> serialize_rows(const std::vector<Block *> &blocks) {
+  std::vector<ActionRow> rows = serialize_rows_impl(blocks, "");
+  link_gasless_actions(rows);
+  return rows;
+}
+
 // Fresh leaf-only classification with no matchers, followed by post-processing
 // and serialization. Any exception produces an empty fallback.
 std::vector<ActionRow> basic_classify_fallback(TraceContext &ctx) {
@@ -551,9 +628,10 @@ std::vector<ActionRow> basic_classify_fallback(TraceContext &ctx) {
     post_process_dedust_v2_liquidity(spine, removed);
     post_process_stonfi_v2_liquidity(spine, ctx.arena, removed);
     unwind_deployments(spine);
+    unwind_gasless_requests(spine);
     // Use the recursive serialization path. Basic btypes are all v1_ops, so
     // recursion normally has no additional rows to visit.
-    out = serialize_rows(spine, "");
+    out = serialize_rows(spine);
   } catch (...) {
     out.clear();  // Python: fallback returns [] on any exception
   }
@@ -597,6 +675,7 @@ std::vector<ActionRow> ghost_external_rows(TraceContext &ctx, const LookupSource
     post_process_dedust_v2_liquidity(spine, removed);
     post_process_stonfi_v2_liquidity(spine, ctx.arena, removed);
     unwind_deployments(spine);
+    unwind_gasless_requests(spine);
     // FLAT, unlike the other two paths: try_classify_unknown_trace open-codes the
     // row filter (:370-375) instead of calling serialize_blocks, so a ghost row
     // never recurses into children and never carries parent_action_id.
@@ -750,6 +829,7 @@ ClassifyResult classify_trace(TraceContext &ctx, const std::vector<CompiledMatch
     post_process_dedust_v2_liquidity(spine, removed);
     post_process_stonfi_v2_liquidity(spine, ctx.arena, removed);
     unwind_deployments(spine);  // promotes nested ContractDeploy onto the spine
+    unwind_gasless_requests(spine);  // promotes relayed-request marker blocks
     for (CoreAction &a : pending) {
       if (!removed.count(a.produced)) result.actions.push_back(std::move(a));
     }
@@ -758,7 +838,7 @@ ClassifyResult classify_trace(TraceContext &ctx, const std::vector<CompiledMatch
     // own, unless its consumer's btype is outside v1_ops, in which case the
     // recursion brings it back as a CHILD row; a leaf no matcher consumed emits
     // a basic row.
-    result.action_rows = serialize_rows(spine, "");
+    result.action_rows = serialize_rows(spine);
   } catch (const std::exception &e) {
     result.failure = true;
     result.failure_reason = e.what();

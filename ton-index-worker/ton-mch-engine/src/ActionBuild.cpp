@@ -45,6 +45,25 @@ Value dg(const Value &d, const char *k) {
 }
 bool has(const Value &d, const char *k) { return d.field(k) != nullptr; }
 
+// Python's `{**extra, key: value}` over the raw action's extensibility map.
+// A non-dict value is treated as an empty map, matching `isinstance(extra,
+// dict)`. Copy before mutation because Value dictionaries are shared_ptr-backed.
+void set_extra_field(Action &action, std::string key, Value value) {
+  Value::Fields fields;
+  if (action.extra.t == VType::Dict && action.extra.fields) {
+    fields = *action.extra.fields;
+  }
+  for (auto &[existing_key, existing_value] : fields) {
+    if (existing_key == key) {
+      existing_value = std::move(value);
+      action.extra = Value::make_dict(std::move(fields));
+      return;
+    }
+  }
+  fields.emplace_back(std::move(key), std::move(value));
+  action.extra = Value::make_dict(std::move(fields));
+}
+
 // Python hex(int): "0x" + lowercase magnitude, no leading zeros. Only used for
 // EVAA asset_id (a positive 256-bit id). Null -> Null.
 Value av_hex(const Value &v) {
@@ -1507,6 +1526,14 @@ void fill_tick_tock(const Value &d, Action &a) {
   a.source = av_addr(dg(d, "account"));
 }
 
+// _fill_change_wallet_key_action / _fill_gasless_request_action: both marker
+// actions expose the same generic source/destination/value fields.
+void fill_wallet_request_marker(const Value &d, Action &a) {
+  a.source = av_addr(dg(d, "source"));
+  a.destination = av_addr(dg(d, "destination"));
+  a.value = av_amount(dg(d, "value"));
+}
+
 // Dispatch a produced block to its fill (block_to_action match). Returns false
 // for a btype outside the ported set (skip-table entry).
 bool fill_action(Block *b, Action &a) {
@@ -1515,6 +1542,8 @@ bool fill_action(Block *b, Action &a) {
   if (t == "call_contract" || t == "contract_deploy") fill_call_contract(d, a);
   else if (t == "ton_transfer") fill_ton_transfer(d, a);
   else if (t == "tick_tock") fill_tick_tock(d, a);
+  else if (t == "change_wallet_key" || t == "gasless_request")
+    fill_wallet_request_marker(d, a);
   else if (t == "jetton_transfer") fill_jetton_transfer(d, a);
   else if (t == "jetton_burn") fill_jetton_burn(d, a);
   else if (t == "jetton_mint") fill_jetton_mint(d, a);
@@ -1699,6 +1728,10 @@ bool build_action(const ActionRow &row, Action &a) {
   if (!build_action(row.block, a)) return false;
   a.parent_action_id = row.parent_action_id;
   a.ancestor_type = row.ancestor_type;
+  if (row.parent_gasless_action) {
+    set_extra_field(a, "parent_gasless_action",
+                    Value::make_str(*row.parent_gasless_action));
+  }
   return true;
 }
 

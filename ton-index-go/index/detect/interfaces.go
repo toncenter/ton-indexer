@@ -789,6 +789,14 @@ func getInterfaces() []Interface {
 				},
 			},
 			{
+				// Telegram wallet: an immutable assembly stub jumping to the code stored in config[-123],
+				// so the code hash is the same for all wallet revisions
+				Name: "tg_wallet",
+				CodeHashes: []string{
+					"kUmuUcHkaJcQzr94MCl7Fqz7rbNjqSClN4k+f/7sp2g=",
+				},
+			},
+			{
 				Name: "wallet_highload_v1r1",
 				CodeHashes: []string{
 					"2M27t58sXKpnesRQdwvgNRviHhJQSG3oXMUqoz3RZIQ=",
@@ -888,6 +896,21 @@ func getInterfaces() []Interface {
 	return interfacesCache
 }
 
+// Get-method ids of exotic contracts: ones whose methods cannot be parsed out of the code
+// (written in assembly or another language, or running dynamically loaded code), so their
+// contract_methods stays empty. Taken from the contract sources, kept sorted the way method ids
+// read from the database are.
+var exoticContractMethods = map[string][]uint32{
+	// Telegram wallet (https://github.com/ton-blockchain/tg-wallet-contract): an assembly stub
+	// jumping to WalletTg, whose code is stored in config[-123]
+	"kUmuUcHkaJcQzr94MCl7Fqz7rbNjqSClN4k+f/7sp2g=": {
+		uint32(tlb.MethodNameHash("get_public_key")),
+		uint32(tlb.MethodNameHash("get_subwallet_id")),
+		uint32(tlb.MethodNameHash("seqno")),
+		uint32(tlb.MethodNameHash("revision")),
+	},
+}
+
 func DetectInterface(codeHash string, methodIDs []uint32) []string {
 	var matchingInterfaces []string
 	interfaces := getInterfaces()
@@ -942,6 +965,12 @@ func MarkAccountStates(states []models.AccountStateFull) error {
 		codeHash := ""
 		if states[i].CodeHash != nil {
 			codeHash = string(*states[i].CodeHash)
+		}
+		if len(methods) == 0 {
+			if known, ok := exoticContractMethods[codeHash]; ok {
+				methods = slices.Clone(known)
+				states[i].ContractMethods = &methods
+			}
 		}
 		interfaces := DetectInterface(codeHash, methods)
 		states[i].Interfaces = &interfaces

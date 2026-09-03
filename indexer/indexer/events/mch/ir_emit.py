@@ -85,6 +85,8 @@ DEFAULT_SPEC_PATHS = [
     "specs/coffee_mev.mch",
     "specs/coffee_staking.mch",
     "specs/cocoon.mch",
+    # Legacy ChangeWalletKeyMatcher is deliberately the final matcher.
+    "specs/tg_wallet.mch",
 ]
 
 

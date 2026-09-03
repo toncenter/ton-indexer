@@ -1,6 +1,7 @@
 #include "BlockTree.h"
 
 #include "MsgParse.h"
+#include "WalletRequest.h"
 
 #include "td/utils/base64.h"
 #include "vm/boc.h"
@@ -368,8 +369,9 @@ Value leaf_data(const std::string &btype, const EventNode *node,
     return Value::make_dict(std::move(fs));
   }
   Value::Fields fs;
-  if (btype != "ton_transfer") {
-    // CallContractBlock / ContractDeploy: data['opcode'] = get_opcode() (masked u32).
+  if (btype == "call_contract" || btype == "contract_deploy") {
+    // CallContractBlock uses its recovered request opcode; ContractDeploy uses
+    // EventNode.get_opcode() (the raw stored opcode), matching basic_blocks.py.
     fs.emplace_back("opcode", op ? Value::make_int64(static_cast<std::int64_t>(*op))
                                  : Value::null());
   }
@@ -391,8 +393,9 @@ Value leaf_data(const std::string &btype, const EventNode *node,
 }
 
 Block *make_leaf_block(BlockArena &arena, const EventNode *node) {
-  auto op = node->opcode();
-  bool is_ton = !op || *op == 0 || *op == kEncryptedTonOpcode;
+  const auto raw_op = node->opcode();
+  auto op = raw_op;
+  bool is_ton = !raw_op || *raw_op == 0 || *raw_op == kEncryptedTonOpcode;
   const Message *msg = node->msg;
   const Transaction *tx = node->tx;
 
@@ -416,6 +419,13 @@ Block *make_leaf_block(BlockArena &arena, const EventNode *node) {
       }
     }
   } else {
+    // A Telegram-wallet request begins with its signature. The opcode persisted
+    // on the message is therefore meaningless; recover the request opcode from
+    // the body only after the raw-opcode leaf-kind decision, exactly like
+    // basic_blocks.get_call_contract_opcode.
+    if (auto tg_op = get_tg_wallet_request_opcode(msg)) {
+      op = tg_op;
+    }
     b = arena.make("call_contract");
     b->opcode = op;
     b->failed = node_failed(node);
@@ -431,13 +441,26 @@ Block *make_leaf_block(BlockArena &arena, const EventNode *node) {
   b->data = leaf_data(b->btype, node, op);
   init_leaf(b, node);
 
-  // ContractDeploy side-effect blocks live in children_blocks.
+  // GaslessRequestBlock is a marker child of the signed internal request. It
+  // deliberately has no Block::parent until/unless a later merge claims it;
+  // unwind_gasless_requests promotes it to the serialized spine.
+  if (b->btype == "call_contract" && msg != nullptr && msg->source && op &&
+      is_gasless_request_opcode(*op)) {
+    Block *gasless = arena.make("gasless_request");
+    gasless->failed = node_failed(node);
+    gasless->data = leaf_data("gasless_request", node, std::nullopt);
+    init_leaf(gasless, node);
+    b->children_blocks.push_back(gasless);
+  }
+
+  // ContractDeploy side-effect blocks live in children_blocks after the
+  // gasless marker, matching CallContractBlock's append order.
   if (!node->is_tick_tock && tx != nullptr && tx->end_status == "active" &&
       tx->orig_status != "active" && tx->orig_status != "frozen") {
     Block *deploy = arena.make("contract_deploy");
-    deploy->opcode = op;
+    deploy->opcode = raw_op;
     deploy->failed = node_failed(node);
-    deploy->data = leaf_data("contract_deploy", node, op);
+    deploy->data = leaf_data("contract_deploy", node, raw_op);
     init_leaf(deploy, node);
     // NB: Python does not set .parent here — only merge_blocks does.
     b->children_blocks.push_back(deploy);
