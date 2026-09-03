@@ -1,12 +1,7 @@
-// Typed records for the shared DEX swap action vocabulary. Protocol hosts derive
-// these facts, then call one encoder that
-// owns the output field names + null conventions, instead of assembling generic
-// `Value` dicts and mutating them (the HostCoffee const_cast is gone).
-//
-// The leg, peer, and record encoders emit Coffee field order. Coffee and Stonfi
-// cores (HostCoffee.cpp / HostStonfi.cpp) share one encoder and ONE leg reader
-// (TransferLeg::from_jetton_transfer). Add an ordering variant only for an
-// observed wire-format requirement.
+// Typed records for the shared DEX swap vocabulary. One encoder owns output
+// field names and null conventions. Coffee and Stonfi cores share one encoder
+// and one leg reader. Add an ordering variant only for an observed
+// wire-format requirement.
 #pragma once
 
 #include "Value.h"
@@ -17,6 +12,9 @@
 namespace mch {
 
 struct Block;  // BlockTree.h
+
+// An excess refund represented as the shared [asset, amount] pair.
+Value excess_pair(Value asset, Value amount);
 
 // {asset, amount}, a peer-swap hop's in/out side.
 struct SwapLeg {
@@ -49,8 +47,7 @@ struct PeerSwap {
   Value encode() const;  // Dict{in, out}
 };
 
-// The top swap record. Field set/order = Coffee's coffee_swap_data (see the
-// ORDER NOTE above).
+// Top swap record. Field set and order match Coffee's coffee_swap_data.
 struct SwapRecord {
   std::string dex;
   Value sender;
@@ -64,8 +61,7 @@ struct SwapRecord {
   bool failed{false};
 
   // Fill each hop's out-asset from the next hop's in-asset, and the final hop's
-  // out-asset from `dex_outgoing_transfer.asset`. This is the typed replacement
-  // before encode().
+  // out-asset from `dex_outgoing_transfer.asset`.
   void fill_peer_out_assets();
 
   // Obj{dex, sender, source_asset, destination_asset, dex_incoming_transfer,

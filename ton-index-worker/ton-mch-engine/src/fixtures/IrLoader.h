@@ -21,7 +21,6 @@ struct LoadedIr {
   std::string source_sha256;
 };
 
-// Load + compile an artifact from a JSON file path.
 td::Result<LoadedIr> load_ir(const std::string &path);
 
 }  // namespace mch

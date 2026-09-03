@@ -1,0 +1,97 @@
+# dedust-liquidities / Merged with ton excesses
+# trace: k0yADcY39ZkSu5Y7keHvfMzFyadhlDZ1OvxH-c8aU7M=
+actions:
+  - type: contract_deploy
+    anchor: contract_deploy#9b3aa3fa@54209083000002
+    id: GAbLUxW3W8VRYa/ak3QT8EGvXegcnxFwUJqAfVFAA1w=
+    success: true
+    source: 0:5F0564FB5F604783DB57031CE1CF668A88D4D4D6DA6DE4DB222B4B920D6FD800
+    source_secondary: null
+    destination: 0:7F6506A4BDA7EB33E9D04BF5CFB2A0E1D438E93A2E409CA2267572F2C3EF4A21
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: 10515200
+    opcode: 0x9b3aa3fa
+    tx_hashes:
+      - 1FPrNBt0tzcFCnBp1lDfnNXrxBQqhUBOLiu9+EYghxE=
+      - qwQVkiiC6pshhnaGqwy5C/DlqE7X5g9TKwTDX9QmLIA=
+    accounts:
+      - 0:5F0564FB5F604783DB57031CE1CF668A88D4D4D6DA6DE4DB222B4B920D6FD800
+      - 0:7F6506A4BDA7EB33E9D04BF5CFB2A0E1D438E93A2E409CA2267572F2C3EF4A21
+    start_lt: 54209083000002
+    end_lt: 54209083000003
+    start_utime: 1740135167
+    end_utime: 1740135167
+    mc_seqno_end: 45158834
+  - type: dex_deposit_liquidity
+    matcher: dedust_deposit_final
+    anchor: dedust_deposit_liquidity@54209081000002
+    id: zmLRNftCRjPTxWz7ETXMy0yLHdOuKSopRVehlo00wH4=
+    success: true
+    source: 0:FAFD2B03C0AA2A8ED42918F6E7A07B3741BD017DDE291A90084DCFEEF1EE1F6A
+    source_secondary: null
+    destination: 0:AE22566B00FE45AD88064798BE0C68C0FAE518A0EC699023485F37FE1FA34E3A
+    destination_secondary: 0:7F6506A4BDA7EB33E9D04BF5CFB2A0E1D438E93A2E409CA2267572F2C3EF4A21
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: null
+    opcode: null
+    dex_deposit_liquidity_data:
+      amount1: 309183516
+      amount2: 123460785601
+      asset1: null
+      asset2: 0:D0114AF42CF8BC9BA0FA1745ABBEEA24EED65B01CAF4CA7D98EE12B6F7530CCC
+      dex: dedust
+      lp_tokens_minted: 26804816539
+      target_amount_1: 309183516
+      target_amount_2: 123460785601
+      target_asset_1: null
+      target_asset_2: 0:D0114AF42CF8BC9BA0FA1745ABBEEA24EED65B01CAF4CA7D98EE12B6F7530CCC
+      user_jetton_wallet_1: null
+      user_jetton_wallet_2: 0:43409DB48F515393135A8FE9009B31B9ECF9BD133C1A30E05353A17B90EEFB9F
+      vault_excesses:
+        - amount: 58659608
+          asset: null
+    tx_hashes:
+      - +06TB1rknEBJSsiGoJOQVzO4wQR1BiAfRNRddDWgU3Q=
+      - /1n3wdMFgUXx7HsERLfMYPeu7znAC0b7kRf20J6WlI4=
+      - 1FPrNBt0tzcFCnBp1lDfnNXrxBQqhUBOLiu9+EYghxE=
+      - 4f0UUg9R9Ye04lsCIZOEX7IdvLB8TyH792wQvEkKPxY=
+      - 87vUktQ5JRQ/yPlBLBZM025d2kZ4nuq3evE/jFCPR6U=
+      - 9bMZbQ6pUb2P5MQmxakh8KJ0dhIkOhg4yEFc4CaTdQ8=
+      - 9u23AU7SHAQPXnswdsQBhZ7w4jP5Vy/3KdWlorMCHgw=
+      - ANLkpQmoPX3TqDj6t3ftvUxtLlnMi0KuUMJbh6QqtHA=
+      - BnVE5MqXsCESEUkpmtOVHBJyDdaloPsPU77HJA5zS4I=
+      - InJhRI2kcuMz/AxU6qO5Q3nK8oG41QZuoqelL/boT5A=
+      - MD6/qpIBdUmpH7pl2BYIf8DZFt6UX8gVGmfjynM6dwI=
+      - Pjv8lwNacMdd214TjdE3il6ZepncHzsZuXaXLq9Y6xQ=
+      - VHyM0qD7QwuCS1y3kL9VOUdhhbXAFOqD3i1JR6kLbfw=
+      - ZAJZkgzKGnt1AgPBVumC78MjVOWQ3qOxRiJLpv6hfQA=
+      - f+R4qh7Ak3fwUMieGy5P3UhWdrrqLYLiaYAm9jAkOlo=
+      - hmQDST46ajtH0aVw8cQ2u60qfhEIeMdGiCpZIoFZWuk=
+      - k0yADcY39ZkSu5Y7keHvfMzFyadhlDZ1OvxH+c8aU7M=
+      - qwQVkiiC6pshhnaGqwy5C/DlqE7X5g9TKwTDX9QmLIA=
+      - vl0o755Rewoh/NOgJRA6aR84DA/GY41WlW9uhQ9n2xI=
+      - wVettRyVZ4FwKbIq9rOFN3QF05NjFz5xps42nN3xP5s=
+    accounts:
+      - 0:43409DB48F515393135A8FE9009B31B9ECF9BD133C1A30E05353A17B90EEFB9F
+      - 0:50E74913216CB06936B4D69FC99C78646A212E93076DD563EF74722F3F557948
+      - 0:5F0564FB5F604783DB57031CE1CF668A88D4D4D6DA6DE4DB222B4B920D6FD800
+      - 0:696A3C831BDACEA3EB90A0E7DB0D8997496E4842C7A251AA16B9E5ADA655D65D
+      - 0:7F6506A4BDA7EB33E9D04BF5CFB2A0E1D438E93A2E409CA2267572F2C3EF4A21
+      - 0:A16CDAF289F76A01AD6F168AC6F6220F48DB6406A11938D218674768D1F10BB2
+      - 0:AE22566B00FE45AD88064798BE0C68C0FAE518A0EC699023485F37FE1FA34E3A
+      - 0:DAE153A74D894BBC32748198CD626E4F5DF4A69AD2FA56CE80FC2644B5708D20
+      - 0:FAFD2B03C0AA2A8ED42918F6E7A07B3741BD017DDE291A90084DCFEEF1EE1F6A
+    start_lt: 54209081000002
+    end_lt: 54209100000004
+    start_utime: 1740135160
+    end_utime: 1740135206
+    mc_seqno_end: 45158849

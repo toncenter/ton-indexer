@@ -17,9 +17,7 @@ namespace mch {
 
 class ParsedBlockLookupSource : public LookupSource {
  public:
-  // Tier-2 resolver: same signature as fetch. Empty == no fallback (production
-  // stub until the DB/kvrocks round is wired; the offline gate injects a
-  // fixture-backed fallback for the tier-2-only kinds).
+  // Tier-2 resolver hook, same signature as fetch. Empty == no fallback.
   using Tier2Hook = std::function<Value(const std::string &kind, const std::vector<Value> &args)>;
 
   using InterfaceMap =
@@ -28,10 +26,6 @@ class ParsedBlockLookupSource : public LookupSource {
   explicit ParsedBlockLookupSource(const InterfaceMap *account_interfaces, Tier2Hook tier2 = {})
       : account_interfaces_(account_interfaces), tier2_(std::move(tier2)) {
   }
-
-  // The set of kinds this source recognises (== lookup_kinds(), so
-  // prepare_classify's skip table is identical on the production path).
-  static const std::set<std::string> &kinds();
 
   Value fetch(const std::string &kind, const std::vector<Value> &args) const override;
 
@@ -42,6 +36,9 @@ class ParsedBlockLookupSource : public LookupSource {
   struct LookupStats {
     std::size_t tier1_hits{0};  // served from account_interfaces_ (in-block)
     std::size_t tier2_hits{0};  // served from the tier-2 fallback (DB/kvrocks / fixture)
+    // Tier-2 hit attribution per lookup kind. Only served kinds get an entry,
+    // and the values sum to `tier2_hits` exactly.
+    std::map<std::string, std::size_t> tier2_hits_by_kind;
     std::size_t misses{0};      // unresolved after both tiers (null result)
     // Miss attribution per lookup kind, so a production run can tell an expected
     // gap (a kind with no tier-1 source) from a real resolution failure. Only

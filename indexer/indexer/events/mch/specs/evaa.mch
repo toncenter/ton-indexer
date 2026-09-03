@@ -7,10 +7,7 @@
 #   (test_self override); here those three nodes are `pred` nodes backed by
 #   host predicates (evaa_user_withdraw_*) with exactly the legacy test logic.
 #   Inline predicates cannot replace them because they require body parsing.
-# - The EVAA service-comment ton_transfer (legacy evaa_action_comment_matcher,
-#   a GenericMatcher over TonTransferBlock.comment) is `maybe pred
-#   evaa_service_comment` — set membership over a block attribute is not
-#   expressible as an inline field test either.
+# - The EVAA service-comment ton_transfer tests the parsed comment inline.
 # - Legacy's withdraw_fail_on_user_excesses GenericMatcher (opcode-set
 #   membership over 4 error opcodes) is an exclusive alternative of the four
 #   concrete `op` nodes sharing one capture (@fail_excess); same block matched,
@@ -54,7 +51,6 @@ opcode EvaaLiquidateFail                   = 0x311f
 predicate evaa_user_withdraw_user
 predicate evaa_user_withdraw_success
 predicate evaa_user_withdraw_fail
-predicate evaa_service_comment
 predicate evaa_supply_anchor
 predicate evaa_user_supply
 predicate evaa_liquidate_anchor
@@ -85,8 +81,8 @@ predicate evaa_bounced_call
 # The outcome alternative is legacy's OrMatcher order verbatim (success, fail,
 # jetton refund). The three heads are distinct, but the success branch carries a
 # child, so the compiler leaves it an or-node — which is what legacy runs too.
-# `maybe pred evaa_service_comment` under the success arm is the shared
-# evaa_action_comment_matcher, already used by the withdraw matcher below.
+# The optional ton_transfer under the success arm is the shared
+# evaa_action_comment_matcher, also used by the withdraw matcher below.
 #
 # ORDERING. The 0x1 anchor opcode is claimed by no other spec (grepped over
 # specs/), and the jetton arm binds a prebuilt `btype
@@ -100,11 +96,14 @@ matcher evaa_supply {
 
     pred evaa_supply_anchor @master
       -> pred evaa_user_supply @user
-        -> ( op EvaaSupplySuccess @success -> maybe pred evaa_service_comment
+        -> ( op EvaaSupplySuccess @success
+               -> maybe btype ton_transfer where (.comment == "EVAA liquidation." or .comment == "EVAA supply." or .comment == "EVAA withdraw.")
            | op EvaaSupplyFail @fail
            | btype jetton_transfer @refund )
 
-    let r = evaa_supply_data(consumed)
+    let supply_fwd = (try parse master.data.forward_payload as EvaaSupplyJettonForward) if master.btype == "jetton_transfer" else null
+    reject when master.btype == "jetton_transfer" and supply_fwd == null
+    let r = evaa_supply_data(consumed, supply_fwd.recipient_address)
     reject when r == null
     out {
         sender:                  r.sender
@@ -130,7 +129,8 @@ matcher evaa_withdraw {
       -> pred evaa_user_withdraw_user @user
       -> ( op EvaaWithdrawCollateralized @coll_ok
              -> { ( btype jetton_transfer @jetton_payout
-                  ^ op EvaaWithdrawSuccess @ton_payout -> maybe pred evaa_service_comment )
+                  ^ op EvaaWithdrawSuccess @ton_payout
+                      -> maybe btype ton_transfer where (.comment == "EVAA liquidation." or .comment == "EVAA supply." or .comment == "EVAA withdraw.") )
                   pred evaa_user_withdraw_success -> btype ton_transfer }
          ^ op EvaaWithdrawCollateralized @coll_fail
              -> pred evaa_user_withdraw_fail
@@ -184,7 +184,7 @@ matcher evaa_liquidate {
       -> ( pred evaa_user_liquidate @user
              -> ( op EvaaLiquidateSatisfied @satisfied_success
                     -> { pred evaa_liquidate_success_header
-                           -> maybe pred evaa_service_comment
+                           -> maybe btype ton_transfer where (.comment == "EVAA liquidation." or .comment == "EVAA supply." or .comment == "EVAA withdraw.")
                          ( op EvaaLiquidateSuccessReport @finish
                          ^ op EvaaLiquidateFail @finish
                          ^ btype jetton_transfer @finish ) }

@@ -1,0 +1,82 @@
+# dedust-liquidities / DeDust v2 withdraw request with no protocol action
+# note: Withdraw 0x20b5ef89 and WithdrawLiquidity 0xbc1531a9 present, nothing matches
+# trace: 7rGTg9ycXwQQ7130kmtsTtVLC1pOewRPotGNjkuXkms=
+actions:
+  - type: call_contract
+    anchor: call_contract#20b5ef89@81103990000017
+    id: mtUl+KPIzczYiky7dxaFpmI8NwCC3kgtg+zotOdHMok=
+    success: true
+    source: 0:F5F025A50BA6143AC6C3B022C3EDAC1F0F124A137FCD609C8AD50BE5BFDF8547
+    source_secondary: null
+    destination: 0:8180DAA4A2D65901F4B4614936A0CC776B603EB2410402D96864CEEC7FFC36F2
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: 150000000
+    opcode: 0x20b5ef89
+    tx_hashes:
+      - 79E88eR0aHttFBW1CBFe+DbkNroQU9fCt69IwvlWwHY=
+      - 7rGTg9ycXwQQ7130kmtsTtVLC1pOewRPotGNjkuXkms=
+    accounts:
+      - 0:8180DAA4A2D65901F4B4614936A0CC776B603EB2410402D96864CEEC7FFC36F2
+      - 0:F5F025A50BA6143AC6C3B022C3EDAC1F0F124A137FCD609C8AD50BE5BFDF8547
+    start_lt: 81103990000017
+    end_lt: 81103990000018
+    start_utime: 1780420202
+    end_utime: 1780420202
+    mc_seqno_end: 70780539
+  - type: call_contract
+    anchor: call_contract#bc1531a9@81103990000019
+    id: kuYTcBHY5679ixni+GU5GPLvy9r2TdvUcoC4m7BVxpk=
+    success: true
+    source: 0:8180DAA4A2D65901F4B4614936A0CC776B603EB2410402D96864CEEC7FFC36F2
+    source_secondary: null
+    destination: 0:81C3A7E16CAA6FACD0B4B9C9ABD51DFF939EC51815D187C16D053C28A7B0CFBD
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: 148855864
+    opcode: 0xbc1531a9
+    tx_hashes:
+      - 79E88eR0aHttFBW1CBFe+DbkNroQU9fCt69IwvlWwHY=
+      - 9Hg+dlZaNYQQvKeMMpfE1Uf7sBBtNbB+nk5+Y+vNiAg=
+    accounts:
+      - 0:8180DAA4A2D65901F4B4614936A0CC776B603EB2410402D96864CEEC7FFC36F2
+      - 0:81C3A7E16CAA6FACD0B4B9C9ABD51DFF939EC51815D187C16D053C28A7B0CFBD
+    start_lt: 81103990000019
+    end_lt: 81103990000020
+    start_utime: 1780420202
+    end_utime: 1780420202
+    mc_seqno_end: 70780539
+  - type: call_contract
+    anchor: call_contract#d53276db@81103990000021
+    id: F4kC5sVNyRHh18/CbZ2jggWS9xGe5sAsgrDvcw/vegs=
+    success: true
+    source: 0:81C3A7E16CAA6FACD0B4B9C9ABD51DFF939EC51815D187C16D053C28A7B0CFBD
+    source_secondary: null
+    destination: 0:F5F025A50BA6143AC6C3B022C3EDAC1F0F124A137FCD609C8AD50BE5BFDF8547
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: 148497595
+    opcode: 0xd53276db
+    tx_hashes:
+      - 9Hg+dlZaNYQQvKeMMpfE1Uf7sBBtNbB+nk5+Y+vNiAg=
+      - db7nDgdYORcQ6lByzzQDafCPtrZSLidMFHMm/cSvkmc=
+    accounts:
+      - 0:81C3A7E16CAA6FACD0B4B9C9ABD51DFF939EC51815D187C16D053C28A7B0CFBD
+      - 0:F5F025A50BA6143AC6C3B022C3EDAC1F0F124A137FCD609C8AD50BE5BFDF8547
+    start_lt: 81103990000021
+    end_lt: 81103990000022
+    start_utime: 1780420202
+    end_utime: 1780420202
+    mc_seqno_end: 70780539

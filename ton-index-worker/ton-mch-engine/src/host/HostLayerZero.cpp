@@ -1,5 +1,4 @@
-// LayerZero host fn (builders/layerzero.py). See host/HostImpls.h for the
-// internal registry surface and HostRegistry.h for the public one.
+// LayerZero dst_oapp compare.
 #include "host/HostImpls.h"
 
 #include <cctype>
@@ -8,17 +7,10 @@
 
 namespace mch {
 
-// builders/layerzero.py layerzero_dst_oapp_matches(destination, dst_oapp):
-// str(destination)[2:].lower() == str(dst_oapp)[2:].lower(). str(AccountId) is
-// __repr__ = to_str(False), the LOWERCASE 64-digit raw form (NOT as_str's
-// upper), while dst_oapp is Python hex(): lowercase MINIMAL digits. The
-// comparison is a literal string compare, so a dst_oapp hash with a leading
-// zero byte does NOT match its padded account form, quirk preserved. None on
-// either side -> False.
+// Literal lowercase-hex string compare: one side is the 64-digit zero-padded
+// raw hash, the other is the minimal hex digits. A hash with a leading zero
+// byte deliberately does not match its padded form. Null on either side is false.
 EvalResult layerzero_dst_oapp_matches(BuildEnv &, const std::vector<Value> &args) {
-  if (args.size() != 2) {
-    return rt_fault("layerzero_dst_oapp_matches: bad arguments");
-  }
   if (args[0].is_null() || args[1].is_null()) {
     return rt_ok(Value::make_bool(false));
   }

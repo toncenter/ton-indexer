@@ -1,0 +1,75 @@
+# dedust-liquidities / DeDust v2 withdraw refunded to the owner
+# note: is_refund=true, LP tokens returned; identical withdraw payload to the second refund sample
+# trace: -mNf-yQ8il4ON2rvCXdJwa8-3Ty_3pcoemEtMXHRn4I=
+actions:
+  - type: call_contract
+    anchor: call_contract#d53276db@76121691000010
+    id: JRnrT2FF5+9VgpIFCJ165naor7VcMJ2hozr0+s+84Xk=
+    success: true
+    source: 0:CB8DA2884CC0D2AAFFCD5DADA1923116C34510761B86E96C67E0100227573977
+    source_secondary: null
+    destination: 0:6DB3F3C56D83D71DAC31C4B0444B6E5C41748CFF942B260E94F8BEA486E9A858
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: 147096989
+    opcode: 0xd53276db
+    tx_hashes:
+      - k/lOWcVVe8P8iFkA/KxU5jizCbRf/Fvygzzi5VzA4Z4=
+      - vWM36WccMiOIkNj4wXDxD1iUXHK2iyqLzwc/w//IwOg=
+    accounts:
+      - 0:6DB3F3C56D83D71DAC31C4B0444B6E5C41748CFF942B260E94F8BEA486E9A858
+      - 0:CB8DA2884CC0D2AAFFCD5DADA1923116C34510761B86E96C67E0100227573977
+    start_lt: 76121691000010
+    end_lt: 76121691000011
+    start_utime: 1778438184
+    end_utime: 1778438184
+    mc_seqno_end: 65924337
+  - type: dex_withdraw_liquidity
+    matcher: dedust_v2_withdraw
+    anchor: dex_withdraw_liquidity@76121691000002
+    id: boLHJkIjRCsNqy8HbAnULgPvGgcvRagSFmEumaaMcOw=
+    success: false
+    source: 0:6DB3F3C56D83D71DAC31C4B0444B6E5C41748CFF942B260E94F8BEA486E9A858
+    source_secondary: null
+    destination: 0:CB649436765FD5FCC5E7E89395E55539185A586E7A520C11F9BAEC7A033BA88E
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: null
+    opcode: null
+    dex_withdraw_liquidity_data:
+      amount1: null
+      amount2: null
+      asset1_out: null
+      asset2_out: null
+      dex: dedust_v2
+      dex_jetton_wallet_1: null
+      dex_jetton_wallet_2: null
+      dex_wallet_1: null
+      dex_wallet_2: null
+      is_refund: true
+      lp_tokens_burnt: 328633534503099
+      user_jetton_wallet_1: null
+      user_jetton_wallet_2: null
+    tx_hashes:
+      - +mNf+yQ8il4ON2rvCXdJwa8+3Ty/3pcoemEtMXHRn4I=
+      - Dh7JvWsF7K280Qh+lxv82Xj0+0Ioz27DpXXI4cNvO5k=
+      - k/lOWcVVe8P8iFkA/KxU5jizCbRf/Fvygzzi5VzA4Z4=
+      - nUkgRdTRIYEJs6mvWM8qSu9E+YH6kxpcKOKed9LTubE=
+      - yend2AgCaLSveR7QWL4q4BSdQVIKuDCOAflXxaiPyVA=
+    accounts:
+      - 0:6DB3F3C56D83D71DAC31C4B0444B6E5C41748CFF942B260E94F8BEA486E9A858
+      - 0:CB649436765FD5FCC5E7E89395E55539185A586E7A520C11F9BAEC7A033BA88E
+      - 0:CB8DA2884CC0D2AAFFCD5DADA1923116C34510761B86E96C67E0100227573977
+    start_lt: 76121691000002
+    end_lt: 76121691000009
+    start_utime: 1778438184
+    end_utime: 1778438184
+    mc_seqno_end: 65924337

@@ -19,10 +19,9 @@
 #    specs/getgems.mch uses. Legacy runs GetgemsNftPurchaseBlockMatcher first, so
 #    getgems.mch must stay earlier in the manifest. This is a cross-file
 #    ordering constraint.
-#  - `nft_cancel_sale` / `nft_cancel_auction` READ an `nft_transfer` and
-#    `nft_finish_auction` reads an `nft_purchase` (through nft_trade_returned,
-#    not through a pattern edge — see below), so both producer specs
-#    (nft_transfer.mch, getgems.mch) must register earlier. They do.
+#  - `nft_cancel_sale` / `nft_cancel_auction` peek an `nft_transfer` and
+#    `nft_finish_auction` peeks an `nft_purchase`, so both producer specs must
+#    register earlier. They do.
 #  - `nft_finish_auction` is listed BEFORE `nft_cancel_auction` here because
 #    legacy does (event_processing.py: NftFinishAuctionMatcher then
 #    NftCancelAuctionMatcher). Their anchors OVERLAP on the stop/finish opcodes
@@ -57,7 +56,7 @@
 # was created at, so reading the interface instead would silently produce a
 # different number than Python on exactly the traces that matter. `init_state` is
 # therefore plumbed onto the mch `Message` (TraceLoader.h) and read by two host
-# fns — no DSL surface change, per the ruling. The data was already present on
+# fns — no DSL surface change. The data was already present on
 # all three loader paths (fixture .lz4, schema/prod, emulator); only the readers
 # were missing.
 #
@@ -69,8 +68,6 @@
 #                                               nft_addr feeds an nft_item lookup,
 #                                               which the DSL forbids
 #                                               (B004_LOOKUP_DEPENDS_ON_LOOKUP)
-#   fn  nft_trade_is_finish(block)              opcode-set OR comment-set test on
-#                                               a mixed anchor, for the switch
 #   pred sale_contract_deploy                   btype in {ton_transfer,
 #                                               call_contract} AND
 #                                               len(contract_deployments) > 0
@@ -78,16 +75,8 @@
 #   pred nft_trade_finish_comment               comment in {finish,stop}
 #   pred auction_bid_candidate                  cheap pre-lookup gate (no
 #                                               deployments, not a cancel comment)
-#   pred auction_outbid_leg                     identifies the outbid leg (and
-#                                               its auction_bid parent)
-#   fn  nft_trade_returned(block, btype)        the returned NFT, reached WITHOUT
-#                                               consuming it — legacy gates on the
-#                                               child but merges only the anchor,
-#                                               and an mch edge always consumes
-#   fn  auction_outbid_data(leg)                reads the auction_bid through
-#                                               `.previous_block` + the
-#                                               "exactly one, reject on duplicate"
-#                                               count the language cannot express
+#   pred auction_outbid_leg                     requires exactly one qualifying
+#                                               child of the peeked auction_bid
 #
 # Differences from the runtime matchers:
 #  - `NftCancelSaleMatcher` / `NftCancelAuctionMatcher` reach the collection via
@@ -95,9 +84,8 @@
 #    `data['nft']['collection']['address']` after testing only that the
 #    'collection' KEY exists. The key always exists and is None for a
 #    collection-less item, so legacy raises TypeError there and `try_build`
-#    swallows it into a non-match. `nft_trade_returned` null-propagates instead,
-#    so such a trace yields a row with a null collection where legacy yielded
-#    nothing.
+#    swallows it into a non-match. The peeked field read null-propagates instead,
+#    so such a trace yields a row with a null collection where legacy yielded nothing.
 #  - Legacy's `assert` guards inside NftPutOnSale (nft/owner cross-checks against
 #    the interface) raise and are swallowed the same way; they are plain
 #    `reject when`s here. Same outcome, different mechanism.
@@ -109,12 +97,9 @@
 #   @upd        the SaleUpdate call            | @listing   transfer to the listing
 #   @sale_init  the deploying message          | @to_sale   transfer to the sale
 #   @disc/@report  discovery call / its report | @cancel    the cancel/finish anchor
-#   @bid        the bid ton_transfer
-#   @leg        the outbid leg (getgems ton_transfer OR fragment call) — the
-#               ANCHOR of auction_outbid, whose auction_bid is NOT captured
-#               because legacy does not consume it
-# (the returned nft_transfer / nft_purchase of the three cancel/finish matchers
-#  is deliberately NOT a capture — nft_trade_returned reaches it instead)
+#   @bid        the bid ton_transfer, or the peeked auction_bid parent
+#   @leg        the outbid leg (getgems ton_transfer OR fragment call)
+#   @ret        the returned nft_transfer / nft_purchase, peeked without consuming
 
 opcode SaleUpdate          = 0x6C6C2080
 opcode NftDiscovery        = 0x2FCB26A2
@@ -272,56 +257,47 @@ matcher auction_bid {
     }
 }
 
-# ANCHORED ON THE OUTBID LEG, not on the auction_bid — deliberately, and this is
-# the one place the port's shape differs from a literal reading of the legacy
-# pattern. `AuctionOutbidMatcher.test_self` targets the auction_bid, but its
-# build merges ONLY the leg (`merge_blocks(include)`, include == [outbid_transfer])
-# and leaves the auction_bid a spine block of its own. An mch anchor is always
-# consumed, so anchoring on the bid would swallow it. Re-anchoring on the leg and
-# reaching the bid through `.previous_block` (inside auction_outbid_data)
-# reproduces the legacy consumed set exactly.
+# The outbid leg remains the consumed anchor; its auction_bid parent is peeked.
+# The residual predicate preserves the exactly-one qualifying-child requirement.
 matcher auction_outbid {
     produces auction_outbid
     entry    @leg
 
-    ( btype ton_transfer @leg where auction_outbid_leg
-    ^ op TeleitemOutbid @leg where auction_outbid_leg )
+    ( btype ton_transfer @leg
+    ^ op TeleitemOutbid @leg )
+      <- peek btype auction_bid @bid where auction_outbid_leg
 
-    # Also carries the "exactly one, reject on duplicate" count the language has
-    # no arity quantifier for.
-    let d = auction_outbid_data(leg)
-    reject when d == null
+    let getgems = leg.btype == "ton_transfer"
+    reject when account(leg.data.source) != account(bid.data.auction)
+    reject when getgems and (bid.data.auction_type != "getgems" or not contains(leg.data.comment ?? "", "Your bid has been outbid by another user"))
+    reject when not getgems and bid.data.auction_type != "fragment"
     out {
-        auction_address: d.auction_address
-        nft:             d.nft
-        nft_collection:  d.nft_collection
-        bidder:          d.bidder
-        new_bidder:      d.new_bidder
-        amount:          d.amount
-        comment:         d.comment
-        auction_type:    d.auction_type
+        auction_address: bid.data.auction
+        nft:             bid.data.nft_address
+        nft_collection:  bid.data.nft_collection
+        bidder:          account(leg.msg.destination) ?? addr_none()
+        new_bidder:      bid.data.bidder
+        amount:          amount(leg.msg.value)
+        comment:         leg.data.comment if getgems else null
+        auction_type:    bid.data.auction_type
     }
 }
 
-# The returned NFT is NOT a pattern edge — see nft_trade_returned in
-# host/HostNftSale.cpp. Legacy gates on the child but merges only the anchor, so
-# the child stays a top-level spine row; an edge here would consume it and turn
-# that row into a child row. Verified by the parity sweep on EzvOGPJe… .
+# The returned NFT is required but remains unconsumed so its action stays top-level.
 matcher nft_cancel_sale {
     produces nft_cancel_sale
     entry    @cancel
 
     op NftSaleCancel @cancel
+      -> peek btype nft_transfer @ret
 
     let sale = lookup nft_sale(cancel.msg.destination)
     reject when sale == null
-    let ret = nft_trade_returned(cancel, "nft_transfer")
-    reject when ret == null
-    reject when account(ret.nft_address) != account(sale.nft_address)
+    reject when account(ret.data.nft.address) != account(sale.nft_address)
     out {
-        nft_address:         ret.nft_address
-        nft_collection:      ret.nft_collection
-        owner:               ret.owner
+        nft_address:         ret.data.nft.address
+        nft_collection:      ret.data.nft.collection.address if ret.data.nft.collection != null else null
+        owner:               ret.data.new_owner
         trade_contract:      account(cancel.msg.destination) ?? addr_none()
         marketplace_address: account(sale.marketplace_address) ?? addr_none()
     }
@@ -339,16 +315,15 @@ matcher nft_finish_auction {
     ( btype ton_transfer @cancel where nft_trade_finish_comment
     ^ op NftAuctionStop @cancel
     ^ op NftAuctionFinish @cancel )
+      -> peek btype nft_purchase @ret
 
     let auction = lookup nft_auction(cancel.msg.destination)
     reject when auction == null
-    let ret = nft_trade_returned(cancel, "nft_purchase")
-    reject when ret == null
-    reject when account(ret.nft_address) != account(auction.nft_addr)
+    reject when account(ret.data.nft_address) != account(auction.nft_addr)
     out {
-        nft_address:         ret.nft_address
-        nft_collection:      ret.nft_collection
-        owner:               ret.owner
+        nft_address:         ret.data.nft_address
+        nft_collection:      ret.data.collection_address
+        owner:               ret.data.new_owner
         trade_contract:      account(cancel.msg.destination) ?? addr_none()
         marketplace_address: null
     }
@@ -362,27 +337,26 @@ matcher nft_cancel_auction {
     ^ op NftAuctionCancel @cancel
     ^ op NftAuctionFinish @cancel
     ^ op NftAuctionStop @cancel )
+      -> peek btype nft_transfer @ret
 
     let auction = lookup nft_auction(cancel.msg.destination)
     reject when auction == null
-    let ret = nft_trade_returned(cancel, "nft_transfer")
-    reject when ret == null
-    reject when account(ret.nft_address) != account(auction.nft_addr)
+    reject when account(ret.data.nft.address) != account(auction.nft_addr)
 
-    # Same data either way; only the produced btype differs (legacy picks the
-    # block class off the same opcode/comment test `nft_trade_is_finish` runs).
+    # Same data either way; only the produced btype differs based on the
+    # anchor's opcode or comment.
     produces switch {
-        when nft_trade_is_finish(cancel) => nft_finish_auction out {
-            nft_address:         ret.nft_address
-            nft_collection:      ret.nft_collection
-            owner:               ret.owner
+        when (cancel.btype == "ton_transfer" and (cancel.data.comment == "finish" or cancel.data.comment == "stop")) or (cancel.btype == "call_contract" and (cancel.data.opcode == 0xB95616B6 or cancel.data.opcode == 0x20C9EB18)) => nft_finish_auction out {
+            nft_address:         ret.data.nft.address
+            nft_collection:      ret.data.nft.collection.address if ret.data.nft.collection != null else null
+            owner:               ret.data.new_owner
             trade_contract:      account(cancel.msg.destination) ?? addr_none()
             marketplace_address: account(auction.mp_addr) ?? addr_none()
         }
         else => nft_cancel_auction out {
-            nft_address:         ret.nft_address
-            nft_collection:      ret.nft_collection
-            owner:               ret.owner
+            nft_address:         ret.data.nft.address
+            nft_collection:      ret.data.nft.collection.address if ret.data.nft.collection != null else null
+            owner:               ret.data.new_owner
             trade_contract:      account(cancel.msg.destination) ?? addr_none()
             marketplace_address: account(auction.mp_addr) ?? addr_none()
         }

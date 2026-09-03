@@ -86,14 +86,6 @@ jobs:
       working-directory: ${{github.workspace}}/build/ton-index-worker/ton-mch-engine
       run: ctest --output-on-failure
 
-    # G1: the frozen action goldens over the fixture corpus. A diff is a
-    # regression, not a re-baseline.
-    - name: Action goldens
-      run: |
-        ./build/ton-index-worker/ton-mch-engine/ton-mch-engine \
-          --actions -T indexer/tests/traces \
-          | diff - ton-index-worker/ton-mch-engine/goldens/actions.golden
-
     # G2: the write-back wire contract, run through ton-index-go's REAL decoder
     # over bytes the REAL C++ writer produced.
     - name: Test ton-index-go

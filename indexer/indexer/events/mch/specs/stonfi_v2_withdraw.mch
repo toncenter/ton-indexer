@@ -6,7 +6,7 @@
 # second pay-to — a workaround because a single op appears twice under the
 # router. The remake drops the scan: the two pay-tos are a children set under
 # their common parent, bound positionally (@payout_1/@payout_2), exactly like
-# dedust_withdraw (T17). first-match-wins over candidates in canonical order
+# dedust_withdraw. First-match-wins over candidates in canonical order
 # reproduces the legacy [anchor]+siblings order.
 #
 # Legacy's OrMatcher parent (normal burn vs refund) remains split into two

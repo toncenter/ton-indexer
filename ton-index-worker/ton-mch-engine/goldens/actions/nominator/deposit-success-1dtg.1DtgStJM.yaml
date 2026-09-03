@@ -1,0 +1,32 @@
+# nominator / Deposit success (1Dtg)
+# trace: 1DtgStJMB5JNE8vxQD2SYG1E4DO3a6nsUQlA2y-y_E4=
+actions:
+  - type: stake_deposit
+    matcher: nominator_pool_deposit
+    anchor: nominator_pool_deposit@92770004000002
+    id: mL8iGz8L41/z4N6K+A/TuxEuVxmpv6LSBaXC4jSiNjA=
+    success: true
+    source: 0:90761DC24CD60F7833E062F5DCB4045093ABFD2503EBABE8092B5A3E76682108
+    source_secondary: null
+    destination: "-1:8E4DAF271E02A0ED9058246244CB3203C78D23A0FC26BDCD6C65EB185F19AFCE"
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: 6750000000000
+    value: null
+    opcode: null
+    staking_data:
+      provider: nominator
+    tx_hashes:
+      - 1DtgStJMB5JNE8vxQD2SYG1E4DO3a6nsUQlA2y+y/E4=
+      - tN+F5GF7lE++eSnUrZGHbOKDTMPRGL0D0YjQz3wuMk0=
+    accounts:
+      - "-1:8E4DAF271E02A0ED9058246244CB3203C78D23A0FC26BDCD6C65EB185F19AFCE"
+      - 0:90761DC24CD60F7833E062F5DCB4045093ABFD2503EBABE8092B5A3E76682108
+    start_lt: 92770004000002
+    end_lt: 92770008000001
+    start_utime: 1785109018
+    end_utime: 1785109020
+    mc_seqno_end: 82234089

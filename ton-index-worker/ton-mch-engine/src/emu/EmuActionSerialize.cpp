@@ -36,20 +36,25 @@ bool omitted(const Value &v) {
   switch (v.t) {
     case VType::Null:
       return true;
-    case VType::Account:
-      return v.addr_none;
-    case VType::Asset:
-      return v.is_ton || !v.has_jetton;
     case VType::Amount:
-      return !v.amount_float && v.num.is_null();  // make_amount_none()
-    default:
+      return v.num.is_null();  // make_amount_none()
+    case VType::Bool:
+    case VType::Int:
+    case VType::Str:
+    case VType::Account:
+    case VType::Asset:
+    case VType::Bytes:
+    case VType::Cell:
+    case VType::List:
+    case VType::Dict:
+    case VType::Obj:
+    case VType::Block:
       return false;
   }
 }
 
-// Keys in this set encode integer values as decimal strings at every map depth.
-// Other integers use native msgpack types. See
-// Plain MsgPack payload; integers that can exceed int64 are decimal strings by field name.
+// Plain MsgPack payload. Integers that can exceed int64 are decimal strings
+// by field name; other integers use native msgpack types.
 bool decimal_string_key(const std::string &k) {
   static const std::set<std::string> keys{
       // top level
@@ -131,21 +136,10 @@ void pack_value(Packer &pk, const Value &v, bool as_decimal_string, ActionSerial
         pack_int(pk, v, st);
       }
       return;
-    case VType::Float:
-      // msgpack-c encodes integral doubles as integers and fractional values as
-      // float64. Flexible string fields accept both representations.
-      st.float_values++;
-      pk.pack(v.dnum);
-      return;
     case VType::Amount:
       // Value-domain by definition, so always a decimal string regardless of
       // the key. (ActionBuild's av_amount converts Amount -> Int before it ever
       // reaches a fill's output, so this arm is a backstop.)
-      if (v.amount_float) {
-        st.float_values++;
-        pk.pack(v.dnum);
-        return;
-      }
       if (v.num.is_null()) {
         pk.pack_nil();
         return;
@@ -170,8 +164,7 @@ void pack_value(Packer &pk, const Value &v, bool as_decimal_string, ActionSerial
       pack_text(pk, v.str);
       return;
     case VType::Bytes:
-      // Python holds these as base64 str already (jettons.py custom_payload /
-      // forward_payload); the C++ side carries the raw bytes.
+      // Bytes fields are encoded as base64 text.
       pack_text(pk, td::base64_encode(td::Slice(v.str)));
       return;
     case VType::Cell: {
@@ -208,7 +201,6 @@ void pack_value(Packer &pk, const Value &v, bool as_decimal_string, ActionSerial
       pk.pack_nil();
       return;
   }
-  pk.pack_nil();
 }
 
 struct ActionField {
@@ -216,60 +208,11 @@ struct ActionField {
   Value Action::*member;
 };
 
-// Keep this field set and order synchronized with scrub_arena_refs().
 const std::vector<ActionField> &optional_fields() {
   static const std::vector<ActionField> fields{
-      {"source", &Action::source},
-      {"source_secondary", &Action::source_secondary},
-      {"destination", &Action::destination},
-      {"destination_secondary", &Action::destination_secondary},
-      {"asset", &Action::asset},
-      {"asset_secondary", &Action::asset_secondary},
-      {"asset2", &Action::asset2},
-      {"asset2_secondary", &Action::asset2_secondary},
-      {"amount", &Action::amount},
-      {"value", &Action::value},
-      {"opcode", &Action::opcode},
-      {"ton_transfer_data", &Action::ton_transfer_data},
-      {"jetton_transfer_data", &Action::jetton_transfer_data},
-      {"jetton_swap_data", &Action::jetton_swap_data},
-      {"nft_transfer_data", &Action::nft_transfer_data},
-      {"nft_listing_data", &Action::nft_listing_data},
-      {"nft_mint_data", &Action::nft_mint_data},
-      {"dex_deposit_liquidity_data", &Action::dex_deposit_liquidity_data},
-      {"dex_withdraw_liquidity_data", &Action::dex_withdraw_liquidity_data},
-      {"staking_data", &Action::staking_data},
-      {"evaa_supply_data", &Action::evaa_supply_data},
-      {"evaa_withdraw_data", &Action::evaa_withdraw_data},
-      {"evaa_liquidate_data", &Action::evaa_liquidate_data},
-      {"vesting_send_message_data", &Action::vesting_send_message_data},
-      {"vesting_add_whitelist_data", &Action::vesting_add_whitelist_data},
-      {"tonco_deploy_pool_data", &Action::tonco_deploy_pool_data},
-      {"multisig_create_order_data", &Action::multisig_create_order_data},
-      {"multisig_approve_data", &Action::multisig_approve_data},
-      {"multisig_execute_data", &Action::multisig_execute_data},
-      {"cocoon_worker_payout_data", &Action::cocoon_worker_payout_data},
-      {"cocoon_proxy_payout_data", &Action::cocoon_proxy_payout_data},
-      {"cocoon_proxy_charge_data", &Action::cocoon_proxy_charge_data},
-      {"cocoon_client_top_up_data", &Action::cocoon_client_top_up_data},
-      {"cocoon_register_proxy_data", &Action::cocoon_register_proxy_data},
-      {"cocoon_unregister_proxy_data", &Action::cocoon_unregister_proxy_data},
-      {"cocoon_client_register_data", &Action::cocoon_client_register_data},
-      {"cocoon_client_change_secret_hash_data", &Action::cocoon_client_change_secret_hash_data},
-      {"cocoon_client_request_refund_data", &Action::cocoon_client_request_refund_data},
-      {"cocoon_grant_refund_data", &Action::cocoon_grant_refund_data},
-      {"cocoon_client_increase_stake_data", &Action::cocoon_client_increase_stake_data},
-      {"cocoon_client_withdraw_data", &Action::cocoon_client_withdraw_data},
-      {"layerzero_packet_data", &Action::layerzero_packet_data},
-      {"layerzero_send_data", &Action::layerzero_send_data},
-      {"layerzero_dvn_verify_data", &Action::layerzero_dvn_verify_data},
-      {"jvault_stake_data", &Action::jvault_stake_data},
-      {"jvault_claim_data", &Action::jvault_claim_data},
-      {"change_dns_record_data", &Action::change_dns_record_data},
-      {"coffee_create_pool_data", &Action::coffee_create_pool_data},
-      {"coffee_staking_deposit_data", &Action::coffee_staking_deposit_data},
-      {"coffee_staking_withdraw_data", &Action::coffee_staking_withdraw_data},
-      {"extra", &Action::extra},
+#define MCH_ACTION_FIELD(name) {#name, &Action::name},
+      MCH_ACTION_VALUE_FIELDS(MCH_ACTION_FIELD)
+#undef MCH_ACTION_FIELD
   };
   return fields;
 }

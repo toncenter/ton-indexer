@@ -32,7 +32,15 @@ struct (0x00000211) EvaaWithdrawCollateralized {
     withdraw_amount_current: uint64;
 }
 
-type AllowedMessage = EvaaSupplyMaster | EvaaSupplySuccess | EvaaWithdrawMaster | EvaaWithdrawCollateralized
+struct (0x000021e6) EvaaWithdrawLockedExcess {}
+
+struct (0x000021e7) EvaaWithdrawNotCollateralizedExcess {}
+
+struct (0x000021e8) EvaaWithdrawMissingPricesExcess {}
+
+struct (0x000021ec) EvaaWithdrawExecutionCrashed {}
+
+type AllowedMessage = EvaaSupplyMaster | EvaaSupplySuccess | EvaaWithdrawMaster | EvaaWithdrawCollateralized | EvaaWithdrawLockedExcess | EvaaWithdrawNotCollateralizedExcess | EvaaWithdrawMissingPricesExcess | EvaaWithdrawExecutionCrashed
 
 struct Storage {
     dummy: uint1
@@ -56,6 +64,18 @@ fun onInternalMessage(in: InMessage) {
             assert (in.body.isEmpty()) throw 0xFFFF
         }
         EvaaWithdrawCollateralized => {
+            assert (in.body.isEmpty()) throw 0xFFFF
+        }
+        EvaaWithdrawLockedExcess => {
+            assert (in.body.isEmpty()) throw 0xFFFF
+        }
+        EvaaWithdrawNotCollateralizedExcess => {
+            assert (in.body.isEmpty()) throw 0xFFFF
+        }
+        EvaaWithdrawMissingPricesExcess => {
+            assert (in.body.isEmpty()) throw 0xFFFF
+        }
+        EvaaWithdrawExecutionCrashed => {
             assert (in.body.isEmpty()) throw 0xFFFF
         }
         else => {

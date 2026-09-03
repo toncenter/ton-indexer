@@ -1,70 +1,41 @@
 #include "ExprCodegen.h"
 
+#include "fixtures/IrJson.h"
+
 #include <cctype>
 #include <cstdio>
 #include <map>
-#include <set>
 #include <stdexcept>
+#include <unordered_set>
 #include <vector>
 
 namespace mch_codegen {
+
+using mch::is_builtin_name;
+using mch::jbool;
+using mch::jfield;
+using mch::jstr;
 
 namespace {
 
 using Json = td::JsonValue;
 using JType = td::JsonValue::Type;
 
-const Json *jfield(const Json &e, td::Slice name) {
-  if (e.type() != JType::Object) {
-    return nullptr;
-  }
-  for (const auto &kv : e.get_object().field_values_) {
-    if (kv.first == name) {
-      return &kv.second;
-    }
-  }
-  return nullptr;
-}
-
-std::string jstr(const Json &e, const char *name) {
-  const Json *f = jfield(e, td::Slice(name));
-  return f != nullptr && f->type() == JType::String ? f->get_string().str() : std::string{};
-}
-
-// The fixed builtin set (rt_call_builtin's arity table). Anything else in a
-// `call` node is a host fn (registries.fns) in build programs.
-bool is_builtin(const std::string &name) {
-  static const std::set<std::string> builtins = {
-      "account", "amount", "asset", "ton_asset", "addr_none", "b64",
-      "asset_of", "tail_unwrap", "bytes_of", "first", "last", "len",
-      "sum", "zip", "map", "concat", "contains"};
-  return builtins.count(name) != 0;
-}
-
-std::string join(const std::vector<std::string> &parts, const std::string &sep) {
-  std::string out;
-  for (std::size_t i = 0; i < parts.size(); i++) {
-    if (i) out += sep;
-    out += parts[i];
-  }
-  return out;
-}
-
-// Ports cpp_expr_emit._Emitter: emits one function body, returning the Value
-// temp name for each subexpression. The temp counter is shared across nested
-// blocks so names never collide (byte-parity with the Python numbering).
+// Emits one function body, returning the Value temp name for each subexpression.
+// The temp counter is shared across nested blocks so names never collide
+// (numbering is fixed by design).
 enum class EmitMode { Vectors, Where, Build };
 
 class Emitter {
  public:
-  // Modes change only the environment-dependent leaves + the fault return:
-  //  - Vectors: name -> rt_name(env,..), lookup -> rt_lookup(lk,..);
-  //  - Where: dotfield -> rt_dotfield(w,..); name/lookup fault (Python sync
-  //    where evaluator has no env);
-  //  - Build: name -> scope map (slot / let-local / well-known), attr ->
-  //    rt_access_build (bodies-aware), lookup -> rt_lookup_build, and every
-  //    fault returns BuildOutcome::rejected.
-  explicit Emitter(EmitMode mode = EmitMode::Vectors) : mode_(mode) {
+  // Modes change only env-dependent leaves and the fault return: Vectors uses
+  // env/lookups; Where uses rt_dotfield plus the entry slot (other names and
+  // lookups fault); Build uses the scope map and rejects on every fault.
+  explicit Emitter(EmitMode mode = EmitMode::Vectors,
+                   std::string where_entry_name = {}, int where_entry_slot = -1)
+      : mode_(mode),
+        where_entry_name_(std::move(where_entry_name)),
+        where_entry_slot_(where_entry_slot) {
   }
 
   std::vector<std::string> lines;
@@ -114,7 +85,15 @@ class Emitter {
         return "v" + num(i);
       }
       if (mode_ == EmitMode::Where) {
-        // No environment exists at test_self time (expr_eval._sync_eval).
+        if (id == where_entry_name_ && where_entry_slot_ >= 0) {
+          int i = fresh();
+          line("if (w.slots == nullptr || w.n_slots <= static_cast<std::size_t>(" +
+               std::to_string(where_entry_slot_) + ")) return rt_fault(\"entry capture '" +
+               id + "' is not available in this `where` clause\");");
+          line("const Value &v" + num(i) + " = w.slots[" +
+               std::to_string(where_entry_slot_) + "];");
+          return "v" + num(i);
+        }
         return bind("rt_fault(\"name '" + id + "' is not bound in a `where` clause\")");
       }
       if (mode_ == EmitMode::Build) {
@@ -123,10 +102,8 @@ class Emitter {
           return bind("rt_fault(\"name '" + id + "' is not bound\")");
         }
         int i = fresh();
-        // Bind by const reference. A name read (env.slots[k],
-        // consumed / a let alias / a lifetime-extended anchor temporary) is only
-        // ever read or copied downstream, never moved-from, so this elides a
-        // ~120-byte Value copy per reference on the build hot path.
+        // Bind by const reference. Name reads are never moved-from, so this
+        // elides a Value copy per reference on the build hot path.
         line("const Value &v" + num(i) + " = " + it->second + ";");
         return "v" + num(i);
       }
@@ -148,16 +125,14 @@ class Emitter {
     if (k == "call") {
       const std::string fn = jstr(e, "fn");
       std::string argv = emit_args(*jfield(e, "args"));
-      // Build mode: a non-builtin call is a host `fn` (registries.fns), emit
-      // rt_call_hostfn (env-aware, NULL ARGS PASS THROUGH, unlike rt_call_builtin
-      // which is null-strict). Vectors/Where modes only ever see builtins.
-      if (mode_ == EmitMode::Build && !is_builtin(fn)) {
+      // Build mode: a non-builtin call is a host fn via rt_call_hostfn
+      // (null args pass through; rt_call_builtin is null-strict).
+      // Vectors/Where modes only ever see builtins.
+      if (mode_ == EmitMode::Build && !is_builtin_name(fn)) {
         return bind("rt_call_hostfn(env, " + cstr(fn) + ", std::vector<Value>{" + argv + "})");
       }
-      // The builtin name and arity are known at emit time, so call the typed
-      // core directly without name-keyed dispatch or a per-call heap vector.
-      // is_builtin() gates this; the argument temporaries are
-      // Value locals passed by const-ref (rt_builtin_* take const Value&).
+      // Builtin name and arity are known at emit time: call the typed core
+      // directly (no name-keyed dispatch, no per-call heap vector).
       return bind("rt_builtin_" + fn + "(" + argv + ")");
     }
     if (k == "lookup") {
@@ -215,14 +190,17 @@ class Emitter {
       for (const auto &t : jfield(e, "types")->get_array()) {
         types.push_back(cstr(t.get_string().str()));
       }
+      const bool nullable = jbool(e, "nullable", false);
       return bind("rt_parse_expr(env, " + x + ", std::vector<std::string>{" +
-                  join(types, ", ") + "})");
+                  join(types, ", ") + "}, " + (nullable ? "true" : "false") + ")");
     }
     throw std::runtime_error("unsupported expression kind '" + k + "'");
   }
 
  private:
   EmitMode mode_ = EmitMode::Vectors;
+  std::string where_entry_name_;
+  int where_entry_slot_ = -1;
   int n_ = 0;
   // Comprehension element binders map names to C++ expressions yielding the
   // element Value (the lambda parameter). Checked first in the `name` branch,
@@ -237,10 +215,9 @@ class Emitter {
   static std::string num(int i) { return std::to_string(i); }
   void line(const std::string &s) { lines.push_back(s); }
 
-  // Early return on a faulted EvalResult temp: expression fns propagate the
-  // EvalResult; a build fn's fault is a clean rejection (program.py EvalError).
-  // Inside a comprehension body lambda (EvalResult-returning), a Build-mode
-  // fault still returns the EvalResult. rt_mapc and rt_quant propagate it.
+  // Early return on a faulted EvalResult temp: expression fns propagate it;
+  // a build fn's fault is a clean rejection. Inside a comprehension lambda,
+  // a Build-mode fault still returns the EvalResult (rt_mapc / rt_quant).
   std::string fault_line(const std::string &res) const {
     if (mode_ == EmitMode::Build && !in_lambda_) {
       return "if (" + res + ".faulted) return BuildOutcome::rejected(std::move(" + res +
@@ -395,13 +372,11 @@ class Emitter {
   }
 };
 
-// Build-statement generator
-// Ports program.py BuildProgram.run statement-for-statement into straight-line
-// C++ over BuildRuntime/ExprRuntime. One BuildGen per matcher record.
+// Build-statement generator. One BuildGen per matcher record, statement-for-statement.
 class BuildGen {
  public:
   explicit BuildGen(const Json &matcher) : em_(EmitMode::Build) {
-    // Well-known env names first; captures shadow them (engine.py setdefault).
+    // Well-known env names first; captures shadow them. Intentional.
     em_.scope["consumed"] = "env.consumed";
     em_.scope["anchor"] = "Value::make_block(env.anchor)";
     if (const Json *caps = jfield(matcher, "captures"); caps != nullptr && caps->type() == JType::Array) {
@@ -453,8 +428,8 @@ class BuildGen {
     }
   }
 
-  // Evaluate a bool condition (program.py eval_bool: non-bool -> EvalError ->
-  // rejection); returns the EvalResult temp holding the checked bool.
+  // Evaluate a bool condition: non-bool is a rejection. Returns the EvalResult
+  // temp holding the checked bool.
   std::string emit_bool(const Json &expr) {
     std::string val = em_.emit(expr);
     int i = em_.fresh_public();
@@ -463,8 +438,8 @@ class BuildGen {
     return "sb" + std::to_string(i);
   }
 
-  // `out` / switch-branch fields -> a Value::Fields temp (program.py
-  // _eval_out_fields: an `optional` field whose value is null is omitted).
+  // `out` / switch-branch fields -> a Value::Fields temp. An `optional` field
+  // whose value is null is omitted.
   std::string emit_fields(const Json &fields) {
     int i = em_.fresh_public();
     std::string fs = "fs" + std::to_string(i);
@@ -484,8 +459,8 @@ class BuildGen {
   }
 
   // `produces switch`: first branch whose `when` is true (else arm has no
-  // `when`); LAZY, later branch conditions must not evaluate once one
-  // matched; no branch -> fault -> rejection (program.py _eval_switch).
+  // `when`); later conditions must not evaluate once one matched; no branch
+  // is a rejection.
   void emit_switch(const td::JsonArray &branches, std::size_t idx) {
     if (idx == branches.size()) {
       em_.line_public(
@@ -520,7 +495,7 @@ class BuildGen {
       const std::string target = jstr(stmt, "target");
       auto it = em_.scope.find(target);
       if (it == em_.scope.end()) {
-        // program.py _do_parse: env.get(target) is None -> no-op.
+        // Unbound parse target is a no-op.
         em_.line_public("// parse target '" + target + "' is unbound: no-op");
         return;
       }
@@ -548,8 +523,7 @@ class BuildGen {
       return;
     }
     if (s == "failed" || s == "broken") {
-      // program.py: `failed = failed or await eval_bool(...)`, the condition
-      // is NOT evaluated once the flag is already true (short-circuit).
+      // Condition is not evaluated once the flag is already true (short-circuit).
       const std::string flag = s == "failed" ? "o.failed" : "o.broken";
       auto body = buffered([&] {
         std::string cond = emit_bool(*jfield(stmt, "when"));
@@ -598,11 +572,9 @@ std::string cstr(const std::string &s) {
     } else if (ch == '\r') {
       out += "\\r";
     } else if (uc < 0x20 || uc == 0x7f) {
-      // Every other control byte (incl. NUL, a real past bug) as a 3-digit
-      // octal escape. Octal is used instead of \x because \x greedily consumes
-      // ALL following hex digits: `\x0` before a literal 'a' would parse as
-      // \x0a. A 3-digit octal escape reads at most 3 digits, so an adjacent
-      // digit can never extend it.
+      // Every other control byte (incl. NUL) as a 3-digit octal escape. `\x`
+      // greedily consumes following hex digits; a 3-digit octal cannot be
+      // extended by an adjacent digit.
       char buf[5];
       std::snprintf(buf, sizeof(buf), "\\%03o", uc);
       out += buf;
@@ -628,8 +600,9 @@ std::string generate_function(const std::string &fn_name, const Json &expr) {
          "}\n";
 }
 
-std::string generate_where_function(const std::string &fn_name, const Json &expr) {
-  Emitter em(EmitMode::Where);
+std::string generate_where_function(const std::string &fn_name, const Json &expr,
+                                    const std::string &entry_name, int entry_slot) {
+  Emitter em(EmitMode::Where, entry_name, entry_slot);
   std::string result = em.emit(expr);
   std::vector<std::string> body;
   for (const auto &ln : em.lines) {
@@ -677,6 +650,72 @@ std::string generate_wheres_file(const Json &root, const std::string &header,
     throw std::runtime_error("IR artifact has no `nodes` array");
   }
   const auto &arr = nodes->get_array();
+  const Json *matchers = jfield(root, td::Slice("matchers"));
+  if (matchers == nullptr || matchers->type() != JType::Array) {
+    throw std::runtime_error("IR artifact has no `matchers` array");
+  }
+
+  auto index_of = [](const Json &v) -> std::size_t {
+    if (v.type() != JType::Number) {
+      throw std::runtime_error("IR node reference is not a number");
+    }
+    return static_cast<std::size_t>(std::stoull(v.get_number().str()));
+  };
+  std::map<std::size_t, std::pair<std::string, int>> where_entries;
+  for (const auto &matcher : matchers->get_array()) {
+    const Json *root_ref = jfield(matcher, td::Slice("root"));
+    if (root_ref == nullptr) {
+      throw std::runtime_error("IR matcher has no `root`");
+    }
+    const std::size_t matcher_root = index_of(*root_ref);
+    if (matcher_root >= arr.size()) {
+      throw std::runtime_error("IR matcher root is out of range");
+    }
+    const std::string entry_name = jstr(arr[matcher_root], "capture");
+    int entry_slot = -1;
+    if (const Json *caps = jfield(matcher, td::Slice("captures"));
+        caps != nullptr && caps->type() == JType::Array) {
+      int slot = 0;
+      for (const auto &cap : caps->get_array()) {
+        if (jstr(cap, "name") == entry_name) {
+          entry_slot = slot;
+          break;
+        }
+        slot++;
+      }
+    }
+
+    std::vector<std::size_t> pending{matcher_root};
+    std::unordered_set<std::size_t> seen;
+    while (!pending.empty()) {
+      const std::size_t id = pending.back();
+      pending.pop_back();
+      if (id >= arr.size() || !seen.insert(id).second) {
+        continue;
+      }
+      const Json &node = arr[id];
+      if (jfield(node, td::Slice("where_expr")) != nullptr) {
+        auto [it, inserted] = where_entries.emplace(
+            id, std::make_pair(entry_name, entry_slot));
+        if (!inserted && it->second != std::make_pair(entry_name, entry_slot)) {
+          throw std::runtime_error("where_expr node is shared by matchers with different entries");
+        }
+      }
+      for (const char *key : {"child", "parent", "step", "exit"}) {
+        if (const Json *ref = jfield(node, td::Slice(key)); ref != nullptr) {
+          pending.push_back(index_of(*ref));
+        }
+      }
+      for (const char *key : {"children", "branches"}) {
+        if (const Json *refs = jfield(node, td::Slice(key));
+            refs != nullptr && refs->type() == JType::Array) {
+          for (const auto &ref : refs->get_array()) {
+            pending.push_back(index_of(ref));
+          }
+        }
+      }
+    }
+  }
 
   std::vector<std::size_t> where_ids;
   for (std::size_t i = 0; i < arr.size(); i++) {
@@ -688,8 +727,12 @@ std::string generate_wheres_file(const Json &root, const std::string &header,
   std::vector<std::string> out = {
       header, "#include \"GenWheres.h\"", "", "namespace mch {", "namespace {", ""};
   for (std::size_t id : where_ids) {
+    auto it = where_entries.find(id);
+    const std::string entry_name = it != where_entries.end() ? it->second.first : std::string{};
+    const int entry_slot = it != where_entries.end() ? it->second.second : -1;
     out.push_back(generate_where_function("where_" + std::to_string(id),
-                                          *jfield(arr[id], td::Slice("where_expr"))));
+                                          *jfield(arr[id], td::Slice("where_expr")),
+                                          entry_name, entry_slot));
   }
   const std::string table_fn = "gen_wheres_" + sanitize_ident(suffix);
   out.push_back("}  // namespace");
@@ -722,9 +765,8 @@ std::string generate_builds_file(const Json &root, const std::string &header,
   };
   std::vector<Entry> entries;
   // TODO: remove (harness): the `build_vectors` root is the TEST-ONLY document
-  // (ir/build_vectors.json -> mch-fixtures via fixtures/GenBuildsVectors.h). The
-  // production root is the `matchers` branch below. The dual-root shape is what
-  // forces --suffix to exist at all.
+  // consumed by the devtools vector runner. The production root is the `matchers`
+  // branch below. The dual-root shape is what forces --suffix to exist at all.
   if (const Json *cases = jfield(root, "build_vectors");
       cases != nullptr && cases->type() == JType::Array) {
     const auto &arr = cases->get_array();

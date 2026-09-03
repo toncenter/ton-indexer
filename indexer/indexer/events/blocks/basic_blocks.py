@@ -51,6 +51,7 @@ class TonTransferBlock(Block):
             'value': Amount(node.message.value),
             'comment': self.comment,
             'encrypted': self.encrypted,
+            'comment_encoded': self.comment_encoded,
         })
         if node.failed:
             if node.message is not None and node.message.bounce == True:

@@ -36,7 +36,7 @@ class LNode:
       - recursive:  `step`, `exit_` (frontier), or `strategy="cyclic"` + `step`
       - cyclic_ref: `target`, an in-body self-reference back-edge; carries no
                     node of its own (emitter resolves it to `target`'s id).
-    Common optional fields on every kind: `optional`, `capture`, `where`,
+    Common optional fields on every kind: `optional`, `peek`, `capture`, `where`,
     `where_expr`, `child`, `children`, `parent`.
     """
 
@@ -51,6 +51,8 @@ class LNode:
     exit_: "LNode | None" = None
     target: "LNode | None" = None          # cyclic_ref back-edge target
     optional: bool = False
+    peek: bool = False
+    peek_span: Span | None = None
     capture: str | None = None
     where: str | None = None
     where_expr: "ast_.Expr | None" = None
@@ -88,6 +90,7 @@ class CompileCtx:
     registries: Registries
     recursion: RecursionStrategy
     bag: DiagnosticBag
+    where_entry_capture: str = ""
     # Names of recursive rules currently being lowered; used to break cycles
     # by treating self-refs inside step/exit branches as a recursion sentinel.
     lowering_recursive: set[str] = None  # type: ignore[assignment]
@@ -126,6 +129,7 @@ def compile_(
 
 def _compile_matcher(rm: ResolvedMatcher, ctx: CompileCtx) -> CompiledMatcher:
     decl = rm.decl
+    ctx.where_entry_capture = rm.anchor_capture
 
     _check_no_capture_after_recursion(decl.pattern, decl.span, ctx)
     _check_no_bare_children_block(decl.pattern, ctx)
@@ -237,6 +241,8 @@ def _compile_matcher(rm: ResolvedMatcher, ctx: CompileCtx) -> CompiledMatcher:
         else:
             anchor_branches = tuple(branch_descs)
 
+    _check_peek_subtree_closure(root, decl.name, ctx)
+
     return CompiledMatcher(
         name=decl.name,
         root=root,
@@ -298,7 +304,7 @@ def _find_anchor_path(pattern: ast_.PatternExpr, anchor: ast_.PatternExpr) -> li
                 r = search(atom, path + [p])
                 if r:
                     return r
-        elif isinstance(p, ast_.Maybe):
+        elif isinstance(p, (ast_.Maybe, ast_.Peek)):
             return search(p.inner, path + [p])
         elif isinstance(p, ast_.Alternative):
             for b in p.branches:
@@ -315,12 +321,28 @@ def _find_anchor_path(pattern: ast_.PatternExpr, anchor: ast_.PatternExpr) -> li
     return search(pattern, [])
 
 
+def _unwrap_modifiers(
+    p: ast_.PatternExpr,
+) -> tuple[ast_.PatternExpr, bool, bool, Span | None]:
+    optional = False
+    peek = False
+    peek_span: Span | None = None
+    while isinstance(p, (ast_.Maybe, ast_.Peek)):
+        if isinstance(p, ast_.Maybe):
+            optional = True
+        else:
+            peek = True
+            if peek_span is None:
+                peek_span = p.span
+        p = p.inner
+    return p, optional, peek, peek_span
+
+
 def _is_cb_atom(a: ast_.PatternExpr) -> bool:
     """Whether an atom attaches left without advancing the chain cursor.
     """
-    return isinstance(a, ast_.ChildrenBlock) or (
-        isinstance(a, ast_.Maybe) and isinstance(a.inner, ast_.ChildrenBlock)
-    )
+    inner, _optional, _peek, _peek_span = _unwrap_modifiers(a)
+    return isinstance(inner, ast_.ChildrenBlock)
 
 
 def _lower_child_chain_from(
@@ -381,9 +403,8 @@ def _lower_child_chain_from(
         if not downstream_atoms:
             return None, None
         first = downstream_atoms[0]
-        if isinstance(first, ast_.ChildrenBlock) or (
-            isinstance(first, ast_.Maybe) and isinstance(first.inner, ast_.ChildrenBlock)
-        ):
+        first_inner, _optional, _peek, _peek_span = _unwrap_modifiers(first)
+        if isinstance(first_inner, ast_.ChildrenBlock):
             # Consume consecutive anchor-adjacent children blocks so
             # `{B;C} {D;E}`
             # all attach to the anchor's children_matchers in source order.
@@ -391,18 +412,18 @@ def _lower_child_chain_from(
             rest_idx = 0
             while rest_idx < len(downstream_atoms):
                 atom = downstream_atoms[rest_idx]
-                if isinstance(atom, ast_.ChildrenBlock):
-                    children_ms.extend(_lower_atom(it, ctx) for it in atom.items)
-                    rest_idx += 1
-                    continue
-                if isinstance(atom, ast_.Maybe) and isinstance(atom.inner, ast_.ChildrenBlock):
-                    for it in atom.inner.items:
-                        lowered_it = _lower_atom(it, ctx)
+                inner, optional_items, peek_items, peek_span = _unwrap_modifiers(atom)
+                if not isinstance(inner, ast_.ChildrenBlock):
+                    break
+                for it in inner.items:
+                    lowered_it = _lower_atom(it, ctx)
+                    if optional_items:
                         lowered_it.optional = True
-                        children_ms.append(lowered_it)
-                    rest_idx += 1
-                    continue
-                break
+                    if peek_items:
+                        lowered_it.peek = True
+                        lowered_it.peek_span = peek_span
+                    children_ms.append(lowered_it)
+                rest_idx += 1
             rest = downstream_atoms[rest_idx:]
             if rest:
                 pairs = [(ast_.Edge.CHILD, a) for a in rest]
@@ -513,33 +534,31 @@ def _lower_chain_with_children_attach(
     """Walk an ordered list of `(edge, atom)` pairs and build a chained node graph.
 
     ChildrenBlock atoms attach their items to the immediately-preceding node's
-    `children`. `Maybe(ChildrenBlock)` does the same with per-item
-    `optional=True`. Bare ChildrenBlock at the head (no left sibling) emits
-    `C008_CHILDREN_BLOCK_BARE`. Non-CB atoms chain via `_attach_as_child` (CHILD
-    edge) or `_attach_as_parent` (PARENT edge).
+    `children`. Modifier-wrapped blocks apply those flags to each item root.
+    Bare ChildrenBlock at the head (no left sibling) emits C008. Non-CB atoms
+    chain via `_attach_as_child` or `_attach_as_parent`.
     """
     head_matcher: LNode | None = None
     previous_lowered: LNode | None = None
 
     for edge, atom in pairs:
-        # Detect bare or maybe-wrapped ChildrenBlock attach-to-left.
+        # Detect modifier-wrapped ChildrenBlock attach-to-left.
         cb_items: list[ast_.PatternExpr] | None = None
         optional_items = False
-        if isinstance(atom, ast_.ChildrenBlock):
-            cb_items = list(atom.items)
-        elif isinstance(atom, ast_.Maybe) and isinstance(atom.inner, ast_.ChildrenBlock):
-            cb_items = list(atom.inner.items)
-            optional_items = True
+        peek_items = False
+        peek_span: Span | None = None
+        inner, optional_items, peek_items, peek_span = _unwrap_modifiers(atom)
+        if isinstance(inner, ast_.ChildrenBlock):
+            cb_items = list(inner.items)
 
         if cb_items is not None:
             if previous_lowered is None:
                 # Bare ChildrenBlock with no left sibling.
-                span = atom.span if isinstance(atom, ast_.ChildrenBlock) else atom.inner.span
                 ctx.bag.error(
                     "C008_CHILDREN_BLOCK_BARE",
                     "children block '{...}' must follow a node in a sequence "
                     "(e.g. 'op A -> {op B; op C}'); bare children blocks are not allowed",
-                    span,
+                    inner.span,
                 )
                 raise CompileError(ctx.bag)
             if previous_lowered.children is None:
@@ -548,6 +567,9 @@ def _lower_chain_with_children_attach(
                 lowered_item = _lower_atom(item, ctx)
                 if optional_items:
                     lowered_item.optional = True
+                if peek_items:
+                    lowered_item.peek = True
+                    lowered_item.peek_span = peek_span
                 previous_lowered.children.append(lowered_item)
             # Do not update previous_lowered. A children block constrains the
             # preceding matcher, not a chain link.
@@ -627,6 +649,49 @@ def _check_redundant_exclusive_heads(p: ast_.Alternative, ctx: CompileCtx) -> No
             seen[key] = b.span
 
 
+def _lnode_refs(n: LNode):
+    for ref in (n.child, n.parent, n.step, n.exit_, n.target):
+        if ref is not None:
+            yield ref
+    yield from n.children or ()
+    yield from n.branches or ()
+
+
+def _check_peek_subtree_closure(root: LNode, matcher_name: str, ctx: CompileCtx) -> None:
+    all_nodes: list[LNode] = []
+    seen_all: set[int] = set()
+    stack = [root]
+    while stack:
+        node = stack.pop()
+        if id(node) in seen_all:
+            continue
+        seen_all.add(id(node))
+        all_nodes.append(node)
+        stack.extend(_lnode_refs(node))
+
+    for origin in all_nodes:
+        if not origin.peek:
+            continue
+        seen = {id(origin)}
+        descendants = list(_lnode_refs(origin))
+        while descendants:
+            node = descendants.pop()
+            if id(node) in seen:
+                continue
+            seen.add(id(node))
+            if not node.peek:
+                if origin.peek_span is None:
+                    raise AssertionError("peek node missing source span")
+                ctx.bag.error(
+                    "C014_PEEK_SUBTREE_CONSUMES",
+                    f"matcher {matcher_name!r}: a `peek` subtree contains a consuming node; "
+                    "every reachable node must also be `peek`",
+                    origin.peek_span,
+                )
+                raise CompileError(ctx.bag)
+            descendants.extend(_lnode_refs(node))
+
+
 def _anchor_group_head_sets(
     group: ast_.Alternative,
     ctx: CompileCtx,
@@ -689,6 +754,19 @@ def _lower_atom(p: ast_.PatternExpr, ctx: CompileCtx) -> LNode:
             raise CompileError(ctx.bag)
         inner = _lower_atom(p.inner, ctx)
         inner.optional = True
+        return inner
+    if isinstance(p, ast_.Peek):
+        if isinstance(p.inner, ast_.ChildrenBlock):
+            ctx.bag.error(
+                "C008_CHILDREN_BLOCK_BARE",
+                "'peek {...}' must follow a node in a sequence "
+                "(e.g. 'op A -> peek {op B; op C}'); bare peek-children blocks are not allowed",
+                p.inner.span,
+            )
+            raise CompileError(ctx.bag)
+        inner = _lower_atom(p.inner, ctx)
+        inner.peek = True
+        inner.peek_span = p.span
         return inner
     if isinstance(p, ast_.Alternative):
         lowered_branches = [_lower_atom(b, ctx) for b in p.branches]
@@ -753,6 +831,16 @@ def _check_where_expr_sync(e: ast_.Expr, span: Span, ctx: CompileCtx) -> bool:
     loader rejects the same artifacts, keeping both paths failing at the same
     compiler instead of silently never matching. Returns True
     when the expression is sync-evaluable."""
+    if isinstance(e, ast_.NameRef):
+        if e.name != ctx.where_entry_capture:
+            ctx.bag.error(
+                "C015_WHERE_EXPR_CAPTURE_NOT_ENTRY",
+                f"`where (expr)` may reference only entry capture "
+                f"@{ctx.where_entry_capture}; name {e.name!r} is not allowed",
+                e.span,
+            )
+            return False
+        return True
     if isinstance(e, ast_.LookupExpr):
         ctx.bag.error(
             "C013_WHERE_EXPR_NOT_SYNC",
@@ -798,6 +886,10 @@ def _check_where_expr_sync(e: ast_.Expr, span: Span, ctx: CompileCtx) -> bool:
         return (_check_where_expr_sync(e.cond, span, ctx)
                 and _check_where_expr_sync(e.then, span, ctx)
                 and _check_where_expr_sync(e.orelse, span, ctx))
+    if isinstance(e, ast_.ListLit):
+        return all(_check_where_expr_sync(it, span, ctx) for it in e.elements)
+    if isinstance(e, ast_.RecordLit):
+        return all(_check_where_expr_sync(f.value, span, ctx) for f in e.fields)
     return True
 
 
@@ -876,14 +968,14 @@ def _check_no_capture_after_recursion(
     def is_direct_recursive_ref(p: ast_.PatternExpr) -> bool:
         if isinstance(p, ast_.RuleRef):
             return ctx.resolved.rule_recursion.get(p.name) is RecursionClass.DIRECT_RECURSIVE
-        if isinstance(p, ast_.Maybe):
+        if isinstance(p, (ast_.Maybe, ast_.Peek)):
             return is_direct_recursive_ref(p.inner)
         return False
 
     def contains_capture(p: ast_.PatternExpr) -> bool:
         if isinstance(p, ast_.Node):
             return p.capture is not None
-        if isinstance(p, ast_.Maybe):
+        if isinstance(p, (ast_.Maybe, ast_.Peek)):
             return contains_capture(p.inner)
         if isinstance(p, ast_.Sequence):
             if contains_capture(p.head):
@@ -913,7 +1005,7 @@ def _check_no_capture_after_recursion(
                 if is_direct_recursive_ref(atom):
                     recursion_seen = True
                 walk(atom)
-        elif isinstance(p, ast_.Maybe):
+        elif isinstance(p, (ast_.Maybe, ast_.Peek)):
             walk(p.inner)
         elif isinstance(p, ast_.Alternative):
             for b in p.branches:
@@ -932,11 +1024,10 @@ def _check_no_bare_children_block(
     """Report C008 for a children block without a node on its left.
     """
 
-    def is_cb_or_maybe_cb(p: ast_.PatternExpr) -> tuple[bool, ast_.Span]:
-        if isinstance(p, ast_.ChildrenBlock):
-            return True, p.span
-        if isinstance(p, ast_.Maybe) and isinstance(p.inner, ast_.ChildrenBlock):
-            return True, p.inner.span
+    def is_modifier_wrapped_cb(p: ast_.PatternExpr) -> tuple[bool, ast_.Span]:
+        inner, _optional, _peek, _peek_span = _unwrap_modifiers(p)
+        if isinstance(inner, ast_.ChildrenBlock):
+            return True, inner.span
         return False, p.span if hasattr(p, "span") else None  # type: ignore[return-value]
 
     def emit_c008(span: ast_.Span) -> None:
@@ -951,18 +1042,19 @@ def _check_no_bare_children_block(
         """`in_chain_left` is True when this atom has a non-CB left sibling in its
         enclosing Sequence tail (i.e. it's a valid attach-to-left position).
         """
-        is_cb, span = is_cb_or_maybe_cb(p)
+        is_cb, span = is_modifier_wrapped_cb(p)
         if is_cb and not in_chain_left:
             emit_c008(span)
         if isinstance(p, ast_.Sequence):
             walk(p.head, in_chain_left=False)
-            previous_was_atom = not is_cb_or_maybe_cb(p.head)[0]
+            previous_was_atom = not is_modifier_wrapped_cb(p.head)[0]
             for _edge, atom in p.tail:
                 walk(atom, in_chain_left=previous_was_atom)
-                if not is_cb_or_maybe_cb(atom)[0]:
+                if not is_modifier_wrapped_cb(atom)[0]:
                     previous_was_atom = True
-        elif isinstance(p, ast_.Maybe):
-            if not isinstance(p.inner, ast_.ChildrenBlock):
+        elif isinstance(p, (ast_.Maybe, ast_.Peek)):
+            inner, _optional, _peek, _peek_span = _unwrap_modifiers(p)
+            if not isinstance(inner, ast_.ChildrenBlock):
                 walk(p.inner, in_chain_left=False)
         elif isinstance(p, ast_.Alternative):
             for b in p.branches:
@@ -996,22 +1088,27 @@ def _mark_rule_seen(name: str, ctx: CompileCtx) -> None:
     setattr(ctx, _RULE_VALIDATED_KEY, seen)
 
 
+def _is_maybe_self_ref(p: ast_.PatternExpr, rule_name: str) -> bool:
+    saw_maybe = False
+    while isinstance(p, (ast_.Maybe, ast_.Peek)):
+        if isinstance(p, ast_.Maybe):
+            saw_maybe = True
+        p = p.inner
+    return saw_maybe and isinstance(p, ast_.RuleRef) and p.name == rule_name
+
+
 def _strip_trailing_self_ref(branch: ast_.PatternExpr, rule_name: str) -> ast_.PatternExpr | None:
     """Strip trailing `maybe $rule_name` from a step branch.
 
     Returns the stripped pattern, or None if the branch is just `maybe $rule_name`
     alone (the branch carries no actual content and should be discarded).
     """
-    if isinstance(branch, ast_.Maybe) and isinstance(branch.inner, ast_.RuleRef) and branch.inner.name == rule_name:
+    if _is_maybe_self_ref(branch, rule_name):
         return None
     if isinstance(branch, ast_.Sequence):
         if branch.tail:
             last_edge, last_atom = branch.tail[-1]
-            if (
-                isinstance(last_atom, ast_.Maybe)
-                and isinstance(last_atom.inner, ast_.RuleRef)
-                and last_atom.inner.name == rule_name
-            ):
+            if _is_maybe_self_ref(last_atom, rule_name):
                 new_tail = branch.tail[:-1]
                 if not new_tail:
                     return branch.head
@@ -1032,7 +1129,7 @@ def _check_cyclic_rule_body(target: ast_.RuleDecl, ctx: CompileCtx) -> None:
     name = target.name
 
     def is_self_ref(a: ast_.PatternExpr) -> bool:
-        if isinstance(a, ast_.Maybe):
+        if isinstance(a, (ast_.Maybe, ast_.Peek)):
             return is_self_ref(a.inner)
         return isinstance(a, ast_.RuleRef) and a.name == name
 
@@ -1070,6 +1167,15 @@ def _check_cyclic_rule_body(target: ast_.RuleDecl, ctx: CompileCtx) -> None:
                     "`maybe` on a self-reference inside a cyclic body is not "
                     "supported (an IR back-edge carries no per-site optionality); "
                     "add a non-recursive alternative branch instead",
+                    p.span,
+                )
+            walk(p.inner)
+        elif isinstance(p, ast_.Peek):
+            if is_self_ref(p.inner):
+                err(
+                    "`peek` on a self-reference inside a cyclic body is not "
+                    "supported (an IR back-edge carries no per-site modifiers); "
+                    "put `peek` on concrete nodes instead",
                     p.span,
                 )
             walk(p.inner)
@@ -1228,7 +1334,7 @@ def _split_recursion_branches(
 def _contains_rule_ref(p: ast_.PatternExpr, name: str) -> bool:
     if isinstance(p, ast_.RuleRef):
         return p.name == name
-    if isinstance(p, ast_.Maybe):
+    if isinstance(p, (ast_.Maybe, ast_.Peek)):
         return _contains_rule_ref(p.inner, name)
     if isinstance(p, ast_.Sequence):
         if _contains_rule_ref(p.head, name):

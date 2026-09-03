@@ -6,9 +6,8 @@ cmake_minimum_required(VERSION 3.16)
 # tracked ABI declarations, with AbiValue retained as their protocol-neutral
 # dump format.
 
+# Runtime: leaf codecs + AbiValue. This is the only part production links.
 add_library(ton-abi STATIC
-    src/AbiLoader.cpp
-    src/AbiKernel.cpp
     src/AbiLeavesScalar.cpp
     src/AbiLeavesAddress.cpp
     src/AbiLeavesRef.cpp
@@ -16,17 +15,27 @@ add_library(ton-abi STATIC
     src/AbiLeavesDict.cpp
     src/AbiLeavesPrefix.cpp
     src/AbiValue.cpp
-    src/AbiEmit.cpp
 )
 target_include_directories(ton-abi PUBLIC src)
 target_compile_features(ton-abi PUBLIC cxx_std_20)
 target_link_libraries(ton-abi PUBLIC tdutils ton_crypto_core)
 
+# Codegen: JSON loader, resolution kernel, C++ emitter. Linked by the
+# generator tool and tests only; keeps loader/kernel headers out of the
+# production compile surface.
+add_library(ton-abi-codegen STATIC
+    codegen/AbiLoader.cpp
+    codegen/AbiKernel.cpp
+    codegen/AbiEmit.cpp
+)
+target_include_directories(ton-abi-codegen PUBLIC codegen)
+target_link_libraries(ton-abi-codegen PUBLIC ton-abi)
+
 # ton-abi-gen emits build-tree generated/<contract>_gen.{h,cpp} pairs using the
 # model, loader, resolution kernel, and emitter library.
 add_executable(ton-abi-gen tools/AbiGenMain.cpp)
 target_compile_features(ton-abi-gen PRIVATE cxx_std_20)
-target_link_libraries(ton-abi-gen ton-abi tdutils)
+target_link_libraries(ton-abi-gen ton-abi-codegen tdutils)
 
 # Generate every loadable fixture and production declaration in one batch.
 # The two err-invalid-map-key fixtures are intentional hard-fail cases and are
@@ -89,7 +98,7 @@ target_compile_definitions(ton-abi-test PRIVATE
 )
 add_dependencies(ton-abi-test ton-abi-gen)  # Cli-analog test runs the exe
 add_dependencies(ton-abi-test ton_abi_generate_sources)
-target_link_libraries(ton-abi-test ton-abi tdutils)
+target_link_libraries(ton-abi-test ton-abi-codegen tdutils)
 
 enable_testing()
 add_test(NAME ton_abi_smoke COMMAND ton-abi-test)

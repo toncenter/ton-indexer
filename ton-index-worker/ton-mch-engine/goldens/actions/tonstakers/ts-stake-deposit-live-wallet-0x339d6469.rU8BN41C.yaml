@@ -1,0 +1,39 @@
+# tonstakers / TS Stake deposit (live, wallet 0x339d6469)
+# trace: rU8BN41CoPsfmLPpLrucPQX8v8lJnwob39gp5yKBdko=
+actions:
+  - type: stake_deposit
+    matcher: tonstakers_deposit
+    anchor: tonstakers_deposit@93609785000011
+    id: bKL6b/gExOqeZ1TX4CYZ2vFDYHlmlHOhMN4V4dQIPGc=
+    success: true
+    source: 0:3071A81AFB17CE8592A98C4EB5B68FCA819FD371BA26F732FA027E826D2E2D96
+    source_secondary: null
+    destination: 0:A45B17F28409229B78360E3290420F13E4FE20F90D7E2BF8C4AC6703259E22FA
+    destination_secondary: null
+    asset: 0:BDF3FA8098D129B54B4F73B5BAC5D1E1FD91EB054169C3916DFC8CCD536D1000
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: 10000000000
+    value: null
+    opcode: null
+    staking_data:
+      provider: liquid_staking
+      tokens_minted: 8771491638
+    tx_hashes:
+      - 4TKJUOFoIRSmyNIlGJTDfr8M2k+eLfNmrNtegNifJyA=
+      - 6D6wFIAUVfLjduq+NuGbermWZsorvKfa00i05hPW+/U=
+      - XjNlrDGdqhfRL39zb7lItQD0LQbkDzBpWJJpyYgwEIw=
+      - rU8BN41CoPsfmLPpLrucPQX8v8lJnwob39gp5yKBdko=
+      - s0L3X5U+3FQTIPK4wWz1MZazO8NFY58inbGdPpsWsKc=
+      - z2xacWC3G92viKDHpXHI7t1psTH8Ww0TBoyU4qdbNPM=
+    accounts:
+      - 0:3071A81AFB17CE8592A98C4EB5B68FCA819FD371BA26F732FA027E826D2E2D96
+      - 0:A45B17F28409229B78360E3290420F13E4FE20F90D7E2BF8C4AC6703259E22FA
+      - 0:BDF3FA8098D129B54B4F73B5BAC5D1E1FD91EB054169C3916DFC8CCD536D1000
+      - 0:FE4EF433C045814CAAD5AF6CD2696528F4C85AA361A057B14402790F55913409
+    start_lt: 93609785000011
+    end_lt: 93609785000019
+    start_utime: 1785456719
+    end_utime: 1785456719
+    mc_seqno_end: 83026087

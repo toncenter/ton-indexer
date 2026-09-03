@@ -1,11 +1,8 @@
-// Shared pytoniq-Slice stand-in machinery (see parse/PSlice.h). Every quirk of
-// the Python reference parsers reproduced here is documented at its definition;
-// see MsgParse.cpp's header for the file-level catalogue.
+// Shared Slice stand-in (see parse/PSlice.h). Each quirk is documented at its definition.
 #include "parse/PSlice.h"
 
 #include "MsgParse.h"
 
-#include "crypto/block/block-parse.h"
 #include "common/refint.h"
 #include "td/utils/base64.h"
 #include "vm/cellslice.h"
@@ -32,15 +29,15 @@ td::RefInt256 refint_u64(unsigned long long v) {
   return (hi << 32) + td::make_refint(static_cast<long long>(v & 0xFFFFFFFFULL));
 }
 
-// pytoniq Slice.load_address(). Advances `cs`. Error == the Python parser
-// raising (whole message parse fails, or the enclosing try downgrades it).
+// Load an address; advances `cs`. Error fails the whole message parse, or
+// the enclosing try downgrades it. Intentional.
 td::Result<Value> load_address_py(vm::CellSlice &cs) {
   if (!cs.have(2)) {
     return td::Status::Error("address: underflow");
   }
   auto tag = cs.fetch_ulong(2);
   if (tag == 0) {
-    return Value::null();  // pytoniq returns None for addr_none
+    return Value::null();  // addr_none is null
   }
   if (tag == 1) {
     if (!cs.have(9)) {
@@ -48,20 +45,14 @@ td::Result<Value> load_address_py(vm::CellSlice &cs) {
     }
     int len = static_cast<int>(cs.fetch_ulong(9));
     if (len == 0) {
-      return td::Status::Error("address: extern len 0");  // ba2int('') raises
+      return td::Status::Error("address: extern len 0");  // empty extern always fails
     }
     if (!cs.have(len)) {
       return td::Status::Error("address: extern underflow");
     }
-    // pytoniq addr_extern: ba2int(bits, signed=False), an unsigned big-endian
-    // integer of exactly `len` bits (1..511). NO td::RefInt256 CAN HOLD IT: that
-    // type is a signed 257-bit BigInt, so anything past 256 bits is an
-    // invalid-but-non-null value that renders "NaN" (which is what a 260-bit
-    // cocoon expectedMyAddress, both in --parse-dump and
-    // through to the cocoon_expected_address host fn). The Str therefore carries
-    // the value in HEX, assembled nibble by nibble straight off the wire, exact
-    // for every length up to 511 and the direct twin of Python's `f"{int:x}"`:
-    // lowercase, no leading zeros, "0" for zero.
+    // addr_extern is an unsigned big-endian integer of exactly `len` bits (1..511).
+    // RefInt256 cannot hold it (signed 257-bit), so the Str carries the value in
+    // hex: lowercase, no leading zeros, "0" for zero. Intentional.
     static const char kHexDigits[] = "0123456789abcdef";
     std::string hex;
     hex.reserve(static_cast<size_t>(len) / 4 + 1);
@@ -77,18 +68,18 @@ td::Result<Value> load_address_py(vm::CellSlice &cs) {
     return Value::make_str("extern:" + std::to_string(len) + ":" + hex);
   }
   if (tag == 3) {
-    return td::Status::Error("address: addr_var unsupported");  // pytoniq raises
+    return td::Status::Error("address: addr_var unsupported");  // addr_var always fails
   }
   if (!cs.have(1)) {
     return td::Status::Error("address: underflow");
   }
-  if (cs.fetch_ulong(1)) {  // anycast: consumed, never applied (pytoniq)
+  if (cs.fetch_ulong(1)) {  // anycast: consumed, never applied
     if (!cs.have(5)) {
       return td::Status::Error("address: anycast underflow");
     }
     int depth = static_cast<int>(cs.fetch_ulong(5));
     if (depth < 1) {
-      return td::Status::Error("address: anycast depth 0");  // pytoniq raises
+      return td::Status::Error("address: anycast depth 0");  // depth 0 always fails
     }
     if (!cs.have(depth) || !cs.advance(depth)) {
       return td::Status::Error("address: anycast underflow");
@@ -105,7 +96,7 @@ td::Result<Value> load_address_py(vm::CellSlice &cs) {
   return Value::make_account_raw(std::to_string(wc) + ":" + hex_upper(buf, 32));
 }
 
-// pytoniq Slice.load_coins(): len nibble 0 -> 0. Advances `cs`.
+// Load coins; len nibble 0 yields 0. Advances `cs`.
 td::Result<td::RefInt256> load_coins_py(vm::CellSlice &cs) {
   if (!cs.have(4)) {
     return td::Status::Error("coins: underflow");
@@ -124,14 +115,6 @@ td::Result<td::RefInt256> load_coins_py(vm::CellSlice &cs) {
   return v;
 }
 
-td::Result<td::RefInt256> var_uint16(const td::Ref<vm::CellSlice> &csr) {
-  auto v = block::tlb::t_VarUInteger_16.as_integer(csr);
-  if (v.is_null()) {
-    return td::Status::Error("VarUInteger16: bad slice");
-  }
-  return v;
-}
-
 PSlice pslice_from_cell(const td::Ref<vm::Cell> &c) {
   PSlice ps;
   bool special = false;
@@ -142,7 +125,7 @@ PSlice pslice_from_cell(const td::Ref<vm::Cell> &c) {
   return ps;
 }
 
-// pytoniq Slice.to_cell(): Cell(remaining bits, refs[off:]).
+// Remaining bits plus refs[off:].
 td::Result<td::Ref<vm::Cell>> pslice_to_cell(const PSlice &ps) {
   try {
     vm::CellBuilder cb;
@@ -156,21 +139,21 @@ td::Result<td::Ref<vm::Cell>> pslice_to_cell(const PSlice &ps) {
   }
 }
 
-// pytoniq Slice.load_snake_bytes(): byte-aligned, <=1 ref per link.
-td::Result<std::string> load_snake_bytes(PSlice ps) {
+// Byte-aligned snake; at most one ref per link.
+td::Result<std::string> load_snake_bytes(vm::CellSlice &cs) {
   std::string out;
   for (;;) {
-    if (ps.cs.size() % 8 != 0) {
+    if (cs.size() % 8 != 0) {
       return td::Status::Error("snake: not byte-aligned");
     }
-    size_t nrefs = ps.refs.size() - ps.off;
+    size_t nrefs = cs.size_refs();
     if (nrefs > 1) {
       return td::Status::Error("snake: >1 ref");
     }
-    size_t n = ps.cs.size() / 8;
+    size_t n = cs.size() / 8;
     if (n > 0) {
       std::string chunk(n, '\0');
-      if (!ps.cs.fetch_bytes(reinterpret_cast<unsigned char *>(chunk.data()), static_cast<int>(n))) {
+      if (!cs.fetch_bytes(reinterpret_cast<unsigned char *>(chunk.data()), static_cast<int>(n))) {
         return td::Status::Error("snake: fetch failed");
       }
       out += chunk;
@@ -178,7 +161,12 @@ td::Result<std::string> load_snake_bytes(PSlice ps) {
     if (nrefs == 0) {
       return out;
     }
-    ps = pslice_from_cell(ps.refs[ps.off]);
+    bool special = false;
+    try {
+      cs = vm::load_cell_slice_special(cs.prefetch_ref(0), special);
+    } catch (...) {
+      return td::Status::Error("snake: bad continuation cell");
+    }
   }
 }
 
@@ -199,10 +187,6 @@ td::Result<BodyCtx> open_body(const td::Ref<vm::Cell> &body) {
   return ctx;
 }
 
-td::Result<td::RefInt256> pyslice_load_coins(vm::CellSlice &cs) {
-  return load_coins_py(cs);
-}
-
 td::Result<vm::CellSlice> open_ref_cell(const td::Ref<vm::Cell> &c) {
   bool special = false;
   try {
@@ -212,7 +196,9 @@ td::Result<vm::CellSlice> open_ref_cell(const td::Ref<vm::Cell> &c) {
   }
 }
 
-td::Status skip_state_init_py(vm::CellSlice &cs) {
+namespace {
+
+td::Status skip_state_init_prefix(vm::CellSlice &cs) {
   if (!cs.have(1)) return td::Status::Error("state_init: split_depth underflow");
   if (cs.fetch_ulong(1)) {
     if (!cs.have(5)) return td::Status::Error("state_init: split_depth bits underflow");
@@ -221,8 +207,15 @@ td::Status skip_state_init_py(vm::CellSlice &cs) {
   if (!cs.have(1)) return td::Status::Error("state_init: special underflow");
   if (cs.fetch_ulong(1)) {
     if (!cs.have(2)) return td::Status::Error("state_init: tick_tock underflow");
-    cs.advance(2);  // TickTock: tick:Bool tock:Bool
+    cs.advance(2);
   }
+  return td::Status::OK();
+}
+
+}  // namespace
+
+td::Status skip_state_init_py(vm::CellSlice &cs) {
+  TRY_STATUS(skip_state_init_prefix(cs));
   for (int i = 0; i < 3; i++) {  // code, data, library
     if (!cs.have(1)) return td::Status::Error("state_init: maybe-ref underflow");
     if (cs.fetch_ulong(1)) {
@@ -231,6 +224,19 @@ td::Status skip_state_init_py(vm::CellSlice &cs) {
     }
   }
   return td::Status::OK();
+}
+
+td::Result<td::Ref<vm::Cell>> state_init_data_cell(vm::CellSlice &cs) {
+  TRY_STATUS(skip_state_init_prefix(cs));
+  if (!cs.have(1)) return td::Status::Error("state_init: code maybe underflow");
+  if (cs.fetch_ulong(1)) {
+    if (cs.size_refs() == 0) return td::Status::Error("state_init: code ref missing");
+    cs.fetch_ref();
+  }
+  if (!cs.have(1)) return td::Status::Error("state_init: data maybe underflow");
+  if (!cs.fetch_ulong(1)) return td::Status::Error("state_init: no data cell");
+  if (cs.size_refs() == 0) return td::Status::Error("state_init: data ref missing");
+  return cs.fetch_ref();
 }
 
 td::Result<td::Ref<vm::Cell>> slice_to_cell(const vm::CellSlice &cs) {
@@ -268,7 +274,7 @@ td::Result<td::Ref<vm::Cell>> message_any_body(vm::CellSlice &cs) {
 
 namespace {
 
-// Python bytes.decode("utf-8", errors="backslashreplace") + .replace("\u0000", "").
+// UTF-8 with backslashreplace for invalid bytes; U+0000 is stripped.
 std::string decode_backslashreplace_strip_nul(const std::string &raw) {
   std::string out;
   size_t i = 0;
@@ -337,7 +343,7 @@ std::optional<std::string> ton_transfer_comment(const td::Ref<vm::Cell> &body) {
   auto ctx = r_ctx.move_as_ok();
   auto &cs = ctx.cs;
   if (cs.size() < 32) {
-    return std::nullopt;  // TonTransferMessage: comment None
+    return std::nullopt;  // no opcode: comment is absent
   }
   auto op = static_cast<td::uint32>(cs.fetch_ulong(32));
   bool encrypted = op == 0x2167da4b;
@@ -345,14 +351,9 @@ std::optional<std::string> ton_transfer_comment(const td::Ref<vm::Cell> &body) {
         (cs.size_refs() == 0 || cs.size_refs() == 1))) {
     return std::nullopt;
   }
-  PSlice ps;
-  ps.cs = cs;
-  for (unsigned i = 0; i < cs.size_refs(); i++) {
-    ps.refs.push_back(cs.prefetch_ref(i));
-  }
-  auto r = load_snake_bytes(ps);
+  auto r = load_snake_bytes(cs);
   if (r.is_error()) {
-    return std::nullopt;  // Python's inner try swallows
+    return std::nullopt;  // snake-load errors are swallowed
   }
   std::string bytes = r.move_as_ok();
   if (encrypted) {
@@ -361,8 +362,7 @@ std::optional<std::string> ton_transfer_comment(const td::Ref<vm::Cell> &body) {
   return decode_backslashreplace_strip_nul(bytes);
 }
 
-// Public wrapper used when jetton-transfer and NFT comment fields carry
-// RAW payload bytes that the fill decodes with the same codec as ton_transfer).
+// Jetton-transfer and NFT comment fields carry raw payload bytes; same codec as ton_transfer.
 std::string decode_comment_bytes(const std::string &raw) {
   return decode_backslashreplace_strip_nul(raw);
 }

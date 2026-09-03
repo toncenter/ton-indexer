@@ -8,8 +8,8 @@
 # TONStakersWithdrawMatcher (idx 5) ahead of JettonBurnBlockMatcher (idx 17), so
 # without a priority < 90 the jetton family consumed the burn first and the whole
 # withdraw family silently produced `jetton_burn` + loose call_contract rows
-# instead — the state both corpus withdraw fixtures (GO-NI0Ej…, oND3Z5gM…) were
-# frozen in. The parity sweep cannot see this: it runs one spec's matchers in
+# instead — which is the row shape recorded in corpus fixtures GO-NI0Ej… /
+# oND3Z5gM…. Per-spec testing cannot see this: it runs one spec's matchers in
 # isolation, never the registered set.
 # The other two anchors (0x47d54391, 0xdb3b8abd) are claimed by nothing else, so
 # 85 is faithfulness rather than necessity there; W010 (three matchers sharing a
@@ -25,6 +25,7 @@ opcode TONStakersDepositRequest      = 0x47d54391
 opcode TONStakersWithdrawRequest     = 0x319b0cdc
 opcode TONStakersPoolWithdrawal      = 0x0a77535c
 opcode TONStakersMintNFT             = 0x1674b0a0
+opcode TONStakersInitNFT             = 0x132f9a45
 # Same wire opcode as TONStakersMintNFT; the pool reuses 0x1674b0a0 for the
 # jetton mint and the request-NFT mint, disambiguated only by which request
 # message parents it (blocks/messages/staking.py:25 vs :29).
@@ -130,15 +131,9 @@ matcher tonstakers_deposit {
 # The produces switch follows an XOR of two distinct concrete heads. It
 # dispatches the produced btype according to the bound arm:
 # tonstakers_withdraw (immediate) vs tonstakers_withdraw_request (delayed). Both
-# arms map their fields declaratively; one host fn covers the genuinely
-# inexpressible residue (a named language gap):
-#
-#   tonstakers_minted_nft(delayed) — GAP: reading the minted request NFT's
-#     address off delayed.next_blocks is block-topology navigation, deliberately
-#     excluded from the language. The NFT is a NON-consumed neighbor
-#     (NftMintBlockMatcher produced it as its own sibling nft_mint action);
-#     capturing it as a pattern node would consume it and diverge the consumed
-#     set, so it must be read by a host fn, exactly as the legacy core does.
+# arms map their fields declaratively. The delayed arm peeks first for the
+# already-produced nft_mint block, then for the raw init call fallback. Both
+# candidates remain outside the consumed set.
 # ---------------------------------------------------------------------------
 matcher tonstakers_withdraw {
     produces tonstakers_withdraw | tonstakers_withdraw_request
@@ -149,10 +144,12 @@ matcher tonstakers_withdraw {
       -> op JettonBurnNotification
         -> op TONStakersWithdrawRequest @request
           -> ( op TONStakersPoolWithdrawal @immediate_withdrawal
-             ^ op TONStakersMintNFT @delayed_withdrawal )
+             ^ op TONStakersMintNFT @delayed_withdrawal
+                 -> { maybe peek btype nft_mint @minted_block
+                    ; maybe peek op TONStakersInitNFT @minted_call } )
 
     parse burn as JettonBurn
-    let minted = tonstakers_minted_nft(delayed_withdrawal)
+    let minted = (account(minted_block.msg.destination) ?? addr_none()) if minted_block != null else ((account(minted_call.msg.destination) ?? addr_none()) if minted_call != null else null)
     failed when burn.failed
     failed when immediate_withdrawal == null and minted == null
     produces switch {

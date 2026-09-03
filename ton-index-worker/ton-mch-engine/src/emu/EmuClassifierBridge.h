@@ -2,8 +2,7 @@
 // linkable without emulator_static.
 #pragma once
 
-#include "EmuClassifierActor.h"
-#include "EmuTypes.h"
+#include "ParsedBlockLookupSource.h"
 
 struct Trace;  // Emulator ::Trace; mch::Trace also exists.
 

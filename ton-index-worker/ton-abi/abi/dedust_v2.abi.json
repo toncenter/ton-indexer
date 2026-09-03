@@ -72,11 +72,31 @@
     },
     {
       "kind": "StructRef",
+      "struct_name": "DedustV2PayJetton"
+    },
+    {
+      "kind": "StructRef",
       "struct_name": "DedustV2SwapEvent"
     },
     {
       "kind": "bitsN",
       "n": 1
+    },
+    {
+      "kind": "StructRef",
+      "struct_name": "DedustV2SwapPayload"
+    },
+    {
+      "kind": "bitsN",
+      "n": 40
+    },
+    {
+      "kind": "bitsN",
+      "n": 272
+    },
+    {
+      "kind": "nullable",
+      "inner_ty_idx": 24
     },
     {
       "kind": "StructRef",
@@ -104,6 +124,14 @@
     {
       "kind": "StructRef",
       "struct_name": "DedustV2DepositEvent"
+    },
+    {
+      "kind": "StructRef",
+      "struct_name": "DedustV2DepositPayload"
+    },
+    {
+      "kind": "bitsN",
+      "n": 16
     },
     {
       "kind": "StructRef",
@@ -223,8 +251,27 @@
     },
     {
       "kind": "struct",
-      "name": "DedustV2SwapEvent",
+      "name": "DedustV2PayJetton",
       "ty_idx": 19,
+      "prefix": {
+        "prefix_num": 3418569033,
+        "prefix_len": 32
+      },
+      "fields": [
+        {
+          "name": "payment_payload",
+          "ty_idx": 3
+        },
+        {
+          "name": "_payout_config",
+          "ty_idx": 3
+        }
+      ]
+    },
+    {
+      "kind": "struct",
+      "name": "DedustV2SwapEvent",
+      "ty_idx": 20,
       "prefix": {
         "prefix_num": 2028444580,
         "prefix_len": 32
@@ -232,7 +279,7 @@
       "fields": [
         {
           "name": "_x_to_y",
-          "ty_idx": 20
+          "ty_idx": 21
         },
         {
           "name": "amount_in",
@@ -246,8 +293,39 @@
     },
     {
       "kind": "struct",
+      "name": "DedustV2SwapPayload",
+      "ty_idx": 22,
+      "prefix": {
+        "prefix_num": 3292680207,
+        "prefix_len": 32
+      },
+      "fields": [
+        {
+          "name": "minimal_amount_out",
+          "ty_idx": 6
+        },
+        {
+          "name": "_deadline",
+          "ty_idx": 23
+        },
+        {
+          "name": "next",
+          "ty_idx": 16
+        },
+        {
+          "name": "_partner_config",
+          "ty_idx": 25
+        },
+        {
+          "name": "_referrer_config",
+          "ty_idx": 25
+        }
+      ]
+    },
+    {
+      "kind": "struct",
       "name": "DedustV2PayoutPositionFees",
-      "ty_idx": 21,
+      "ty_idx": 26,
       "prefix": {
         "prefix_num": 704584655,
         "prefix_len": 32
@@ -267,14 +345,14 @@
         },
         {
           "name": "owner",
-          "ty_idx": 22
+          "ty_idx": 27
         }
       ]
     },
     {
       "kind": "struct",
       "name": "DedustV2Withdraw",
-      "ty_idx": 23,
+      "ty_idx": 28,
       "prefix": {
         "prefix_num": 548794249,
         "prefix_len": 32
@@ -309,7 +387,7 @@
     {
       "kind": "struct",
       "name": "DedustV2WithdrawalEvent",
-      "ty_idx": 24,
+      "ty_idx": 29,
       "prefix": {
         "prefix_num": 3235347284,
         "prefix_len": 32
@@ -329,11 +407,11 @@
         },
         {
           "name": "_initiator",
-          "ty_idx": 22
+          "ty_idx": 27
         },
         {
           "name": "_recipient",
-          "ty_idx": 22
+          "ty_idx": 27
         },
         {
           "name": "_next_state",
@@ -344,7 +422,7 @@
     {
       "kind": "struct",
       "name": "DedustV2CreditAsset",
-      "ty_idx": 25,
+      "ty_idx": 30,
       "prefix": {
         "prefix_num": 3697138593,
         "prefix_len": 32
@@ -367,7 +445,7 @@
     {
       "kind": "struct",
       "name": "DedustV2JoinLiquidity",
-      "ty_idx": 26,
+      "ty_idx": 31,
       "prefix": {
         "prefix_num": 623189728,
         "prefix_len": 32
@@ -391,14 +469,14 @@
         },
         {
           "name": "initiator",
-          "ty_idx": 22
+          "ty_idx": 27
         }
       ]
     },
     {
       "kind": "struct",
       "name": "DedustV2DepositEvent",
-      "ty_idx": 27,
+      "ty_idx": 32,
       "prefix": {
         "prefix_num": 903818770,
         "prefix_len": 32
@@ -418,11 +496,11 @@
         },
         {
           "name": "_initiator",
-          "ty_idx": 22
+          "ty_idx": 27
         },
         {
           "name": "_recipient",
-          "ty_idx": 22
+          "ty_idx": 27
         },
         {
           "name": "_next_state",
@@ -432,18 +510,45 @@
     },
     {
       "kind": "struct",
+      "name": "DedustV2DepositPayload",
+      "ty_idx": 33,
+      "prefix": {
+        "prefix_num": 3382711770,
+        "prefix_len": 32
+      },
+      "fields": [
+        {
+          "name": "amount_x",
+          "ty_idx": 6
+        },
+        {
+          "name": "amount_y",
+          "ty_idx": 6
+        },
+        {
+          "name": "_minimal_liquidity",
+          "ty_idx": 6
+        },
+        {
+          "name": "_locked_liquidity_share",
+          "ty_idx": 34
+        }
+      ]
+    },
+    {
+      "kind": "struct",
       "name": "Storage",
-      "ty_idx": 28,
+      "ty_idx": 35,
       "fields": [
         {
           "name": "dummy",
-          "ty_idx": 29
+          "ty_idx": 36
         }
       ]
     }
   ],
   "storage": {
-    "storage_ty_idx": 28
+    "storage_ty_idx": 35
   },
   "incoming_messages": [
     {
@@ -462,22 +567,31 @@
       "body_ty_idx": 19
     },
     {
-      "body_ty_idx": 21
+      "body_ty_idx": 20
     },
     {
-      "body_ty_idx": 23
-    },
-    {
-      "body_ty_idx": 24
-    },
-    {
-      "body_ty_idx": 25
+      "body_ty_idx": 22
     },
     {
       "body_ty_idx": 26
     },
     {
-      "body_ty_idx": 27
+      "body_ty_idx": 28
+    },
+    {
+      "body_ty_idx": 29
+    },
+    {
+      "body_ty_idx": 30
+    },
+    {
+      "body_ty_idx": 31
+    },
+    {
+      "body_ty_idx": 32
+    },
+    {
+      "body_ty_idx": 33
     }
   ],
   "incoming_external": [],
@@ -492,5 +606,5 @@
   ],
   "compiler_name": "tolk",
   "compiler_version": "1.4.1",
-  "code_boc64": "te6ccgECBQEAARsAART/APSkE/S88sgLAQP40/iR8kAg1ywkhP7bLJFb4NcsJPC/3fSeMdM/MfoAMIQPAcL/8vTg1ywhkLZQTI4RMdM/MfoAMdcKH4QPAcL/8vTg1ywlLT5fxJ4x0z8x+gAwhA8Bwv/y9ODXLCPHPN0knjHTADH6ADCEDwHC//L04NcsIU/43nzjAonXJwIDBAAcMdM/MfoAMIQPAcL/8vQACCC174kA6p4x0z8x+gAwhA8Bwv/y9ODXLCYGu9qkmzH6ADCEDwHC//L04NcsJuLu3QyeMdNAMfoAMIQPAcL/8vTg1ywhKSj3BJ4x0z8x+gAwhA8Bwv/y9ODXLCGu+XCUjhEx+gAx+gAx+gAwhA8Bwv/y9OAwhA8BxwDy9A=="
+  "code_boc64": "te6ccgECCQEAAVkAART/APSkE/S88sgLAQT40/iR8kAg1ywkhP7bLJFb4NcsJPC/3fSeMdM/MfoAMIQPAcL/8vTg1ywhkLZQTI4RMdM/MfoAMdcKH4QPAcL/8vTg1ywlLT5fxJ4x0z8x+gAwhA8Bwv/y9ODXLCZeGcpMnDHXTIQPAdDHALPy9ODXLCPHPN0k4wKJ1yfjAgIDBwQAHDHTADH6ADCEDwHC//L0AAjEQlAPBP6J1yeeMdM/MfoAMIQPAcL/8vTg1ywhBa98TJ4x0z8x+gAwhA8Bwv/y9ODXLCYGu9qkmzH6ADCEDwHC//L04NcsJuLu3QyeMdNAMfoAMIQPAcL/8vTg1ywhKSj3BJ4x0z8x+gAwhA8Bwv/y9ODXLCGu+XCU4wLXLCZNAK7U4wIwBQYHCAAIKf8bzwAiMfoAMfoAMfoAMIQPAcL/8vQAFjH6ADCEDwHC//L0AA6EDwHHAPL0"
 }

@@ -1,0 +1,70 @@
+# dedust-liquidities / Rejected final deposit
+# trace: KYQfjYD1YybzQIuoJwkoXL-Y-apztmw6AGjIcPhotjQ=
+actions:
+  - type: dex_deposit_liquidity
+    matcher: dedust_deposit_final
+    anchor: dedust_deposit_liquidity@50833592000002
+    id: v3TALYMetiXlcUYbUvvk3+bBn/fnJ9GDN0eYW/R2RtE=
+    success: false
+    source: 0:5812E773478DD36616082D7E813ED46B902C1B3E4A45EC700FD2331D916EB68B
+    source_secondary: null
+    destination: 0:521185DBEFD24EEED0EECC379FFAA83F15CD9DDCF2B653361DE9D42D791A98B2
+    destination_secondary: 0:9CC4BCB9D8E9CFA31FD5C8F552B4702EFA750685713DB6E415ADAF46FE878852
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: null
+    opcode: null
+    dex_deposit_liquidity_data:
+      amount1: 256036790792077
+      amount2: null
+      asset1: 0:83EE5AEBC6939CAB903947A9D32DE17592E21B97504A09EE4E9DA9C67B7701E0
+      asset2: null
+      dex: dedust
+      lp_tokens_minted: null
+      target_amount_1: 787792360
+      target_amount_2: 256036790792077
+      target_asset_1: null
+      target_asset_2: 0:83EE5AEBC6939CAB903947A9D32DE17592E21B97504A09EE4E9DA9C67B7701E0
+      user_jetton_wallet_1: 0:CC35F5C67981134570B25C665BA04DEBB003BE84C844AC3F8998B530B96B04C1
+      user_jetton_wallet_2: null
+      vault_excesses:
+        - amount: 1082488901
+          asset: null
+        - amount: 256036790792077
+          asset: 0:83EE5AEBC6939CAB903947A9D32DE17592E21B97504A09EE4E9DA9C67B7701E0
+    tx_hashes:
+      - 8E9Kbt8xa+vkm3gFI21XV+duWc+hWGOkCzZ6eUsR1to=
+      - BZvrNPJGWPZoBbWmQrKB06AqB1+kHs2bBopWKZGxh4Y=
+      - C/IlKYwBgCu8SMlh8n+dNDfzR6PsXrQNcJTj3/ibwvs=
+      - D6xW5gR1E1tKui/CzkySr7jx96AV708P40J1FxoqTGw=
+      - HXf/yaduem5wx5mzXaXV8WMziXaAS5bsjtu0Z4YUTns=
+      - HrAWNwiTryaz9QyPy5xjESxvno+XfBcs0D1sQjte1kA=
+      - KYQfjYD1YybzQIuoJwkoXL+Y+apztmw6AGjIcPhotjQ=
+      - PZs7UnlbpzR3lm96MzuZ+zu5lEHbBetFZSyOY6MZrSs=
+      - bynF6LArt6l2gePmBYIv5cUbEz/jf017sBeFIzwFvec=
+      - eJYEPonZPr6yxiVWF/nIPznTFOw4Bn2YLrmdKOHzad4=
+      - hh/RDd2DeFc8oLXRn3nTcsh//VqWzQmKG7U0cQLXtEY=
+      - lGIPWMY8hvH09NqlEbGIvUYTCb4+Hkewsfja6rany+g=
+      - lK2YZHBLRYVfw6e0nYI9fv5v/UfMenMZK/vpyHNdVjQ=
+      - mUDmpkGq0TKUBPERkd2JPkz49frzm9YNshd0Zt6Q6n0=
+      - n6S4+1QBb/njx4FE6UDtRjVzd23cbbCqyV/O/3SXckw=
+      - nI2q0KTYL1Kda2Z4iC+dCHCnsZ1Ot2kSaw0pEsM4hpk=
+      - rjz7FzdZx3SLXuGhORzfTFUWOIg2d9KmLEfBj8F2bUc=
+      - zFvZnbGJFDruNRICC4j54bUQ+CYkbDoMq6y4zjTzYFI=
+    accounts:
+      - 0:4B1C282B9DA101B497BE8FC4635C13FC37F98442736E349E08F0624EF252EA7C
+      - 0:521185DBEFD24EEED0EECC379FFAA83F15CD9DDCF2B653361DE9D42D791A98B2
+      - 0:5812E773478DD36616082D7E813ED46B902C1B3E4A45EC700FD2331D916EB68B
+      - 0:5F0564FB5F604783DB57031CE1CF668A88D4D4D6DA6DE4DB222B4B920D6FD800
+      - 0:9CC4BCB9D8E9CFA31FD5C8F552B4702EFA750685713DB6E415ADAF46FE878852
+      - 0:A778C44B2D80688075F70979B5EA7F764F674FBBDFA4769F5358D05BB9D6F0A7
+      - 0:CC35F5C67981134570B25C665BA04DEBB003BE84C844AC3F8998B530B96B04C1
+      - 0:DAE153A74D894BBC32748198CD626E4F5DF4A69AD2FA56CE80FC2644B5708D20
+    start_lt: 50833592000002
+    end_lt: 50833624000002
+    start_utime: 1731445596
+    end_utime: 1731445682
+    mc_seqno_end: 41943815

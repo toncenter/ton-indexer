@@ -1,8 +1,5 @@
 // Shared build-phase driver pieces: the artifact-derived build skip table,
-// capture->slot conversion, and the two-phase lookup execution (D1). The dump
-// renderers that used to live here (block_key / render_value) and the
-// missing-parser stderr warning are harness-only and now live in
-// fixtures/Render.h.
+// capture->slot conversion, and the two-phase lookup execution.
 #pragma once
 
 #include "BuildRuntime.h"
@@ -15,11 +12,9 @@
 
 namespace mch {
 
-// MATCH-inclusion filter: empty == the linked host supplies every predicate the
-// matcher's match phase consults; else the SKIP reason (`pred:<missing names>`,
-// sorted). This is a property of the LINKED registry, not of the IR document,
-// which is why it is computed at setup time rather than compiled into the table.
-// The Python twin computes the identical set from the artifact + the same list.
+// MATCH-inclusion filter: empty == the linked host supplies every predicate
+// the matcher's match phase consults; else the SKIP reason. Computed at
+// setup time rather than compiled into the table.
 std::string match_skip_reason(const CompiledMatcher &m);
 
 // Build-inclusion filter: empty == runnable end-to-end on the current C++
@@ -31,10 +26,9 @@ std::string build_skip_reason(const CompiledMatcher &m);
 // (scalar: Block/Null; many: List with Null gaps).
 std::vector<Value> slots_from_captures(const std::vector<Capture> &captures);
 
-// Two-phase lookup execution (D1): collect keys to FIXPOINT with
-// CollectingLookupTable (a single dry pass cannot see lookup-arg-of-lookup
-// keys), fetch through `src`, resume against the immutable filled table.
-// Each pass runs with a fresh BuildEnv (bodies are per-run state).
+// Two-phase lookup execution: collect keys to fixpoint, fetch through `src`,
+// resume against the immutable filled table. Each pass runs with a fresh
+// BuildEnv (bodies are per-run state).
 //
 // `needs_lookups` = the matcher references a `lookup` node or a host `fn` (which
 // fetches via the table). When false (12/36 matchers), the collect pass can only

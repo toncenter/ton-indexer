@@ -5,8 +5,7 @@ namespace ton_abi {
 namespace {
 
 // Shared var* reader: read a `prefix_bits`-wide byte count, then that many
-// bytes as a signed/unsigned integer. Mirrors @ton/core loadVarUintBig/
-// loadVarIntBig (BitReader.js).
+// bytes as a signed/unsigned integer.
 td::Result<td::RefInt256> load_var_raw(vm::CellSlice &cs, int prefix_bits, bool value_signed) {
   unsigned long long size = 0;
   if (prefix_bits > 0) {
@@ -28,9 +27,8 @@ td::Result<td::RefInt256> load_var_raw(vm::CellSlice &cs, int prefix_bits, bool 
   return v;
 }
 
-// Shared var* writer. Mirrors @ton/core writeVarUint/writeVarInt (BitBuilder.js):
-// size prefix measures BYTES; unsigned uses ceil(bitlen/8), signed uses
-// ceil((bitlen(|v|)+1)/8) (the +1 is the sign bit).
+// Shared var* writer. Size prefix measures BYTES; unsigned uses ceil(bitlen/8),
+// signed uses ceil((bitlen(|v|)+1)/8) (the +1 is the sign bit, per @ton/core).
 td::Status store_var_raw(vm::CellBuilder &cb, const td::RefInt256 &v, int prefix_bits, bool value_signed) {
   if (v.is_null()) {
     return td::Status::Error("var-int: null value");
@@ -40,7 +38,7 @@ td::Status store_var_raw(vm::CellBuilder &cb, const td::RefInt256 &v, int prefix
     return td::Status::Error("varuint: value is negative");
   }
   if (sign == 0) {
-    // zero -> zero-size prefix (writeUint(0, bits))
+    // zero -> zero-size prefix
     if (!cb.store_long_bool(0, static_cast<unsigned>(prefix_bits))) {
       return td::Status::Error("var-int: cannot store zero size prefix");
     }
@@ -82,7 +80,6 @@ td::Result<int> var_prefix_bits(int n) {
   return td::Status::Error(PSLICE() << "varintN width must be a power of two, got " << n);
 }
 
-// ---- intN / uintN ----
 
 td::Result<td::RefInt256> load_int(vm::CellSlice &cs, int n) {
   if (n < 1 || n > 257) {
@@ -138,12 +135,11 @@ td::Status store_uint(vm::CellBuilder &cb, const td::RefInt256 &v, int n) {
   return td::Status::OK();
 }
 
-// ---- native int64 / uint64 fast paths (n in [1,64]) ----
 // Bit-for-bit identical to load_int/store_int/load_uint/store_uint above, but
 // over long long / unsigned long long via vm's native fetch_long/store_long --
 // no RefInt256 allocation. Range + error-text semantics mirror the RefInt256
 // path (store_long_rchk_bool / store_ulong_rchk_bool are the signed/unsigned
-// range-checked stores; bits==1 signed accepts only {-1,0}, same as writeInt).
+// range-checked stores; bits==1 signed accepts only {-1,0}).
 
 td::Result<td::int64> load_int64(vm::CellSlice &cs, int n) {
   if (n < 1 || n > 64) {
@@ -193,7 +189,6 @@ td::Status store_uint64(vm::CellBuilder &cb, td::uint64 v, int n) {
   return td::Status::OK();
 }
 
-// ---- bool ----
 
 td::Result<bool> load_bool(vm::CellSlice &cs) {
   if (!cs.have(1)) {
@@ -213,7 +208,6 @@ td::Status store_bool(vm::CellBuilder &cb, bool v) {
   return td::Status::OK();
 }
 
-// ---- coins / varintN / varuintN ----
 
 td::Result<td::RefInt256> load_coins(vm::CellSlice &cs) {
   return load_var_raw(cs, 4, false);
@@ -243,7 +237,6 @@ td::Status store_varuint(vm::CellBuilder &cb, const td::RefInt256 &v, int n) {
   return store_var_raw(cb, v, prefix, false);
 }
 
-// ---- bitsN ----
 
 td::Result<td::Ref<vm::CellSlice>> load_bits(vm::CellSlice &cs, int n) {
   if (n < 0 || n > 1023) {

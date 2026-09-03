@@ -1,11 +1,5 @@
-// Coffee swap host fn (builders/coffee.py + blocks/swaps.py
-// build_coffee_swap_core). See host/HostImpls.h for the internal registry
-// surface. Message bodies are parsed inline (the spec parses none of them).
-//
-// coffee_swap_data is a thin thunk
-// over run_swap_host; the logic is the typed `coffee_swap` core below, which
-// derives a SwapRecord instead of assembling + mutating generic `Value` dicts
-// through SwapRecord::fill_peer_out_assets.
+// Message bodies are parsed inline (the spec parses none of them).
+// coffee_swap_data decodes the consumed set and derives a SwapRecord.
 #include "host/HostImpls.h"
 
 #include "host/BlockViews.h"
@@ -16,6 +10,7 @@
 #include "BlockTree.h"
 #include "BuildRuntime.h"
 #include "ExprRuntime.h"
+#include "btypes_gen.h"
 #include "MsgParse.h"
 #include "parse/PSlice.h"
 
@@ -40,8 +35,6 @@ constexpr std::uint32_t kCoffeePayoutInternal = 0xc0ffee21;
 constexpr std::uint32_t kCoffeePayout = 0xc0ffee32;
 constexpr std::uint32_t kCoffeeNotification = 0xc0ffee36;
 
-using R = HostResult<SwapRecord>;
-
 // A TON-arm transfer leg (native / payout / notification): jetton wallets null.
 TransferLeg ton_leg(Value amount, Value source, Value dest) {
   TransferLeg leg;
@@ -54,11 +47,10 @@ TransferLeg ton_leg(Value amount, Value source, Value dest) {
   return leg;
 }
 
-// builders/coffee.py _coffee_swap_data + blocks/swaps.py build_coffee_swap_core.
-// TON-arm reachable under the IR engine (CoffeeSwapNative in, CoffeePayout /
-// CoffeeNotification out); the jetton legs need the skipped jetton_transfer
-// block. Returns a SwapRecord, or reject() where a role is missing / no hop.
-R coffee_swap(HostContext &, const ConsumedBlocks &consumed) {
+// TON-arm is reachable (CoffeeSwapNative in, CoffeePayout / CoffeeNotification
+// out); jetton legs need a jetton_transfer block. Encoded SwapRecord, or Null
+// where a role is missing / no hop.
+EvalResult coffee_swap(const ConsumedBlocks &consumed) {
   const Block *block = consumed.anchor();
   std::vector<const Block *> others = consumed.others();
 
@@ -66,7 +58,7 @@ R coffee_swap(HostContext &, const ConsumedBlocks &consumed) {
   const Block *in_transfer = nullptr;
   const Block *prev = block->previous_block;
   if (prev != nullptr && block_in(others, prev) &&
-      (prev->btype == "jetton_transfer" || is_call_op(prev, kCoffeeSwapNative))) {
+      (prev->btype == mch::btype::kJettonTransfer || is_call_op(prev, kCoffeeSwapNative))) {
     in_transfer = prev;
   }
   // payout = first CoffeePayoutInternal in others.
@@ -77,7 +69,7 @@ R coffee_swap(HostContext &, const ConsumedBlocks &consumed) {
   if (payout != nullptr) {
     for (const Block *b : others) {
       if (b->previous_block == payout &&
-          (b->btype == "jetton_transfer" || is_call_op(b, kCoffeePayout) ||
+          (b->btype == mch::btype::kJettonTransfer || is_call_op(b, kCoffeePayout) ||
            is_call_op(b, kCoffeeNotification))) {
         out_transfer = b;
         break;
@@ -85,9 +77,8 @@ R coffee_swap(HostContext &, const ConsumedBlocks &consumed) {
     }
   }
 
-  // --- build_coffee_swap_core ---
   if (in_transfer == nullptr || payout == nullptr || out_transfer == nullptr) {
-    return R::reject();  // not all roles
+    return host_reject("coffee_swap_data: missing role");
   }
 
   // swap_internal blocks (others + anchor), unique, sorted by min_lt.
@@ -106,20 +97,20 @@ R coffee_swap(HostContext &, const ConsumedBlocks &consumed) {
     // Decode the event body through the ABI-faithful CoffeeSwapEvent parser.
     auto r_body = block_body(event);
     if (r_body.is_error()) {
-      return R::fault("event body");
+      return rt_fault("coffee_swap_data: event body");
     }
     auto r_ev = parse_message_body("CoffeeSwapEvent", r_body.move_as_ok());
     if (r_ev.is_error()) {
-      return R::fault("event parse");
+      return rt_fault("coffee_swap_data: event parse");
     }
     Value ev = r_ev.move_as_ok();
     const Value *asset = ev.field("asset");
     if (asset == nullptr) {
-      return R::fault("event asset missing");
+      return rt_fault("coffee_swap_data: event asset missing");
     }
     EvalResult converted = rt_builtin_asset_of(*asset);
     if (converted.faulted) {
-      return R::fault(converted.message);
+      return rt_fault(std::string("coffee_swap_data: ") + converted.message);
     }
     PeerSwap p;
     p.in.asset = std::move(converted.value);
@@ -129,35 +120,34 @@ R coffee_swap(HostContext &, const ConsumedBlocks &consumed) {
     peer_swaps.push_back(std::move(p));
   }
   if (peer_swaps.empty()) {
-    return R::reject();
+    return host_reject("coffee_swap_data: no hop");
   }
 
-  // For in_transfer_data, a jetton in-leg is a generic Block
-  // with btype "jetton_transfer" whose `.data` carries the transfer fields
-  // (swaps.py gates on btype); otherwise use the CoffeeSwapNative TON arm.
+  // Jetton in-leg is a jetton_transfer whose data carries the transfer fields;
+  // otherwise use the CoffeeSwapNative TON arm.
   Value sender = Value::null();
   TransferLeg in_leg;
-  if (in_transfer->btype == "jetton_transfer") {
+  if (in_transfer->btype == mch::btype::kJettonTransfer) {
     sender = data_field(in_transfer, "sender");
     in_leg = TransferLeg::from_jetton_transfer(in_transfer);
   } else {  // is_call_op(in_transfer, kCoffeeSwapNative)
     auto r_body = block_body(in_transfer);
     if (r_body.is_error()) {
-      return R::fault("native body");
+      return rt_fault("coffee_swap_data: native body");
     }
     auto r_ctx = open_body(r_body.ok());
     if (r_ctx.is_error()) {
-      return R::fault("native header");
+      return rt_fault("coffee_swap_data: native header");
     }
     auto ctx = r_ctx.move_as_ok();
     auto &cs = ctx.cs;
     if (!cs.have(32 + 64)) {
-      return R::fault("native header");
+      return rt_fault("coffee_swap_data: native header");
     }
     cs.advance(32 + 64);
     auto r_amt = load_coins_py(cs);
     if (r_amt.is_error()) {
-      return R::fault("native amount");
+      return rt_fault("coffee_swap_data: native amount");
     }
     const Message *m = block_msg(in_transfer);
     sender = account_from_opt(m != nullptr ? m->source : std::nullopt);
@@ -165,30 +155,29 @@ R coffee_swap(HostContext &, const ConsumedBlocks &consumed) {
                      account_from_opt(m != nullptr ? m->destination : std::nullopt));
   }
 
-  // For out_transfer_data, a jetton out-leg uses btype and data;
-  // (swaps.py:1424); else CoffeePayout / CoffeeNotification TON arms.
+  // Jetton out-leg uses btype and data; else CoffeePayout / CoffeeNotification.
   TransferLeg out_leg;
-  if (out_transfer->btype == "jetton_transfer") {
+  if (out_transfer->btype == mch::btype::kJettonTransfer) {
     out_leg = TransferLeg::from_jetton_transfer(out_transfer);
   } else if (is_call_op(out_transfer, kCoffeePayout)) {
     auto r_body = block_body(payout);
     if (r_body.is_error()) {
-      return R::fault("payout body");
+      return rt_fault("coffee_swap_data: payout body");
     }
     auto r_ctx = open_body(r_body.ok());
     if (r_ctx.is_error()) {
-      return R::fault("payout header");
+      return rt_fault("coffee_swap_data: payout header");
     }
     auto ctx = r_ctx.move_as_ok();
     auto &cs = ctx.cs;
     if (!cs.have(32 + 64)) {
-      return R::fault("payout header");
+      return rt_fault("coffee_swap_data: payout header");
     }
     cs.advance(32 + 64);
     auto r_rcpt = load_address_py(cs);
     auto r_amt = load_coins_py(cs);
     if (r_rcpt.is_error() || r_amt.is_error()) {
-      return R::fault("payout fields");
+      return rt_fault("coffee_swap_data: payout fields");
     }
     const Message *m = block_msg(payout);
     out_leg = ton_leg(Value::make_amount(r_amt.move_as_ok()),
@@ -196,8 +185,7 @@ R coffee_swap(HostContext &, const ConsumedBlocks &consumed) {
                       r_rcpt.move_as_ok());
   } else if (is_call_op(out_transfer, kCoffeeNotification)) {
     const Message *m = block_msg(out_transfer);
-    Value amt = (m != nullptr && m->value) ? Value::make_amount(td::make_refint(*m->value))
-                                           : Value::make_amount_none();
+    Value amt = msg_value_amount(m);
     out_leg = ton_leg(std::move(amt), account_from_opt(m != nullptr ? m->source : std::nullopt),
                       account_from_opt(m != nullptr ? m->destination : std::nullopt));
   }
@@ -214,16 +202,19 @@ R coffee_swap(HostContext &, const ConsumedBlocks &consumed) {
   rec.referral_address = Value::null();
   rec.failed = !ok;
   // Fill peer out-assets from the next hop or final payout.
-  // const_cast on generic Value storage).
   rec.fill_peer_out_assets();
-  return R::ok(std::move(rec));
+  return rt_ok(rec.encode());
 }
 
 }  // namespace
 
-// Registered thunk: the typed core over the runtime host ABI.
+// Registered thunk: decode the consumed set, then the typed core.
 EvalResult coffee_swap_data(BuildEnv &env, const std::vector<Value> &args) {
-  return run_swap_host(env, args, "coffee_swap_data", coffee_swap);
+  (void)env;
+  ConsumedBlocks consumed;
+  EvalResult decoded = decode_consumed(args, "coffee_swap_data", consumed);
+  if (decoded.faulted) return decoded;
+  return coffee_swap(consumed);
 }
 
 }  // namespace mch

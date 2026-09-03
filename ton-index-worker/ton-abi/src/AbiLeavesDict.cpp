@@ -10,10 +10,10 @@ td::Status load_dict(vm::CellSlice &cs, int key_bits,
   if (key_bits <= 0 || key_bits > 1023) {
     return td::Status::Error(PSLICE() << "map: key width " << key_bits << " out of (0,1023]");
   }
-  // Reads the HashmapE maybe-bit (+ ref if present) from cs and advances it --
-  // the loadDict equivalent (@ton/core).
-  vm::Dictionary dict{vm::DictAdvance{}, cs, key_bits};
-  if (!dict.is_valid()) {
+  // Reads the HashmapE maybe-bit (+ ref if present) from cs and advances it.
+  // Explicit validation keeps malformed roots on the Status error path.
+  vm::Dictionary dict{vm::DictAdvance{}, cs, key_bits, false};
+  if (!dict.validate()) {
     return td::Status::Error("map: malformed dictionary");
   }
 

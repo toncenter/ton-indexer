@@ -1,7 +1,5 @@
-// arrayOf / lispListOf structural leaves. Round-trips + PACK
-// byte-identity vs Node @ton/core references; arrayOf LOAD accepts both the
-// 1-elem/ref form and the compiler-chunked form. Element (un)pack is a uint8
-// callback standing in for the generated walker.
+// arrayOf / lispListOf structural leaves. Round-trips plus pack identity;
+// arrayOf LOAD accepts both the 1-elem/ref form and the compiler-chunked form.
 
 #include "AbiTestSupport.h"
 
@@ -17,7 +15,6 @@ std::string boc_b64(const td::Ref<vm::Cell> &root) {
   return td::base64_encode(r.move_as_ok().as_slice());
 }
 
-// uint8 element callbacks standing in for the walker.
 std::function<td::Status(vm::CellBuilder &, std::size_t)> packer(const std::vector<int> &vals) {
   return [&vals](vm::CellBuilder &b, std::size_t idx) { return store_uint(b, td::make_refint(vals[idx]), 8); };
 }
@@ -31,7 +28,6 @@ std::function<td::Status(vm::CellSlice &)> collector(std::vector<std::string> &o
 
 }  // namespace
 
-// arrayOf
 
 TEST_CASE("arrayOf: pack byte-identical to @ton/core, load round-trips") {
   std::vector<int> vals{10, 20, 30};
@@ -97,7 +93,6 @@ TEST_CASE("arrayOf: store rejects length > 255") {
   CHECK(store_array(cb, 256, never).is_error());
 }
 
-// lispListOf
 
 TEST_CASE("lispListOf: pack byte-identical to @ton/core, load round-trips") {
   std::vector<int> vals{1, 2, 3};

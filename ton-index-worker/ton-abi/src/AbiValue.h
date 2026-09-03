@@ -4,7 +4,7 @@
 // downstream consumers. The compact JSON representation is the conformance
 // vector format.
 
-#include "AbiLeavesAddress.h"  // AbiAddress
+#include "AbiLeavesAddress.h"
 
 #include "common/refint.h"
 
@@ -28,7 +28,7 @@ struct AbiValue {
   td::RefInt256 int_v;                            // Int
   bool bool_v = false;                             // Bool
   AbiAddress address_v;                            // Address
-  td::Ref<vm::Cell> cell_v;                        // Cell
+  td::Ref<vm::Cell> cell_v;                        // Cell / CellOf raw cell
   std::unique_ptr<AbiValue> inner;                 // CellOf ref / Union wrapped value
   td::Ref<vm::CellSlice> bits_v;                   // Bits (bitsN / remaining)
   std::string string_v;                            // String
@@ -48,7 +48,7 @@ struct AbiValue {
   static AbiValue make_bool(bool v);
   static AbiValue make_address(AbiAddress a);
   static AbiValue make_cell(td::Ref<vm::Cell> c);
-  static AbiValue make_cell_of(AbiValue inner_value);
+  static AbiValue make_cell_of(AbiValue inner_value, td::Ref<vm::Cell> raw_cell = {});
   static AbiValue make_bits(td::Ref<vm::CellSlice> s);
   static AbiValue make_string(std::string s);
   static AbiValue make_list(std::vector<AbiValue> items);

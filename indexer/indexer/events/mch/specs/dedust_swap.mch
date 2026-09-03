@@ -32,12 +32,11 @@ rule peer_chain = (
 )
 
 # HYBRID declarative build. The reject/failed wiring, `dex`, and the TON-in
-# sender/source_asset are declarative; the imperative residue stays in two host
-# functions:
+# sender/source_asset and notification failure detection are declarative; the
+# imperative residue stays in one host function:
 #   dedust_swap_legs: peer-swap list assembly (element-wise list-to-record
 #     transform is inexpressible), payout resolution, and destination_asset
-#     (a bounded async pool-hop walk over parsed BOC swap-steps — inexpressible);
-#   dedust_swap_failed: the notification-coverage scan over the consumed set.
+#     (a bounded async pool-hop walk over parsed BOC swap-steps — inexpressible).
 # Data access, record literals, and first/last over a notification-list capture
 # could pull the in-leg, payout, and single-hop leg records into `out`,
 # shrinking dedust_swap_legs to just peer_swaps + destination_asset.
@@ -56,7 +55,7 @@ matcher dedust_swap {
 
     let legs = dedust_swap_legs(consumed, in_transfer, swap_request)
     reject when legs == null
-    failed when dedust_swap_failed(consumed)
+    failed when notification == null or any(peer_notification as n => n == null)
     out {
         dex:                   "dedust"
         sender:                account(swap_request.msg.source) if in_transfer == null else legs.sender

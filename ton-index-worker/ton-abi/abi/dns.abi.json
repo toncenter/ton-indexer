@@ -1,0 +1,159 @@
+{
+  "abi_schema_version": "1.0",
+  "contract_name": "DnsMessages",
+  "unique_types": [
+    {
+      "kind": "void"
+    },
+    {
+      "kind": "int"
+    },
+    {
+      "kind": "slice"
+    },
+    {
+      "kind": "cell"
+    },
+    {
+      "kind": "builder"
+    },
+    {
+      "kind": "bool"
+    },
+    {
+      "kind": "coins"
+    },
+    {
+      "kind": "address"
+    },
+    {
+      "kind": "intN",
+      "n": 32
+    },
+    {
+      "kind": "uintN",
+      "n": 32
+    },
+    {
+      "kind": "intN",
+      "n": 64
+    },
+    {
+      "kind": "uintN",
+      "n": 64
+    },
+    {
+      "kind": "StructRef",
+      "struct_name": "AuctionFillUpWithQuery"
+    },
+    {
+      "kind": "StructRef",
+      "struct_name": "DnsReleaseBalanceWithQuery"
+    },
+    {
+      "kind": "StructRef",
+      "struct_name": "Storage"
+    },
+    {
+      "kind": "StructRef",
+      "struct_name": "AuctionFillUpNoQuery"
+    },
+    {
+      "kind": "StructRef",
+      "struct_name": "DnsReleaseBalanceNoQuery"
+    }
+  ],
+  "struct_instantiations": [],
+  "alias_instantiations": [],
+  "declarations": [
+    {
+      "kind": "struct",
+      "name": "AuctionFillUpWithQuery",
+      "ty_idx": 12,
+      "prefix": {
+        "prefix_num": 923790417,
+        "prefix_len": 32
+      },
+      "fields": [
+        {
+          "name": "query_id",
+          "ty_idx": 11
+        }
+      ]
+    },
+    {
+      "kind": "struct",
+      "name": "AuctionFillUpNoQuery",
+      "ty_idx": 15,
+      "prefix": {
+        "prefix_num": 923790417,
+        "prefix_len": 32
+      },
+      "fields": []
+    },
+    {
+      "kind": "struct",
+      "name": "DnsReleaseBalanceWithQuery",
+      "ty_idx": 13,
+      "prefix": {
+        "prefix_num": 1322339173,
+        "prefix_len": 32
+      },
+      "fields": [
+        {
+          "name": "query_id",
+          "ty_idx": 11
+        }
+      ]
+    },
+    {
+      "kind": "struct",
+      "name": "DnsReleaseBalanceNoQuery",
+      "ty_idx": 16,
+      "prefix": {
+        "prefix_num": 1322339173,
+        "prefix_len": 32
+      },
+      "fields": []
+    },
+    {
+      "kind": "struct",
+      "name": "Storage",
+      "ty_idx": 14,
+      "fields": [
+        {
+          "name": "auction_fill_up_no_query",
+          "ty_idx": 15
+        },
+        {
+          "name": "dns_release_balance_no_query",
+          "ty_idx": 16
+        }
+      ]
+    }
+  ],
+  "storage": {
+    "storage_ty_idx": 14
+  },
+  "incoming_messages": [
+    {
+      "body_ty_idx": 12
+    },
+    {
+      "body_ty_idx": 13
+    }
+  ],
+  "incoming_external": [],
+  "outgoing_messages": [],
+  "emitted_events": [],
+  "get_methods": [],
+  "thrown_errors": [
+    {
+      "kind": "plain_int",
+      "err_code": 65535
+    }
+  ],
+  "compiler_name": "tolk",
+  "compiler_version": "1.4.1",
+  "code_boc64": "te6ccgEBAgEAPgABFP8A9KQT9LzyyAsBAF7T+JHyQCDXLCG4f2KMmDCEDwHHAPL04NcsInaKWywxl4QPAccA8vTghA8BxwDy9A=="
+}

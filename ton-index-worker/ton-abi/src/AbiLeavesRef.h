@@ -9,16 +9,32 @@
 #include "vm/cells/CellBuilder.h"
 
 #include <string>
+#include <utility>
 
 namespace ton_abi {
+
+// Open a ref as an ordinary slice, fail-closed on special/exotic cells (the
+// reference assumes none; the top-level body open also rejects exotic cells).
+// `who` prefixes the error messages ("ref", "container", ...).
+inline td::Result<vm::CellSlice> open_ordinary(const td::Ref<vm::Cell> &cell, const char *who) {
+  if (cell.is_null()) {
+    return td::Status::Error(PSLICE() << who << ": null cell");
+  }
+  bool is_special = false;
+  vm::CellSlice cs = vm::load_cell_slice_special(cell, is_special);
+  if (is_special) {
+    return td::Status::Error(PSLICE() << who << ": special/exotic cell not supported");
+  }
+  return cs;
+}
 
 // cell: an opaque whole cell, stored/loaded as a ref (no inner parse).
 td::Result<td::Ref<vm::Cell>> load_cell(vm::CellSlice &cs);
 td::Status store_cell(vm::CellBuilder &cb, td::Ref<vm::Cell> cell);  // also used for cellOf store
 
-// cellOf: fetch the ref and open it as a slice for the walker to parse the
-// inner type. Rejects a special/exotic ref (fail-closed). Store side = store_cell.
-td::Result<td::Ref<vm::CellSlice>> load_ref_slice(vm::CellSlice &cs);
+// Load a Cell<T> as both its raw child cell and an ordinary slice for decoding.
+// Exotic children fail closed; storing uses store_cell().
+td::Result<std::pair<td::Ref<vm::Cell>, td::Ref<vm::CellSlice>>> load_ref_cell_and_slice(vm::CellSlice &cs);
 
 // maybe_ref: 1-bit presence, then an optional ref. Absent -> null Ref.
 td::Result<td::Ref<vm::Cell>> load_maybe_ref(vm::CellSlice &cs);

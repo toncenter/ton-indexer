@@ -1,0 +1,113 @@
+# tonco / Tonco deposit liquidity one side TON (strange case)
+# trace: 0--IKFmIbKevaBKSEvai2YCm47_coyO30KO1VyYaXvI=
+actions:
+  - type: contract_deploy
+    anchor: contract_deploy#3ebe5431@51443172000004
+    id: ZXw0q5bt6ZG/tcxYu91RlZNvhgacVvwek14RbUVHgTU=
+    success: true
+    source: 0:B066D702EAE43F5546A98B90ED7E8C38578741F8AE9CADF43BA3D8F55F2D2478
+    source_secondary: null
+    destination: 0:62DF5CBE11EB2BFEBD40C9E1E3E1DEF8D5B42030AF6F9D403E66252F1031BD2F
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: 85078800
+    opcode: 0x3ebe5431
+    tx_hashes:
+      - hzEQ3z0bkVJV6Rm6PrTywYE0rk/0/Ho8JFdaBMCn3a8=
+      - vFt/Xt2TgbYEkDY3yzyfx+7lwSZ+bv+vODQixRfdfwk=
+    accounts:
+      - 0:62DF5CBE11EB2BFEBD40C9E1E3E1DEF8D5B42030AF6F9D403E66252F1031BD2F
+      - 0:B066D702EAE43F5546A98B90ED7E8C38578741F8AE9CADF43BA3D8F55F2D2478
+    start_lt: 51443172000004
+    end_lt: 51443176000001
+    start_utime: 1733081400
+    end_utime: 1733081409
+    mc_seqno_end: 42538708
+  - type: contract_deploy
+    anchor: contract_deploy#d5ecca2a@51443179000002
+    id: tCxebY/sMd8Ck7qiQTHZwx4/aOcz4UKNnTrSWGfr/QY=
+    success: true
+    source: 0:B066D702EAE43F5546A98B90ED7E8C38578741F8AE9CADF43BA3D8F55F2D2478
+    source_secondary: null
+    destination: 0:A797F301E9EC010C88765AE955DA0530C5C95B3A6F553FEE9CB5C89008ED29A0
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: 27819200
+    opcode: 0xd5ecca2a
+    tx_hashes:
+      - L6w/c3HvlQSx2wWktyR6FXXSUAz45y/blvUVLDPgwdg=
+      - oMh2x5RVMHq5Py8YqnFNjuCDRl6D5/kdje6FAT4Ndyk=
+    accounts:
+      - 0:A797F301E9EC010C88765AE955DA0530C5C95B3A6F553FEE9CB5C89008ED29A0
+      - 0:B066D702EAE43F5546A98B90ED7E8C38578741F8AE9CADF43BA3D8F55F2D2478
+    start_lt: 51443179000002
+    end_lt: 51443179000003
+    start_utime: 1733081416
+    end_utime: 1733081416
+    mc_seqno_end: 42538711
+  - type: dex_deposit_liquidity
+    matcher: tonco_deposit_liquidity
+    anchor: tonco_deposit_liquidity@51443164000002
+    id: RayffP4qbAlTdSSnJHhu8x0LloKkjuIG4RIaOUsVHB0=
+    success: true
+    source: 0:CA60B05A0C462173EA29A54440EF9AF5887AEF78184E448526E2C75B4355A60E
+    source_secondary: 0:5B2E06C2F9983FD9CC8AC7F92462C20EB53AD9EFD3CF017394D571DBBDF6F6DC
+    destination: 0:B066D702EAE43F5546A98B90ED7E8C38578741F8AE9CADF43BA3D8F55F2D2478
+    destination_secondary: 0:62DF5CBE11EB2BFEBD40C9E1E3E1DEF8D5B42030AF6F9D403E66252F1031BD2F
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: null
+    opcode: null
+    dex_deposit_liquidity_data:
+      amount1: 200000000000
+      amount2: null
+      asset1: 0:AE3E6D351E576276E439E7168117FD64696FD6014CB90C77B2F2CBAACD4FCC00
+      asset2: null
+      dex: tonco
+      lp_tokens_minted: 1736002138543
+      nft_address: 0:A797F301E9EC010C88765AE955DA0530C5C95B3A6F553FEE9CB5C89008ED29A0
+      nft_index: 23
+      target_amount_1: 200000000000
+      target_amount_2: 0
+      target_asset_1: 0:AE3E6D351E576276E439E7168117FD64696FD6014CB90C77B2F2CBAACD4FCC00
+      target_asset_2: null
+      tick_lower: -17390
+      tick_upper: -16400
+      user_jetton_wallet_1: 0:5B2E06C2F9983FD9CC8AC7F92462C20EB53AD9EFD3CF017394D571DBBDF6F6DC
+      user_jetton_wallet_2: null
+      vault_excesses: []
+    tx_hashes:
+      - 0++IKFmIbKevaBKSEvai2YCm47/coyO30KO1VyYaXvI=
+      - 96Jemhyezu2NyASxGCFojXQaNm3yb/Gm5Zw5iOILpME=
+      - HjQPGd8abIfkLibubFuPXpWojLEa9K9Js+v0J8pzL2k=
+      - L6w/c3HvlQSx2wWktyR6FXXSUAz45y/blvUVLDPgwdg=
+      - TDgh1ZRLmpU5mO0vws+1NIo/4xkNUARYiRrZ3VsFHt4=
+      - UK0X0yv535H3z6gmNH5+mLgehtMZiYXzaaqF1VKKUZ8=
+      - afHgWPmWfalZ2K4RzczYsuesvekvq7xVLSX9Vb3rfwU=
+      - hzEQ3z0bkVJV6Rm6PrTywYE0rk/0/Ho8JFdaBMCn3a8=
+      - oMh2x5RVMHq5Py8YqnFNjuCDRl6D5/kdje6FAT4Ndyk=
+      - vFt/Xt2TgbYEkDY3yzyfx+7lwSZ+bv+vODQixRfdfwk=
+    accounts:
+      - 0:3A9FFBEF4DEC1CC005B528D2CF9006BA6DE2AEB3B0D667503E4854534736E019
+      - 0:5B2E06C2F9983FD9CC8AC7F92462C20EB53AD9EFD3CF017394D571DBBDF6F6DC
+      - 0:62DF5CBE11EB2BFEBD40C9E1E3E1DEF8D5B42030AF6F9D403E66252F1031BD2F
+      - 0:A797F301E9EC010C88765AE955DA0530C5C95B3A6F553FEE9CB5C89008ED29A0
+      - 0:B066D702EAE43F5546A98B90ED7E8C38578741F8AE9CADF43BA3D8F55F2D2478
+      - 0:BFFADD270A738531DA7B13BA8FC403826C2586173F9EDE9C316FAB53BC59AC86
+      - 0:CA60B05A0C462173EA29A54440EF9AF5887AEF78184E448526E2C75B4355A60E
+    start_lt: 51443164000002
+    end_lt: 51443182000001
+    start_utime: 1733081378
+    end_utime: 1733081426
+    mc_seqno_end: 42538715

@@ -1,22 +1,18 @@
-// ton-abi-gen: CLI front end for the ton-abi emitter. Loads one or
-// more Tolk ABI JSON files, resolves each via AbiKernel, and emits the committed
-// C++ struct pair generated/<contract_snake>_gen.{h,cpp}.
-//
-//   ton-abi-gen <abi.json>... --out-dir <dir>   write the pairs
-//   ton-abi-gen <abi.json>... --out-dir <dir> --check
-//                                               regen to memory + byte-compare
-//                                               the committed files; exit != 0
-//                                               on drift or absence.
-//
-// Errors to stderr, non-zero exit. No aborts (fail-closed td::Status).
+// ton-abi-gen: load ABI JSON, resolve, emit generated/<stem>_gen.{h,cpp}.
+//   ton-abi-gen <abi.json>... --out-dir <dir>         write
+//   ton-abi-gen <abi.json>... --out-dir <dir> --check  regen in memory, fail on drift
+// Optional sibling <name>.validate.json lists "StructName.field" names to
+// validate on decode. Fail-closed; errors to stderr.
 
 #include "AbiEmit.h"
 #include "AbiKernel.h"
 #include "AbiLoader.h"
 
+#include "td/utils/JsonBuilder.h"
 #include "td/utils/Status.h"
 
 #include <cstdio>
+#include <filesystem>
 #include <fstream>
 #include <sstream>
 #include <string>
@@ -67,15 +63,57 @@ std::string fixture_stem(const std::string &path) {
   return base;
 }
 
+std::string validate_manifest_path(const std::string &abi_path) {
+  constexpr const char *suffix = ".abi.json";
+  std::string path = abi_path;
+  if (path.size() >= std::char_traits<char>::length(suffix) &&
+      path.compare(path.size() - std::char_traits<char>::length(suffix), std::char_traits<char>::length(suffix),
+                   suffix) == 0) {
+    path.resize(path.size() - std::char_traits<char>::length(suffix));
+  }
+  return path + ".validate.json";
+}
+
+td::Result<ton_abi::ValidateManifest> load_validate_manifest(const std::string &abi_path) {
+  std::string path = validate_manifest_path(abi_path);
+  std::error_code ec;
+  bool exists = std::filesystem::exists(path, ec);
+  if (ec) {
+    return td::Status::Error("cannot inspect " + path + ": " + ec.message());
+  }
+  if (!exists) {
+    return ton_abi::ValidateManifest{};
+  }
+
+  TRY_RESULT(json, read_file(path));
+  std::string buf = std::move(json);
+  TRY_RESULT_PREFIX(root, td::json_decode(td::MutableSlice(buf)), "validation manifest JSON parse error: ");
+  if (root.type() != td::JsonValue::Type::Array) {
+    return td::Status::Error("validation manifest root must be an array");
+  }
+
+  ton_abi::ValidateManifest manifest;
+  std::size_t index = 0;
+  for (const auto &entry : root.get_array()) {
+    if (entry.type() != td::JsonValue::Type::String) {
+      return td::Status::Error(PSLICE() << "validation manifest entry " << index << " must be a string");
+    }
+    manifest.insert(entry.get_string().str());
+    ++index;
+  }
+  return manifest;
+}
+
 td::Result<ton_abi::GeneratedFiles> gen_one(const std::string &abi_path) {
   TRY_RESULT(json, read_file(abi_path));
+  TRY_RESULT(validate_manifest, load_validate_manifest(abi_path));
   TRY_RESULT(abi, ton_abi::load_abi_from_json(json));
   // AbiKernel holds a non-owning pointer into `abi`; keep both alive by moving
   // abi into a heap slot the kernel + caller share via the returned pair. Here
   // we resolve + emit fully before `abi` dies, so a stack local is fine.
   auto abi_box = std::make_unique<ton_abi::ContractABI>(std::move(abi));
   TRY_RESULT(kernel, ton_abi::AbiKernel::create(*abi_box));
-  TRY_RESULT(files, ton_abi::emit_abi(*abi_box, kernel, fixture_stem(abi_path)));
+  TRY_RESULT(files, ton_abi::emit_abi(*abi_box, kernel, fixture_stem(abi_path), validate_manifest));
   return files;
 }
 

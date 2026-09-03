@@ -155,6 +155,10 @@
     },
     {
       "kind": "StructRef",
+      "struct_name": "CoffeeMevProtectFailedSwap"
+    },
+    {
+      "kind": "StructRef",
       "struct_name": "CoffeeStakingClaimRewards"
     },
     {
@@ -516,8 +520,27 @@
     },
     {
       "kind": "struct",
-      "name": "CoffeeStakingClaimRewards",
+      "name": "CoffeeMevProtectFailedSwap",
       "ty_idx": 36,
+      "prefix": {
+        "prefix_num": 3998338641,
+        "prefix_len": 32
+      },
+      "fields": [
+        {
+          "name": "query_id",
+          "ty_idx": 11
+        },
+        {
+          "name": "recipient",
+          "ty_idx": 23
+        }
+      ]
+    },
+    {
+      "kind": "struct",
+      "name": "CoffeeStakingClaimRewards",
+      "ty_idx": 37,
       "prefix": {
         "prefix_num": 3003937552,
         "prefix_len": 32
@@ -544,7 +567,7 @@
     {
       "kind": "struct",
       "name": "CoffeeStakingPositionWithdraw2",
-      "ty_idx": 37,
+      "ty_idx": 38,
       "prefix": {
         "prefix_num": 3406020527,
         "prefix_len": 32
@@ -571,17 +594,17 @@
     {
       "kind": "struct",
       "name": "Storage",
-      "ty_idx": 38,
+      "ty_idx": 39,
       "fields": [
         {
           "name": "dummy",
-          "ty_idx": 39
+          "ty_idx": 40
         }
       ]
     }
   ],
   "storage": {
-    "storage_ty_idx": 38
+    "storage_ty_idx": 39
   },
   "incoming_messages": [
     {
@@ -610,6 +633,9 @@
     },
     {
       "body_ty_idx": 37
+    },
+    {
+      "body_ty_idx": 38
     }
   ],
   "incoming_external": [],
@@ -624,5 +650,5 @@
   ],
   "compiler_name": "tolk",
   "compiler_version": "1.4.1",
-  "code_boc64": "te6ccgEBBAEAuwABFP8A9KQT9LzyyAsBAvjT+JHyQCDXLCYH/3A0mDCEDwHHAPL04NcsJgf/cYSYMIQPAccA8vTg1ywmB/9xPJgwhA8BxwDy9ODXLCYH/3GcmDCEDwHHAPL04NcsJgf/cayYMIQPAccA8vTg1ywmB/9xHJgwhA8BxwDy9ODXLCYH/3Es4wLXLCWYY5iEAgMAEDCEDwHHAPL0AESYMIQPAccA8vTg1ywmWB39fDGXhA8BxwDy9OCEDwHHAPL0"
+  "code_boc64": "te6ccgEBBAEAzAABFP8A9KQT9LzyyAsBAvjT+JHyQCDXLCYH/3A0mDCEDwHHAPL04NcsJgf/cYSYMIQPAccA8vTg1ywmB/9xPJgwhA8BxwDy9ODXLCYH/3GcmDCEDwHHAPL04NcsJgf/cayYMIQPAccA8vTg1ywmB/9xHJgwhA8BxwDy9ODXLCYH/3Es4wLXLCdyjnKMAgMAEDCEDwHHAPL0AGaYMIQPAccA8vTg1ywlmGOYhJgwhA8BxwDy9ODXLCZYHf18MZeEDwHHAPL04IQPAccA8vQ="
 }

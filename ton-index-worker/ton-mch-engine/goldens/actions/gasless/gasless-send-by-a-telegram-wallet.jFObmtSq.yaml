@@ -1,0 +1,87 @@
+# gasless / Gasless send by a Telegram wallet
+# note: named from the v1.3-only yaml; trace file is untracked and no longer in the working tree, and it has no action golden
+# trace: jFObmtSqr6Fzn6QnPonxGlzgTWjWvRcoi0BF_wSCjcM=
+actions:
+  - type: call_contract
+    anchor: call_contract#73896e74@92620689000002
+    id: U+bXSNM87eaz1yuhS3Xbq0t7nulG9CdvRLWe7Rx8GKM=
+    success: true
+    source: 0:E15488B65F7E904F1D14C84AC6F603CCC4A404B03BEFB568D5F5CC8ED6866887
+    source_secondary: null
+    destination: 0:E55E63B850B71B8FF5AD44E1B8271237AFAF31900B2B6D41233707BB585B8091
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: 5000000
+    opcode: 0x73896e74
+    tx_hashes:
+      - 0H5D3xdC6NdacUiYr8+UxD8GXdXeo5VTWS7fnhO5PrY=
+      - jFObmtSqr6Fzn6QnPonxGlzgTWjWvRcoi0BF/wSCjcM=
+    accounts:
+      - 0:E15488B65F7E904F1D14C84AC6F603CCC4A404B03BEFB568D5F5CC8ED6866887
+      - 0:E55E63B850B71B8FF5AD44E1B8271237AFAF31900B2B6D41233707BB585B8091
+    start_lt: 92620689000002
+    end_lt: 92620689000003
+    start_utime: 1787831032
+    end_utime: 1787831032
+    mc_seqno_end: 80864992
+  - type: gasless_request
+    anchor: gasless_request@92620689000002
+    id: Gqy5wkGo7Egv/9ZPtNgjUGzVYlMk534Ujm1n+0j7rVg=
+    success: true
+    source: 0:E15488B65F7E904F1D14C84AC6F603CCC4A404B03BEFB568D5F5CC8ED6866887
+    source_secondary: null
+    destination: 0:E55E63B850B71B8FF5AD44E1B8271237AFAF31900B2B6D41233707BB585B8091
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: 5000000
+    opcode: null
+    tx_hashes:
+      - 0H5D3xdC6NdacUiYr8+UxD8GXdXeo5VTWS7fnhO5PrY=
+      - jFObmtSqr6Fzn6QnPonxGlzgTWjWvRcoi0BF/wSCjcM=
+    accounts:
+      - 0:E15488B65F7E904F1D14C84AC6F603CCC4A404B03BEFB568D5F5CC8ED6866887
+      - 0:E55E63B850B71B8FF5AD44E1B8271237AFAF31900B2B6D41233707BB585B8091
+    start_lt: 92620689000002
+    end_lt: 92620689000003
+    start_utime: 1787831032
+    end_utime: 1787831032
+    mc_seqno_end: 80864992
+  - type: ton_transfer
+    anchor: ton_transfer@92620689000004
+    id: YlZnh1IYTElNaU5oUKFD9angnUSlW7C3X/12vTKMy2U=
+    success: true
+    source: 0:E55E63B850B71B8FF5AD44E1B8271237AFAF31900B2B6D41233707BB585B8091
+    source_secondary: null
+    destination: 0:274BBBC78DFA3093C1BDA033A0B7F649B6268E61C53E9E019CCFC4B17CACC251
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: 1000000
+    opcode: null
+    extra:
+      parent_gasless_action: Gqy5wkGo7Egv/9ZPtNgjUGzVYlMk534Ujm1n+0j7rVg=
+    ton_transfer_data:
+      content: null
+      encrypted: false
+    tx_hashes:
+      - 0H5D3xdC6NdacUiYr8+UxD8GXdXeo5VTWS7fnhO5PrY=
+      - tQvSphmhu3pUWwOv2bpSxjDZVZFX6Q+UIe9SetnQNDA=
+    accounts:
+      - 0:274BBBC78DFA3093C1BDA033A0B7F649B6268E61C53E9E019CCFC4B17CACC251
+      - 0:E55E63B850B71B8FF5AD44E1B8271237AFAF31900B2B6D41233707BB585B8091
+    start_lt: 92620689000004
+    end_lt: 92620689000005
+    start_utime: 1787831032
+    end_utime: 1787831032
+    mc_seqno_end: 80864992

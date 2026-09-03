@@ -1,0 +1,40 @@
+# ethena / Unstake request
+# trace: _KePnuNGucIpfF1FhRFdzd85XgsXO3ooKFAKXjI-vhM=
+actions:
+  - type: stake_withdrawal_request
+    matcher: ethena_withdrawal_request
+    anchor: ethena_withdrawal_request@63276845000002
+    id: zyvPGKMN81LWhWVwBLuefjJ0D+6s4gSSX6jNLmIYaH8=
+    success: true
+    source: 0:28E676CE93E7A0053E408EB9868EFBF20B48F25DBBA6F816B5AD60985F6B743A
+    source_secondary: 0:297821FC140CCD6054B6EABB5DF48C76B1C7E6C985FEB9FFDEF343A6BA4B13AF
+    destination: 0:A11AE0F5BB47BB2945871F915A621FF281C2D786C746DA74873D71D6F2AAA7A5
+    destination_secondary: null
+    asset: 0:D0E545323C7ACB7102653C073377F7E3C67F122EB94D430A250739F109D4A57D
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: 199179780
+    value: null
+    opcode: null
+    staking_data:
+      provider: ethena
+      tokens_minted: 250729913
+    tx_hashes:
+      - /KePnuNGucIpfF1FhRFdzd85XgsXO3ooKFAKXjI+vhM=
+      - XD0aI3hhpOo1P4W0zNi6RGfvcZEp1s7IR2s7DD5rRIc=
+      - ZWwehrS2s7/WUI0uE7dNQx6uXaegfGV9Q/9+1ycftQc=
+      - mEducjlo98aku9kcGfEnJHfF1mStInCe7C/Xtplw/9I=
+      - mqBqeuSizLFTTHd9y/pPz+vFLxzNeshKHqdso1gwEbE=
+      - mxKSD4fk927JtEzURUl4raxqAzBt/cend9f/2YFskqg=
+      - zwDIm3FnobGZDw+02uS2pPPLtHXgS+wOnsqT4ptvPn4=
+    accounts:
+      - 0:28E676CE93E7A0053E408EB9868EFBF20B48F25DBBA6F816B5AD60985F6B743A
+      - 0:297821FC140CCD6054B6EABB5DF48C76B1C7E6C985FEB9FFDEF343A6BA4B13AF
+      - 0:A11AE0F5BB47BB2945871F915A621FF281C2D786C746DA74873D71D6F2AAA7A5
+      - 0:D0E545323C7ACB7102653C073377F7E3C67F122EB94D430A250739F109D4A57D
+    start_lt: 63276845000002
+    end_lt: 63276845000011
+    start_utime: 1762289773
+    end_utime: 1762289773
+    mc_seqno_end: 53662073

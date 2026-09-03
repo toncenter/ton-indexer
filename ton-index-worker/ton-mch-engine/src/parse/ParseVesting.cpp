@@ -1,5 +1,4 @@
-// Vesting message parser (messages/vesting.py). See parse/PSlice.h for shared
-// machinery and MsgParse.cpp's header for the pytoniq-parity catalogue.
+// Vesting message parser. Shared machinery is in parse/PSlice.h.
 #include "parse/Parsers.h"
 
 #include "parse/PSlice.h"
@@ -8,18 +7,12 @@
 #include "vm/cellslice.h"
 
 #include <utility>
-#include <vector>
 
 namespace mch {
 
-// VestingSendMessage (messages/vesting.py): the inner message cell is read as a
-// full MessageAny (header + init + body), yielding message_body_hash alongside
-// destination/value; when only the int_msg_info header parses, Python falls back
-// to InternalMsgInfo and leaves message_body_hash None. The header prefix is
-// identical in both paths, so the fallback here is just a null hash.
-// Deviation (documented): a present extra-currency dict ref is consumed but
-// not deep-validated (Python's HashMap.parse would validate; vesting inner
-// messages never carry extra currencies in practice).
+// Inner message is a full MessageAny (header + init + body) yielding
+// message_body_hash with dest/value; header-only parse leaves the hash null.
+// Extra-currency dict refs are consumed but not deep-validated (intentional).
 td::Result<Value> parse_vesting_send_message(const td::Ref<vm::Cell> &body) {
   TRY_RESULT(ctx, open_body(body));
   auto &cs = ctx.cs;
@@ -40,8 +33,8 @@ td::Result<Value> parse_vesting_send_message(const td::Ref<vm::Cell> &body) {
   } catch (...) {
     return td::Status::Error("vesting: bad message cell");
   }
-  // InternalMsgInfo.deserialize: tag bit 0, ihr_disabled/bounce/bounced,
-  // src, dest, value (grams + extra dict), ihr_fee, fwd_fee, lt, at.
+  // int_msg_info: tag bit 0, ihr_disabled/bounce/bounced, src, dest,
+  // value (grams + extra dict), ihr_fee, fwd_fee, lt, at.
   if (!ms.have(4)) {
     return td::Status::Error("vesting: msg info underflow");
   }
@@ -71,7 +64,7 @@ td::Result<Value> parse_vesting_send_message(const td::Ref<vm::Cell> &body) {
   }
   ms.advance(64 + 32);
 
-  // MessageAny tail; any failure = Python's `except` branch (hash stays null).
+  // MessageAny tail; any failure leaves the hash null. Intentional.
   Value body_hash = Value::null();
   auto r_body = message_any_body(ms);
   if (r_body.is_ok()) {
@@ -87,44 +80,6 @@ td::Result<Value> parse_vesting_send_message(const td::Ref<vm::Cell> &body) {
   f.emplace_back("message_destination", std::move(dest));
   f.emplace_back("message_value", Value::make_int(std::move(grams)));
   f.emplace_back("message_body_hash", std::move(body_hash));
-  return Value::make_obj(std::move(f));
-}
-
-// VestingAddWhiteList (messages/vesting.py): query_id followed by an UNBOUNDED
-// chain of one address per cell, each level stores an address and, when it has
-// a ref, continues in it; the last level stores the trailing address only. The
-// schema's `ref { }` is fixed-depth, which is the whole reason this one stays
-// hand-written. Loop order is the Python one exactly: test refs BEFORE reading
-// the address, so a level with no ref contributes its address through the tail
-// read instead. Termination is the cell tree's own depth bound.
-td::Result<Value> parse_vesting_add_whitelist(const td::Ref<vm::Cell> &body) {
-  TRY_RESULT(ctx, open_body(body));
-  auto &cs = ctx.cs;
-  if (!cs.have(32 + 64) || !cs.advance(32)) {
-    return td::Status::Error("vesting_whitelist: header underflow");
-  }
-  auto query_id = cs.fetch_ulong(64);
-
-  std::vector<Value> addresses;
-  vm::CellSlice cur = cs;
-  while (cur.size_refs() > 0) {
-    TRY_RESULT(addr, load_address_py(cur));
-    addresses.push_back(std::move(addr));
-    bool special = false;
-    vm::CellSlice next;
-    try {
-      next = vm::load_cell_slice_special(cur.fetch_ref(), special);
-    } catch (...) {
-      return td::Status::Error("vesting_whitelist: bad chain cell");
-    }
-    cur = std::move(next);
-  }
-  TRY_RESULT(last, load_address_py(cur));
-  addresses.push_back(std::move(last));
-
-  Value::Fields f;
-  f.emplace_back("query_id", Value::make_int(refint_u64(query_id)));
-  f.emplace_back("addresses", Value::make_list(std::move(addresses)));
   return Value::make_obj(std::move(f));
 }
 

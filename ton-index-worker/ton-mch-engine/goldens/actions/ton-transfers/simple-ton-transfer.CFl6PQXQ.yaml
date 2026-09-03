@@ -1,0 +1,31 @@
+# ton-transfers / Simple ton transfer
+# trace: CFl6PQXQyJ4FQFj9YsZwblnCg3m8Po9wuiBmrR4zGz4=
+actions:
+  - type: ton_transfer
+    anchor: ton_transfer@55850691000000
+    id: 2w63ODTcF5Jcx0ff5OOJKZ9kMhn5BzeYKr3R+OLEZMU=
+    success: true
+    source: "-1:0000000000000000000000000000000000000000000000000000000000000000"
+    source_secondary: null
+    destination: "-1:3333333333333333333333333333333333333333333333333333333333333333"
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: 2630055735
+    opcode: null
+    ton_transfer_data:
+      content: null
+      encrypted: false
+    tx_hashes:
+      - CFl6PQXQyJ4FQFj9YsZwblnCg3m8Po9wuiBmrR4zGz4=
+    accounts:
+      - "-1:0000000000000000000000000000000000000000000000000000000000000000"
+      - "-1:3333333333333333333333333333333333333333333333333333333333333333"
+    start_lt: 55850691000000
+    end_lt: 55850691000002
+    start_utime: 1744126020
+    end_utime: 1744126020
+    mc_seqno_end: 46634679

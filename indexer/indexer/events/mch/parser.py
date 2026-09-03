@@ -405,7 +405,9 @@ def _parse_sequence(s: _ParserState) -> ast_.PatternExpr:
 
 
 def _parse_atom(s: _ParserState) -> ast_.PatternExpr:
-    """atom := node | '(' pattern_expr ')' | rule_ref | children_block | 'maybe' atom"""
+    """atom := node | '(' pattern_expr ')' | rule_ref | children_block
+               | ('maybe' | 'peek') atom
+    """
     t = s.peek()
 
     if t.kind is TokenKind.KW_MAYBE:
@@ -413,6 +415,12 @@ def _parse_atom(s: _ParserState) -> ast_.PatternExpr:
         s.skip_newlines()
         inner = _parse_atom(s)
         return ast_.Maybe(inner=inner, span=_join(t.span, inner.span))
+
+    if t.kind is TokenKind.KW_PEEK:
+        s.i += 1
+        s.skip_newlines()
+        inner = _parse_atom(s)
+        return ast_.Peek(inner=inner, span=_join(t.span, inner.span))
 
     if t.kind is TokenKind.LPAREN:
         s.i += 1
@@ -841,10 +849,8 @@ def _parse_comprehension(s: _ParserState) -> ast_.Comprehension:
                               span=_join(head.span, end))
 
 
-def _parse_parse_expr(s: _ParserState) -> ast_.ParseExpr:
-    """`parse <target> as T (| T)*` in expression position. The target is a
-    postfix expression (a capture / element var / `.field` chain); `as`
-    terminates it. Faults at eval time if no type parses the body."""
+def _parse_parse_expr(s: _ParserState, *, nullable: bool = False) -> ast_.ParseExpr:
+    """`[try] parse <target> as T (| T)*` in expression position."""
     start = s.eat(TokenKind.KW_PARSE).span
     target = _parse_postfix(s)
     s.eat(TokenKind.KW_AS)
@@ -856,12 +862,26 @@ def _parse_parse_expr(s: _ParserState) -> ast_.ParseExpr:
         alt = s.eat(TokenKind.IDENT)
         types.append(alt.text)
         end = alt.span
-    return ast_.ParseExpr(target=target, msg_types=tuple(types), span=_join(start, end))
+    return ast_.ParseExpr(
+        target=target,
+        msg_types=tuple(types),
+        span=_join(start, end),
+        nullable=nullable,
+    )
 
 
 def _parse_primary(s: _ParserState) -> ast_.Expr:
     if _at_comprehension(s):
         return _parse_comprehension(s)
+    if s.at(TokenKind.KW_TRY):
+        start = s.eat(TokenKind.KW_TRY).span
+        parsed = _parse_parse_expr(s, nullable=True)
+        return ast_.ParseExpr(
+            target=parsed.target,
+            msg_types=parsed.msg_types,
+            span=_join(start, parsed.span),
+            nullable=True,
+        )
     if s.at(TokenKind.KW_PARSE):
         return _parse_parse_expr(s)
     t = s.peek()

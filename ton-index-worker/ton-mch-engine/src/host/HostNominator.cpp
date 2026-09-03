@@ -1,11 +1,10 @@
-// Nominator host predicate (builders/nominator.py). See host/HostImpls.h for
-// the internal registry surface and HostRegistry.h for the public one.
 #include "host/HostImpls.h"
 
 #include "host/HostCommon.h"
 
 #include "BlockTree.h"
 #include "HostRegistry.h"
+#include "btypes_gen.h"
 
 #include "common/refint.h"
 
@@ -23,7 +22,7 @@ std::vector<Block *> classified_withdraw_payouts(const Block *request) {
     return payouts;
   }
   for (Block *next : request->next_blocks) {
-    if (next->btype == "ton_transfer") {
+    if (next->btype == mch::btype::kTonTransfer) {
       payouts.push_back(next);
     }
   }
@@ -37,21 +36,9 @@ std::vector<Block *> classified_withdraw_payouts(const Block *request) {
 
 }  // namespace
 
-// builders/nominator.py nominator_pool_withdraw_parent: the payout's
-// previous_block is the pool's ProcessWithdrawRequests call (opcode 0x2).
-// isinstance(parent, CallContractBlock) == btype "call_contract" (composed
-// blocks never carry that btype).
-bool nominator_pool_withdraw_parent(const Block *b) {
-  const Block *p = b->previous_block;
-  return p != nullptr && p->btype == "call_contract" && p->opcode && *p->opcode == 0x00000002;
-}
-
-// builders/nominator.py nominator_withdraw_payout_amount: two payouts use the
-// canonical first child; one is immediate only when it exceeds the request.
+// Two payouts use the canonical first child; one is immediate only when it
+// exceeds the request.
 EvalResult nominator_withdraw_payout_amount(BuildEnv &, const std::vector<Value> &args) {
-  if (args.size() != 1) {
-    return rt_fault("nominator_withdraw_payout_amount: bad arguments");
-  }
   const Block *request = as_block(args[0]);
   std::vector<Block *> payouts = classified_withdraw_payouts(request);
   if (payouts.size() == 2) {

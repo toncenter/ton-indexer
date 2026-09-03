@@ -1,0 +1,58 @@
+# ton-transfers / call_contract plus ton_transfer (ab-gap drill)
+# trace: sS0j8bD7JQj7389dsGXLdNUisE6I1ApyvdPM1gkODVc=
+actions:
+  - type: call_contract
+    anchor: call_contract#d53276db@93507931000003
+    id: /4Ud4RWsGMpduX6E3Wt/YmaSLF6MGnxWY80msCN/GI0=
+    success: true
+    source: 0:0252C897B4EFD535908824F508991B54E9B1B63A912F8187D5620D770C509053
+    source_secondary: null
+    destination: 0:25A9088019897E5DD8CEF3F0732288D06998AFEEBE772CCB67875941F985B6BF
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: 29234639
+    opcode: 0xd53276db
+    tx_hashes:
+      - WLiinCLxJYMe2gNKdLJOHDlsWpU20I0FhcdO3vtsZSE=
+      - sS0j8bD7JQj7389dsGXLdNUisE6I1ApyvdPM1gkODVc=
+    accounts:
+      - 0:0252C897B4EFD535908824F508991B54E9B1B63A912F8187D5620D770C509053
+      - 0:25A9088019897E5DD8CEF3F0732288D06998AFEEBE772CCB67875941F985B6BF
+    start_lt: 93507931000003
+    end_lt: 93507933000002
+    start_utime: 1785414256
+    end_utime: 1785414257
+    mc_seqno_end: 82931175
+  - type: ton_transfer
+    anchor: ton_transfer@93507931000002
+    id: mn5xa729LpEydbtxvJgnn08rmp9C3c0DYUaOe6Sq75c=
+    success: true
+    source: 0:0252C897B4EFD535908824F508991B54E9B1B63A912F8187D5620D770C509053
+    source_secondary: null
+    destination: 0:25A9088019897E5DD8CEF3F0732288D06998AFEEBE772CCB67875941F985B6BF
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: 826216366
+    opcode: null
+    ton_transfer_data:
+      content: null
+      encrypted: false
+    tx_hashes:
+      - 7TzDaLymWJrNqfbSDGbYncS0/DXqrSCL5rAfcnqs+00=
+      - sS0j8bD7JQj7389dsGXLdNUisE6I1ApyvdPM1gkODVc=
+    accounts:
+      - 0:0252C897B4EFD535908824F508991B54E9B1B63A912F8187D5620D770C509053
+      - 0:25A9088019897E5DD8CEF3F0732288D06998AFEEBE772CCB67875941F985B6BF
+    start_lt: 93507931000002
+    end_lt: 93507933000001
+    start_utime: 1785414256
+    end_utime: 1785414257
+    mc_seqno_end: 82931175

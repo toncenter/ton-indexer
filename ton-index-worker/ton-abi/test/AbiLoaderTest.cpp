@@ -41,19 +41,8 @@ TEST_CASE("AbiLoader accept: minimal valid skeleton") {
   CHECK(abi.declarations.empty());
 }
 
-// All 18 fixtures that compile to a valid ABI (of the 26 .tolk files
-// copied from the reference repo -- 19 top-level + 7 imports/; imports/ are
-// not independently-compilable top-level contracts and small.tolk is a
-// genuine Tolk compiler error unrelated to ABI loading, see gen_vectors.mjs)
-// must load successfully.
 TEST_CASE("AbiLoader accept: all 18 committed fixture ABIs load") {
-  for (const std::string &name : {
-           "client-type-anno", "debug-print-demos", "err-cont-on-stack-1", "err-cont-on-stack-2",
-           "err-invalid-map-key-1", "err-invalid-map-key-2", "generic-union-labels", "has-not-init-storage",
-           "jetton-minter-contract", "jetton-wallet-contract", "lots-of-annotations", "lots-of-getters",
-           "lots-of-messages", "lots-of-storage", "lots-of-throws", "lots-of-wrappers", "only-header",
-           "tolk_counter",
-       }) {
+  for (const std::string &name : ton_abi_test::kLoadableFixtures) {
     CAPTURE(name);
     std::string path = std::string(TON_ABI_FIXTURES_DIR) + "/" + name + ".abi.json";
     auto r = ton_abi::load_abi_from_json(read_file(path));
@@ -62,9 +51,8 @@ TEST_CASE("AbiLoader accept: all 18 committed fixture ABIs load") {
     CHECK(abi.abi_schema_version == "1.0");
     CHECK_FALSE(abi.unique_types.empty());
     // NOT declarations.empty(): err-cont-on-stack-2 legitimately has zero
-    // struct/alias/enum declarations (a getter-only fixture, out of
-    // message-parsing scope per the plan -- just the stack-level `cont`
-    // type, no ABI declarations at all).
+    // struct/alias/enum declarations (a getter-only fixture -- just the
+    // stack-level `cont` type, no ABI declarations at all).
   }
 }
 

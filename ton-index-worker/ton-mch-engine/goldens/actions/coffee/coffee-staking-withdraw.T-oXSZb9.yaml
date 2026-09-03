@@ -1,0 +1,172 @@
+# coffee / Coffee staking withdraw
+# trace: T-oXSZb9qU9H5js9gaOZIJ8RicZmZ8l9oV4s_f9pV6g=
+actions:
+  - type: call_contract
+    anchor: call_contract#cb03bfaf@59216521000002
+    id: CGbmbAaOxcTPzIX6tyme9FmZXbAFm2JAr7c0Xt4OK1k=
+    success: true
+    source: 0:D63BBD8AD1033943D42D0ECFE3E7C89FADC3B91B19FBEA5C9D980C93CA80D14B
+    source_secondary: null
+    destination: 0:BB67010D1C015506693316E50176B9BBBE95E87D178FEC3D52C6D00FC0564E3B
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: 80000000
+    opcode: 0xcb03bfaf
+    tx_hashes:
+      - T+oXSZb9qU9H5js9gaOZIJ8RicZmZ8l9oV4s/f9pV6g=
+      - p56+OVjqjQyrcV2dRARg3LyQ++HtnNKWyxaIDXFk0xI=
+    accounts:
+      - 0:BB67010D1C015506693316E50176B9BBBE95E87D178FEC3D52C6D00FC0564E3B
+      - 0:D63BBD8AD1033943D42D0ECFE3E7C89FADC3B91B19FBEA5C9D980C93CA80D14B
+    start_lt: 59216521000002
+    end_lt: 59216521000003
+    start_utime: 1752056055
+    end_utime: 1752056055
+    mc_seqno_end: 49675793
+    parent_action_id: JTXIuCIjrqveK4nDukqRECgQs8lF8hbd4bK4srhmBDk=
+    ancestor_type:
+      - coffee_staking_withdraw
+  - type: call_contract
+    anchor: call_contract#cb03bfaf@59216521000004
+    id: Aq4m3D4fkkEg7HpO4hwk9M9NINSf3UsDax917XVmpHI=
+    success: true
+    source: 0:BB67010D1C015506693316E50176B9BBBE95E87D178FEC3D52C6D00FC0564E3B
+    source_secondary: null
+    destination: 0:8CB6B9CA84AF36630EB11EB2E6FEB24B90C6317982229617669FA0675466753E
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: 348757690
+    opcode: 0xcb03bfaf
+    tx_hashes:
+      - jiLVrlbmyd/TMRHg4ebH2UDnFclBjYzgjua1OXWbabg=
+      - p56+OVjqjQyrcV2dRARg3LyQ++HtnNKWyxaIDXFk0xI=
+    accounts:
+      - 0:8CB6B9CA84AF36630EB11EB2E6FEB24B90C6317982229617669FA0675466753E
+      - 0:BB67010D1C015506693316E50176B9BBBE95E87D178FEC3D52C6D00FC0564E3B
+    start_lt: 59216521000004
+    end_lt: 59216521000006
+    start_utime: 1752056055
+    end_utime: 1752056055
+    mc_seqno_end: 49675793
+    parent_action_id: JTXIuCIjrqveK4nDukqRECgQs8lF8hbd4bK4srhmBDk=
+    ancestor_type:
+      - coffee_staking_withdraw
+  - type: call_contract
+    anchor: call_contract#cb03bfaf@59216521000008
+    id: enF7OCwHeyNB7VWCwlDroGZdEJxqYFWUi/bw6TDniRY=
+    success: true
+    source: 0:8CB6B9CA84AF36630EB11EB2E6FEB24B90C6317982229617669FA0675466753E
+    source_secondary: null
+    destination: 0:29F90533937D696105883B981E9427D1AE411EEF5B08EAB83F4AF89C495D27DF
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: 340055690
+    opcode: 0xcb03bfaf
+    tx_hashes:
+      - jiLVrlbmyd/TMRHg4ebH2UDnFclBjYzgjua1OXWbabg=
+      - y29huJjKhr6O8OQjR4+oD3GaJXNy8iaDyWOiIp1GulU=
+    accounts:
+      - 0:29F90533937D696105883B981E9427D1AE411EEF5B08EAB83F4AF89C495D27DF
+      - 0:8CB6B9CA84AF36630EB11EB2E6FEB24B90C6317982229617669FA0675466753E
+    start_lt: 59216521000008
+    end_lt: 59216521000009
+    start_utime: 1752056055
+    end_utime: 1752056055
+    mc_seqno_end: 49675793
+    parent_action_id: JTXIuCIjrqveK4nDukqRECgQs8lF8hbd4bK4srhmBDk=
+    ancestor_type:
+      - coffee_staking_withdraw
+  - type: coffee_staking_withdraw
+    matcher: coffee_staking_withdraw
+    anchor: coffee_staking_withdraw@59216521000002
+    id: JTXIuCIjrqveK4nDukqRECgQs8lF8hbd4bK4srhmBDk=
+    success: true
+    source: 0:D63BBD8AD1033943D42D0ECFE3E7C89FADC3B91B19FBEA5C9D980C93CA80D14B
+    source_secondary: 0:2E75895D8779D7F7090517D94F092E394894ED803B5F428264FF74C140766EEE
+    destination: 0:BB67010D1C015506693316E50176B9BBBE95E87D178FEC3D52C6D00FC0564E3B
+    destination_secondary: 0:7C7EDF2883E784E033F37731FEDE9ED600B8B9F8178EAB927B957D8980321546
+    asset: 0:A5D12E31BE87867851A28D3CE271203C8FA1A28AE826256E73C506D94D49EDAD
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: 59457793964
+    value: null
+    opcode: null
+    coffee_staking_withdraw_data:
+      nft_address: 0:BB67010D1C015506693316E50176B9BBBE95E87D178FEC3D52C6D00FC0564E3B
+      nft_index: 451
+      points: 5945779396400
+    tx_hashes:
+      - /HyxUawoMwoOHsOFmD1Rz8TVkzIZ2i8G/KIXBRYBFso=
+      - LjiqZVHJZniUWX82iQkQhRcJz83se/SR8iJEj4fi4KU=
+      - T+oXSZb9qU9H5js9gaOZIJ8RicZmZ8l9oV4s/f9pV6g=
+      - b1APj162PwQP80Le+5aAOt1SyrNmYdBF/ZpbsZhciiA=
+      - jiLVrlbmyd/TMRHg4ebH2UDnFclBjYzgjua1OXWbabg=
+      - p56+OVjqjQyrcV2dRARg3LyQ++HtnNKWyxaIDXFk0xI=
+      - y29huJjKhr6O8OQjR4+oD3GaJXNy8iaDyWOiIp1GulU=
+    accounts:
+      - 0:29F90533937D696105883B981E9427D1AE411EEF5B08EAB83F4AF89C495D27DF
+      - 0:2E75895D8779D7F7090517D94F092E394894ED803B5F428264FF74C140766EEE
+      - 0:7C7EDF2883E784E033F37731FEDE9ED600B8B9F8178EAB927B957D8980321546
+      - 0:8CB6B9CA84AF36630EB11EB2E6FEB24B90C6317982229617669FA0675466753E
+      - 0:BB67010D1C015506693316E50176B9BBBE95E87D178FEC3D52C6D00FC0564E3B
+      - 0:D63BBD8AD1033943D42D0ECFE3E7C89FADC3B91B19FBEA5C9D980C93CA80D14B
+    start_lt: 59216521000002
+    end_lt: 59216521000015
+    start_utime: 1752056055
+    end_utime: 1752056055
+    mc_seqno_end: 49675793
+  - type: jetton_transfer
+    matcher: jetton_transfer
+    anchor: jetton_transfer@59216521000010
+    id: w4yCt5FhWqKiwmKZFxO26KnXlsHvRQkOZQlEmkJIUYQ=
+    success: true
+    source: 0:29F90533937D696105883B981E9427D1AE411EEF5B08EAB83F4AF89C495D27DF
+    source_secondary: 0:7C7EDF2883E784E033F37731FEDE9ED600B8B9F8178EAB927B957D8980321546
+    destination: 0:D63BBD8AD1033943D42D0ECFE3E7C89FADC3B91B19FBEA5C9D980C93CA80D14B
+    destination_secondary: 0:2E75895D8779D7F7090517D94F092E394894ED803B5F428264FF74C140766EEE
+    asset: 0:A5D12E31BE87867851A28D3CE271203C8FA1A28AE826256E73C506D94D49EDAD
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: 59457793964
+    value: null
+    opcode: null
+    jetton_transfer_data:
+      comment: null
+      custom_payload: null
+      forward_amount: 0
+      forward_payload: null
+      is_encrypted_comment: false
+      query_id: 1697643576172121
+      response_destination: 0:D63BBD8AD1033943D42D0ECFE3E7C89FADC3B91B19FBEA5C9D980C93CA80D14B
+    tx_hashes:
+      - /HyxUawoMwoOHsOFmD1Rz8TVkzIZ2i8G/KIXBRYBFso=
+      - LjiqZVHJZniUWX82iQkQhRcJz83se/SR8iJEj4fi4KU=
+      - b1APj162PwQP80Le+5aAOt1SyrNmYdBF/ZpbsZhciiA=
+      - y29huJjKhr6O8OQjR4+oD3GaJXNy8iaDyWOiIp1GulU=
+    accounts:
+      - 0:29F90533937D696105883B981E9427D1AE411EEF5B08EAB83F4AF89C495D27DF
+      - 0:2E75895D8779D7F7090517D94F092E394894ED803B5F428264FF74C140766EEE
+      - 0:7C7EDF2883E784E033F37731FEDE9ED600B8B9F8178EAB927B957D8980321546
+      - 0:D63BBD8AD1033943D42D0ECFE3E7C89FADC3B91B19FBEA5C9D980C93CA80D14B
+    start_lt: 59216521000010
+    end_lt: 59216521000015
+    start_utime: 1752056055
+    end_utime: 1752056055
+    mc_seqno_end: 49675793
+    parent_action_id: JTXIuCIjrqveK4nDukqRECgQs8lF8hbd4bK4srhmBDk=
+    ancestor_type:
+      - coffee_staking_withdraw

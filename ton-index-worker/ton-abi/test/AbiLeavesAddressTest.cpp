@@ -1,7 +1,5 @@
 // Address leaf load+store units use hand-built cells via vm::CellBuilder;
-// accepted inputs round-trip byte-identically (compared via cell hash), and the
-// @ton/core-derived REJECT space gets one unit per condition (both directions
-// where applicable). See AbiLeavesAddress.h for the normative citations.
+// accepted inputs round-trip byte-identically (compared via cell hash).
 
 #include "AbiTestSupport.h"
 
@@ -21,13 +19,12 @@ void store_test_hash(vm::CellBuilder &cb) {
 
 }  // namespace
 
-// address (addr_std only)
 
 TEST_CASE("address: addr_std round-trips byte-identically (masterchain wc=-1)") {
   vm::CellBuilder src;
   REQUIRE(src.store_long_bool(2, 2));  // tag addr_std
   REQUIRE(src.store_long_bool(0, 1));  // anycast = 0
-  REQUIRE(src.store_long_bool(-1, 8)); // workchain = -1
+  REQUIRE(src.store_long_bool(-1, 8));
   store_test_hash(src);
   auto src_cell = src.finalize();
 
@@ -108,7 +105,6 @@ TEST_CASE("address store REJECT: workchain out of int8 range") {
   CHECK(store_address(cb, a).is_error());
 }
 
-// address? (addr_none | addr_std)
 
 TEST_CASE("address?: none round-trips") {
   vm::CellBuilder src;
@@ -152,7 +148,6 @@ TEST_CASE("address? store REJECT: extern kind not valid") {
   CHECK(store_maybe_address(cb, a).is_error());
 }
 
-// ext_address (addr_extern only)
 
 TEST_CASE("ext_address: round-trips byte-identically (10-bit value)") {
   vm::CellBuilder src;
@@ -213,7 +208,6 @@ TEST_CASE("ext_address store REJECT: value slice size mismatch") {
   CHECK(store_external_address(cb, a).is_error());
 }
 
-// any_address (none | std | extern; addr_var rejected)
 
 TEST_CASE("any_address: none/std/extern all round-trip") {
   SUBCASE("none") {

@@ -24,6 +24,20 @@ struct (0x4d725d2c) CocoonWorkerProxyRequest {
 }
 
 @overflow1023_policy("suppress")
+struct (0x65448ff4) CocoonClientProxyRequest {
+    query_id: uint64;
+    owner_address: any_address;
+    state_data: cell;
+    payload: cell?;
+}
+
+@overflow1023_policy("suppress")
+struct (0xc68ebc7b) CocoonClientProxyRefundGranted {
+    coins: coins;
+    send_excesses_to: any_address;
+}
+
+@overflow1023_policy("suppress")
 struct (0x7610e6eb) CocoonExtProxyPayoutRequest {
     query_id: uint64;
     send_excesses_to: any_address;
@@ -94,7 +108,7 @@ struct (0xda068e78) CocoonOwnerClientWithdraw {
     send_excesses_to: any_address;
 }
 
-type AllowedMessage = CocoonPayoutPayload | CocoonLastPayoutPayload | CocoonWorkerProxyRequest | CocoonExtProxyPayoutRequest | CocoonChargePayload | CocoonGrantRefundPayload | CocoonExtClientTopUp | CocoonRegisterProxy | CocoonUnregisterProxy | CocoonOwnerClientRegister | CocoonOwnerClientChangeSecretHash | CocoonOwnerClientRequestRefund | CocoonOwnerClientIncreaseStake | CocoonOwnerClientWithdraw
+type AllowedMessage = CocoonPayoutPayload | CocoonLastPayoutPayload | CocoonWorkerProxyRequest | CocoonClientProxyRequest | CocoonClientProxyRefundGranted | CocoonExtProxyPayoutRequest | CocoonChargePayload | CocoonGrantRefundPayload | CocoonExtClientTopUp | CocoonRegisterProxy | CocoonUnregisterProxy | CocoonOwnerClientRegister | CocoonOwnerClientChangeSecretHash | CocoonOwnerClientRequestRefund | CocoonOwnerClientIncreaseStake | CocoonOwnerClientWithdraw
 
 struct Storage {
     dummy: uint1
@@ -115,6 +129,12 @@ fun onInternalMessage(in: InMessage) {
             assert (in.body.isEmpty()) throw 0xFFFF
         }
         CocoonWorkerProxyRequest => {
+            assert (in.body.isEmpty()) throw 0xFFFF
+        }
+        CocoonClientProxyRequest => {
+            assert (in.body.isEmpty()) throw 0xFFFF
+        }
+        CocoonClientProxyRefundGranted => {
             assert (in.body.isEmpty()) throw 0xFFFF
         }
         CocoonExtProxyPayoutRequest => {

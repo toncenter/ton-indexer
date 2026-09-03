@@ -1,5 +1,3 @@
-// Vesting host fn (builders/vesting.py). See host/HostImpls.h for the internal
-// registry surface and HostRegistry.h for the public one.
 #include "host/HostImpls.h"
 
 #include "host/HostCommon.h"
@@ -7,6 +5,7 @@
 #include "BlockTree.h"
 #include "TraceLoader.h"
 
+#include "common/refint.h"
 #include "td/utils/base64.h"
 #include "vm/boc.h"
 
@@ -17,8 +16,7 @@ namespace mch {
 
 namespace {
 
-// The out-message body cell's hash, or an empty string when the body is absent
-// or undecodable (Python `continue`s past both).
+// Out-message body-cell hash, or empty when the body is absent or undecodable.
 std::string out_body_hash(const Message &m) {
   if (!m.content || m.content->body.empty()) {
     return {};
@@ -38,16 +36,11 @@ std::string out_body_hash(const Message &m) {
 
 }  // namespace
 
-// blocks/vesting.py _vesting_message_was_sent(vesting_tx, request), reached
-// through builders/vesting.py: scan the REQUEST transaction's out-messages for
-// one addressed to the requested destination whose body hash matches the
-// requested body. When the request body could not be hashed (message_body_hash
-// null, Python's MessageAny fallback) the match falls back to the TON value.
-// Args: (request block, its parsed VestingSendMessage body).
+// Scan the request transaction's out-messages for one addressed to the
+// requested destination whose body hash matches. When the request body could
+// not be hashed, fall back to the TON value. Args: request block and its
+// parsed VestingSendMessage body.
 EvalResult vesting_message_was_sent(BuildEnv &, const std::vector<Value> &args) {
-  if (args.size() != 2) {
-    return rt_fault("vesting_message_was_sent: bad arguments");
-  }
   const Block *send = as_block(args[0]);
   const Value &body = args[1];
   if (send == nullptr || (body.t != VType::Obj && body.t != VType::Dict)) {
@@ -69,19 +62,14 @@ EvalResult vesting_message_was_sent(BuildEnv &, const std::vector<Value> &args) 
     if (m->direction != "out" || !m->destination) {
       continue;
     }
-    // AccountId(dest) == AccountId(requested): canonical-string equality, with
-    // addr_none equal only to addr_none (Python compares as_str(), None==None).
     Value dest = account_from_opt(m->destination);
-    if (dest.addr_none != want_dest->addr_none) {
-      continue;
-    }
-    if (!dest.addr_none && dest.str != want_dest->str) {
+    if (!same_account(dest, *want_dest)) {
       continue;
     }
     if (!have_hash) {
       // Could not hash the requested body - fall back to value matching.
       if (m->value && want_value != nullptr && !want_value->num.is_null() &&
-          want_value->num->to_dec_string() == std::to_string(*m->value)) {
+          td::cmp(want_value->num, td::make_refint(*m->value)) == 0) {
         return rt_ok(Value::make_bool(true));
       }
       continue;

@@ -1,6 +1,4 @@
-// Shared low-level helpers for the per-protocol host binding TUs (src/host/*).
-// Extracted verbatim from HostRegistry.cpp so the split predicate/fn files can
-// share them; see HostRegistry.h for the public registry surface.
+// Shared low-level helpers for per-protocol host bindings.
 #pragma once
 
 #include "Value.h"
@@ -19,42 +17,40 @@ struct Message;   // TraceLoader.h
 
 td::Result<td::Ref<vm::Cell>> block_body(const Block *b);
 
-// Decode a Python-side BOC string field (jetton forward_payload, custom_payload,
-// ...) into a cell, in pytoniq's Boc(str) order: hex first, base64 fallback.
+// True when uri is a Str containing the Fragment NFT host.
+bool fragment_uri(const Value *uri);
+
+// Decode a base64-encoded BOC string field into a cell.
 td::Result<td::Ref<vm::Cell>> cell_from_pystr(const std::string &s);
 
 const Block *as_block(const Value &v);
 
 bool is_call_op(const Block *b, std::uint32_t op);
 
-template <typename Vec>
-const Block *find_call(const Vec &blocks, std::uint32_t op) {
-  for (const Block *b : blocks) {
-    if (is_call_op(b, op)) {
-      return b;
-    }
-  }
-  return nullptr;
-}
-
-// AccountId(envelope-address-str).as_str(): canonical "wc:HEX" upper; a null or
-// unparseable address -> addr_none (AccountId(None)).
+// Canonical "wc:HEX" upper; a null or unparseable address is addr_none.
 Value account_from_opt(const std::optional<std::string> &s);
 
 const Message *block_msg(const Block *b);
 
-// Amount(x): a numeric-carrying Value (Int/Amount) -> Amount with that value.
+// Int/Amount becomes Amount; anything else becomes Amount-none.
 Value to_amount(const Value &v);
 
-// Amount(x or 0): coins are never None, and `0 or 0 == 0`, so this is just
-// Amount(x), but keep the null-guard for parse-failure paths that reach here.
+// Message value as Amount, or Amount-none when the message or value is missing.
+Value msg_value_amount(const Message *m);
+
+// Null RefInt256 values coalesce to zero for callers that continue computing.
+td::RefInt256 or_zero(td::RefInt256 v);
+
+// Coins are never none; keep the null-guard for parse-failure paths.
 Value amount_or_zero(td::RefInt256 v);
+
+// Parse a pTON body as PTonTransfer and return its ton_amount field.
+td::Result<td::RefInt256> pton_ton_amount(const Block *pton);
 
 // Copy a field out of a Block's data Dict (Null when absent).
 Value data_field(const Block *b, const char *name);
 
-// Two Account values are equal iff same addr_none state and canonical string
-// (mirrors AccountId.__eq__ over the canonical "wc:HEX" form).
+// Equal iff same addr_none state and canonical "wc:HEX" string.
 bool same_account(const Value &a, const Value &b);
 
 }  // namespace mch

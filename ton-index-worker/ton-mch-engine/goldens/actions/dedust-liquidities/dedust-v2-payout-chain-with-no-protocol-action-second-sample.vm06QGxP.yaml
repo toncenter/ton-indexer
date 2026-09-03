@@ -1,0 +1,108 @@
+# dedust-liquidities / DeDust v2 payout chain with no protocol action, second sample
+# note: same opcode chain as the first sample, different pool and trace
+# trace: vm06QGxPVgGqBfV7IInJ010KtOh94Ianp30ExnwISq4=
+actions:
+  - type: call_contract
+    anchor: call_contract#0d299e12@80024181000004
+    id: dr2OGYpYNKik9h8PiytoJAGmmqY84o8aFq+Qe/YjWkM=
+    success: true
+    source: 0:EB7D0D1C06C66E5A23FECF6FF856BD53AD16012FBC20B98A9C919BDD540244CD
+    source_secondary: null
+    destination: 0:EB74EC4917714A1C6D1B1727499B15C3B2E7436C3C25191C650F22A153177DFA
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: 149401398
+    opcode: 0x0d299e12
+    tx_hashes:
+      - L3LPfetz3T35hx3FmeSxwnlIbPFkjCp5HbNvxdXhEK4=
+      - NI5pIjelWTHdI9XMUQR5UK3hR+yZUP7f5cZRuSgA+cg=
+    accounts:
+      - 0:EB74EC4917714A1C6D1B1727499B15C3B2E7436C3C25191C650F22A153177DFA
+      - 0:EB7D0D1C06C66E5A23FECF6FF856BD53AD16012FBC20B98A9C919BDD540244CD
+    start_lt: 80024181000004
+    end_lt: 80024181000005
+    start_utime: 1779990218
+    end_utime: 1779990218
+    mc_seqno_end: 69728550
+  - type: call_contract
+    anchor: call_contract#3216ca09@80024181000006
+    id: i2Nwv/d724x5bh4aTCl64XPIFxF4BkJrZVIi10kWmEo=
+    success: true
+    source: 0:EB74EC4917714A1C6D1B1727499B15C3B2E7436C3C25191C650F22A153177DFA
+    source_secondary: null
+    destination: 0:34F614DECCC9C357AE793CD7387FB966F1D27E868A1E66E9D1EE0BC0D3F6758D
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: 100000000000
+    opcode: 0x3216ca09
+    tx_hashes:
+      - KYpFgUEOLrWTG0MPMYqRWuMAI5e+Ue9Xm/DrEdXn/7w=
+      - L3LPfetz3T35hx3FmeSxwnlIbPFkjCp5HbNvxdXhEK4=
+    accounts:
+      - 0:34F614DECCC9C357AE793CD7387FB966F1D27E868A1E66E9D1EE0BC0D3F6758D
+      - 0:EB74EC4917714A1C6D1B1727499B15C3B2E7436C3C25191C650F22A153177DFA
+    start_lt: 80024181000006
+    end_lt: 80024181000007
+    start_utime: 1779990218
+    end_utime: 1779990218
+    mc_seqno_end: 69728550
+  - type: call_contract
+    anchor: call_contract#3db5f13a@80024181000002
+    id: tICuZmj7y2VeM2SN00NLGxRYhrVkOobucaLr7Ktx4AU=
+    success: true
+    source: 0:34F614DECCC9C357AE793CD7387FB966F1D27E868A1E66E9D1EE0BC0D3F6758D
+    source_secondary: null
+    destination: 0:EB7D0D1C06C66E5A23FECF6FF856BD53AD16012FBC20B98A9C919BDD540244CD
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: 150000000
+    opcode: 0x3db5f13a
+    tx_hashes:
+      - NI5pIjelWTHdI9XMUQR5UK3hR+yZUP7f5cZRuSgA+cg=
+      - vm06QGxPVgGqBfV7IInJ010KtOh94Ianp30ExnwISq4=
+    accounts:
+      - 0:34F614DECCC9C357AE793CD7387FB966F1D27E868A1E66E9D1EE0BC0D3F6758D
+      - 0:EB7D0D1C06C66E5A23FECF6FF856BD53AD16012FBC20B98A9C919BDD540244CD
+    start_lt: 80024181000002
+    end_lt: 80024181000003
+    start_utime: 1779990218
+    end_utime: 1779990218
+    mc_seqno_end: 69728550
+  - type: call_contract
+    anchor: call_contract#d53276db@80024181000007
+    id: qfx2XcuemsKw5Bp8aoLCef6Th2nl1E3TraXDcNiIYVo=
+    success: true
+    source: 0:EB74EC4917714A1C6D1B1727499B15C3B2E7436C3C25191C650F22A153177DFA
+    source_secondary: null
+    destination: 0:34F614DECCC9C357AE793CD7387FB966F1D27E868A1E66E9D1EE0BC0D3F6758D
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: 148254013
+    opcode: 0xd53276db
+    tx_hashes:
+      - L3LPfetz3T35hx3FmeSxwnlIbPFkjCp5HbNvxdXhEK4=
+      - pNckphEl+x6A7YUtZSJ+cdfILdSTBT1/ET1tYmf5ICs=
+    accounts:
+      - 0:34F614DECCC9C357AE793CD7387FB966F1D27E868A1E66E9D1EE0BC0D3F6758D
+      - 0:EB74EC4917714A1C6D1B1727499B15C3B2E7436C3C25191C650F22A153177DFA
+    start_lt: 80024181000007
+    end_lt: 80024181000008
+    start_utime: 1779990218
+    end_utime: 1779990218
+    mc_seqno_end: 69728550

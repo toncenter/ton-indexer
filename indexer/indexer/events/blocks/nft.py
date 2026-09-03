@@ -75,16 +75,15 @@ async def _get_nft_data(nft_address: AccountId):
     return data
 
 
-async def _try_get_nft_purchase_data(block: Block, owner: str) -> dict | None:
-    prev_block = block.previous_block
-    event_node = block.previous_block.event_nodes[0]
+async def _try_get_nft_purchase_data(prev_block: Block, owner: str) -> dict | None:
+    event_node = prev_block.event_nodes[0]
     if isinstance(prev_block, TonTransferBlock) and event_node.message.source.upper() == owner.upper():
         nft_sale = await context.interface_repository.get().get_nft_sale(event_node.message.transaction.account)
         if nft_sale is not None:
             return {
                 'marketplace_address': nft_sale.marketplace_address,
                 'nft_address': nft_sale.nft_address,
-                'block': block.previous_block,
+                'block': prev_block,
                 'price': nft_sale.full_price,
                 'real_prev_owner': nft_sale.nft_owner_address,
             }
@@ -94,7 +93,7 @@ async def _try_get_nft_purchase_data(block: Block, owner: str) -> dict | None:
         return {
             'marketplace_address': nft_auction.mp_addr,
             'nft_address': nft_auction.nft_addr,
-            'block': block.previous_block,
+            'block': prev_block,
             'price': nft_auction.last_bid,
             'real_prev_owner': nft_auction.nft_owner,
         }
@@ -116,10 +115,11 @@ def _purchase_parent_to_consume(prev_block: 'Block | None') -> 'Block | None':
 
 async def build_nft_transfer_core(
         block: Block,
-        ownership_message: 'NftOwnershipAssigned | None') -> tuple['NftTransferBlock | None', list[Block]]:
+        ownership_message: 'NftOwnershipAssigned | None',
+        funding_parent: 'Block | None') -> tuple['NftTransferBlock | None', list[Block]]:
     """Shared field build for a base NFT transfer (plain transfer + getgems
     purchase). Pure over the anchor `block` (the NftTransfer call) and the
-    optional parsed NftOwnershipAssigned notification (prev_owner source).
+    optional ownership notification and funding parent supplied by the caller.
 
     Returns `(new_block, extra)` — the produced NftTransferBlock (data set, NOT
     merged) plus the funding parent to consume in the purchase branch (`[]`
@@ -151,8 +151,9 @@ async def build_nft_transfer_core(
     if not data['nft']['exists']:
         return None, []
     extra: list[Block] = []
-    if block.previous_block is not None:
-        nft_purchase_data = await _try_get_nft_purchase_data(block, nft_transfer_message.new_owner.to_str(False))
+    if funding_parent is not None:
+        nft_purchase_data = await _try_get_nft_purchase_data(
+            funding_parent, nft_transfer_message.new_owner.to_str(False))
         if nft_purchase_data is not None and AccountId(nft_purchase_data['nft_address']) == data['nft']['address']:
             real_owner = AccountId(nft_purchase_data['real_prev_owner'])
             if real_owner != data['new_owner']:
@@ -161,7 +162,7 @@ async def build_nft_transfer_core(
                 data['marketplace_address'] = AccountId(nft_purchase_data['marketplace_address'])
                 data['price'] = Amount(nft_purchase_data['price'])
                 data['real_prev_owner'] = AccountId(nft_purchase_data['real_prev_owner'])
-                parent = _purchase_parent_to_consume(block.previous_block)
+                parent = _purchase_parent_to_consume(funding_parent)
                 if parent is not None:
                     extra.append(parent)
     new_block.data = data
@@ -183,7 +184,8 @@ class NftTransferBlockMatcher(BlockMatcher):
     async def build_block(self, block: Block, other_blocks: list['Block']):
         ownership_assigned_message = find_messages(other_blocks, NftOwnershipAssigned)
         ownership_message = ownership_assigned_message[0][1] if len(ownership_assigned_message) > 0 else None
-        new_block, extra = await build_nft_transfer_core(block, ownership_message)
+        new_block, extra = await build_nft_transfer_core(
+            block, ownership_message, block.previous_block)
         if new_block is None:
             return []
         new_block.merge_blocks([block] + extra + other_blocks)

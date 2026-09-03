@@ -40,6 +40,7 @@
 # Capture -> legacy role map:
 #   @transfer   the NftTransfer anchor (test_self target)
 #   @assigned   the NftOwnershipAssigned notification (prev_owner), when present
+#   @funding_parent  the optional unconsumed block immediately before the anchor
 
 opcode NftTransfer          = 0x5FCC3D14
 opcode NftOwnershipAssigned = 0x05138D91
@@ -54,13 +55,14 @@ matcher nft_transfer {
     op NftTransfer @transfer
       -> { maybe op NftOwnershipAssigned @assigned
          ; maybe op ExcessMessage @excess }
+      <- maybe peek any @funding_parent
 
     # HYBRID declarative build (C++-runnable). The core (NftTransfer/ownership
     # parse, nft-item lookup, nft_sale/nft_auction purchase detection) is the one
     # host fn; fields map from its namespace. The purchase-only marketplace/price/
     # real_prev_owner keys are `?:` (omit-when-null) to match the legacy variable-
     # key dict; the nested `nft` dict passes through as a field value.
-    let d = nft_transfer_data(transfer, assigned)
+    let d = nft_transfer_data(transfer, assigned, funding_parent)
     reject when d == null
     failed when transfer.failed
     out {

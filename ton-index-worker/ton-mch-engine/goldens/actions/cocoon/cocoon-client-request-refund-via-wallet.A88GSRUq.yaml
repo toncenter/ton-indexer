@@ -1,0 +1,154 @@
+# cocoon / Cocoon Client Request Refund (Via Wallet)
+# trace: A88GSRUqsE9po3lrzfdNf9D9XwXzDu7vQ9BqGx1VS94=
+actions:
+  - type: call_contract
+    anchor: call_contract#2565934c@63652083000007
+    id: SBC4whaLozavXwQqaDJ76AAS6AsCV6ZvPY/dnAl7B/8=
+    success: true
+    source: 0:C76C004F2AD8AD1F8D5AA4EF38F1FBEE40C33B04BB5FA0827FAE600EAE155F0F
+    source_secondary: null
+    destination: 0:0C3F87BD2FCDF764A96A919541B124D7E39447BA89457AFB317AF41FF3492068
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: 991742399
+    opcode: 0x2565934c
+    tx_hashes:
+      - NfgKm2IRaRGGYHJdupqfDRXRAcHzZt1icyxAtj1Q200=
+      - c431FId5asq4yMoQKzHokRjy+0KZOrQe07amtVa4w0M=
+    accounts:
+      - 0:0C3F87BD2FCDF764A96A919541B124D7E39447BA89457AFB317AF41FF3492068
+      - 0:C76C004F2AD8AD1F8D5AA4EF38F1FBEE40C33B04BB5FA0827FAE600EAE155F0F
+    start_lt: 63652083000007
+    end_lt: 63652083000008
+    start_utime: 1763236572
+    end_utime: 1763236572
+    mc_seqno_end: 54028387
+    parent_action_id: e+l3O3arn6oj5BzEZJoPxpdc06calE+WjiauVG9YqLo=
+    ancestor_type:
+      - cocoon_client_request_refund
+  - type: call_contract
+    anchor: call_contract#65448ff4@63652083000006
+    id: wk0+HQUv64Ff9udQPsol7FZVETzKIIdO4Dv7r+k6/Kg=
+    success: false
+    source: 0:C76C004F2AD8AD1F8D5AA4EF38F1FBEE40C33B04BB5FA0827FAE600EAE155F0F
+    source_secondary: null
+    destination: 0:19148F797A6D4F19C5235AF7D9FAA2D62D26F5C374B556279AA8CF44AB1C480D
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: 1
+    opcode: 0x65448ff4
+    tx_hashes:
+      - 7Ev2VynwZe8naMjSdC8zrK7PF7ef04WwJ9jmMBpE65c=
+      - c431FId5asq4yMoQKzHokRjy+0KZOrQe07amtVa4w0M=
+    accounts:
+      - 0:19148F797A6D4F19C5235AF7D9FAA2D62D26F5C374B556279AA8CF44AB1C480D
+      - 0:C76C004F2AD8AD1F8D5AA4EF38F1FBEE40C33B04BB5FA0827FAE600EAE155F0F
+    start_lt: 63652083000006
+    end_lt: 63652083000007
+    start_utime: 1763236572
+    end_utime: 1763236572
+    mc_seqno_end: 54028387
+    parent_action_id: e+l3O3arn6oj5BzEZJoPxpdc06calE+WjiauVG9YqLo=
+    ancestor_type:
+      - cocoon_client_request_refund
+  - type: call_contract
+    anchor: call_contract#9c69f376@63652083000002
+    id: DwbYeN9oc87fbF8h/qhSFGlyxcRBMJu4dfvb/9eFoUI=
+    success: true
+    source: 0:E796C95723646D2355A12E6B5E9646F8095406C6BF04FF14888E5D0783BF6336
+    source_secondary: null
+    destination: 0:0C3F87BD2FCDF764A96A919541B124D7E39447BA89457AFB317AF41FF3492068
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: 1000000000
+    opcode: 0x9c69f376
+    tx_hashes:
+      - A88GSRUqsE9po3lrzfdNf9D9XwXzDu7vQ9BqGx1VS94=
+      - MRYCfO1H7p/PuOyF1uqubb2aCqTuQPbi4d3xM/YPlXU=
+    accounts:
+      - 0:0C3F87BD2FCDF764A96A919541B124D7E39447BA89457AFB317AF41FF3492068
+      - 0:E796C95723646D2355A12E6B5E9646F8095406C6BF04FF14888E5D0783BF6336
+    start_lt: 63652083000002
+    end_lt: 63652083000003
+    start_utime: 1763236572
+    end_utime: 1763236572
+    mc_seqno_end: 54028387
+    parent_action_id: e+l3O3arn6oj5BzEZJoPxpdc06calE+WjiauVG9YqLo=
+    ancestor_type:
+      - cocoon_client_request_refund
+  - type: call_contract
+    anchor: call_contract#fafa6cc1@63652083000004
+    id: iGLinRehoT4jGqT1w9gFHEUM96FehFlIBWauAu1ukes=
+    success: true
+    source: 0:0C3F87BD2FCDF764A96A919541B124D7E39447BA89457AFB317AF41FF3492068
+    source_secondary: null
+    destination: 0:C76C004F2AD8AD1F8D5AA4EF38F1FBEE40C33B04BB5FA0827FAE600EAE155F0F
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: 998471200
+    opcode: 0xfafa6cc1
+    tx_hashes:
+      - MRYCfO1H7p/PuOyF1uqubb2aCqTuQPbi4d3xM/YPlXU=
+      - c431FId5asq4yMoQKzHokRjy+0KZOrQe07amtVa4w0M=
+    accounts:
+      - 0:0C3F87BD2FCDF764A96A919541B124D7E39447BA89457AFB317AF41FF3492068
+      - 0:C76C004F2AD8AD1F8D5AA4EF38F1FBEE40C33B04BB5FA0827FAE600EAE155F0F
+    start_lt: 63652083000004
+    end_lt: 63652083000005
+    start_utime: 1763236572
+    end_utime: 1763236572
+    mc_seqno_end: 54028387
+    parent_action_id: e+l3O3arn6oj5BzEZJoPxpdc06calE+WjiauVG9YqLo=
+    ancestor_type:
+      - cocoon_client_request_refund
+  - type: cocoon_client_request_refund
+    matcher: cocoon_client_request_refund
+    anchor: cocoon_client_request_refund@63652083000002
+    id: e+l3O3arn6oj5BzEZJoPxpdc06calE+WjiauVG9YqLo=
+    success: true
+    source: 0:0C3F87BD2FCDF764A96A919541B124D7E39447BA89457AFB317AF41FF3492068
+    source_secondary: null
+    destination: 0:C76C004F2AD8AD1F8D5AA4EF38F1FBEE40C33B04BB5FA0827FAE600EAE155F0F
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: null
+    opcode: null
+    cocoon_client_request_refund_data:
+      query_id: 0
+      via_wallet: true
+    tx_hashes:
+      - 7Ev2VynwZe8naMjSdC8zrK7PF7ef04WwJ9jmMBpE65c=
+      - A88GSRUqsE9po3lrzfdNf9D9XwXzDu7vQ9BqGx1VS94=
+      - MRYCfO1H7p/PuOyF1uqubb2aCqTuQPbi4d3xM/YPlXU=
+      - NfgKm2IRaRGGYHJdupqfDRXRAcHzZt1icyxAtj1Q200=
+      - c431FId5asq4yMoQKzHokRjy+0KZOrQe07amtVa4w0M=
+    accounts:
+      - 0:0C3F87BD2FCDF764A96A919541B124D7E39447BA89457AFB317AF41FF3492068
+      - 0:19148F797A6D4F19C5235AF7D9FAA2D62D26F5C374B556279AA8CF44AB1C480D
+      - 0:C76C004F2AD8AD1F8D5AA4EF38F1FBEE40C33B04BB5FA0827FAE600EAE155F0F
+      - 0:E796C95723646D2355A12E6B5E9646F8095406C6BF04FF14888E5D0783BF6336
+    start_lt: 63652083000002
+    end_lt: 63652083000008
+    start_utime: 1763236572
+    end_utime: 1763236572
+    mc_seqno_end: 54028387

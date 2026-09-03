@@ -1,0 +1,93 @@
+# vesting / Vesting add whitelist
+# trace: 03XZQ1CkN3nBPi4IICznU8BWFghrneCV17qcdq33BrA=
+actions:
+  - type: call_contract
+    anchor: call_contract#7258a69b@55743243000002
+    id: RUPYk7Lc7RFiGHYg8pfU/IzNS0DsFTB4Ma/iTI+9jCc=
+    success: true
+    source: 0:FD8B2FC26CB0FE2D27B911FD0409D72DEDA2089C1EA7722D2910EA5354900B2D
+    source_secondary: null
+    destination: 0:E9D864419C6A77FBC1D2EC7AFE840C1C349FCC1D2E19520FC73F547DD1721E9E
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: 500000000
+    opcode: 0x7258a69b
+    tx_hashes:
+      - 03XZQ1CkN3nBPi4IICznU8BWFghrneCV17qcdq33BrA=
+      - N8B/OJbZp7RSfQ6anS0VEQNoxsdylsghLOXHguYLuBg=
+    accounts:
+      - 0:E9D864419C6A77FBC1D2EC7AFE840C1C349FCC1D2E19520FC73F547DD1721E9E
+      - 0:FD8B2FC26CB0FE2D27B911FD0409D72DEDA2089C1EA7722D2910EA5354900B2D
+    start_lt: 55743243000002
+    end_lt: 55743243000003
+    start_utime: 1743862766
+    end_utime: 1743862766
+    mc_seqno_end: 46539724
+    parent_action_id: H8tvWyCLG3G8sBG/ARKY/VrZVd+5pP16vaAiW0OFHk0=
+    ancestor_type:
+      - vesting_add_whitelist
+  - type: call_contract
+    anchor: call_contract#f258a69b@55743243000004
+    id: fES60u0BCT2IzJ/Lpj4lWCp3xLmp4GCw2nSkyaFr7zo=
+    success: true
+    source: 0:E9D864419C6A77FBC1D2EC7AFE840C1C349FCC1D2E19520FC73F547DD1721E9E
+    source_secondary: null
+    destination: 0:FD8B2FC26CB0FE2D27B911FD0409D72DEDA2089C1EA7722D2910EA5354900B2D
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: 496523600
+    opcode: 0xf258a69b
+    tx_hashes:
+      - BbxgEIO8vDScr3AXNWyL1CsU3D1cv8VIvE4yLMgJYic=
+      - N8B/OJbZp7RSfQ6anS0VEQNoxsdylsghLOXHguYLuBg=
+    accounts:
+      - 0:E9D864419C6A77FBC1D2EC7AFE840C1C349FCC1D2E19520FC73F547DD1721E9E
+      - 0:FD8B2FC26CB0FE2D27B911FD0409D72DEDA2089C1EA7722D2910EA5354900B2D
+    start_lt: 55743243000004
+    end_lt: 55743243000005
+    start_utime: 1743862766
+    end_utime: 1743862766
+    mc_seqno_end: 46539724
+    parent_action_id: H8tvWyCLG3G8sBG/ARKY/VrZVd+5pP16vaAiW0OFHk0=
+    ancestor_type:
+      - vesting_add_whitelist
+  - type: vesting_add_whitelist
+    matcher: vesting_add_whitelist
+    anchor: vesting_add_whitelist@55743243000002
+    id: H8tvWyCLG3G8sBG/ARKY/VrZVd+5pP16vaAiW0OFHk0=
+    success: true
+    source: 0:FD8B2FC26CB0FE2D27B911FD0409D72DEDA2089C1EA7722D2910EA5354900B2D
+    source_secondary: null
+    destination: 0:E9D864419C6A77FBC1D2EC7AFE840C1C349FCC1D2E19520FC73F547DD1721E9E
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: null
+    opcode: null
+    vesting_add_whitelist_data:
+      accounts_added:
+        - "-1:ECB7B7B4C200424F8D837AC9E0C5EDCA800A162546CD5706FB86549C0FE03038"
+      query_id: 0
+    tx_hashes:
+      - 03XZQ1CkN3nBPi4IICznU8BWFghrneCV17qcdq33BrA=
+      - BbxgEIO8vDScr3AXNWyL1CsU3D1cv8VIvE4yLMgJYic=
+      - N8B/OJbZp7RSfQ6anS0VEQNoxsdylsghLOXHguYLuBg=
+    accounts:
+      - 0:E9D864419C6A77FBC1D2EC7AFE840C1C349FCC1D2E19520FC73F547DD1721E9E
+      - 0:FD8B2FC26CB0FE2D27B911FD0409D72DEDA2089C1EA7722D2910EA5354900B2D
+    start_lt: 55743243000002
+    end_lt: 55743243000005
+    start_utime: 1743862766
+    end_utime: 1743862766
+    mc_seqno_end: 46539724

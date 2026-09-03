@@ -1,11 +1,11 @@
-# Coffee MEV-protect hold-funds matcher. It needs no host functions or parsers.
+# Coffee MEV-protect hold-funds and failed-swap matchers.
 #
-# The legacy matcher never reads a message body on either arm; every field comes
+# The hold-funds matcher never reads a message body on either arm; every field comes
 # off the envelope (TON arm) or off the prebuilt jetton_transfer's data (jetton
 # arm). It is one matcher with a two-kind `test_self`:
 #
 #     (CallContractBlock and opcode == 0x6bc79e7e)
-#  or (JettonTransferBlock and int(data["payload_opcode"], 16) == 0x6bc79e7e)
+#  or (JettonTransferBlock and data["payload_opcode"] == 0x6bc79e7e)
 #
 # Each arm uses a separate matcher.
 # A mixed `(op X @m ^ btype jetton_transfer @m where …)` anchor group can only
@@ -23,12 +23,9 @@
 # their relative order carries nothing. Same construct as the
 # telegram_nft_purchase / telegram_nft_assigned split.
 #
-# `payload_opcode` string equality == the legacy int comparison: the field is
-# Python `hex(sum_type)` (messages/jettons.py:51) and C++ `"0x%x"`
-# (parse/ParseJettons.cpp:105) — both lowercase, unpadded, so "0x6bc79e7e" is
-# the one spelling either host can produce. A transfer with no forward payload
-# has the key present-null (=> test false); a legacy `int(None, 16)` raises and
-# is swallowed by the matcher's bare `except` (=> false too).
+# `payload_opcode` carries the parsed uint32, so the matcher compares it
+# directly with the hold-funds opcode. A missing forward payload remains null
+# and does not match.
 #
 # THE PARENT. `GenericMatcher(optional=True, test_self_func=lambda b: True,
 # child_matcher=ContractMatcher(CoffeeServiceFee))` — any parent block that also
@@ -50,11 +47,11 @@
 # priority-90 jetton specs (default priority 100) is what makes the
 # jetton_transfer blocks exist at all.
 #
-# CoffeeMevProtectFailedSwapMatcher is not represented here. Its jetton arm needs a
-# forward-payload parse the language cannot express (`parse` is node-only), and
-# its serializer fill has no dispatch arm, so its result would contain only nulls.
+# Failed-swap recipients are parsed strictly from the call body or the jetton
+# transfer's base64 forward payload.
 
 opcode CoffeeMevProtectHoldFunds = 0x6BC79E7E
+opcode CoffeeMevProtectFailedSwap = 0xEE51CE51
 opcode CoffeeServiceFee          = 0xC0FFEEA0
 
 # --- TON arm: the raw 0x6bc79e7e call to the MEV contract. -------------------
@@ -82,7 +79,7 @@ matcher coffee_mev_protect_hold_funds_jetton {
     produces coffee_mev_protect_hold_funds
     entry    @transfer
 
-    btype jetton_transfer @transfer where (.payload_opcode == "0x6bc79e7e")
+    btype jetton_transfer @transfer where (.payload_opcode == 0x6bc79e7e)
       <- maybe ( any -> { op CoffeeServiceFee } )
 
     out {
@@ -92,5 +89,31 @@ matcher coffee_mev_protect_hold_funds_jetton {
         sender_wallet:       transfer.data.sender_wallet
         mev_contract_wallet: null
         amount:              transfer.data.amount
+    }
+}
+
+# --- failed swap, TON arm: a bare call with no service-fee parent. -----------
+matcher coffee_mev_protect_failed_swap {
+    produces coffee_mev_protect_failed_swap
+    entry    @call
+
+    op CoffeeMevProtectFailedSwap @call
+
+    out {
+        recipient: (parse call as CoffeeMevProtectFailedSwap).recipient
+        asset:     ton_asset()
+    }
+}
+
+# --- failed swap, jetton arm: parse the transfer's forward payload. ----------
+matcher coffee_mev_protect_failed_swap_jetton {
+    produces coffee_mev_protect_failed_swap
+    entry    @transfer
+
+    btype jetton_transfer @transfer where (.payload_opcode == 0xee51ce51)
+
+    out {
+        recipient: (parse transfer.data.forward_payload as CoffeeMevProtectFailedSwap).recipient
+        asset:     transfer.data.asset
     }
 }

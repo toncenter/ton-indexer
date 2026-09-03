@@ -4,7 +4,6 @@
 
 #include <cstddef>
 #include <cstdint>
-#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -14,8 +13,6 @@ namespace mch {
 struct EmuActionRoute {
   std::string type;
   std::vector<std::string> accounts;
-
-  bool operator==(const EmuActionRoute &) const = default;
 };
 
 struct EmuActionPayload {
@@ -34,20 +31,5 @@ struct EmuActionPayload {
   // Minimum node finality, shared by the wire payload and write guard.
   std::uint8_t finality{0};
 };
-
-// Reports whether `stored` is more advanced than the emission. Missing or
-// malformed values permit a repair write rather than blocking updates.
-inline bool actions_write_is_stale(const std::optional<std::string> &stored, std::uint8_t emission_finality) {
-  if (!stored) {
-    return false;  // nothing stored: nothing to downgrade
-  }
-  int stored_finality = -1;
-  try {
-    stored_finality = std::stoi(*stored);
-  } catch (const std::exception &) {
-    return false;  // unreadable: treat as absent rather than block writes forever
-  }
-  return stored_finality > static_cast<int>(emission_finality);
-}
 
 }  // namespace mch

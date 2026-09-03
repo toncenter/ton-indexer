@@ -12,13 +12,11 @@
 
 namespace mch {
 
-// Reads, decompresses and decodes one fixture file.
 td::Result<Trace> load_trace(const std::string &path);
 
-// Fixture path -> the full block substrate (Trace -> EventTree -> BlockArena).
-// tree.root == nullptr (empty trace) is an error. Lifted out of BlockTree.cpp:
-// a product TU must not reference the fixture reader, or every target that
-// links mch-classify drags lz4/msgpack in with it.
+// Fixture path -> Trace -> EventTree -> BlockArena. Empty traces (null root)
+// are errors. A product TU must not reference this reader, or every
+// mch-classify link pulls in lz4/msgpack.
 td::Result<TraceContext> load_trace_context(const std::string &path);
 
 }  // namespace mch

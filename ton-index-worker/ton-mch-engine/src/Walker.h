@@ -6,6 +6,7 @@
 #include "ExprRuntime.h"
 #include "IrTables.h"
 
+#include <cstdint>
 #include <optional>
 #include <stdexcept>
 #include <string>
@@ -14,6 +15,10 @@
 
 namespace mch {
 
+// The two service opcodes the walker treats as aux and classify appends under include_excess / include_bounces.
+inline constexpr std::uint32_t kExcessOpcode = 0xD53276DB;
+inline constexpr std::uint32_t kBounceOpcode = 0xFFFFFFFF;
+
 // Generated where_expr functions keyed by artifact-global node id. Built once
 // per run by prepare_classify (from gen_wheres_ir) and carried in
 // ClassifySetup; matcher_match takes it by reference, so a walk without a table
@@ -21,9 +26,8 @@ namespace mch {
 using WhereFn = EvalResult (*)(const WhereEnv &);
 using WhereTable = std::unordered_map<int, WhereFn>;
 
-// Thrown by the match recursion when the block-tree walk exceeds the depth cap
-// (Walker.cpp kMaxMatchDepth). Mirrors Python's RecursionError -> per-trace
-// fallback: the classify trace boundary catches it and marks the trace failed.
+// Stack guard for pathological block-tree recursion beyond kMaxMatchDepth.
+// The classify boundary catches it and marks the trace failed.
 struct MatchDepthExceeded : std::runtime_error {
   MatchDepthExceeded() : std::runtime_error("match recursion depth exceeded") {}
 };

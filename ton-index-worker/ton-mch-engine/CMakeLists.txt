@@ -22,11 +22,10 @@ target_compile_features(mch-codegen PRIVATE cxx_std_20)
 target_link_libraries(mch-codegen tdutils mch-ir-load)
 
 # --- generated sources ---------------------------------------------------------
-# EVERY generated file (mch-codegen tables + tlbc parsers) is a build step whose
-# output lives in the build tree (${CMAKE_CURRENT_BINARY_DIR}/generated/), never
-# in the source tree or git. The manifest/specs, conformance JSON, and
-# tlb/mch-msgs.tlb are version-controlled inputs; the production IR and .cpp
-# tables are derived artifacts.
+# EVERY generated mch-codegen table is a build step whose output lives in the
+# build tree (${CMAKE_CURRENT_BINARY_DIR}/generated/), never in the source tree
+# or git. The manifest/specs and conformance JSON are version-controlled inputs;
+# the production IR and .cpp tables are derived artifacts.
 #
 # Per-document tables: mch-codegen emits gen_*_<suffix>() symbols, so the tables
 # generated from the CLASSIFY artifact and the one from ir/build_vectors.json
@@ -85,7 +84,7 @@ add_custom_command(
 )
 
 # The document the CLASSIFY tables (matchers + builds + wheres) are generated
-# from. -DMCH_TESTBED_IR=<artifact.json> lets a phase run classify against an
+# from. -DMCH_TESTBED_IR=<artifact.json> lets a build run classify against an
 # experimental artifact without replacing the generated production IR; the table
 # SYMBOLS are unchanged, so swapping the document is all the knob does and no
 # run-time table selection is needed. All three tables come from this one
@@ -115,38 +114,28 @@ add_custom_command(
     COMMENT "Generate MCH build-program functions from the IR artifact (mch-codegen --builds)"
 )
 add_custom_command(
+    OUTPUT ${MCH_GEN_DIR}/btypes_gen.h
+    COMMAND mch-codegen --btypes ${MCH_CLASSIFY_ARTIFACT} -o ${MCH_GEN_DIR}/btypes_gen.h
+    DEPENDS mch-codegen ${MCH_CLASSIFY_ARTIFACT}
+    COMMENT "Generate btype constants header (mch-codegen --btypes)"
+)
+add_custom_command(
     OUTPUT ${MCH_GEN_DIR}/matchers_ir_generated.cpp
     COMMAND mch-codegen --matchers ${MCH_CLASSIFY_ARTIFACT}
             --suffix ir -o ${MCH_GEN_DIR}/matchers_ir_generated.cpp
     DEPENDS mch-codegen ${MCH_CLASSIFY_ARTIFACT}
     COMMENT "Generate the MCH matcher table from the IR artifact (mch-codegen --matchers)"
 )
-# TL-B jetton-family parsers from tlb/mch-msgs.tlb via tlbc (same build-tree
-# discipline as the mch-codegen outputs above).
-set(MCH_MSGS_TLB
-    ${MCH_GEN_DIR}/mch-msgs-tlb.cpp
-    ${MCH_GEN_DIR}/mch-msgs-tlb.h
-)
-add_custom_command(
-    WORKING_DIRECTORY ${MCH_GEN_DIR}
-    COMMAND tlbc -o mch-msgs-tlb -n mchmsg::gen -z ${CMAKE_CURRENT_SOURCE_DIR}/tlb/mch-msgs.tlb
-    COMMENT "Generate mch-msgs tlb source files"
-    OUTPUT ${MCH_MSGS_TLB}
-    DEPENDS tlbc ${CMAKE_CURRENT_SOURCE_DIR}/tlb/mch-msgs.tlb
-)
-
-# The generated matcher, build and where tables are linked by the classify loop;
-# the generated TL-B parsers are linked by the retained hand parser registry.
+# The generated matcher, build and where tables are linked by the classify loop.
 set(MCH_GENERATED_SOURCES
+    ${MCH_GEN_DIR}/btypes_gen.h
     ${MCH_GEN_DIR}/matchers_ir_generated.cpp
     ${MCH_GEN_DIR}/builds_ir_generated.cpp
     ${MCH_GEN_DIR}/wheres_ir_generated.cpp
-    ${MCH_GEN_DIR}/mch-msgs-tlb.cpp
 )
 add_custom_target(mch_generate_sources
     DEPENDS ${MCH_GENERATED_IR} ${MCH_GENERATED_IR_SECOND}
-            ${MCH_GENERATED_SOURCES}
-            ${MCH_GEN_DIR}/mch-msgs-tlb.h)
+            ${MCH_GENERATED_SOURCES})
 
 # --- mch-classify: the classification CORE static library (Phase G step 3,
 # The pure pipeline TUs (no CLI/dump/harness) - ton-index-
@@ -162,33 +151,24 @@ set(TON_ABI_GENERATED_DIR ${CMAKE_CURRENT_BINARY_DIR}/../ton-abi/generated)
 # registered in AbiBridge.cpp. Adding a NEW .tolk declaration file = one line here
 # (a new decl in an EXISTING contract needs no CMake edit at all; the
 # .abi.json is committed alongside the declaration; its generated pair is a build output).
-set(ABI_PROD_PAIRS
-    ${TON_ABI_GENERATED_DIR}/jetton_gen.cpp
-    ${TON_ABI_GENERATED_DIR}/multisig_gen.cpp
-    ${TON_ABI_GENERATED_DIR}/pton_gen.cpp
-    ${TON_ABI_GENERATED_DIR}/stonfi_gen.cpp
-    ${TON_ABI_GENERATED_DIR}/dedust_gen.cpp
-    # DeDust CPMM V2 claim_reward family.
-    ${TON_ABI_GENERATED_DIR}/dedust_v2_gen.cpp
-    ${TON_ABI_GENERATED_DIR}/coffee_gen.cpp
-    ${TON_ABI_GENERATED_DIR}/coffee_staking_withdraw3_gen.cpp
-    ${TON_ABI_GENERATED_DIR}/evaa_gen.cpp
-    ${TON_ABI_GENERATED_DIR}/evaa_supply_forward_gen.cpp
-    ${TON_ABI_GENERATED_DIR}/jvault_gen.cpp
-    ${TON_ABI_GENERATED_DIR}/jvault_payload_gen.cpp
-    ${TON_ABI_GENERATED_DIR}/subscriptions_gen.cpp
-    ${TON_ABI_GENERATED_DIR}/tonco_gen.cpp
-    ${TON_ABI_GENERATED_DIR}/teleitem_gen.cpp
-    ${TON_ABI_GENERATED_DIR}/nft_sale_gen.cpp
-    ${TON_ABI_GENERATED_DIR}/tonstakers_gen.cpp
-    ${TON_ABI_GENERATED_DIR}/cocoon_gen.cpp
-)
+# Production ABI parser TUs: one per declaration file in ../ton-abi/abi/.
+# That directory is the single manifest — adding a .abi.json there adds the
+# generated pair here automatically.
+file(GLOB MCH_ABI_PROD_ABIS CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/../ton-abi/abi/*.abi.json)
+set(ABI_PROD_PAIRS)
+foreach(MCH_ABI_INPUT IN LISTS MCH_ABI_PROD_ABIS)
+    get_filename_component(MCH_ABI_NAME "${MCH_ABI_INPUT}" NAME)
+    string(REGEX REPLACE "\\.abi\\.json$" "" MCH_ABI_STEM "${MCH_ABI_NAME}")
+    string(REPLACE "-" "_" MCH_ABI_STEM "${MCH_ABI_STEM}")
+    list(APPEND ABI_PROD_PAIRS "${TON_ABI_GENERATED_DIR}/${MCH_ABI_STEM}_gen.cpp")
+endforeach()
 
 set_source_files_properties(${ABI_PROD_PAIRS} PROPERTIES GENERATED TRUE)
 
 add_library(mch-classify STATIC
     src/TraceAggregates.cpp
     src/BlockTree.cpp
+    src/WalletRequest.cpp
     src/Value.cpp
     src/ExprRuntime.cpp
     src/Walker.cpp
@@ -198,16 +178,13 @@ add_library(mch-classify STATIC
     src/host/DexRecords.cpp
     src/host/BlockViews.cpp
     src/host/HostAdapter.cpp
-    src/host/HostGetgems.cpp
     src/host/HostNominator.cpp
     src/host/HostEvaa.cpp
     src/host/HostDedust.cpp
     src/host/HostLayerZero.cpp
     src/host/HostTonstakers.cpp
-    src/host/HostDns.cpp
     src/host/HostVesting.cpp
     src/host/HostCocoon.cpp
-    src/host/HostJvault.cpp
     src/host/HostNft.cpp
     src/host/HostNftSale.cpp
     src/host/HostTgbtc.cpp
@@ -230,15 +207,12 @@ add_library(mch-classify STATIC
     src/parse/ParseJettons.cpp
     src/parse/ParseDns.cpp
     src/parse/ParseVesting.cpp
-    src/parse/ParseDedust.cpp
-    src/parse/ParseEvaa.cpp
-    src/parse/ParseLayerZero.cpp
     ${MCH_GENERATED_SOURCES}
 )
 target_include_directories(mch-classify
     PUBLIC src
-    # Kept-hand parser TUs include "generated/mch-msgs-tlb.h" -> resolves into
-    # the build tree; nothing generated ever lands under src/.
+    # btypes_gen.h; PUBLIC because harness TUs include it too.
+    PUBLIC ${MCH_GEN_DIR}
     PRIVATE ${CMAKE_CURRENT_BINARY_DIR}
     # AbiBridge.cpp includes the ABI_PROD_PAIRS generated headers.
     PRIVATE ${TON_ABI_GENERATED_DIR}
@@ -328,13 +302,14 @@ set_source_files_properties(${ABI_BRIDGE_TEST_FIXTURES} PROPERTIES GENERATED TRU
 
 add_executable(ton-mch-engine
     src/main.cpp
-    src/Classify.cpp
-    src/AbiBridgeTest.cpp
-    src/EmuActionSerializeTest.cpp
-    src/EmuCelldbLookupTest.cpp
+    harness/Classify.cpp
+    harness/AbiBridgeTest.cpp
+    harness/EmuActionSerializeTest.cpp
+    harness/EmuCelldbLookupTest.cpp
+    harness/GhostExternalTest.cpp
     ${ABI_BRIDGE_TEST_FIXTURES}
 )
-target_include_directories(ton-mch-engine PRIVATE src ${CMAKE_CURRENT_BINARY_DIR} ${TON_ABI_GENERATED_DIR})
+target_include_directories(ton-mch-engine PRIVATE src harness ${CMAKE_CURRENT_BINARY_DIR} ${TON_ABI_GENERATED_DIR})
 target_compile_features(ton-mch-engine PRIVATE cxx_std_20)
 # mch-emu (not just mch-classify): --actions-msgpack-test gates the write-back
 # writer, which lives there. Still no emulator dependency — mch-emu-bridge is
@@ -348,8 +323,6 @@ add_dependencies(ton-mch-engine mch_generate_sources)
 
 # --- CTest wiring --------------------------------------------------------------
 # The deterministic, self-contained gate modes as native tests (`ctest -R mch`).
-# The differential A/B gates (parse-dump / classify vs the Python twins) stay
-# OUT — they need the fixture corpus and Python and are run from the harness.
 enable_testing()
 add_test(NAME mch_abi_bridge
     COMMAND ton-mch-engine --abi-bridge-test)
@@ -357,6 +330,17 @@ add_test(NAME mch_actions_msgpack
     COMMAND ton-mch-engine --actions-msgpack-test)
 add_test(NAME mch_celldb_tier2
     COMMAND ton-mch-engine --celldb-tier2-test)
+add_test(NAME mch_ghost_external
+    COMMAND ton-mch-engine --ghost-external-test)
+add_test(NAME mch_actions_golden
+    COMMAND "${CMAKE_COMMAND}"
+            -DENGINE=$<TARGET_FILE:ton-mch-engine>
+            -DTRACES=${CMAKE_CURRENT_SOURCE_DIR}/../../indexer/tests/traces
+            -DGOLDEN_DIR=${CMAKE_CURRENT_SOURCE_DIR}/goldens/actions
+            -DFIXTURES=${CMAKE_CURRENT_SOURCE_DIR}/goldens/fixtures.json
+            -DWORK_DIR=${CMAKE_CURRENT_BINARY_DIR}/actions_golden_check
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/ActionsGoldenCheck.cmake)
+
 add_test(NAME mch_ir_equivalence
     COMMAND "${CMAKE_COMMAND}" -E compare_files
             "${MCH_GENERATED_IR}" "${MCH_GENERATED_IR_SECOND}")

@@ -1,71 +1,78 @@
-// Jetton-family message-body parsers (jettons.py). See parse/PSlice.h for the
-// shared machinery and MsgParse.cpp's header for the pytoniq-parity catalogue.
+// Jetton-family parsers. Shared machinery is in parse/PSlice.h.
 #include "parse/Parsers.h"
 
+#include "AbiTryFirst.h"
 #include "parse/PSlice.h"
 
-#include "common/refint.h"
+#include "jetton_gen.h"
+#include "jetton_payloads_gen.h"
+
+#include "vm/cells/CellBuilder.h"
 #include "vm/cellslice.h"
 
-#include "generated/mch-msgs-tlb.h"
-
-#include <cstdio>
 #include <string>
 #include <utility>
-#include <vector>
+#include <variant>
 
 namespace mch {
 
 namespace {
 
-// Serialized BOC bytes use the native writer. The container
-// bytes differ from pytoniq's on multi-ref trees, but payload fields are
-// compared/rendered by cell root hash, so the difference is invisible.
+// Native BOC writer: container bytes differ on multi-ref trees, but payload
+// fields are compared by cell root hash, so the difference is invisible.
 td::Result<std::string> boc_bytes(const td::Ref<vm::Cell> &c) {
-  return td_boc_serialize(c);
+  return td_boc_serialize_crc(c);
 }
 
-td::Result<Value> addr_value(td::Ref<vm::CellSlice> csr) {
-  vm::CellSlice cs{*csr};
+td::Result<Value> legacy_address_value(const ton_abi::AbiAddress &address) {
+  vm::CellBuilder cb;
+  TRY_STATUS(ton_abi::store_address_any(cb, address));
+  vm::CellSlice cs = vm::load_cell_slice(cb.finalize());
   return load_address_py(cs);
 }
 
-// stonfi swap body inside JettonTransfer.forward_payload (sum type 0x25938561).
-td::Result<Value> parse_stonfi_swap(vm::CellSlice &cs) {
-  TRY_RESULT(jw, load_address_py(cs));
-  TRY_RESULT(min_amount, load_coins_py(cs));
-  TRY_RESULT(user, load_address_py(cs));
+td::Result<td::Ref<vm::Cell>> remaining_slice_to_cell(
+    const td::Ref<vm::CellSlice> &slice) {
+  if (slice.is_null()) {
+    return td::Status::Error("transfer: null remaining slice");
+  }
+  vm::CellBuilder cb;
+  if (!cb.append_cellslice_bool(*slice)) {
+    return td::Status::Error("transfer: cannot materialize remaining slice");
+  }
+  return cb.finalize();
+}
+
+td::Result<Value> decode_comment(const td::Ref<vm::CellSlice> &comment) {
+  vm::CellSlice comment_slice = *comment;
+  TRY_RESULT(bytes, load_snake_bytes(comment_slice));
+  return Value::make_bytes(std::move(bytes));
+}
+
+td::Result<Value> adapt_stonfi_swap(
+    const ton_abi::gen::jetton_payloads::StonfiSwapPayload &swap) {
+  TRY_RESULT(jetton_wallet, legacy_address_value(swap.jetton_wallet));
+  TRY_RESULT(user_address, legacy_address_value(swap.user_address));
   Value::Fields f;
-  f.emplace_back("jetton_wallet", std::move(jw));
-  f.emplace_back("min_amount", Value::make_int(std::move(min_amount)));
-  f.emplace_back("user_address", std::move(user));
+  f.emplace_back("jetton_wallet", std::move(jetton_wallet));
+  f.emplace_back("min_amount", Value::make_int(swap.min_amount));
+  f.emplace_back("user_address", std::move(user_address));
   return Value::make_dict(std::move(f));
 }
 
 }  // namespace
 
-// Per-family adapters
-
 td::Result<Value> parse_jetton_transfer(const td::Ref<vm::Cell> &body) {
   TRY_RESULT(ctx, open_body(body));
   auto &cs = ctx.cs;
-  mchmsg::gen::MchJettonTransfer::Record rec;
-  if (!mchmsg::gen::t_MchJettonTransfer.unpack(cs, rec)) {
-    return td::Status::Error("tlb: transfer unpack failed");
-  }
-  TRY_RESULT(amount, var_uint16(rec.amount));
-  TRY_RESULT(destination, addr_value(rec.destination));
-  TRY_RESULT(response, addr_value(rec.response));
-  td::Ref<vm::Cell> cp;
-  if (!rec.custom_payload.write().fetch_maybe_ref(cp)) {
-    return td::Status::Error("transfer: bad custom_payload");
-  }
+  TRY_RESULT(rec, ton_abi::gen::jetton::JettonTransfer::from_slice(cs));
+  TRY_RESULT(destination, legacy_address_value(rec.destination));
+  TRY_RESULT(response, legacy_address_value(rec.response_destination));
   Value custom_payload = Value::null();
-  if (cp.not_null()) {
-    TRY_RESULT(cp_boc, boc_bytes(cp));
+  if (rec.custom_payload && rec.custom_payload->not_null()) {
+    TRY_RESULT(cp_boc, boc_bytes(*rec.custom_payload));
     custom_payload = Value::make_bytes(std::move(cp_boc));
   }
-  TRY_RESULT(forward_amount, var_uint16(rec.forward_amount));
 
   Value forward_payload = Value::null();
   Value comment = Value::null();
@@ -76,60 +83,73 @@ td::Result<Value> parse_jetton_transfer(const td::Ref<vm::Cell> &body) {
   std::string sum_type;
 
   if (cs.size() > 0) {
-    bool in_ref = cs.fetch_ulong(1) != 0;
-    PSlice ps;
-    if (in_ref) {
-      if (cs.size_refs() == 0) {
-        return td::Status::Error("transfer: forward_payload ref missing");
-      }
-      ps = pslice_from_cell(cs.fetch_ref());
+    TRY_RESULT(tail, ton_abi::gen::jetton::JettonForwardTail_from_slice(cs));
+    td::Ref<vm::Cell> payload_cell;
+    if (const auto *in_ref =
+            std::get_if<ton_abi::gen::jetton::JettonForwardPayloadRef>(&tail)) {
+      payload_cell = in_ref->value;
     } else {
-      // pytoniq boc.copy(): remaining bits, but refs reset to the FULL body
-      // ref list with offset 0 (Slice.copy() does not preserve ref_offset).
-      ps.cs = cs;
-      ps.refs = ctx.all_refs;
-      ps.off = 0;
+      const auto &inline_payload =
+          std::get<ton_abi::gen::jetton::JettonForwardPayloadInline>(tail);
+      TRY_RESULT(materialized, remaining_slice_to_cell(inline_payload.value));
+      payload_cell = std::move(materialized);
     }
-    // _load_forward_payload
+
+    PSlice ps = pslice_from_cell(payload_cell);
     if (ps.cs.size() > 0) {
-      TRY_RESULT(fp_cell, pslice_to_cell(ps));
-      TRY_RESULT(fp_boc, boc_bytes(fp_cell));
+      TRY_RESULT(fp_boc, boc_bytes(payload_cell));
       forward_payload = Value::make_bytes(std::move(fp_boc));
       if (ps.cs.size() < 32) {
         has_sum_type = true;
         sum_type = "Unknown";
       } else {
         auto st = static_cast<td::uint32>(ps.cs.fetch_ulong(32));
-        char buf[16];
-        std::snprintf(buf, sizeof(buf), "0x%x", st);  // Python hex()
-        payload_sum_type = Value::make_str(buf);
-        if (st == 0) {
-          has_sum_type = true;
-          sum_type = "TextComment";
-          auto r = load_snake_bytes(ps);
-          if (r.is_ok()) {
-            comment = Value::make_bytes(r.move_as_ok());
-          } else {
-            sum_type = "Unknown";
-          }
-        } else if (st == 0x2167da4b) {
-          has_sum_type = true;
-          sum_type = "EncryptedTextComment";
-          auto r = load_snake_bytes(ps);
-          if (r.is_ok()) {
-            comment = Value::make_bytes(r.move_as_ok());
-            encrypted_comment = true;
-          } else {
-            sum_type = "Unknown";
-          }
-        } else if (st == 0x25938561) {
-          auto r = parse_stonfi_swap(ps.cs);
-          if (r.is_ok()) {
-            stonfi_swap_body = r.move_as_ok();
-            // Python does NOT set sum_type on this path.
-          } else {
+        payload_sum_type = Value::make_int(refint_u64(st));
+        if (st == 0 || st == 0x2167da4b || st == 0x25938561) {
+          namespace payloads = ton_abi::gen::jetton_payloads;
+          if (st == 0) {
+            auto match = try_parse_first<payloads::TextCommentPayload>(payload_cell);
             has_sum_type = true;
-            sum_type = "Unknown";
+            sum_type = "TextComment";
+            const auto *parsed =
+                match ? std::get_if<payloads::TextCommentPayload>(&*match) : nullptr;
+            auto decoded = parsed ? decode_comment(parsed->comment)
+                                  : td::Result<Value>(
+                                        td::Status::Error("text comment payload did not match"));
+            if (decoded.is_ok()) {
+              comment = decoded.move_as_ok();
+            } else {
+              sum_type = "Unknown";
+            }
+          } else if (st == 0x2167da4b) {
+            auto match = try_parse_first<payloads::EncryptedCommentPayload>(payload_cell);
+            has_sum_type = true;
+            sum_type = "EncryptedTextComment";
+            const auto *parsed =
+                match ? std::get_if<payloads::EncryptedCommentPayload>(&*match) : nullptr;
+            auto decoded = parsed ? decode_comment(parsed->comment)
+                                  : td::Result<Value>(td::Status::Error(
+                                        "encrypted comment payload did not match"));
+            if (decoded.is_ok()) {
+              comment = decoded.move_as_ok();
+              encrypted_comment = true;
+            } else {
+              sum_type = "Unknown";
+            }
+          } else {
+            auto match = try_parse_first<payloads::StonfiSwapPayload>(payload_cell);
+            const auto *parsed =
+                match ? std::get_if<payloads::StonfiSwapPayload>(&*match) : nullptr;
+            auto decoded = parsed ? adapt_stonfi_swap(*parsed)
+                                  : td::Result<Value>(
+                                        td::Status::Error("stonfi payload did not match"));
+            if (decoded.is_ok()) {
+              stonfi_swap_body = decoded.move_as_ok();
+              // No sum_type on Ston.fi success. Intentional.
+            } else {
+              has_sum_type = true;
+              sum_type = "Unknown";
+            }
           }
         } else {
           has_sum_type = true;
@@ -141,11 +161,11 @@ td::Result<Value> parse_jetton_transfer(const td::Ref<vm::Cell> &body) {
 
   Value::Fields f;
   f.emplace_back("query_id", Value::make_int(refint_u64(rec.query_id)));
-  f.emplace_back("amount", Value::make_int(std::move(amount)));
+  f.emplace_back("amount", Value::make_int(std::move(rec.amount)));
   f.emplace_back("destination", std::move(destination));
   f.emplace_back("response", std::move(response));
   f.emplace_back("custom_payload", std::move(custom_payload));
-  f.emplace_back("forward_amount", Value::make_int(std::move(forward_amount)));
+  f.emplace_back("forward_amount", Value::make_int(std::move(rec.forward_ton_amount)));
   f.emplace_back("comment", std::move(comment));
   f.emplace_back("encrypted_comment", Value::make_bool(encrypted_comment));
   f.emplace_back("payload_sum_type", std::move(payload_sum_type));
@@ -154,40 +174,6 @@ td::Result<Value> parse_jetton_transfer(const td::Ref<vm::Cell> &body) {
   if (has_sum_type) {
     f.emplace_back("sum_type", Value::make_str(std::move(sum_type)));
   }
-  return Value::make_obj(std::move(f));
-}
-
-// JettonInternalTransfer, JettonBurn, JettonNotify, and JettonMint use protocol
-// ABI rows. The forward-payload-tail transfer and nested-capture minter mint
-// require the hand-written parsers below.
-
-td::Result<Value> parse_minter_jetton_mint(const td::Ref<vm::Cell> &body) {
-  TRY_RESULT(ctx, open_body(body));
-  mchmsg::gen::MchMinterJettonMint::Record rec;
-  if (!mchmsg::gen::t_MchMinterJettonMint.unpack(ctx.cs, rec)) {
-    return td::Status::Error("tlb: minter mint unpack failed");
-  }
-  TRY_RESULT(to_address, addr_value(rec.to_address));
-  TRY_RESULT(ton_amount, var_uint16(rec.ton_amount));
-  bool special = false;
-  vm::CellSlice ms;
-  try {
-    ms = vm::load_cell_slice_special(rec.master_msg, special);
-  } catch (...) {
-    return td::Status::Error("minter mint: bad master_msg");
-  }
-  if (!ms.have(32) || !ms.advance(32) || !ms.have(64)) {
-    return td::Status::Error("minter mint: master_msg underflow");
-  }
-  auto master_query_id = ms.fetch_ulong(64);
-  TRY_RESULT(master_amount, load_coins_py(ms));
-  Value::Fields f;
-  f.emplace_back("query_id", Value::make_int(refint_u64(rec.query_id)));
-  f.emplace_back("to_address", std::move(to_address));
-  f.emplace_back("ton_amount", Value::make_int(std::move(ton_amount)));
-  f.emplace_back("master_msg", Value::make_cell(rec.master_msg));
-  f.emplace_back("master_msg_query_id", Value::make_int(refint_u64(master_query_id)));
-  f.emplace_back("master_msg_jetton_amount", Value::make_int(std::move(master_amount)));
   return Value::make_obj(std::move(f));
 }
 

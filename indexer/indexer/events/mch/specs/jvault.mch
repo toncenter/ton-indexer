@@ -14,8 +14,7 @@
 #   the composed block's `data.desired_amount` and unwrap it with `.value`.
 # - claim maps the claim body's jetton-wallet list through AccountId with a
 #   comprehension.
-# - stake's forward_payload sub-cell parse stays in the jvault_stake_period host function
-#   and reads the b64 `data.forward_payload` string, so it is C++-portable.
+# - stake parses the b64 forward_payload directly as JVaultStakePeriodPayload.
 #
 # Produced btype is the bare string (jvault_stake, …) rather than the class
 # name: the class→btype normalization map (mch/btypes.py) does not carry the
@@ -52,16 +51,9 @@ matcher jvault_stake {
                     -> maybe btype jetton_transfer @cancel_transfer )
          ; maybe op JVaultSetData @setdata }
 
-    # Legacy build_jvault_stake_core, field-for-field. The staker + asset come
-    # off the already-built incoming jetton_transfer's `data`; the stake wallet
-    # and pool are the receive call's envelope. The staked amount is the outer
-    # transfer amount — the composed jetton_transfer already carries it as
-    # `data.desired_amount` (an Amount), unwrapped to a raw int via `.value`
-    # (legacy reads jetton_transfer_message.amount == that desired amount). The
-    # stake period is a forward_payload sub-cell — an irreducible cell parse,
-    # so it stays a host fn, but reads the composed block's
-    # `data.forward_payload` (a b64 string both engines carry) rather than the
-    # legacy `.jetton_transfer_message` attribute, so the fn is C++-portable.
+    # The composed transfer supplies sender, asset, amount, and the b64 payload.
+    # The receive envelope supplies the stake wallet and pool; the payload
+    # parses directly to the stake period.
     reject when cancel == null and request == null
     failed when receive.failed
     failed when cancel != null
@@ -73,7 +65,7 @@ matcher jvault_stake {
         stake_wallet:  account(receive.msg.destination)
         staking_pool:  account(receive.msg.source)
         staked_amount: transfer.data.desired_amount.value
-        period:        jvault_stake_period(transfer.data.forward_payload)
+        period:        parse transfer.data.forward_payload as JVaultStakePeriodPayload.stake_period
     }
 }
 

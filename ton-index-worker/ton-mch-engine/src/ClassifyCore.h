@@ -1,14 +1,16 @@
-// Pure classification pipeline from a TraceContext and compiled tables to a
-// buffered per-trace result. It performs no I/O or rendering.
+// Pure classification pipelines from schema transactions or a TraceContext to
+// buffered per-trace results. They perform no I/O or rendering.
 #pragma once
 
 #include "ActionBuild.h"  // ActionRow
 #include "BlockTree.h"
 #include "BuildRuntime.h"
+#include "IndexData.h"  // schema::Transaction
 #include "IrTables.h"
 #include "TraceLoader.h"
 #include "Walker.h"  // WhereTable
 
+#include <cstddef>
 #include <cstdint>
 #include <set>
 #include <string>
@@ -17,9 +19,12 @@
 
 namespace mch {
 
+struct MchEnginePrep;
+class ParsedBlockLookupSource;
+
 // Trace-terminal failure categories used by production-classifier telemetry:
 //   - lookup_infra_fail:  two-phase lookup did not converge (infra error).
-//   - engine_fault:       a mid-trace exception (Python's per-trace fallback).
+//   - engine_fault:       a mid-trace exception (per-trace fallback).
 //   - malformed_trace:    the trace could not be loaded into an event tree
 //                         (schema map / empty tree), set caller/actor-side.
 // Matcher skips are setup-level facts, while clean rejection, parse-null, and
@@ -68,6 +73,14 @@ struct ClassifyResult {
   bool unknown_trace = false;
 };
 
+struct SchemaClassifyResult {
+  bool failure{false};
+  std::string failure_reason;
+  FailureCategory failure_category{FailureCategory::none};
+  bool used_fallback{false};
+  std::size_t unported_btypes{0};
+};
+
 // Trace-independent run prep computed once from the matcher table: the runnable
 // matcher set, the SKIP table (name -> reason, sorted), the generated build-fn
 // map, the generated where_expr table the walker evaluates, and the union of
@@ -83,6 +96,9 @@ struct ClassifySetup {
   std::string error;           // populated when table_missing/fn_missing
 };
 
+// Canonical BFS over the reachable graph, de-duplicated by block identity.
+std::vector<Block *> gather_blocks(Block *root);
+
 // Build the run prep from the compiled-in matcher table. No I/O. Pass the SAME
 // table classify_trace will get. `included` indexes into it. On a table/fn
 // mismatch, sets the *_missing flags + error and returns what it has (adapter
@@ -93,5 +109,14 @@ ClassifySetup prepare_classify(const std::vector<CompiledMatcher> &matchers);
 // pipeline allocates produced and proxy blocks from the caller-owned arena.
 ClassifyResult classify_trace(TraceContext &ctx, const std::vector<CompiledMatcher> &matchers,
                               const ClassifySetup &setup, const LookupSource &src);
+
+// `prep` is process-lifetime const and shareable across threads.
+// The interface map behind `src` is shareable iff immutable.
+// `src` and its Tier2Hook capture are for one classify call on one thread only.
+SchemaClassifyResult classify_schema_trace(
+    const MchEnginePrep &prep, const std::string &trace_id,
+    const std::vector<schema::Transaction> &txs, const ParsedBlockLookupSource &src,
+    std::vector<Action> &rows, std::vector<std::string> &matcher_names,
+    std::size_t &scrubbed, bool &unknown_row);
 
 }  // namespace mch

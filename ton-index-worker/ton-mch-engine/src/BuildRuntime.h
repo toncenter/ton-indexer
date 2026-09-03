@@ -14,15 +14,14 @@ namespace mch {
 
 struct Block;  // BlockTree.h
 
-// program.py BuildOutcome | None. rejected==true corresponds to Python's None
-// (a `reject when` fired OR an EvalError surfaced); the other fields are then
-// meaningless. btype empty == Python btype None (non-switch matcher: caller
-// uses produces[0]).
+// rejected==true means a `reject when` fired or an EvalError surfaced; the
+// other fields are then meaningless. btype empty == non-switch matcher
+// (caller uses produces[0]).
 struct BuildOutcome {
   bool is_rejected{false};
   std::string reject_reason;  // diagnostics only
   std::string btype;
-  Value data;  // Dict; defaults to the empty dict (Python: data None -> {})
+  Value data;  // Dict; defaults to the empty dict
   bool failed{false};
   bool broken{false};
 
@@ -41,7 +40,7 @@ struct BuildOutcome {
 
 // Lookup interface. `has` mirrors the evaluator's registration
 // check (unregistered kind => EvalError => rejection); `get` returns the
-// fetched value (Null == unknown key, Python lookup returning None).
+// fetched value (Null == unknown key).
 // Null-strict argument handling lives in rt_lookup_build, not here.
 class LookupTable {
  public:
@@ -124,34 +123,30 @@ struct BuildEnv {
   std::size_t n_slots{0};
   Value consumed;               // well-known `consumed`: List of Block values
   const LookupTable *lookups{nullptr};
-  // program.py Evaluator.bodies: block identity -> parsed body (Null == every
-  // soft-parse alternative failed). Filled by rt_parse, read by `.body`.
+  // block identity -> parsed body (Null == every soft-parse alternative
+  // failed). Filled by rt_parse, read by `.body`.
   std::map<const Block *, Value> bodies;
 };
 
-// `parse TARGET as T1|T2` (program.py _do_parse/_soft_parse): target null ->
-// no-op; list -> parse each non-null Block element; Block -> parse. Per
-// element: first type whose parser succeeds wins; parser failure tries the
-// next; all fail -> body Null. An UNREGISTERED type name faults (rejection).
+// `parse TARGET as T1|T2`: target null -> no-op; list -> parse each non-null
+// Block element; Block -> parse. Per element: first type whose parser
+// succeeds wins; parser failure tries the next; all fail -> body Null. An
+// unregistered type name faults (rejection).
 EvalResult rt_parse(BuildEnv &env, const Value &target, const std::vector<std::string> &types);
 
-// `parse TARGET as T1|T2` as a build expression. Unlike the
-// statement form, this RETURNS the parsed message Obj directly and FAULTS on
-// total failure instead of returning a soft null. A null or non-block
-// target -> fault; every type alternative failing to parse -> fault; an
-// unregistered type name -> fault. Stateless (no env.bodies side table); env is
-// accepted only for signature symmetry with the other build-mode rt_* leaves.
+// `[try] parse TARGET as T1|T2` as a build expression. Block, Cell, and
+// base64-BOC Str targets are accepted. The nullable form returns Null for
+// target resolution or total parse failure; the strict form faults.
 EvalResult rt_parse_expr(BuildEnv &env, const Value &target,
-                         const std::vector<std::string> &types);
+                         const std::vector<std::string> &types, bool nullable);
 
 // Attribute access in build context: `.body` on a Block/List resolves through
 // env.bodies (missing entry == "was not parse'd" fault, exactly expr_eval's
 // _access with a bodies dict); every other field delegates to rt_access.
 EvalResult rt_access_build(const BuildEnv &env, const Value &obj, const std::string &field);
 
-// `lookup kind(args)` (expr.py _eval_lookup, in ITS order): unregistered kind
-// -> fault FIRST; then null-strict (any null arg -> null, table untouched);
-// else the table value.
+// `lookup kind(args)`: unregistered kind -> fault first; then null-strict
+// (any null arg -> null, table untouched); else the table value.
 EvalResult rt_lookup_build(const BuildEnv &env, const std::string &kind,
                            const std::vector<Value> &args);
 
@@ -192,10 +187,10 @@ class RejectScope {
 
 void reject_log(const std::string &reason);
 
-// For a host fn whose Python twin is `try: ... except: return None`: the Null
-// return IS the rejection. rt_call_hostfn cannot log those centrally — it
-// cannot tell them from a legitimately null RESULT (jvault_stake_period,
-// tonstakers_minted_nft) — so such a fn rejects through here, naming its reason.
+// For a host fn whose Null return IS the rejection. rt_call_hostfn cannot
+// log those centrally — it cannot tell them from a legitimately null result
+// (jvault_stake_period, tonstakers_minted_nft) — so such a fn rejects
+// through here, naming its reason.
 EvalResult host_reject(const std::string &reason);
 
 }  // namespace mch

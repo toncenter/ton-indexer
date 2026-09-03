@@ -9,7 +9,7 @@
 # the b64 builtin over the parsed `message_cell` — b64 BOC-encodes a raw Cell
 # before base64 (mirrors the legacy `message_cell.to_boc()`).
 #
-# `success` (upstream #430: the flag is true only when the message was really
+# `success` (the flag is true only when the message was really
 # sent) is the one host fn — it scans the request TRANSACTION's out-messages for
 # a matching destination + body hash, and transaction-level navigation is
 # outside the language. See builders/vesting.py.
@@ -48,7 +48,7 @@ matcher vesting_send_message {
 # the protocol ABI rows are fixed-depth. It is not in the `--parse-dump` A/B table
 # either — the dump renderer has no List form on either side (the same reason
 # JVaultClaim's `dict_keys267` list is absent from it) — so its gate is the
-# actions golden plus the legacy-vs-IR parity-sweep row, which compares
+# actions golden plus a legacy-vs-IR row comparison, which checks
 # `accounts_added` element by element.
 #
 # `?? addr_none()` on each mapped element is REQUIRED, not defensive: an

@@ -1,0 +1,135 @@
+# coffee / Coffee deposit liquidity TON + ARBUZ (with vault excess)
+# trace: 1KbovH9MSuusbYQaA8IFllpelQVkRcrcC9A8MUVnZ3w=
+actions:
+  - type: dex_deposit_liquidity
+    matcher: coffee_deposit_liquidity
+    anchor: coffee_deposit_liquidity@57876224000002
+    id: BPcQlSx9govaUnWeSPA2hQKwS0SC+7Nhkd/MkqnR8jA=
+    success: true
+    source: 0:89A01AC795880D80A300313E61A3056388E5D66D4EC57B0CC64B3CCDE78AEFC5
+    source_secondary: null
+    destination: null
+    destination_secondary: 0:8159322BC546328552BAD70CA6123ABAE60EF9F9B6F08649E796D4B3F517DD6A
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: null
+    opcode: null
+    dex_deposit_liquidity_data:
+      amount1: 12738437786
+      amount2: null
+      asset1: null
+      asset2: null
+      dex: coffee
+      lp_tokens_minted: null
+      target_amount_1: null
+      target_amount_2: null
+      target_asset_1: null
+      target_asset_2: 0:0CD8A583A7D94DD18BF1BDF49B234AF28C15F033BD2B6A4A4D2076EE1136AD45
+      user_jetton_wallet_1: null
+      user_jetton_wallet_2: null
+      vault_excesses: []
+    tx_hashes:
+      - 1KbovH9MSuusbYQaA8IFllpelQVkRcrcC9A8MUVnZ3w=
+      - Pd9uD6AWYAM/JSHeNeA0Vo+EJDrTGgNXbJMW93ncK50=
+      - jZ5F+8QaYExXym5OIRuYE8vD0NT1LNz94qFltJ3nmMI=
+      - m9gGrXJa/b/KopzdCYOK6t/G33pXsaObJnSi8eOiQ3A=
+    accounts:
+      - 0:2C7F6B033DFA28FB42239D103B97F809041F63CA8E33A9F086FF520508223F41
+      - 0:8159322BC546328552BAD70CA6123ABAE60EF9F9B6F08649E796D4B3F517DD6A
+      - 0:89A01AC795880D80A300313E61A3056388E5D66D4EC57B0CC64B3CCDE78AEFC5
+      - 0:DB2EA4FFCE1C691118F41275C6DA2AABD60EF53836FF5E873BE11F11CD448494
+    start_lt: 57876224000002
+    end_lt: 57876235000001
+    start_utime: 1748912241
+    end_utime: 1748912270
+    mc_seqno_end: 48449101
+  - type: dex_deposit_liquidity
+    matcher: coffee_deposit_liquidity
+    anchor: coffee_deposit_liquidity@57876224000003
+    id: 9YAd4/TlKusipoYd64gPEsgg4zZjsSd+LeD2QAFoKHs=
+    success: true
+    source: 0:89A01AC795880D80A300313E61A3056388E5D66D4EC57B0CC64B3CCDE78AEFC5
+    source_secondary: null
+    destination: 0:9B44E061DDDC313D829236E9816341A20CAA65D751980E12C800D3CC4D188D14
+    destination_secondary: 0:8159322BC546328552BAD70CA6123ABAE60EF9F9B6F08649E796D4B3F517DD6A
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: null
+    opcode: null
+    dex_deposit_liquidity_data:
+      amount1: null
+      amount2: 1209191166682
+      asset1: null
+      asset2: 0:0CD8A583A7D94DD18BF1BDF49B234AF28C15F033BD2B6A4A4D2076EE1136AD45
+      dex: coffee
+      lp_tokens_minted: 124109654933
+      target_amount_1: null
+      target_amount_2: null
+      target_asset_1: 0:0CD8A583A7D94DD18BF1BDF49B234AF28C15F033BD2B6A4A4D2076EE1136AD45
+      target_asset_2: null
+      user_jetton_wallet_1: null
+      user_jetton_wallet_2: 0:DDB51A80436CC2207722AAADEBC2A575464EE167DF06D33D07571113C6361ECB
+      vault_excesses:
+        - amount: 24
+          asset: 0:0CD8A583A7D94DD18BF1BDF49B234AF28C15F033BD2B6A4A4D2076EE1136AD45
+    tx_hashes:
+      - 1KbovH9MSuusbYQaA8IFllpelQVkRcrcC9A8MUVnZ3w=
+      - 3w7s1X9mhMMdiBbb5L7zXlY2k6lVUl84IV75Y05apkk=
+      - 4E0onv8/oRsf69fDqq5PvzHsaMxUqgdUhcsBeGI1cs8=
+      - 7wjdDF3eTDDgHIe7gQjjvcfUBdW6TYatUPUYIYXeH7E=
+      - 8KjLVZ1eKR92UqpZydxK+SbUGa0jPKb+eMuWAI/At9E=
+      - 8MHgUws0KmJ6kahxYdOYQQjdf8XgODTlHGVuTGey3NY=
+      - 98vdJaF3CaO3zihOlODC4R6ujlpAVdlk+U9k8V1IFxk=
+      - JF+V460qSx+HZKCI4DN2M9WDNIAW1jjx8Njt+lGIdRE=
+      - QUDlpwFrsQphSpWLtRJD059YKraDNZIHQNXVpg5NyVo=
+      - aZ6/dxbWKa5uRbJG3DjLNAJH5outBHPU8dFTEjQfBbg=
+      - iQJJwLbQ0CKwYb8TsNwOj0bjzjMUGZZjxBnU7ZL0IEs=
+      - mlqzfIVpqsfcaEGykW1p77I8JkhdivWEClv0YLgUDBg=
+      - xAGNDUWFVaDIkYvx0kzWgIJjoUhmHOaB/jWVASm5o24=
+      - yijxp6/t6h8UZ9YTAqJu5D6d0Q5ZEpDjCSZKOWoQ0ZE=
+    accounts:
+      - 0:2C0E1E5B33D197DE1C1B44758DF0071384FCF4B03DE86BA4ED0A036BD166CE83
+      - 0:2C7F6B033DFA28FB42239D103B97F809041F63CA8E33A9F086FF520508223F41
+      - 0:3726C0943E16C30FB2F676F3608AE5653E48CB5D85B4F8ECD5BE86699F09A2EE
+      - 0:51596BC282DB74AB2249D6D45A5FF49731381542812CD3253B91C9E3414732FC
+      - 0:8159322BC546328552BAD70CA6123ABAE60EF9F9B6F08649E796D4B3F517DD6A
+      - 0:89A01AC795880D80A300313E61A3056388E5D66D4EC57B0CC64B3CCDE78AEFC5
+      - 0:9B44E061DDDC313D829236E9816341A20CAA65D751980E12C800D3CC4D188D14
+      - 0:DDB51A80436CC2207722AAADEBC2A575464EE167DF06D33D07571113C6361ECB
+    start_lt: 57876224000003
+    end_lt: 57876245000001
+    start_utime: 1748912241
+    end_utime: 1748912294
+    mc_seqno_end: 48449110
+  - type: contract_deploy
+    anchor: contract_deploy#c0ffee22@57876230000002
+    id: QAZqPnOvmPR+6QeQDoJ3dlmyqrsiTUKUyfTbD79zlf0=
+    success: true
+    source: 0:2C7F6B033DFA28FB42239D103B97F809041F63CA8E33A9F086FF520508223F41
+    source_secondary: null
+    destination: 0:8159322BC546328552BAD70CA6123ABAE60EF9F9B6F08649E796D4B3F517DD6A
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: 185738657
+    opcode: 0xc0ffee22
+    tx_hashes:
+      - Pd9uD6AWYAM/JSHeNeA0Vo+EJDrTGgNXbJMW93ncK50=
+      - jZ5F+8QaYExXym5OIRuYE8vD0NT1LNz94qFltJ3nmMI=
+    accounts:
+      - 0:2C7F6B033DFA28FB42239D103B97F809041F63CA8E33A9F086FF520508223F41
+      - 0:8159322BC546328552BAD70CA6123ABAE60EF9F9B6F08649E796D4B3F517DD6A
+    start_lt: 57876230000002
+    end_lt: 57876235000001
+    start_utime: 1748912259
+    end_utime: 1748912270
+    mc_seqno_end: 48449101

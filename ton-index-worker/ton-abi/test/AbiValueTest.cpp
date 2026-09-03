@@ -111,11 +111,9 @@ TEST_CASE("AbiValue dump: String -> JSON string, escapes quote/backslash/control
   CHECK(AbiValue::make_string("a\nb").to_json() == R"("a\nb")");
 }
 
-// String dumping uses @ton/core's lossy-UTF8 decode
-// (Node Buffer.toString('utf8')), U+FFFD = the 3-byte sequence EF BF BD.
-// string_v itself stays RAW (pack round-trips the original bytes exactly);
-// only to_json() applies this. Every case below was cross-checked against
-// live `node -e` output (see AbiValue.cpp's decode_utf8_lossy comment).
+// String dumping uses lossy UTF-8 decode (U+FFFD = EF BF BD). string_v
+// itself stays RAW (pack round-trips the original bytes exactly); only
+// to_json() applies this.
 TEST_CASE("AbiValue dump: String lossy-UTF8 decode matches @ton/core (Node Buffer.toString) exactly") {
   const std::string kRepl = "\xEF\xBF\xBD";  // U+FFFD
 

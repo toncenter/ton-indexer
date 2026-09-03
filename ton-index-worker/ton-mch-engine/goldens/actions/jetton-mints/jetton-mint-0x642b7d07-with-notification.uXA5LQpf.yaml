@@ -1,0 +1,59 @@
+# jetton-mints / Jetton mint(0x642b7d07) with notification
+# trace: uXA5LQpf_4c9NEOK6trJZuBMitcBLNYxK7_2OfzphtI=
+actions:
+  - type: contract_deploy
+    anchor: contract_deploy#178d4519@47201123000002
+    id: cwpjaCLgBA9m5g9QzynRnf7eFygaYYnkN8m7cVN7J1k=
+    success: true
+    source: 0:1C4838CCE43FDB1152C3EC496E911B3A873F7043B09BB79E6284598D12178107
+    source_secondary: null
+    destination: 0:D7407B037DA2F593F8BB997524EBAF7BE9C537958282A60DC09BD3C39D26DF27
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: 488014519
+    opcode: 0x178d4519
+    tx_hashes:
+      - 9CvPufQflaWDm28wf/Gq0QqWX3lrp8f6XEfOkFWypu0=
+      - CaPlFc4IKHZSrTTXnP5uyFdHE2lx2Zn9zkV1Dd6/jAI=
+    accounts:
+      - 0:1C4838CCE43FDB1152C3EC496E911B3A873F7043B09BB79E6284598D12178107
+      - 0:D7407B037DA2F593F8BB997524EBAF7BE9C537958282A60DC09BD3C39D26DF27
+    start_lt: 47201123000002
+    end_lt: 47201130000001
+    start_utime: 1718820203
+    end_utime: 1718820226
+    mc_seqno_end: 38469435
+  - type: jetton_mint
+    matcher: jetton_mint
+    anchor: jetton_mint@47201117000002
+    id: fcGi/fV+vVQEKR/rahkmSz+nrPdNg3CZvGdtjQZWfSA=
+    success: true
+    source: null
+    source_secondary: null
+    destination: 0:A8B9A93F49CC467E91138F62FFDCC5F037B5E28B7F985DAA800AFC703AA32691
+    destination_secondary: 0:D7407B037DA2F593F8BB997524EBAF7BE9C537958282A60DC09BD3C39D26DF27
+    asset: 0:1C4838CCE43FDB1152C3EC496E911B3A873F7043B09BB79E6284598D12178107
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: 4853188593690
+    value: 908814249160002342682739450328523377
+    opcode: null
+    tx_hashes:
+      - 9CvPufQflaWDm28wf/Gq0QqWX3lrp8f6XEfOkFWypu0=
+      - CaPlFc4IKHZSrTTXnP5uyFdHE2lx2Zn9zkV1Dd6/jAI=
+      - pEoLd6n7i/1gCpAbCYY6ksgtEE/E0bKW6yi1FUQIj+o=
+      - uXA5LQpf/4c9NEOK6trJZuBMitcBLNYxK7/2OfzphtI=
+    accounts:
+      - 0:1C4838CCE43FDB1152C3EC496E911B3A873F7043B09BB79E6284598D12178107
+      - 0:A8B9A93F49CC467E91138F62FFDCC5F037B5E28B7F985DAA800AFC703AA32691
+      - 0:D7407B037DA2F593F8BB997524EBAF7BE9C537958282A60DC09BD3C39D26DF27
+    start_lt: 47201117000002
+    end_lt: 47201134000001
+    start_utime: 1718820181
+    end_utime: 1718820238
+    mc_seqno_end: 38469438

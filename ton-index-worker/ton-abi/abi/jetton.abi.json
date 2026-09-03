@@ -44,10 +44,18 @@
     },
     {
       "kind": "StructRef",
-      "struct_name": "JettonInternalTransfer"
+      "struct_name": "JettonTransfer"
     },
     {
       "kind": "addressAny"
+    },
+    {
+      "kind": "nullable",
+      "inner_ty_idx": 3
+    },
+    {
+      "kind": "StructRef",
+      "struct_name": "JettonInternalTransfer"
     },
     {
       "kind": "StructRef",
@@ -80,17 +88,17 @@
       "kind": "union",
       "variants": [
         {
-          "variant_ty_idx": 18,
+          "variant_ty_idx": 20,
           "prefix_num": 1,
           "prefix_len": 1,
-          "stack_type_id": 132,
+          "stack_type_id": 133,
           "stack_width": 1
         },
         {
-          "variant_ty_idx": 19,
+          "variant_ty_idx": 21,
           "prefix_num": 0,
           "prefix_len": 1,
-          "stack_type_id": 133,
+          "stack_type_id": 134,
           "stack_width": 1
         }
       ],
@@ -99,6 +107,18 @@
     {
       "kind": "StructRef",
       "struct_name": "JettonMint"
+    },
+    {
+      "kind": "StructRef",
+      "struct_name": "MinterJettonMint"
+    },
+    {
+      "kind": "StructRef",
+      "struct_name": "MinterJettonMintMasterMsg"
+    },
+    {
+      "kind": "cellOf",
+      "inner_ty_idx": 26
     },
     {
       "kind": "StructRef",
@@ -115,7 +135,7 @@
     {
       "kind": "struct",
       "name": "JettonForwardPayloadRef",
-      "ty_idx": 18,
+      "ty_idx": 20,
       "prefix": {
         "prefix_num": 1,
         "prefix_len": 1
@@ -130,7 +150,7 @@
     {
       "kind": "struct",
       "name": "JettonForwardPayloadInline",
-      "ty_idx": 19,
+      "ty_idx": 21,
       "prefix": {
         "prefix_num": 0,
         "prefix_len": 1
@@ -138,20 +158,74 @@
       "fields": [
         {
           "name": "value",
-          "ty_idx": 20
+          "ty_idx": 22
         }
       ]
     },
     {
       "kind": "alias",
       "name": "JettonForwardTail",
-      "ty_idx": 17,
-      "target_ty_idx": 21
+      "ty_idx": 19,
+      "target_ty_idx": 23
+    },
+    {
+      "kind": "struct",
+      "name": "MinterJettonMintMasterMsg",
+      "ty_idx": 26,
+      "fields": [
+        {
+          "name": "_op",
+          "ty_idx": 9
+        },
+        {
+          "name": "query_id",
+          "ty_idx": 11
+        },
+        {
+          "name": "jetton_amount",
+          "ty_idx": 6
+        }
+      ]
+    },
+    {
+      "kind": "struct",
+      "name": "JettonTransfer",
+      "ty_idx": 12,
+      "prefix": {
+        "prefix_num": 260734629,
+        "prefix_len": 32
+      },
+      "fields": [
+        {
+          "name": "query_id",
+          "ty_idx": 11
+        },
+        {
+          "name": "amount",
+          "ty_idx": 6
+        },
+        {
+          "name": "destination",
+          "ty_idx": 13
+        },
+        {
+          "name": "response_destination",
+          "ty_idx": 13
+        },
+        {
+          "name": "custom_payload",
+          "ty_idx": 14
+        },
+        {
+          "name": "forward_ton_amount",
+          "ty_idx": 6
+        }
+      ]
     },
     {
       "kind": "struct",
       "name": "JettonInternalTransfer",
-      "ty_idx": 12,
+      "ty_idx": 15,
       "prefix": {
         "prefix_num": 395134233,
         "prefix_len": 32
@@ -182,7 +256,7 @@
     {
       "kind": "struct",
       "name": "JettonInternalTransferEthena",
-      "ty_idx": 14,
+      "ty_idx": 16,
       "prefix": {
         "prefix_num": 2992127701,
         "prefix_len": 32
@@ -213,7 +287,7 @@
     {
       "kind": "struct",
       "name": "JettonBurn",
-      "ty_idx": 15,
+      "ty_idx": 17,
       "prefix": {
         "prefix_num": 1499400124,
         "prefix_len": 32
@@ -236,7 +310,7 @@
     {
       "kind": "struct",
       "name": "JettonNotify",
-      "ty_idx": 16,
+      "ty_idx": 18,
       "prefix": {
         "prefix_num": 1935855772,
         "prefix_len": 32
@@ -256,14 +330,14 @@
         },
         {
           "name": "forward_payload_cell",
-          "ty_idx": 17
+          "ty_idx": 19
         }
       ]
     },
     {
       "kind": "struct",
       "name": "JettonMint",
-      "ty_idx": 22,
+      "ty_idx": 24,
       "prefix": {
         "prefix_num": 1680571655,
         "prefix_len": 32
@@ -285,25 +359,49 @@
     },
     {
       "kind": "struct",
+      "name": "MinterJettonMint",
+      "ty_idx": 25,
+      "prefix": {
+        "prefix_num": 21,
+        "prefix_len": 32
+      },
+      "fields": [
+        {
+          "name": "query_id",
+          "ty_idx": 11
+        },
+        {
+          "name": "to_address",
+          "ty_idx": 13
+        },
+        {
+          "name": "ton_amount",
+          "ty_idx": 6
+        },
+        {
+          "name": "master_msg",
+          "ty_idx": 27
+        }
+      ]
+    },
+    {
+      "kind": "struct",
       "name": "Storage",
-      "ty_idx": 23,
+      "ty_idx": 28,
       "fields": [
         {
           "name": "dummy",
-          "ty_idx": 24
+          "ty_idx": 29
         }
       ]
     }
   ],
   "storage": {
-    "storage_ty_idx": 23
+    "storage_ty_idx": 28
   },
   "incoming_messages": [
     {
       "body_ty_idx": 12
-    },
-    {
-      "body_ty_idx": 14
     },
     {
       "body_ty_idx": 15
@@ -312,7 +410,16 @@
       "body_ty_idx": 16
     },
     {
-      "body_ty_idx": 22
+      "body_ty_idx": 17
+    },
+    {
+      "body_ty_idx": 18
+    },
+    {
+      "body_ty_idx": 24
+    },
+    {
+      "body_ty_idx": 25
     }
   ],
   "incoming_external": [],
@@ -327,5 +434,5 @@
   ],
   "compiler_name": "tolk",
   "compiler_version": "1.4.1",
-  "code_boc64": "te6ccgEBAgEAcQABFP8A9KQT9LzyyAsBAMTT+JHyQCDXLCC8aijMmDCEDwHHAPL04NcsJZLB9qyYMIQPAccA8vTg1ywiyvg95JgwhA8BxwDy9ODXLCObFoTkmDCEDwHHAPL04NcsIyFb6Dwxl4QPAccA8vTghA8BxwDy9A=="
+  "code_boc64": "te6ccgEBBAEAmQABFP8A9KQT9LzyyAsBAvbT+JHyQCDXLCB8U/UsmDCEDwHHAPL04NcsILxqKMyYMIQPAccA8vTg1ywlksH2rJgwhA8BxwDy9ODXLCLK+D3kmDCEDwHHAPL04NcsI5sWhOSYMIQPAccA8vTg1ywjIVvoPJgwhA8BxwDy9ODXLCAAAACsMeMChA8BxwACAwAOhA8BxwDy9AAE8vQ="
 }

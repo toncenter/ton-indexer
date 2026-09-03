@@ -1,4 +1,4 @@
-"""`.mch` matcher DSL — Python v0 compiler.
+"""`.mch` matcher DSL — Python compiler.
 
 Public surface:
     compile_text(text, path, registries, ...) -> list[CompiledMatcher]

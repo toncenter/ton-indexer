@@ -1,8 +1,8 @@
 # `msg.opcode` is signed; use the masked `block.data.opcode` for u32 comparisons.
 # Missing addresses are addr_none rather than null. worker_payout and grant_refund
 # take `failed` from the payout transaction; the other matchers use the anchor.
-# cocoon_expected_address preserves external-address formatting, while
-# cocoon_withdraw_amount tolerates a failed nested payload parse and returns null.
+# cocoon_expected_address preserves external-address formatting. Nested
+# nullable parses recover the withdraw amount from the optional refund payload.
 
 opcode CocoonPayoutPayload              = 0xA040AD28
 opcode CocoonLastPayoutPayload          = 0xF5F26A36
@@ -236,8 +236,8 @@ matcher cocoon_client_increase_stake {
     }
 }
 
-# Only excesses is optional; payout remains required. The host function keeps a
-# malformed nested payload non-fatal, allowing the amount to fall back to zero.
+# Only excesses is optional; payout remains required. Nullable nested parses
+# keep a malformed or absent refund payload non-fatal.
 matcher cocoon_client_withdraw {
     produces cocoon_client_withdraw
     entry    @wd
@@ -247,12 +247,15 @@ matcher cocoon_client_withdraw {
          -> { maybe op CocoonReturnExcessesBack @excesses
             ; op CocoonPayout @payout }
 
-    parse wd as CocoonOwnerClientWithdraw
+    parse wd             as CocoonOwnerClientWithdraw
+    parse client_request as CocoonClientProxyRequest
+    # A refund grant rides inside the proxy request; anything else leaves the amount at 0.
+    let granted = try parse client_request.body.payload as CocoonClientProxyRefundGranted
     failed when (wd.msg.transaction.aborted ?? false)
     out {
         owner:           account(wd.body.send_excesses_to) ?? addr_none()
         client_contract: account(wd.msg.destination) ?? addr_none()
         query_id:        wd.body.query_id
-        withdraw_amount: amount(cocoon_withdraw_amount(client_request) ?? 0)
+        withdraw_amount: amount(granted.coins ?? 0)
     }
 }

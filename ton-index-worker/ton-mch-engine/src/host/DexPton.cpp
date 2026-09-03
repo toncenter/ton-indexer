@@ -1,4 +1,3 @@
-// Shared pTON master list + wallet->asset conversion (see host/DexPton.h).
 #include "host/DexPton.h"
 
 #include <algorithm>
@@ -18,18 +17,28 @@ bool is_pton_master(const std::string &s) {
   return std::find(m.begin(), m.end(), s) != m.end();
 }
 
-Value wallet_jetton_asset(const Value &wallet, bool pton_conversion) {
+std::optional<std::string> wallet_jetton_master_str(const Value &wallet) {
   const Value *jf = wallet.is_null() ? nullptr : wallet.field("jetton");
   if (jf == nullptr || jf->t != VType::Str) {
-    // v1 (no conversion): AccountId(None) -> Asset(is_ton=True).
-    // v2/tonco (conversion): wallet.jetton absent -> caller-visible Null.
+    return std::nullopt;
+  }
+  return canonicalize_or_passthrough(jf->str);
+}
+
+Value wallet_jetton_asset(const Value &wallet, bool pton_conversion) {
+  const Value *jf = wallet.is_null() ? nullptr : wallet.field("jetton");
+  auto master = wallet_jetton_master_str(wallet);
+  if (!master) {
+    // v1 (no conversion): missing jetton -> Asset(is_ton=True).
+    // v2/tonco (conversion): missing jetton -> caller-visible Null.
     return pton_conversion ? Value::null() : Value::make_asset_ton();
   }
+  // Preserve the existing exact-spelling pTON check; normalization only
+  // governed the Asset string after this branch.
   if (pton_conversion && is_pton_master(jf->str)) {
     return Value::make_asset_ton();
   }
-  auto norm = normalize_raw_address(jf->str);
-  return Value::make_asset_jetton(norm ? *norm : jf->str);
+  return Value::make_asset_jetton(*master);
 }
 
 }  // namespace mch

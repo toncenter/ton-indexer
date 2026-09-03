@@ -48,7 +48,7 @@ class JettonTransfer:
             self.sum_type = "Unknown"
             return
         sum_type = payload_slice.load_uint(32)
-        self.payload_sum_type = hex(sum_type)
+        self.payload_sum_type = sum_type
         # noinspection PyBroadException
         try:
             if sum_type == 0:

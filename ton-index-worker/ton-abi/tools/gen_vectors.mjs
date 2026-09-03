@@ -25,12 +25,10 @@ const FIXTURES_SRC = process.env.TOLK_ABI_INPUT ??
 const FIXTURES_DIR = path.join(ROOT, 'testdata', 'fixtures');
 const VECTORS_FILE = path.join(ROOT, 'testdata', 'abi_vectors.json');
 
-// createLabelsForUnion is internal to the package (not re-exported from its
-// public index -- only DynamicCtx/packToBuilderDynamic/unpackFromSliceDynamic/
-// renderTy/SymTable are). Reaching into dist/ directly is fine for a dev-only
-// oracle script; it's the exact function dynamicPack/Unpack use internally
-// (dynamic-serialization.ts:5), so using it here keeps label and variant
-// selection in lockstep with the reference instead of re-deriving the rules.
+// Union-label helper is internal to the package (not re-exported from its
+// public index). Reaching into dist/ is fine for a dev-only oracle: it is
+// the same helper the reference pack/unpack uses, so label and variant
+// selection stay in lockstep instead of being re-derived.
 const { createLabelsForUnion } = require(
     path.join(__dirname, 'node_modules', '@ton', 'tolk-abi-to-typescript', 'dist', 'types-kernel.js'));
 
@@ -51,7 +49,6 @@ async function compileTolk(absFileName) {
     return abiJson;
 }
 
-// ---- canonical value-JSON codec for integers, bool, and structs -----------
 
 function findStructDecl(abi, structName) {
     const decl = abi.declarations.find(d => d.kind === 'struct' && d.name === structName);
@@ -138,8 +135,7 @@ function hexLower(buf) {
 }
 
 // mapKV key helpers (createTonCoreDictionaryKey/Value are not exported from
-// the package index either; only intN/uintN/address keys are standard, same
-// restriction as the reference -- dynamic-serialization.ts:22-29).
+// the package index either; only intN/uintN/address keys are standard).
 function dictKeyOf(ctx, keyTyIdx) {
     const kty = ctx.symbols.tyByIdx(keyTyIdx);
     if (kty.kind === 'intN') return Dictionary.Keys.BigInt(kty.n);
@@ -163,13 +159,10 @@ function dictValueOf(ctx, valueTyIdx) {
 // available option (null / empty array / a union's void variant if present).
 const kMaxDepth = 6;
 
-// Custom serializers ported verbatim from
-// LotsOfWrappers.spec.ts:243-380 (the ones that have a real fixture struct to
-// hang a vector off of -- Tensor3Skipping1/Color/OnlyWithPack/OnlyWithUnpack
-// have no wrapping struct in this fixture and are covered by native C++ units
-// in test/AbiABGateTest.cpp only). Gated BEFORE normal StructRef/AliasRef
-// resolution in sampleValue/toValueJsonFull/fromValueJsonFull, mirroring the
-// same custom-before-resolution rule as the generated C++ path.
+// Custom serializers that have a fixture struct to hang a vector off of.
+// Tensor3Skipping1/Color/OnlyWithPack/OnlyWithUnpack have no wrapping struct
+// and are covered by native C++ units only. Gated BEFORE normal
+// StructRef/AliasRef resolution, matching the generated C++ path.
 const W9_CUSTOM_SAMPLE = {
     TelegramString: () => beginCell().storeBuffer(Buffer.from('hello')).endCell().beginParse(),
     Custom8: () => 42n,
@@ -556,7 +549,7 @@ async function main() {
         }
 
         if (fixture === 'lots-of-wrappers') {
-            // Literal golds transcribed from tests/LotsOfWrappers.spec.ts.
+            // Literal golds transcribed from the reference fixture tests.
             const literalCases = [
                 { struct: 'MsgSinglePrefix32', val: { amount1: 80n, amount2: 800000000n }, hex: 'x{8765432115042FAF0800}' },
                 { struct: 'CounterIncrement', val: { counter_id: 123n, inc_by: 78n }, hex: 'x{123456787B0000004E}' },
@@ -572,10 +565,8 @@ async function main() {
         }
     }
 
-    // Copy all 26 reference .tolk files (19 top-level + 7 imports/). Only the
-    // three fixtures above contribute the initial 12 vectors.
-    // imports/ is copied verbatim so the fixtures that import from it
-    // (jetton-minter/wallet-contract, lots-of-throws) keep resolving.
+    // Copy reference .tolk files including imports/ so fixtures that import
+    // from it (jetton-minter/wallet-contract, lots-of-throws) keep resolving.
     fs.mkdirSync(path.join(FIXTURES_DIR, 'imports'), { recursive: true });
     for (const f of fs.readdirSync(path.join(FIXTURES_SRC, 'imports'))) {
         fs.copyFileSync(path.join(FIXTURES_SRC, 'imports', f), path.join(FIXTURES_DIR, 'imports', f));
@@ -606,9 +597,8 @@ async function main() {
         loadableCount++;
     }
 
-    // TODO: Remove this block with small.tolk and update the logged corpus count.
-    // The fixture fails because tolk-js rejects `int` as a boolean condition;
-    // it produces no ABI JSON or vectors and has no C++ consumer.
+    // small.tolk: tolk-js rejects `int` as a boolean condition; no ABI JSON,
+    // no consumer.
     fs.copyFileSync(path.join(FIXTURES_SRC, 'small.tolk'), path.join(FIXTURES_DIR, 'small.tolk'));
     try {
         await compileTolk(path.join(FIXTURES_SRC, 'small.tolk'));
@@ -622,7 +612,6 @@ async function main() {
 
     console.log(`copied 26 .tolk fixtures (19 top-level + 7 imports/), ${loadableCount} compile to a valid ABI`);
 
-    // ---- full-kind value and wire coverage --------------------------------
     // One ctx per fixture, reusing the abi already compiled above.
     const ctxByFixture = {};
     const ctxFor = (fixture) => (ctxByFixture[fixture] ??= new DynamicCtx(abiByFixture[fixture]));
@@ -635,10 +624,8 @@ async function main() {
     {
         const ctx = ctxFor('lots-of-wrappers');
 
-        // Register the same custom implementations the reference spec uses
-        // (LotsOfWrappers.spec.ts:243-380, copied verbatim minus TS types) on
-        // the ORACLE's own ctx, so packToBuilderDynamic/unpackFromSliceDynamic
-        // route through them for these vectors.
+        // Register the same custom implementations the reference uses on the
+        // oracle's own ctx, so pack/unpack route through them for these vectors.
         function TelegramString__packToBuilder(self, b) {
             let bytes = Math.ceil(self.remainingBits / 8);
             b.storeUint(bytes, 8);
@@ -740,8 +727,8 @@ async function main() {
 
     console.log(`W8: added ${vectors.length - w8Before} value/hex coverage vectors`);
 
-    // ---- error vectors (per-field truncation, prefix mismatch, union
-    // no-match). No `value`/oracle involved -- these assert unpack FAILS.
+    // Error vectors (per-field truncation, prefix mismatch, union no-match).
+    // No `value`/oracle involved -- these assert unpack FAILS.
     const errBefore = vectors.length;
     {
         // truncation: drop the last byte of a valid IncreaseCounter encoding.
