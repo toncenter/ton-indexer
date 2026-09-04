@@ -1,4 +1,4 @@
-tolk 1.0
+tolk 1.4
 
 @overflow1023_policy("suppress")
 struct (0x05138d91) NftOwnershipAssignedPrevOwner {
@@ -23,29 +23,6 @@ struct (0x8b771735) NftReportStaticData {
 
 type AllowedMessage = NftOwnershipAssignedPrevOwner | SaleUpdateMessage | NftReportStaticData
 
-struct Storage {
-    dummy: uint1
-}
-
 contract NftSaleMessages {
     incomingMessages: AllowedMessage
-    storage: Storage
-}
-
-fun onInternalMessage(in: InMessage) {
-    val msg = lazy AllowedMessage.fromSlice(in.body);
-    match (msg) {
-        NftOwnershipAssignedPrevOwner => {
-            assert (in.body.isEmpty()) throw 0xFFFF
-        }
-        SaleUpdateMessage => {
-            assert (in.body.isEmpty()) throw 0xFFFF
-        }
-        NftReportStaticData => {
-            assert (in.body.isEmpty()) throw 0xFFFF
-        }
-        else => {
-            assert (in.body.isEmpty()) throw 0xFFFF
-        }
-    }
 }

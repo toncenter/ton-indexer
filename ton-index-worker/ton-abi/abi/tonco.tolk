@@ -1,4 +1,4 @@
-tolk 1.0
+tolk 1.4
 
 struct ToncoPositionOldFee {
     _fee_growth_inside0_last_x128: uint256;
@@ -93,38 +93,6 @@ struct (0x441c39ed) ToncoPoolV3Init {
 
 type AllowedMessage = ToncoRouterV3SwapSourceWallet | ToncoPoolV3StartBurn | ToncoPositionNftV3PositionBurn | ToncoPoolV3Burn | ToncoRouterV3CreatePool | ToncoPoolV3Init
 
-struct Storage {
-    dummy: uint1
-}
-
 contract ToncoMessages {
     incomingMessages: AllowedMessage
-    storage: Storage
-}
-
-fun onInternalMessage(in: InMessage) {
-    val msg = lazy AllowedMessage.fromSlice(in.body);
-    match (msg) {
-        ToncoRouterV3SwapSourceWallet => {
-            assert (in.body.isEmpty()) throw 0xFFFF
-        }
-        ToncoPoolV3StartBurn => {
-            assert (in.body.isEmpty()) throw 0xFFFF
-        }
-        ToncoPositionNftV3PositionBurn => {
-            assert (in.body.isEmpty()) throw 0xFFFF
-        }
-        ToncoPoolV3Burn => {
-            assert (in.body.isEmpty()) throw 0xFFFF
-        }
-        ToncoRouterV3CreatePool => {
-            assert (in.body.isEmpty()) throw 0xFFFF
-        }
-        ToncoPoolV3Init => {
-            assert (in.body.isEmpty()) throw 0xFFFF
-        }
-        else => {
-            assert (in.body.isEmpty()) throw 0xFFFF
-        }
-    }
 }

@@ -1,4 +1,4 @@
-tolk 1.0
+tolk 1.4
 
 @overflow1023_policy("suppress")
 struct (0x00000001) EvaaSupplyJettonForward {
@@ -8,23 +8,6 @@ struct (0x00000001) EvaaSupplyJettonForward {
 
 type AllowedMessage = EvaaSupplyJettonForward
 
-struct Storage {
-    dummy: uint1
-}
-
 contract EvaaSupplyForwardMessages {
     incomingMessages: AllowedMessage
-    storage: Storage
-}
-
-fun onInternalMessage(in: InMessage) {
-    val msg = lazy AllowedMessage.fromSlice(in.body);
-    match (msg) {
-        EvaaSupplyJettonForward => {
-            assert (in.body.isEmpty()) throw 0xFFFF
-        }
-        else => {
-            assert (in.body.isEmpty()) throw 0xFFFF
-        }
-    }
 }

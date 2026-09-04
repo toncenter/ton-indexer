@@ -2,13 +2,21 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 from collections import Counter
 from pathlib import Path
 
+import pytest
+
 
 REPO = Path(__file__).resolve().parents[3]
 ABI_DIR = REPO / "ton-index-worker/ton-abi/abi"
+# The ABI JSON is a build output of the submodule's tolk compiler; point
+# TON_ABI_JSON_DIR at another build tree when it is not the default one.
+ABI_JSON_DIR = Path(
+    os.environ.get("TON_ABI_JSON_DIR", REPO / "build/ton-index-worker/ton-abi/abi")
+)
 ENGINE = REPO / "ton-index-worker/ton-mch-engine"
 MSG_PARSE = ENGINE / "src/MsgParse.cpp"
 ABI_BRIDGE = ENGINE / "src/AbiBridge.cpp"
@@ -112,7 +120,7 @@ def _fields(body: str) -> list[tuple[str, str]]:
 
 def _allowed_arms(text: str) -> list[str]:
     match = re.search(
-        r"\btype\s+AllowedMessage\s*=\s*(.*?)\n\s*\n\s*struct\s+Storage\b",
+        r"\btype\s+AllowedMessage\s*=\s*(.*?)\n\s*\n\s*contract\b",
         text,
         re.DOTALL,
     )
@@ -206,8 +214,10 @@ def test_generated_abi_incoming_rows_match_protocol_sources():
         )
         return struct["name"]
 
+    if not ABI_JSON_DIR.is_dir():
+        pytest.skip("no build-tree ABI JSON (build ton-abi or set TON_ABI_JSON_DIR)")
     for stem, text in sources.items():
-        abi = json.loads((ABI_DIR / f"{stem}.abi.json").read_text(encoding="utf-8"))
+        abi = json.loads((ABI_JSON_DIR / f"{stem}.abi.json").read_text(encoding="utf-8"))
         incoming_names = {
             body_struct_name(abi, row["body_ty_idx"])
             for row in abi["incoming_messages"]

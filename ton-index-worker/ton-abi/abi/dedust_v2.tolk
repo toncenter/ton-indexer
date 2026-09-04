@@ -1,4 +1,4 @@
-tolk 1.0
+tolk 1.4
 
 // Subset of DeDust CPMM V2 declarations.
 
@@ -125,62 +125,6 @@ type AllowedMessage = ClaimRewardMessage | PayoutRewardMessage | PayoutMessage
     | DedustV2Withdraw | DedustV2WithdrawalEvent | DedustV2CreditAsset
     | DedustV2JoinLiquidity | DedustV2DepositEvent | DedustV2DepositPayload
 
-struct Storage {
-    dummy: uint1
-}
-
 contract DedustV2 {
     incomingMessages: AllowedMessage
-    storage: Storage
-}
-
-fun onInternalMessage(in: InMessage) {
-    val msg = lazy AllowedMessage.fromSlice(in.body);
-    match (msg) {
-        ClaimRewardMessage => {
-            assert (msg.rewardIndex >= 0) throw 0xFFFF
-        }
-        PayoutRewardMessage => {
-            assert (msg.amount >= 0) throw 0xFFFF
-        }
-        PayoutMessage => {
-            assert (msg.exitCode >= 0) throw 0xFFFF
-        }
-        DedustV2PayNative => {
-            assert (msg.amount >= 0) throw 0xFFFF
-        }
-        DedustV2PayJetton => {
-            assert (!msg.payment_payload.beginParse().isEmpty()) throw 0xFFFF
-        }
-        DedustV2SwapEvent => {
-            assert (msg.amount_in >= 0) throw 0xFFFF
-        }
-        DedustV2SwapPayload => {
-            assert (msg.minimal_amount_out >= 0) throw 0xFFFF
-        }
-        DedustV2PayoutPositionFees => {
-            assert (msg.x_fees >= 0) throw 0xFFFF
-        }
-        DedustV2Withdraw => {
-            assert (msg.liquidity >= 0) throw 0xFFFF
-        }
-        DedustV2WithdrawalEvent => {
-            assert (msg.liquidity >= 0) throw 0xFFFF
-        }
-        DedustV2CreditAsset => {
-            assert (msg.amount >= 0) throw 0xFFFF
-        }
-        DedustV2JoinLiquidity => {
-            assert (msg.amount_x >= 0) throw 0xFFFF
-        }
-        DedustV2DepositEvent => {
-            assert (msg.liquidity >= 0) throw 0xFFFF
-        }
-        DedustV2DepositPayload => {
-            assert (msg.amount_x >= 0) throw 0xFFFF
-        }
-        else => {
-            assert (in.body.isEmpty()) throw 0xFFFF
-        }
-    }
 }

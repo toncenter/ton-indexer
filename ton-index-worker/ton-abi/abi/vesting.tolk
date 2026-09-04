@@ -1,4 +1,4 @@
-tolk 1.0
+tolk 1.4
 
 struct Node {
     addr: any_address;
@@ -12,23 +12,6 @@ struct (0x7258a69b) VestingAddWhiteList {
 
 type AllowedMessage = VestingAddWhiteList
 
-struct Storage {
-    dummy: uint1
-}
-
 contract VestingMessages {
     incomingMessages: AllowedMessage
-    storage: Storage
-}
-
-fun onInternalMessage(in: InMessage) {
-    val msg = lazy AllowedMessage.fromSlice(in.body);
-    match (msg) {
-        VestingAddWhiteList => {
-            assert (in.body.isEmpty()) throw 0xFFFF
-        }
-        else => {
-            assert (in.body.isEmpty()) throw 0xFFFF
-        }
-    }
 }

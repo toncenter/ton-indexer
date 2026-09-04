@@ -379,8 +379,8 @@ TEST_CASE("A/B gate corpus: full vector set present, no orphan dispatch entries"
   const auto &varr = vectors->get_array();
   CHECK_MESSAGE(varr.size() == kExpectedVectorCount,
                 "vector corpus size " << varr.size() << " != expected " << kExpectedVectorCount
-                                      << " (regenerate with tools/gen_vectors.mjs, or update the constant "
-                                         "deliberately when the corpus grows)");
+                                      << " (the oracle corpus is frozen; update the constant deliberately "
+                                         "when it grows)");
 
   std::set<std::string> vector_keys;
   for (const auto &v : varr) {

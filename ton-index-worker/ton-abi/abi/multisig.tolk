@@ -1,4 +1,4 @@
-tolk 1.0
+tolk 1.4
 
 @overflow1023_policy("suppress")
 struct (0xf718510f) MultisigNewOrder {
@@ -44,35 +44,6 @@ struct (0x75097f5d) MultisigExecute {
 
 type AllowedMessage = MultisigNewOrder | MultisigInitOrder | MultisigApprove | MultisigApproveRejected | MultisigExecute
 
-struct Storage {
-    dummy: uint1
-}
-
 contract MultisigMessages {
     incomingMessages: AllowedMessage
-    storage: Storage
-}
-
-fun onInternalMessage(in: InMessage) {
-    val msg = lazy AllowedMessage.fromSlice(in.body);
-    match (msg) {
-        MultisigNewOrder => {
-            assert (in.body.isEmpty()) throw 0xFFFF
-        }
-        MultisigInitOrder => {
-            assert (in.body.isEmpty()) throw 0xFFFF
-        }
-        MultisigApprove => {
-            assert (in.body.isEmpty()) throw 0xFFFF
-        }
-        MultisigApproveRejected => {
-            assert (in.body.isEmpty()) throw 0xFFFF
-        }
-        MultisigExecute => {
-            assert (in.body.isEmpty()) throw 0xFFFF
-        }
-        else => {
-            assert (in.body.isEmpty()) throw 0xFFFF
-        }
-    }
 }
