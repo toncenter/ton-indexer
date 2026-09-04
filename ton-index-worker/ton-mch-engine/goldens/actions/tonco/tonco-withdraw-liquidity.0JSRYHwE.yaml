@@ -1,0 +1,61 @@
+# tonco / Tonco withdraw liquidity
+# trace: 0JSRYHwEQ6P5aTAh8p8_YgJS5LZlapbc_W4VTjSrshk=
+actions:
+  - type: dex_withdraw_liquidity
+    matcher: tonco_withdraw_liquidity
+    anchor: tonco_withdraw_liquidity@51390202000002
+    id: byE45iQnguKf2wjisssYFlHeyR/4YBwzDxtWY7+e+u0=
+    success: true
+    source: 0:3F7D5D018BAC19C23D47E714F21863F3C620F89CEF6D48A72A0AE0F2D68D7CF8
+    source_secondary: null
+    destination: 0:F6E6F4AD13073E875413D6A96C60F430A94E4888E868C79208D02FF1B0336931
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: null
+    opcode: null
+    dex_withdraw_liquidity_data:
+      amount1: 324026863
+      amount2: 2999999
+      asset1_out: null
+      asset2_out: 0:B113A994B5024A16719F69139328EB759596C38A25F59028B146FECDC3621DFE
+      burned_nft_address: 0:25DCA00B89840073546AE2F783257FE093AD6344F167E75DB2B28B68FBEC13FB
+      burned_nft_index: 1204
+      dex: tonco
+      dex_jetton_wallet_1: null
+      dex_jetton_wallet_2: 0:ACAD45796724B3F00AD42A4311B20667DA4BE28A43951587A381F73AA9552209
+      dex_wallet_1: 0:BFFADD270A738531DA7B13BA8FC403826C2586173F9EDE9C316FAB53BC59AC86
+      dex_wallet_2: 0:BFFADD270A738531DA7B13BA8FC403826C2586173F9EDE9C316FAB53BC59AC86
+      is_refund: false
+      lp_tokens_burnt: 557736918
+      tick_lower: -51720
+      tick_upper: -49380
+      user_jetton_wallet_1: null
+      user_jetton_wallet_2: 0:1D468B6965F795E098910B5133CBE226F9161AF3E01D2AFD8DB146372CF1CFAA
+    tx_hashes:
+      - 0JSRYHwEQ6P5aTAh8p8/YgJS5LZlapbc/W4VTjSrshk=
+      - F9puhrwwDy+D84wtYBQiyOFuspRxfKTSot4fpYye630=
+      - WhtTizoo8SiPn3iPAWxOeOZQfZN74ro3B891/QJW2Pk=
+      - ZpptTdxKnw/cV7EnzL9ipS+Fh+LuNpEeiZfO5O2D9AM=
+      - eKyJ+WOMAI12Wi4Z/m9Bu4PCrCXCoQ1HmcEjOcXs+WE=
+      - fJaUwLELlkuBwicyIGaRtXLTLYKJtemDlMMNMCFkwFg=
+      - iRBUFYWH9zPcTgn+Pepiwe8tVF+eIfC0qlvfKF4Fdr0=
+      - qJHJSB0nK2p09Ctl6/LCdPvZqjVYrq+KBYWi2VtnJcE=
+      - t3yF0DPVWzUwmWuCH9GtBJS1fkKswgXDhifsPFpL1iQ=
+      - uNpjJ+gZh84817VgMy5ahFMGWl2jNLIUdEQrZRu4F14=
+    accounts:
+      - 0:1D468B6965F795E098910B5133CBE226F9161AF3E01D2AFD8DB146372CF1CFAA
+      - 0:25DCA00B89840073546AE2F783257FE093AD6344F167E75DB2B28B68FBEC13FB
+      - 0:3F7D5D018BAC19C23D47E714F21863F3C620F89CEF6D48A72A0AE0F2D68D7CF8
+      - 0:871DA9215B14902166F0EA2A16DB56278D528108377F8158C5F4CCFDFDD22E17
+      - 0:ACAD45796724B3F00AD42A4311B20667DA4BE28A43951587A381F73AA9552209
+      - 0:BFFADD270A738531DA7B13BA8FC403826C2586173F9EDE9C316FAB53BC59AC86
+      - 0:F6E6F4AD13073E875413D6A96C60F430A94E4888E868C79208D02FF1B0336931
+    start_lt: 51390202000002
+    end_lt: 51390222000003
+    start_utime: 1732938723
+    end_utime: 1732938778
+    mc_seqno_end: 42486742

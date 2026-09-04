@@ -18,7 +18,7 @@
 #   it is reached on the post-step frontier) and again at the invocation site
 #   (single-hop routes, where the walk never steps; the frontier entry gate is
 #   the STEP head, so an exit-only recursion can never fire);
-# - the `where (.payload_opcode …)` clauses are what keep the exit-tried-first
+# - the direct integer `payload_opcode` comparisons keep the exit-tried-first
 #   order from mistaking an intermediate jetton carrier for the out leg (the
 #   premature exit: a pool-to-pool carrier rides a PayJetton
 #   (0xcbc33949) forward payload, the user-facing out leg does not;
@@ -39,11 +39,9 @@
 # builds the same pairing by scanning the consumed set and sorting on min_lt;
 # on a linear route (a pool forwards to exactly one continuation) the two agree.
 #
-# The one host fn is `dedust_v2_swap_payload`: the swap payload sits behind a
-# ref (PayNative.payment_payload) or inside the jetton carrier's b64
-# forward_payload (PayJetton wrapper), and its `next` SwapStep chain has to be
-# walked to reach the FINAL minimal_amount_out. Neither the cell descent nor the
-# walk is expressible in the language — see builders/dedust_v2.py.
+# `try parse` unwraps the PayJetton wrapper and then validates the payload.
+# The loop-only min-out helper walks the payload's `next` SwapStep chain to its
+# final minimal_amount_out.
 #
 # `out` keys are the reference matcher's JettonSwapBlock data keys, so the same
 # serializer fill (_fill_jetton_swap_action) serves both builds.
@@ -57,9 +55,9 @@ opcode ExcessMessage     = 0xd53276db
 rule dv2_hop = (
     op DedustV2PayNative @hop
       -> { op DedustV2SwapEvent @ev -> maybe $dv2_hop }
-  ^ btype jetton_transfer @hop where (.payload_opcode == "0xcbc33949")
+  ^ btype jetton_transfer @hop where (.payload_opcode == 0xcbc33949)
       -> { op DedustV2SwapEvent @ev -> maybe $dv2_hop }
-  ^ btype jetton_transfer @exit_leg where (.payload_opcode != "0xcbc33949")
+  ^ btype jetton_transfer @exit_leg where (.payload_opcode != 0xcbc33949)
   ^ op DedustV2Payout @exit_leg
 )
 
@@ -73,7 +71,7 @@ matcher dedust_v2_swap {
     ( op DedustV2PayNative @carrier ^ btype jetton_transfer @carrier )
       -> { op DedustV2SwapEvent @ev0
            ( $dv2_hop
-           ^ btype jetton_transfer @final_leg where (.payload_opcode != "0xcbc33949")
+           ^ btype jetton_transfer @final_leg where (.payload_opcode != 0xcbc33949)
            ^ op DedustV2Payout @final_leg )
            maybe op ExcessMessage @excess }
 
@@ -87,7 +85,8 @@ matcher dedust_v2_swap {
 
     let jetton_in    = carrier.btype == "jetton_transfer"
     let source_asset = carrier.data.asset if jetton_in else ton_asset()
-    let payload      = dedust_v2_swap_payload(carrier.data.forward_payload) if jetton_in else dedust_v2_swap_payload(carrier.body.payment_payload)
+    let carrier_cell = (try parse carrier.data.forward_payload as DedustV2PayJetton).payment_payload if jetton_in else carrier.body.payment_payload
+    let payload       = try parse carrier_cell as DedustV2SwapPayload
     # PayNative also carries deposits and fund rewards; only a swap payload is ours.
     reject when not jetton_in and payload == null
 
@@ -96,7 +95,8 @@ matcher dedust_v2_swap {
     let out_jetton = out_leg.btype == "jetton_transfer"
     let out_asset  = out_leg.data.asset if out_jetton else ton_asset()
     # An out leg still carrying a SwapPayload means the route failed mid-hop.
-    reject when out_jetton and dedust_v2_swap_payload(out_leg.data.forward_payload) != null
+    let out_wrapper = (try parse out_leg.data.forward_payload as DedustV2PayJetton) if out_jetton else null
+    reject when (try parse out_wrapper.payment_payload as DedustV2SwapPayload) != null
 
     let amounts_in  = concat([ev0.body.amount_in],  map(ev.body, "amount_in"))
     let amounts_out = concat([ev0.body.amount_out], map(ev.body, "amount_out"))
@@ -134,7 +134,7 @@ matcher dedust_v2_swap {
                     }) if len(amounts_in) > 1 else []
         referral_amount:   null
         referral_address:  null
-        min_out_amount:    amount(payload.min_out)
+        min_out_amount:    amount(dedust_v2_swap_min_out(payload))
     }
 }
 
@@ -165,7 +165,8 @@ matcher dedust_v2_failed_swap {
 
     let jetton_in    = carrier.btype == "jetton_transfer"
     let source_asset = carrier.data.asset if jetton_in else ton_asset()
-    let payload      = dedust_v2_swap_payload(carrier.data.forward_payload) if jetton_in else dedust_v2_swap_payload(carrier.body.payment_payload)
+    let carrier_cell = (try parse carrier.data.forward_payload as DedustV2PayJetton).payment_payload if jetton_in else carrier.body.payment_payload
+    let payload       = try parse carrier_cell as DedustV2SwapPayload
     reject when payload == null
 
     # The refund arm must match the carrier arm, and must go back to the
@@ -214,6 +215,6 @@ matcher dedust_v2_failed_swap {
         peer_swaps:        []
         referral_amount:   null
         referral_address:  null
-        min_out_amount:    amount(payload.min_out)
+        min_out_amount:    amount(dedust_v2_swap_min_out(payload))
     }
 }

@@ -67,6 +67,14 @@
     },
     {
       "kind": "StructRef",
+      "struct_name": "CocoonClientProxyRequest"
+    },
+    {
+      "kind": "StructRef",
+      "struct_name": "CocoonClientProxyRefundGranted"
+    },
+    {
+      "kind": "StructRef",
       "struct_name": "CocoonExtProxyPayoutRequest"
     },
     {
@@ -204,8 +212,54 @@
     },
     {
       "kind": "struct",
-      "name": "CocoonExtProxyPayoutRequest",
+      "name": "CocoonClientProxyRequest",
       "ty_idx": 18,
+      "prefix": {
+        "prefix_num": 1698992116,
+        "prefix_len": 32
+      },
+      "fields": [
+        {
+          "name": "query_id",
+          "ty_idx": 11
+        },
+        {
+          "name": "owner_address",
+          "ty_idx": 13
+        },
+        {
+          "name": "state_data",
+          "ty_idx": 3
+        },
+        {
+          "name": "payload",
+          "ty_idx": 17
+        }
+      ]
+    },
+    {
+      "kind": "struct",
+      "name": "CocoonClientProxyRefundGranted",
+      "ty_idx": 19,
+      "prefix": {
+        "prefix_num": 3331243131,
+        "prefix_len": 32
+      },
+      "fields": [
+        {
+          "name": "coins",
+          "ty_idx": 6
+        },
+        {
+          "name": "send_excesses_to",
+          "ty_idx": 13
+        }
+      ]
+    },
+    {
+      "kind": "struct",
+      "name": "CocoonExtProxyPayoutRequest",
+      "ty_idx": 20,
       "prefix": {
         "prefix_num": 1980819179,
         "prefix_len": 32
@@ -224,7 +278,7 @@
     {
       "kind": "struct",
       "name": "CocoonChargePayload",
-      "ty_idx": 19,
+      "ty_idx": 21,
       "prefix": {
         "prefix_num": 3143892883,
         "prefix_len": 32
@@ -247,7 +301,7 @@
     {
       "kind": "struct",
       "name": "CocoonGrantRefundPayload",
-      "ty_idx": 20,
+      "ty_idx": 22,
       "prefix": {
         "prefix_num": 4023849441,
         "prefix_len": 32
@@ -270,7 +324,7 @@
     {
       "kind": "struct",
       "name": "CocoonExtClientTopUp",
-      "ty_idx": 21,
+      "ty_idx": 23,
       "prefix": {
         "prefix_num": 4050839234,
         "prefix_len": 32
@@ -293,7 +347,7 @@
     {
       "kind": "struct",
       "name": "CocoonRegisterProxy",
-      "ty_idx": 22,
+      "ty_idx": 24,
       "prefix": {
         "prefix_num": 2457631925,
         "prefix_len": 32
@@ -308,7 +362,7 @@
     {
       "kind": "struct",
       "name": "CocoonUnregisterProxy",
-      "ty_idx": 23,
+      "ty_idx": 25,
       "prefix": {
         "prefix_num": 1833560818,
         "prefix_len": 32
@@ -327,7 +381,7 @@
     {
       "kind": "struct",
       "name": "CocoonOwnerClientRegister",
-      "ty_idx": 24,
+      "ty_idx": 26,
       "prefix": {
         "prefix_num": 3294601019,
         "prefix_len": 32
@@ -350,7 +404,7 @@
     {
       "kind": "struct",
       "name": "CocoonOwnerClientChangeSecretHash",
-      "ty_idx": 25,
+      "ty_idx": 27,
       "prefix": {
         "prefix_num": 2838851636,
         "prefix_len": 32
@@ -362,7 +416,7 @@
         },
         {
           "name": "new_secret_hash",
-          "ty_idx": 26
+          "ty_idx": 28
         },
         {
           "name": "send_excesses_to",
@@ -373,7 +427,7 @@
     {
       "kind": "struct",
       "name": "CocoonOwnerClientRequestRefund",
-      "ty_idx": 27,
+      "ty_idx": 29,
       "prefix": {
         "prefix_num": 4210715841,
         "prefix_len": 32
@@ -392,7 +446,7 @@
     {
       "kind": "struct",
       "name": "CocoonOwnerClientIncreaseStake",
-      "ty_idx": 28,
+      "ty_idx": 30,
       "prefix": {
         "prefix_num": 1780443744,
         "prefix_len": 32
@@ -415,7 +469,7 @@
     {
       "kind": "struct",
       "name": "CocoonOwnerClientWithdraw",
-      "ty_idx": 29,
+      "ty_idx": 31,
       "prefix": {
         "prefix_num": 3657862776,
         "prefix_len": 32
@@ -434,17 +488,17 @@
     {
       "kind": "struct",
       "name": "Storage",
-      "ty_idx": 30,
+      "ty_idx": 32,
       "fields": [
         {
           "name": "dummy",
-          "ty_idx": 31
+          "ty_idx": 33
         }
       ]
     }
   ],
   "storage": {
-    "storage_ty_idx": 30
+    "storage_ty_idx": 32
   },
   "incoming_messages": [
     {
@@ -481,13 +535,19 @@
       "body_ty_idx": 25
     },
     {
+      "body_ty_idx": 26
+    },
+    {
       "body_ty_idx": 27
     },
     {
-      "body_ty_idx": 28
+      "body_ty_idx": 29
     },
     {
-      "body_ty_idx": 29
+      "body_ty_idx": 30
+    },
+    {
+      "body_ty_idx": 31
     }
   ],
   "incoming_external": [],
@@ -502,5 +562,5 @@
   ],
   "compiler_name": "tolk",
   "compiler_version": "1.4.1",
-  "code_boc64": "te6ccgECBAEAARAAART/APSkE/S88sgLAQL40/iR8kAg1ywlAgVpRJgwhA8BxwDy9ODXLCevk1G0mDCEDwHHAPL04NcsImuS6WSYMIQPAccA8vTg1ywjsIc3XJgwhA8BxwDy9ODXLCXbH/ycmDCEDwHHAPL04NcsJ364jwyYMIQPAccA8vTg1ywni5c2FOMC1ywkk+PlrAIDABAwhA8BxwDy9ADumDCEDwHHAPL04NcsI2pPV5SYMIQPAccA8vTg1ywmIvz53JgwhA8BxwDy9ODXLCVJq4GkmDCEDwHHAPL04NcsJ9fTZgyYMIQPAccA8vTg1ywjUPtTBJgwhA8BxwDy9ODXLCbQNHPEMZeEDwHHAPL04IQPAccA8vQ="
+  "code_boc64": "te6ccgECBgEAASsAART/APSkE/S88sgLAQL40/iR8kAg1ywlAgVpRJgwhA8BxwDy9ODXLCevk1G0mDCEDwHHAPL04NcsImuS6WSYMIQPAccA8vTg1ywjKiR/pJgwhA8BxwDy9ODXLCY0dePcmDCEDwHHAPL04NcsI7CHN1yYMIQPAccA8vTg1ywl2x/8nOMC1ywnfriPDAMCBP6YMIQPAccA8vTg1ywni5c2FJgwhA8BxwDy9ODXLCST4+WsmDCEDwHHAPL04NcsI2pPV5SYMIQPAccA8vTg1ywmIvz53JgwhA8BxwDy9ODXLCVJq4GkmDCEDwHHAPL04NcsJ9fTZgyYMIQPAccA8vTg1ywjUPtTBOMCidcnMeMCAwQFBQAQMIQPAccA8vQACNoGjngADoQPAccA8vQ="
 }

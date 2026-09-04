@@ -35,15 +35,11 @@
 #                           the two legacy parent kinds, payouts attached inside
 #                           each branch (a children block hung off the `or` node
 #                           itself is silently dropped by the engines).
-#   telegram_nft_assigned   the non-consuming branch: bare anchor, no edges, so
-#                           the consumed set is exactly `[block]`. Runs second,
-#                           over whatever the purchase matcher did not claim.
+#   telegram_nft_assigned   the non-consuming branch: anchor plus an optional
+#                           peeked parent. Runs after the purchase matcher.
 #
-# The parent still reaches the shared core in the second matcher: the host fn
-# falls back to `assigned.previous_block` when @payment is unbound, which is
-# where legacy reads it from anyway. That is what makes the telemint mint parent
-# (call_contract 0x299a3e15, or the `nft_mint` block the priority-80 matcher
-# already built from it) flip `is_purchase` to false.
+# The second matcher peeks its optional parent so the shared core can detect a
+# telemint mint without adding that parent to the consumed set.
 #
 # Residual gap (documented, not in the corpus): a teleitem-bid assignment with a
 # ton_transfer/external parent and ZERO AuctionFillUp payouts. Legacy absorbs the
@@ -109,13 +105,11 @@ matcher telegram_nft_assigned {
     produces NftTransferBlock
     entry    @assigned
 
-    # No edges at all: the consumed set is the anchor alone, which is the legacy
-    # merge for every assignment outside the purchase branch. The parent is read,
-    # not matched — the host fn falls back to `assigned.previous_block` when
-    # @payment is unbound, exactly where legacy's `build_block` reads it.
+    # The optional parent is observed without changing the anchor-only consumed set.
     op NftOwnershipAssigned @assigned
+      <- maybe peek any @payment
 
-    let d = telegram_nft_purchase_data(assigned, null, null, null)
+    let d = telegram_nft_purchase_data(assigned, payment, null, null)
     reject when d == null
 
     # A `produces switch`, not `?:` keys, because the legacy key set here is

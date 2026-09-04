@@ -1,0 +1,61 @@
+# dedust-liquidities / Final deposit with ton excesses
+# trace: BD_4YMGJ9vOn8-2PFwxAj_vwi_UcrYRD61OXsHMHSb8=
+actions:
+  - type: dex_deposit_liquidity
+    matcher: dedust_deposit_final
+    anchor: dedust_deposit_liquidity@55550041000002
+    id: DRcVWOG4lpQFpiCQzw/jXpGtl4LeRI6Y3AsiJ9TcZqU=
+    success: true
+    source: 0:F3C6AB7281C27A6F7B3487E7DB90E195FFF22192963AF9B3FB57E0E257BA5F35
+    source_secondary: null
+    destination: 0:BDD0CA28E1A8C2177633E9D565F1E0F8EB701DB1D73B0EF91C5872EC4774488F
+    destination_secondary: 0:2190B30FBA1FD77D9F52ED25500677EF5ABC47BB8B957DEBF9A6288362BC3BEE
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: null
+    opcode: null
+    dex_deposit_liquidity_data:
+      amount1: 822575606
+      amount2: null
+      asset1: null
+      asset2: null
+      dex: dedust
+      lp_tokens_minted: 1099749988636946
+      target_amount_1: 832575606
+      target_amount_2: 1000000000000000
+      target_asset_1: null
+      target_asset_2: 0:FAAA2ECE2F5D2B6CF8864F70BEB3A5A37B208BD0FF2DD6A45ED1983E8A187729
+      user_jetton_wallet_1: null
+      user_jetton_wallet_2: null
+      vault_excesses:
+        - amount: 879143313
+          asset: null
+    tx_hashes:
+      - 3wqSxltGDZw7JJRmxj6JG0EMUBF2i2Hy4CA6etDNsYo=
+      - 5P64iG9lCEYmhaRQ/gFlbYe56ug8pfwWcAG9X+8VeHs=
+      - 6KB6Z8cM+uGLkIVQoUlG4MAn40V5BK+PB40y8SazZ3g=
+      - 7q1Cqe6FpgtWMRNFDp/CY2O2MAHd+MLbF2Q+ZZxMySs=
+      - 9MrSS0FL63c3acAurjMH7o9poHKhPEN0Iv29PPXGZck=
+      - 9xK/W23xDJ9/4vFLMLQwy6cYXmgxBDKTNq5vV2S/QAE=
+      - BD/4YMGJ9vOn8+2PFwxAj/vwi/UcrYRD61OXsHMHSb8=
+      - ISnMaB+v+KJgjvuPm9ub57aL8fpHu9FgcMb/s8Jg2zc=
+      - dWRxua0cVEleSTZwPOFbAsTpb6jANYkZ7bChOO9sPA4=
+      - jtsl8IzaczgWMTjO9z6W7hMF0OvVItzo2ErCqvVoJ68=
+      - ktLsmCWfEdtDVkip4hFrcxQzfNmgKrcb/ofM7hybgts=
+      - nrL8EQ3evaNbcjFi8JmnfO0fYTxt5IjxbubOrjUKEeM=
+      - xRCC1P6c7NDzpldJso/CmxzDBMTSfdYzsey79gwV8tk=
+    accounts:
+      - 0:2190B30FBA1FD77D9F52ED25500677EF5ABC47BB8B957DEBF9A6288362BC3BEE
+      - 0:5F0564FB5F604783DB57031CE1CF668A88D4D4D6DA6DE4DB222B4B920D6FD800
+      - 0:71C9A3EB6ED1ED83561B2BEEED27D05AB37ACB2C036E161F79E5BF77D963A900
+      - 0:BDD0CA28E1A8C2177633E9D565F1E0F8EB701DB1D73B0EF91C5872EC4774488F
+      - 0:DAE153A74D894BBC32748198CD626E4F5DF4A69AD2FA56CE80FC2644B5708D20
+      - 0:F3C6AB7281C27A6F7B3487E7DB90E195FFF22192963AF9B3FB57E0E257BA5F35
+    start_lt: 55550041000002
+    end_lt: 55550056000004
+    start_utime: 1743392713
+    end_utime: 1743392748
+    mc_seqno_end: 46368496

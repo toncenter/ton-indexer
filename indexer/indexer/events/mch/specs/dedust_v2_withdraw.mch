@@ -51,8 +51,8 @@
 # MCH engines instead absorb it: nested absorption is UNCONDITIONAL for a
 # matched non-root node (mch_ir/engine.py `_absorb_aux`, mirrored in C++), and
 # the matcher-level `include_excess false` above only suppresses the ANCHOR's
-# own aux siblings. Verified against the real legacy classifier over all nine
-# corpus withdraw fixtures: every semantic field of the produced row is
+# own aux siblings. On all nine corpus withdraw fixtures,
+# every semantic field of the produced row is
 # byte-identical, and the whole delta is that the excess transaction moves into
 # this row's `tx_hashes` (and, on one fixture, extends `end_lt`) instead of
 # standing as its own row. Five of the nine show it — the successful ones; the

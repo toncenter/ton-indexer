@@ -1,0 +1,59 @@
+# tg-wallet / Change wallet key requested by internal message
+# note: named from the v1.3-only yaml; trace file is untracked and no longer in the working tree, and it has no action golden
+# trace: CaitzDiXgDuUMWIvvPLZwCI8YcDfz_M5dbXyaOs7Occ=
+actions:
+  - type: change_wallet_key
+    matcher: change_wallet_key
+    anchor: change_wallet_key@92620834000002
+    id: kranSurS86jriH8hpL/cfX/ohL2nOYR56l0VpPGijsg=
+    success: true
+    source: 0:E15488B65F7E904F1D14C84AC6F603CCC4A404B03BEFB568D5F5CC8ED6866887
+    source_secondary: null
+    destination: 0:E55E63B850B71B8FF5AD44E1B8271237AFAF31900B2B6D41233707BB585B8091
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: 5000000
+    opcode: null
+    extra:
+      parent_gasless_action: b5cLv1FsgTThSFHBjzqJteDep4FS/Xe+Wp3w1XvRtRc=
+    tx_hashes:
+      - 0XU5v5zYu0IYjsLX1pXc77isPyzQhEcOJoRjRrAuHtE=
+      - CaitzDiXgDuUMWIvvPLZwCI8YcDfz/M5dbXyaOs7Occ=
+    accounts:
+      - 0:E15488B65F7E904F1D14C84AC6F603CCC4A404B03BEFB568D5F5CC8ED6866887
+      - 0:E55E63B850B71B8FF5AD44E1B8271237AFAF31900B2B6D41233707BB585B8091
+    start_lt: 92620834000002
+    end_lt: 92620834000003
+    start_utime: 1787831090
+    end_utime: 1787831090
+    mc_seqno_end: 80865137
+  - type: gasless_request
+    anchor: gasless_request@92620834000002
+    id: b5cLv1FsgTThSFHBjzqJteDep4FS/Xe+Wp3w1XvRtRc=
+    success: true
+    source: 0:E15488B65F7E904F1D14C84AC6F603CCC4A404B03BEFB568D5F5CC8ED6866887
+    source_secondary: null
+    destination: 0:E55E63B850B71B8FF5AD44E1B8271237AFAF31900B2B6D41233707BB585B8091
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: 5000000
+    opcode: null
+    tx_hashes:
+      - 0XU5v5zYu0IYjsLX1pXc77isPyzQhEcOJoRjRrAuHtE=
+      - CaitzDiXgDuUMWIvvPLZwCI8YcDfz/M5dbXyaOs7Occ=
+    accounts:
+      - 0:E15488B65F7E904F1D14C84AC6F603CCC4A404B03BEFB568D5F5CC8ED6866887
+      - 0:E55E63B850B71B8FF5AD44E1B8271237AFAF31900B2B6D41233707BB585B8091
+    start_lt: 92620834000002
+    end_lt: 92620834000003
+    start_utime: 1787831090
+    end_utime: 1787831090
+    mc_seqno_end: 80865137

@@ -35,7 +35,7 @@ from indexer.events.mch.registry import Registries
 # this module's directory. ORDER IS THE CONTRACT: it equals matcher registration
 # order, and equal-priority matchers tie-break on this order.
 #
-# specs/jetton_transfer.mch and specs/jettons.mch are deliberately omitted (A4).
+# specs/jetton_transfer.mch and specs/jettons.mch are deliberately omitted.
 # They are builder-tier conformance references that duplicate the
 # jetton_transfer/burn/mint matchers in specs/jettons_decl.mch. They are
 # permanently C++-skipped and inert in Python because the priority-90
@@ -85,6 +85,7 @@ DEFAULT_SPEC_PATHS = [
     "specs/coffee_mev.mch",
     "specs/coffee_staking.mch",
     "specs/cocoon.mch",
+    "specs/tgwallet.mch",  # last: claims only a change-key call nothing else wanted
 ]
 
 
@@ -102,7 +103,7 @@ def _collect_predicate_names(p: ast_.PatternExpr, out: set[str]) -> None:
             out.add(p.where_predicate)
         if isinstance(p.head, ast_.PredHead):
             out.add(p.head.name)
-    elif isinstance(p, ast_.Maybe):
+    elif isinstance(p, (ast_.Maybe, ast_.Peek)):
         _collect_predicate_names(p.inner, out)
     elif isinstance(p, ast_.Sequence):
         _collect_predicate_names(p.head, out)
@@ -128,6 +129,45 @@ def build_stub_registries(files: list[ast_.File]) -> Registries:
     """Permissive Registries covering every name the given files reference."""
     reg = Registries()
     predicate_names: set[str] = set()
+
+    def stub_expr(e: ast_.Expr) -> None:
+        if isinstance(e, ast_.FieldAccess):
+            stub_expr(e.target)
+        elif isinstance(e, ast_.Call):
+            if not isinstance(e.callee, ast_.NameRef):
+                stub_expr(e.callee)
+            for arg in e.args:
+                stub_expr(arg)
+        elif isinstance(e, ast_.LookupExpr):
+            for arg in e.args:
+                stub_expr(arg)
+        elif isinstance(e, ast_.UnaryOp):
+            stub_expr(e.operand)
+        elif isinstance(e, ast_.BinaryOp):
+            stub_expr(e.left)
+            stub_expr(e.right)
+        elif isinstance(e, ast_.Ternary):
+            stub_expr(e.cond)
+            stub_expr(e.then)
+            stub_expr(e.orelse)
+        elif isinstance(e, ast_.ListLit):
+            for item in e.elements:
+                stub_expr(item)
+        elif isinstance(e, ast_.RecordLit):
+            for field in e.fields:
+                stub_expr(field.value)
+        elif isinstance(e, ast_.ParseExpr):
+            stub_expr(e.target)
+            for msg_type in e.msg_types:
+                reg.message_types.setdefault(msg_type, _StubMessage)
+        elif isinstance(e, ast_.Comprehension):
+            stub_expr(e.xs)
+            stub_expr(e.body)
+
+    def stub_fields(fields: tuple[ast_.OutField, ...]) -> None:
+        for field in fields:
+            stub_expr(field.value)
+
     for f in files:
         for pd in f.predicates:
             predicate_names.add(pd.name)
@@ -147,6 +187,17 @@ def build_stub_registries(files: list[ast_.File]) -> Registries:
                 if isinstance(stmt, ast_.ParseStmt):
                     for t in stmt.msg_types:
                         reg.message_types.setdefault(t, _StubMessage)
+                elif isinstance(stmt, ast_.LetStmt):
+                    stub_expr(stmt.value)
+                elif isinstance(stmt, (ast_.RejectStmt, ast_.FailedStmt, ast_.BrokenStmt)):
+                    stub_expr(stmt.condition)
+                elif isinstance(stmt, ast_.OutStmt):
+                    stub_fields(stmt.fields)
+                elif isinstance(stmt, ast_.SwitchStmt):
+                    for branch in stmt.branches:
+                        if branch.condition is not None:
+                            stub_expr(branch.condition)
+                        stub_fields(branch.out.fields)
     for name in sorted(predicate_names):
         reg.predicates[name] = lambda _block: True
     return reg
@@ -210,6 +261,8 @@ def _emit_node(n: LNode, nodes: list[dict], memo: dict[int, int]) -> int:
 
     if n.optional:
         rec["optional"] = True
+    if n.peek:
+        rec["peek"] = True
     if n.capture is not None:
         rec["capture"] = n.capture
     if n.where is not None:

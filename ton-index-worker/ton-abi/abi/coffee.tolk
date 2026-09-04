@@ -99,6 +99,12 @@ struct (0xc0ffee25) CoffeeCreatePoolRequest {
 }
 
 @overflow1023_policy("suppress")
+struct (0xee51ce51) CoffeeMevProtectFailedSwap {
+    query_id: uint64;
+    recipient: any_address;
+}
+
+@overflow1023_policy("suppress")
 struct (0xb30c7310) CoffeeStakingClaimRewards {
     _query_id: bits64;
     jetton_wallet: any_address;
@@ -114,7 +120,7 @@ struct (0xcb03bfaf) CoffeeStakingPositionWithdraw2 {
     points: coins;
 }
 
-type AllowedMessage = CoffeeCreateVault | CoffeeSwapEvent | CoffeeCreateLiquidityDepositoryRequest | CoffeeDepositLiquiditySuccessfulEvent | CoffeeLiquidityWithdrawalEvent | CoffeeCreatePoolCreatorRequest | CoffeeCreatePoolRequest | CoffeeStakingClaimRewards | CoffeeStakingPositionWithdraw2
+type AllowedMessage = CoffeeCreateVault | CoffeeSwapEvent | CoffeeCreateLiquidityDepositoryRequest | CoffeeDepositLiquiditySuccessfulEvent | CoffeeLiquidityWithdrawalEvent | CoffeeCreatePoolCreatorRequest | CoffeeCreatePoolRequest | CoffeeMevProtectFailedSwap | CoffeeStakingClaimRewards | CoffeeStakingPositionWithdraw2
 
 struct Storage {
     dummy: uint1
@@ -147,6 +153,9 @@ fun onInternalMessage(in: InMessage) {
             assert (in.body.isEmpty()) throw 0xFFFF
         }
         CoffeeCreatePoolRequest => {
+            assert (in.body.isEmpty()) throw 0xFFFF
+        }
+        CoffeeMevProtectFailedSwap => {
             assert (in.body.isEmpty()) throw 0xFFFF
         }
         CoffeeStakingClaimRewards => {

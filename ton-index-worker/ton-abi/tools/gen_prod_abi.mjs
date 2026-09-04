@@ -33,8 +33,10 @@ async function compileTolk(absFileName) {
 // files such as _TEMPLATE.tolk out of the compile+--check set.
 const PROD_DECLS = [
     'jetton',
+    'jetton_payloads',
     'multisig',
     'pton',
+    'dns',
     'stonfi',
     'dedust',
     'dedust_v2',
@@ -42,6 +44,8 @@ const PROD_DECLS = [
     'coffee_staking_withdraw3',
     'evaa',
     'evaa_supply_forward',
+    'layerzero',
+    'vesting',
     'jvault',
     'jvault_payload',
     'subscriptions',
@@ -66,7 +70,6 @@ async function main() {
             throw new Error(`PROD_DECLS lists '${stem}' but ${declPath} does not exist`);
         }
         const abi = await compileTolk(declPath);
-        // Locked decision 15 pins the schema version exactly.
         if (abi.abi_schema_version !== '1.0') {
             throw new Error(`unexpected abi_schema_version '${abi.abi_schema_version}' for ${stem}`);
         }

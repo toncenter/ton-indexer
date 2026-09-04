@@ -30,21 +30,6 @@ Value Value::make_int64(std::int64_t n) {
   return make_int(td::make_refint(n));
 }
 
-Value Value::make_float(double n) {
-  Value v;
-  v.t = VType::Float;
-  v.dnum = n;
-  return v;
-}
-
-Value Value::make_amount_float(double n) {
-  Value v;
-  v.t = VType::Amount;
-  v.amount_float = true;
-  v.dnum = n;
-  return v;
-}
-
 Value Value::make_str(std::string s) {
   Value v;
   v.t = VType::Str;
@@ -68,7 +53,7 @@ Value Value::make_amount(td::RefInt256 n) {
 
 Value Value::make_amount_none() {
   Value v;
-  v.t = VType::Amount;  // num stays null == Python Amount(None)
+  v.t = VType::Amount;  // num stays null == Amount-none
   return v;
 }
 
@@ -79,10 +64,10 @@ Value Value::make_block(const Block *b) {
   return v;
 }
 
-Value Value::make_account_raw(std::string canonical) {
+Value Value::make_account_raw(std::string raw) {
   Value v;
   v.t = VType::Account;
-  v.str = std::move(canonical);
+  v.str = canonicalize_or_passthrough(raw);
   return v;
 }
 
@@ -100,12 +85,12 @@ Value Value::make_asset_ton() {
   return v;
 }
 
-Value Value::make_asset_jetton(std::string canonical_master) {
+Value Value::make_asset_jetton(std::string raw_master) {
   Value v;
   v.t = VType::Asset;
   v.is_ton = false;
   v.has_jetton = true;
-  v.str = std::move(canonical_master);
+  v.str = canonicalize_or_passthrough(raw_master);
   return v;
 }
 
@@ -149,17 +134,31 @@ const Value *Value::field(const std::string &name) const {
   return nullptr;
 }
 
-td::Result<std::string> td_boc_serialize(const td::Ref<vm::Cell> &root) {
-  // Dumps render cell-derived fields by root hash, so use the deterministic
-  // native writer; BOC container byte order is not observable here.
+// BOC container modes: rendering uses bare containers; bytes stored into
+// parsed actions use CRC32C so the stored bytes stay byte-stable.
+// Cell content is identical either way; flip either constant to change its mode.
+constexpr int kBocRenderMode = 0;  // bare container
+constexpr int kBocStoredMode = vm::BagOfCells::Mode::WithCRC32C;
+
+namespace {
+td::Result<std::string> boc_with_mode(const td::Ref<vm::Cell> &root, int mode) {
   if (root.is_null()) {
     return td::Status::Error("td_boc_serialize: null cell");
   }
-  auto r = vm::std_boc_serialize(root, 0);
+  auto r = vm::std_boc_serialize(root, mode);
   if (r.is_error()) {
     return r.move_as_error();
   }
   return r.move_as_ok().as_slice().str();
+}
+}  // namespace
+
+td::Result<std::string> td_boc_serialize(const td::Ref<vm::Cell> &root) {
+  return boc_with_mode(root, kBocRenderMode);
+}
+
+td::Result<std::string> td_boc_serialize_crc(const td::Ref<vm::Cell> &root) {
+  return boc_with_mode(root, kBocStoredMode);
 }
 
 std::optional<std::string> normalize_raw_address(const std::string &s) {
@@ -196,6 +195,11 @@ std::optional<std::string> normalize_raw_address(const std::string &s) {
     up.push_back(static_cast<char>(std::toupper(static_cast<unsigned char>(c))));
   }
   return wc_part + ":" + up;
+}
+
+std::string canonicalize_or_passthrough(const std::string &raw) {
+  auto norm = normalize_raw_address(raw);
+  return norm ? *norm : raw;
 }
 
 std::string Value::describe() const {

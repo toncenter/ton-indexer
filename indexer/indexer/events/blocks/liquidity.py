@@ -922,7 +922,7 @@ def _stonfi_v2_absorb_unpaired(final: Block, partial: Block) -> None:
 
 
 async def post_process_stonfi_v2_liquidity(blocks: list[Block]) -> list[Block]:
-    """Host-side pairing pass for the R08 stonfi_v2 provide-liquidity remake
+    """Host-side pairing pass for the stonfi_v2 provide-liquidity remake
     (merging stays host-side). The mch matchers emit one
     class-tagged block per deposit leg; this pass replays the legacy
     cross-branch pairing: a later-fired leg absorbs an earlier sibling leg
@@ -933,7 +933,7 @@ async def post_process_stonfi_v2_liquidity(blocks: list[Block]) -> list[Block]:
     ALL matched sibling deposits at once (3+ legs under one parent); this
     pass pairs one candidate per block, latest-fired first.
 
-    NOT registered in event_processing yet — production wiring is T26."""
+    NOT registered in event_processing."""
     deposits = [b for b in blocks if _is_stonfi_v2_provide_leg(b)]
     if len(deposits) < 2:
         return blocks
@@ -2641,8 +2641,7 @@ class CoffeeMevProtectHoldFundsMatcher(BlockMatcher):
                 and block.opcode == CoffeeMevProtectHoldFunds.opcode
             ) or (
                 isinstance(block, JettonTransferBlock)
-                and int(block.data["payload_opcode"], 16)
-                == CoffeeMevProtectHoldFunds.opcode
+                and block.data["payload_opcode"] == CoffeeMevProtectHoldFunds.opcode
             )
         except:
             return False
@@ -2696,8 +2695,7 @@ class CoffeeMevProtectFailedSwapMatcher(BlockMatcher):
                 and block.opcode == CoffeeMevProtectFailedSwap.opcode
             ) or (
                 isinstance(block, JettonTransferBlock)
-                and int(block.data["payload_opcode"], 16)
-                == CoffeeMevProtectFailedSwap.opcode
+                and block.data["payload_opcode"] == CoffeeMevProtectFailedSwap.opcode
             )
         except:
             return False

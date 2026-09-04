@@ -49,6 +49,7 @@ logger.debug('Loading evaa.py')
 
 
 TON_ASSET_ID = 0x1A4219FE5E60D63AF2A3CC7DCE6FEC69B45C6B5718497A6148E7C232AC87BD8A
+_JETTON_RECIPIENT_UNSET = object()
 
 EVAA_ACTION_COMMENTS = ["EVAA liquidation.", "EVAA supply.", "EVAA withdraw."]
 
@@ -125,6 +126,7 @@ async def build_evaa_supply_core(
     fail_block: CallContractBlock | None,
     jetton_return: Block | None,
     sibling_blocks: list[Block],
+    jetton_recipient_address=_JETTON_RECIPIENT_UNSET,
 ) -> EvaaSupplyData | None:
     """Shared build core for evaa_supply.
 
@@ -164,13 +166,15 @@ async def build_evaa_supply_core(
         amount = block.data["amount"].value
         master = block.data["receiver"]
         asset = block.data['asset']
-        if not block.data.get("forward_payload"):
-            logger.warning("No forward_payload in jetton supply")
-            return None
-
-        payload_slice = Slice.one_from_boc(block.data["forward_payload"])
-        supply_master_data = EvaaSupplyJettonForwardMessage(payload_slice)
-        recipient_address = AccountId(supply_master_data.recipient_address)
+        if jetton_recipient_address is _JETTON_RECIPIENT_UNSET:
+            if not block.data.get("forward_payload"):
+                logger.warning("No forward_payload in jetton supply")
+                return None
+            payload_slice = Slice.one_from_boc(block.data["forward_payload"])
+            supply_master_data = EvaaSupplyJettonForwardMessage(payload_slice)
+            recipient_address = AccountId(supply_master_data.recipient_address)
+        else:
+            recipient_address = AccountId(jetton_recipient_address)
         # determine recipient_jetton_wallet
         if sender == recipient_address:
             recipient_jetton_wallet = sender_jetton_wallet
@@ -303,7 +307,7 @@ class EvaaSupplyBlockMatcher(BlockMatcher):
         if data is None:
             return []
         new_block = EvaaSupplyBlock(data)
-        # The fail path used to append jetton_return / fail_block a second time;
+        # The fail path can append jetton_return / fail_block a second time;
         # merge_blocks dedups through set(), so one pass is the same merge.
         new_block.merge_blocks([block] + other_blocks)
         return [new_block]

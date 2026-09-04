@@ -12,7 +12,7 @@
 #         payout leg  (PayoutMessage 0x3216ca09 TON | jetton_transfer)   # optional
 #         excess 0xd53276db                               # auto-absorbed (default)
 #
-# Anchored on the payout-back message per the matcher-notes rule (05_fees_rewards):
+# Anchored on the payout-back message:
 # the request alone doesn't carry the amount. Action mirrors the reference:
 # type dedust_v2_claim_reward reusing the dex_withdraw_liquidity_data shape,
 # amount1 = PayoutReward.amount, asset1/wallets from the payout leg, side-2 null.

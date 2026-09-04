@@ -1,0 +1,105 @@
+# dedust-liquidities / First deposit
+# trace: xu061_cOVdxLMa4sn1JJXEK5XkBiPdCzEDRNI_wWKPs=
+actions:
+  - type: contract_deploy
+    anchor: contract_deploy#178d4519@56913864000004
+    id: ZblWpOBP181yRxjVuYxZOz50UX/GWLQqoHcj3hdp0PM=
+    success: true
+    source: 0:0A8167CEA36A89E004559C878D116BBB71A8D6C11FF26F15EF5FBCF06B289176
+    source_secondary: null
+    destination: 0:DD29F92C276CFE199632417E70752E8ED102C6658534893982190B2C1202A3B8
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: 492203200
+    opcode: 0x178d4519
+    tx_hashes:
+      - 2nCQhiwHPw6GdpgKvb9+mHSfcsAWxjr8IIWYfzklaaQ=
+      - nddeCf5hvHYgiTs5lYMTz0WV7J98tmLBrfj2ZBB2K3c=
+    accounts:
+      - 0:0A8167CEA36A89E004559C878D116BBB71A8D6C11FF26F15EF5FBCF06B289176
+      - 0:DD29F92C276CFE199632417E70752E8ED102C6658534893982190B2C1202A3B8
+    start_lt: 56913864000004
+    end_lt: 56913867000001
+    start_utime: 1746671357
+    end_utime: 1746671364
+    mc_seqno_end: 47577060
+  - type: contract_deploy
+    anchor: contract_deploy#9b3aa3fa@56913871000002
+    id: xLBY7k/JlEVzAuuUr49GaYm2USWe6I+YcYeNuGYUyIE=
+    success: true
+    source: 0:5F0564FB5F604783DB57031CE1CF668A88D4D4D6DA6DE4DB222B4B920D6FD800
+    source_secondary: null
+    destination: 0:60A7E225FF23ECCC772A72A702EF4445DA69D4A28F01C8A3F73B2D8DBD3A9FF1
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: 10515200
+    opcode: 0x9b3aa3fa
+    tx_hashes:
+      - J1kTMFw8fEe/5HjXJwyv/2DBaexXeeWKiFBa6FmnLyw=
+      - usVV77ulKdWfTJQZxLaYY4uImlma7WQIptIfnur3ml8=
+    accounts:
+      - 0:5F0564FB5F604783DB57031CE1CF668A88D4D4D6DA6DE4DB222B4B920D6FD800
+      - 0:60A7E225FF23ECCC772A72A702EF4445DA69D4A28F01C8A3F73B2D8DBD3A9FF1
+    start_lt: 56913871000002
+    end_lt: 56913871000003
+    start_utime: 1746671372
+    end_utime: 1746671372
+    mc_seqno_end: 47577063
+  - type: dex_deposit_liquidity
+    matcher: dedust_deposit_partial
+    anchor: dedust_deposit_liquidity_partial@56913864000002
+    id: cLT19j45L/cT0+6TGHxY4a0wM4jv3o8KZ57JGcpTuME=
+    success: true
+    source: 0:13D14384CC8A549D0D6D71BB6754E73B16934669E0236624586C42AC2EFC0E56
+    source_secondary: null
+    destination: null
+    destination_secondary: 0:60A7E225FF23ECCC772A72A702EF4445DA69D4A28F01C8A3F73B2D8DBD3A9FF1
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: null
+    opcode: null
+    dex_deposit_liquidity_data:
+      amount1: 8364000000000
+      amount2: null
+      asset1: 0:DCFE7AE6E6839509540CF06449E6AFE1AF58E0A4D423B06908184FAECEDB76EB
+      asset2: null
+      dex: dedust
+      lp_tokens_minted: null
+      target_amount_1: 8364000000000
+      target_amount_2: 100000000000
+      target_asset_1: 0:DCFE7AE6E6839509540CF06449E6AFE1AF58E0A4D423B06908184FAECEDB76EB
+      target_asset_2: null
+      user_jetton_wallet_1: 0:0A8167CEA36A89E004559C878D116BBB71A8D6C11FF26F15EF5FBCF06B289176
+      user_jetton_wallet_2: null
+    tx_hashes:
+      - 2nCQhiwHPw6GdpgKvb9+mHSfcsAWxjr8IIWYfzklaaQ=
+      - 3w4o6gwKmZgA0pGOEB32VkCECYC18cW/zTKYnCG6S1E=
+      - BZmaD1nZMi6D9vhQ5ix9V/hNQaAIW+uCRD9rcTUNN7k=
+      - J1kTMFw8fEe/5HjXJwyv/2DBaexXeeWKiFBa6FmnLyw=
+      - jRsgidxTOGVAPOhVP8LeRx66UH/hlFBss4rKf9xZ2g8=
+      - nddeCf5hvHYgiTs5lYMTz0WV7J98tmLBrfj2ZBB2K3c=
+      - usVV77ulKdWfTJQZxLaYY4uImlma7WQIptIfnur3ml8=
+      - xu061/cOVdxLMa4sn1JJXEK5XkBiPdCzEDRNI/wWKPs=
+    accounts:
+      - 0:0A8167CEA36A89E004559C878D116BBB71A8D6C11FF26F15EF5FBCF06B289176
+      - 0:13D14384CC8A549D0D6D71BB6754E73B16934669E0236624586C42AC2EFC0E56
+      - 0:5F0564FB5F604783DB57031CE1CF668A88D4D4D6DA6DE4DB222B4B920D6FD800
+      - 0:60A7E225FF23ECCC772A72A702EF4445DA69D4A28F01C8A3F73B2D8DBD3A9FF1
+      - 0:DD29F92C276CFE199632417E70752E8ED102C6658534893982190B2C1202A3B8
+      - 0:FE619F16D1F45D3A2FA8E596661A678BC67C4B86B436C2ADAE3C5AFD4F0E0C37
+    start_lt: 56913864000002
+    end_lt: 56913871000004
+    start_utime: 1746671357
+    end_utime: 1746671373
+    mc_seqno_end: 47577063

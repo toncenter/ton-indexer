@@ -25,8 +25,7 @@ std::optional<std::string> account_canonical(const Value &v) {
   if (v.t != VType::Account || v.addr_none) {
     return std::nullopt;
   }
-  auto n = normalize_raw_address(v.str);
-  return n ? *n : v.str;
+  return canonicalize_or_passthrough(v.str);
 }
 
 }  // namespace

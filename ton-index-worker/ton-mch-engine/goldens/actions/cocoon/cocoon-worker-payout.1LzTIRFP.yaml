@@ -1,0 +1,157 @@
+# cocoon / Cocoon Worker Payout
+# trace: 1LzTIRFPDw1CixKXM9wxSE5zxTg7okb2kstnP3GQhNU=
+actions:
+  - type: call_contract
+    anchor: call_contract#2565934c@64204706000007
+    id: r3Vn4cYbo0KcjvnAvd/XdxUqZz4Pd/R1z3npBEarmpQ=
+    success: true
+    source: 0:0FB585C71EAF7958A28E095A8840BBCDEAE1CBCDF1BFF22DF95900DD1C993E6A
+    source_secondary: null
+    destination: 0:B16DB31490EE38ED5DD0258D9B686FF0BA590025E4A4BD232D1CD5A8AA805A16
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: 488375600
+    opcode: 0x2565934c
+    tx_hashes:
+      - 9xnDwmB1gHLmodl77oAO/OyglXuWShFYlgIsOsBGUiI=
+      - LQgw3Kal8yrXkOH2VHuNUznLnvwKCQkanvVHfPPA738=
+    accounts:
+      - 0:0FB585C71EAF7958A28E095A8840BBCDEAE1CBCDF1BFF22DF95900DD1C993E6A
+      - 0:B16DB31490EE38ED5DD0258D9B686FF0BA590025E4A4BD232D1CD5A8AA805A16
+    start_lt: 64204706000007
+    end_lt: 64204706000008
+    start_utime: 1764625757
+    end_utime: 1764625757
+    mc_seqno_end: 54569674
+    parent_action_id: SCC/fusAAXkkQR/9rf7/gDY+m+isNh6qPxzzlwf0Gmc=
+    ancestor_type:
+      - cocoon_worker_payout
+  - type: call_contract
+    anchor: call_contract#4d725d2c@64204706000004
+    id: 6M7X04Gh1DA4u/2oGoJ9XZQ4RNvY5IdgsnX3cVU2xsg=
+    success: true
+    source: 0:3120737EC3A10FC6331A16C93EC88203A0342AB4AC96671E6163E39CBC2F69C4
+    source_secondary: null
+    destination: 0:0FB585C71EAF7958A28E095A8840BBCDEAE1CBCDF1BFF22DF95900DD1C993E6A
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: 494435200
+    opcode: 0x4d725d2c
+    tx_hashes:
+      - 9xnDwmB1gHLmodl77oAO/OyglXuWShFYlgIsOsBGUiI=
+      - ctbcp/OHU9XSGSfInhHW05a+Mfi62eq2Cdd5Ov084k0=
+    accounts:
+      - 0:0FB585C71EAF7958A28E095A8840BBCDEAE1CBCDF1BFF22DF95900DD1C993E6A
+      - 0:3120737EC3A10FC6331A16C93EC88203A0342AB4AC96671E6163E39CBC2F69C4
+    start_lt: 64204706000004
+    end_lt: 64204706000005
+    start_utime: 1764625757
+    end_utime: 1764625757
+    mc_seqno_end: 54569674
+    parent_action_id: SCC/fusAAXkkQR/9rf7/gDY+m+isNh6qPxzzlwf0Gmc=
+    ancestor_type:
+      - cocoon_worker_payout
+  - type: call_contract
+    anchor: call_contract#a040ad28@64204706000002
+    id: b+eKZ4hoidzBAGmla+Mg66wVjZ90Cy0/uP6sGISKXs0=
+    success: true
+    source: 0:B16DB31490EE38ED5DD0258D9B686FF0BA590025E4A4BD232D1CD5A8AA805A16
+    source_secondary: null
+    destination: 0:3120737EC3A10FC6331A16C93EC88203A0342AB4AC96671E6163E39CBC2F69C4
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: 498999200
+    opcode: 0xa040ad28
+    tx_hashes:
+      - 1LzTIRFPDw1CixKXM9wxSE5zxTg7okb2kstnP3GQhNU=
+      - ctbcp/OHU9XSGSfInhHW05a+Mfi62eq2Cdd5Ov084k0=
+    accounts:
+      - 0:3120737EC3A10FC6331A16C93EC88203A0342AB4AC96671E6163E39CBC2F69C4
+      - 0:B16DB31490EE38ED5DD0258D9B686FF0BA590025E4A4BD232D1CD5A8AA805A16
+    start_lt: 64204706000002
+    end_lt: 64204706000003
+    start_utime: 1764625757
+    end_utime: 1764625757
+    mc_seqno_end: 54569674
+    parent_action_id: SCC/fusAAXkkQR/9rf7/gDY+m+isNh6qPxzzlwf0Gmc=
+    ancestor_type:
+      - cocoon_worker_payout
+  - type: call_contract
+    anchor: call_contract#c59a7cd3@64204706000006
+    id: oJoEwOvl9wTe7E/riM7Tprnw+0FjCCLdMKOue4DEcqo=
+    success: true
+    source: 0:0FB585C71EAF7958A28E095A8840BBCDEAE1CBCDF1BFF22DF95900DD1C993E6A
+    source_secondary: null
+    destination: 0:E572BD4E31B098C7E1AA8BB779D48EAF01D279831502C4029C7B522614873BCA
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: 4500148290
+    opcode: 0xc59a7cd3
+    tx_hashes:
+      - 9xnDwmB1gHLmodl77oAO/OyglXuWShFYlgIsOsBGUiI=
+      - X/soYnDKWjDd5Yo/c+6vQUF19X078JSJqyAiyZNJ168=
+    accounts:
+      - 0:0FB585C71EAF7958A28E095A8840BBCDEAE1CBCDF1BFF22DF95900DD1C993E6A
+      - 0:E572BD4E31B098C7E1AA8BB779D48EAF01D279831502C4029C7B522614873BCA
+    start_lt: 64204706000006
+    end_lt: 64204706000007
+    start_utime: 1764625757
+    end_utime: 1764625757
+    mc_seqno_end: 54569674
+    parent_action_id: SCC/fusAAXkkQR/9rf7/gDY+m+isNh6qPxzzlwf0Gmc=
+    ancestor_type:
+      - cocoon_worker_payout
+  - type: cocoon_worker_payout
+    matcher: cocoon_worker_payout
+    anchor: cocoon_worker_payout@64204706000002
+    id: SCC/fusAAXkkQR/9rf7/gDY+m+isNh6qPxzzlwf0Gmc=
+    success: true
+    source: 0:B16DB31490EE38ED5DD0258D9B686FF0BA590025E4A4BD232D1CD5A8AA805A16
+    source_secondary: 0:3120737EC3A10FC6331A16C93EC88203A0342AB4AC96671E6163E39CBC2F69C4
+    destination: 0:E572BD4E31B098C7E1AA8BB779D48EAF01D279831502C4029C7B522614873BCA
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: 4500148290
+    value: null
+    opcode: null
+    cocoon_worker_payout_data:
+      new_tokens: 9229614747703451079
+      payout_type: regular
+      query_id: 10553886210694500674
+      worker_state: 0
+      worker_tokens: 73063940556
+    tx_hashes:
+      - 1LzTIRFPDw1CixKXM9wxSE5zxTg7okb2kstnP3GQhNU=
+      - 9xnDwmB1gHLmodl77oAO/OyglXuWShFYlgIsOsBGUiI=
+      - LQgw3Kal8yrXkOH2VHuNUznLnvwKCQkanvVHfPPA738=
+      - X/soYnDKWjDd5Yo/c+6vQUF19X078JSJqyAiyZNJ168=
+      - ctbcp/OHU9XSGSfInhHW05a+Mfi62eq2Cdd5Ov084k0=
+    accounts:
+      - 0:0FB585C71EAF7958A28E095A8840BBCDEAE1CBCDF1BFF22DF95900DD1C993E6A
+      - 0:3120737EC3A10FC6331A16C93EC88203A0342AB4AC96671E6163E39CBC2F69C4
+      - 0:B16DB31490EE38ED5DD0258D9B686FF0BA590025E4A4BD232D1CD5A8AA805A16
+      - 0:E572BD4E31B098C7E1AA8BB779D48EAF01D279831502C4029C7B522614873BCA
+    start_lt: 64204706000002
+    end_lt: 64204706000008
+    start_utime: 1764625757
+    end_utime: 1764625757
+    mc_seqno_end: 54569674

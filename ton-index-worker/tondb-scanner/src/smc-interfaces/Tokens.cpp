@@ -151,51 +151,40 @@ NftItemDetectorR::NftItemDetectorR(block::StdAddress address,
   address_(std::move(address)), code_cell_(std::move(code_cell)), data_cell_(std::move(data_cell)),
   shard_states_(std::move(shard_states)), config_(std::move(config)), promise_(std::move(promise)) {}
 
-void NftItemDetectorR::start_up() {
-  if (code_cell_.is_null() || data_cell_.is_null()) {
-    promise_.set_error(td::Status::Error("Code or data null"));
-    stop();
-    return;
+td::Result<NftItemDetectorR::Result> NftItemDetectorR::detect(
+    const block::StdAddress& address, const td::Ref<vm::Cell>& code_cell,
+    const td::Ref<vm::Cell>& data_cell, const AllShardStates& shard_states,
+    const std::shared_ptr<block::ConfigInfo>& config) {
+  if (code_cell.is_null() || data_cell.is_null()) {
+    return td::Status::Error("Code or data null");
   }
 
-  auto stack_r = execute_smc_method<5>(address_, code_cell_, data_cell_, config_, "get_nft_data", {},
-        {vm::StackEntry::Type::t_int, vm::StackEntry::Type::t_int, vm::StackEntry::Type::t_slice, vm::StackEntry::Type::t_slice, vm::StackEntry::Type::t_cell});
-  if (stack_r.is_error()) {
-    promise_.set_error(stack_r.move_as_error());
-    stop();
-    return;
-  }
-  auto stack = stack_r.move_as_ok();
+  TRY_RESULT(stack, execute_smc_method<5>(address, code_cell, data_cell, config, "get_nft_data", {},
+        {vm::StackEntry::Type::t_int, vm::StackEntry::Type::t_int, vm::StackEntry::Type::t_slice, vm::StackEntry::Type::t_slice, vm::StackEntry::Type::t_cell}));
 
   Result data;
-  data.address = address_;
+  data.address = address;
   data.init = stack[0].as_int()->to_long() != 0;
   data.index = stack[1].as_int();
-  
+
   auto collection_addr_cs = stack[2].as_slice();
   if (collection_addr_cs->size() == 2 && collection_addr_cs->prefetch_ulong(2) == 0) {
-    // addr_none case
     data.collection_address = std::nullopt;
   } else {
     auto collection_address = convert::to_std_address(stack[2].as_slice());
     if (collection_address.is_error()) {
-      promise_.set_error(collection_address.move_as_error_prefix("nft collection address parsing failed: "));
-      stop();
-      return;
+      return collection_address.move_as_error_prefix("nft collection address parsing failed: ");
     }
     data.collection_address = collection_address.move_as_ok();
   }
 
   auto owner_addr_cs = stack[3].as_slice();
   if (owner_addr_cs->size() == 2 && owner_addr_cs->prefetch_ulong(2) == 0) {
-    // addr_none case
     data.owner_address = std::nullopt;
   } else {
-    auto owner_address = convert::to_std_address(owner_addr_cs);
+    auto owner_address = convert::to_std_address(stack[3].as_slice());
     if (owner_address.is_error()) {
-      promise_.set_error(owner_address.move_as_error_prefix("nft owner address parsing failed: "));
-      stop();
-      return;
+      return owner_address.move_as_error_prefix("nft owner address parsing failed: ");
     }
     data.owner_address = owner_address.move_as_ok();
   }
@@ -203,26 +192,57 @@ void NftItemDetectorR::start_up() {
   if (!data.collection_address) {
     auto content = parse_token_data(stack[4].as_cell());
     if (content.is_error()) {
-      promise_.set_error(content.move_as_error_prefix("nft content parsing failed: "));
-      stop();
-      return;
+      return content.move_as_error_prefix("nft content parsing failed: ");
     }
     data.content = content.move_as_ok();
-    promise_.set_value(std::move(data));
-    stop();
-  } else {
-    auto ind_content = stack[4].as_cell();
-    auto R = td::PromiseCreator::lambda([=, this, SelfId = actor_id(this)](td::Result<schema::AccountState> account_state_r) mutable {
-      if (account_state_r.is_error()) {
-        promise_.set_error(account_state_r.move_as_error());
-        stop();
-        return;
-      }
-      auto account_state = account_state_r.move_as_ok();
-      td::actor::send_closure(SelfId, &NftItemDetectorR::got_collection, data, ind_content, account_state.code, account_state.data);
-    });
-    td::actor::create_actor<FetchAccountFromShardV2>("fetchaccountfromshard", shard_states_, data.collection_address.value(), std::move(R)).release();
+    return data;
   }
+
+  auto ind_content = stack[4].as_cell();
+  TRY_RESULT(collection, lookup_account(shard_states, *data.collection_address));
+
+  TRY_RESULT(address_stack, execute_smc_method<1>(*data.collection_address, collection.code,
+      collection.data, config, "get_nft_address_by_index", {vm::StackEntry(data.index)},
+      {vm::StackEntry::Type::t_slice}));
+  auto nft_address = convert::to_std_address(address_stack[0].as_slice());
+  if (nft_address.is_error()) {
+    return td::Status::Error("get_nft_address_by_index parse address failed");
+  }
+  if (!(nft_address.move_as_ok() == address)) {
+    return td::Status::Error("NFT Item doesn't belong to the referred collection");
+  }
+
+  auto content_stack_r = execute_smc_method<1>(*data.collection_address, collection.code,
+      collection.data, config, "get_nft_content",
+      {vm::StackEntry(data.index), vm::StackEntry(ind_content)},
+      {vm::StackEntry::Type::t_cell});
+  if (content_stack_r.is_error()) {
+    return content_stack_r.move_as_error_prefix("failed to get nft item content: ");
+  }
+  auto content_stack = content_stack_r.move_as_ok();
+  auto content = parse_token_data(content_stack[0].as_cell());
+  if (content.is_error()) {
+    return content.move_as_error_prefix("failed to get nft item content: ");
+  }
+  data.content = content.move_as_ok();
+  return data;
+}
+
+void NftItemDetectorR::start_up() {
+  auto result = detect(address_, code_cell_, data_cell_, shard_states_, config_);
+  if (result.is_error()) {
+    promise_.set_error(result.move_as_error());
+    stop();
+    return;
+  }
+  auto data = result.move_as_ok();
+  process_domain_and_dns_data(get_dot_ton_dns_root_addr(), [this](){ return this->get_ton_domain(); }, data);
+  auto t_me_root = dot_t_dot_me_dns_root_addr();
+  if (t_me_root) {
+    process_domain_and_dns_data(t_me_root.value(), [this](){ return this->get_t_me_domain(); }, data);
+  }
+  promise_.set_value(std::move(data));
+  stop();
 }
 
 bool NftItemDetectorR::is_testnet = false;
@@ -667,7 +687,7 @@ td::Result<DedustPoolDetector::Result> DedustPoolDetector::detect(
   data.address = address;
 
   if (is_v2) {
-    // get_pool_data returns 19 entries, only first 11 checked. No factory verification for V2
+    // get_pool_data returns 19 entries, only first 11 checked.
     TRY_RESULT(stack, execute_smc_method_nullable<11>(address, code_cell, data_cell, config, "get_pool_data", {}, {
                                             vm::StackEntry::Type::t_int, vm::StackEntry::Type::t_int, vm::StackEntry::Type::t_int,
                                             vm::StackEntry::Type::t_slice, vm::StackEntry::Type::t_slice,
@@ -728,7 +748,6 @@ td::Result<DedustPoolDetector::Result> DedustPoolDetector::detect(
     }
   }
 
-  // Fetch factory account and validate pool
   TRY_RESULT(factory, lookup_account(shard_states, DEDUST_FACTORY_ADDRESS));
   TRY_STATUS(verify_dedust_with_factory(factory.code, factory.data, config, address, data));
   return data;

@@ -8,9 +8,9 @@
 #
 # That fan-out (1 match -> N produced blocks, shared parent unconsumed) is not
 # expressible by anchoring on the call. Each payout `ton_transfer` is the anchor.
-# The parent call is checked via a host predicate on `.previous_block` (never a
-# captured node), so it is never part of the consumed set and stays unconsumed
-# exactly like legacy. The engine's normal per-block loop then produces one
+# The parent call is checked through a `peek` parent edge, so it is never part of
+# the consumed set and stays unconsumed exactly like legacy. The engine's normal
+# per-block loop then produces one
 # independent match per payout for any N, with identical output granularity.
 #
 # The pool address and the payout amount are both reachable without navigating
@@ -36,14 +36,14 @@
 # A/B diff surfaces, this documented aux-arity divergence is the reason.
 
 opcode ExcessMessage = 0xD53276DB
-
-predicate nominator_pool_withdraw_parent
+opcode NominatorPoolProcessWithdrawRequests = 0x2
 
 matcher nominator_pool_withdraw {
     produces nominator_pool_withdraw_request
     entry    @payout
 
-    btype ton_transfer @payout where nominator_pool_withdraw_parent
+    btype ton_transfer @payout
+      <- peek op NominatorPoolProcessWithdrawRequests
 
     let pool_iface = lookup nominator_pool(payout.msg.source)
     reject when pool_iface == null

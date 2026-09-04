@@ -1,0 +1,204 @@
+# jvault / Claim rewards
+# trace: Lsy5I_gotIvt0EYwoPuqd-1s-IyYNR3Sc0XmM_lWKa8=
+actions:
+  - type: call_contract
+    anchor: call_contract#44bc1fe3@48756826000002
+    id: nr/P98GIkPOxaIDVORgvHCjohKKVpkhqklqP9yULRno=
+    success: true
+    source: 0:32F3F3C9881BF73850082C9F5F4D5B654F4062E71EDD93D868BC59447F9AA2AA
+    source_secondary: null
+    destination: 0:AA5C2D9CB469BECB874312C79ABC9DA6C2E64C92C108FE31A2F26B00D8134CD7
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: 400348400
+    opcode: 0x44bc1fe3
+    tx_hashes:
+      - YFU0GyIqweV4yEvgslz44GGfZPWiOe01FSsHY96Q2Ck=
+      - wv7NI/z+pSdJZV+tLQuqAMudmWIqSgy4f5zOgh6lUCE=
+    accounts:
+      - 0:32F3F3C9881BF73850082C9F5F4D5B654F4062E71EDD93D868BC59447F9AA2AA
+      - 0:AA5C2D9CB469BECB874312C79ABC9DA6C2E64C92C108FE31A2F26B00D8134CD7
+    start_lt: 48756826000002
+    end_lt: 48756833000001
+    start_utime: 1724743167
+    end_utime: 1724743224
+    mc_seqno_end: 39984054
+    parent_action_id: Ft/SRk8wtFXjQJ71pMFkz4G6XD+7MMDI6oVGiRBNFMo=
+    ancestor_type:
+      - jvault_claim
+  - type: call_contract
+    anchor: call_contract#78d9f109@48756818000002
+    id: F5nE0aXZxNmVq72n2MJL9DwPLxTsWW9sYnoj0VONa6E=
+    success: true
+    source: 0:D94FCAE73C2E76C960834E0F5E739B0AD28D42EB9EE1C6A1BD5E0E7FE8257CCF
+    source_secondary: null
+    destination: 0:32F3F3C9881BF73850082C9F5F4D5B654F4062E71EDD93D868BC59447F9AA2AA
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: 405000000
+    opcode: 0x78d9f109
+    tx_hashes:
+      - Lsy5I/gotIvt0EYwoPuqd+1s+IyYNR3Sc0XmM/lWKa8=
+      - YFU0GyIqweV4yEvgslz44GGfZPWiOe01FSsHY96Q2Ck=
+    accounts:
+      - 0:32F3F3C9881BF73850082C9F5F4D5B654F4062E71EDD93D868BC59447F9AA2AA
+      - 0:D94FCAE73C2E76C960834E0F5E739B0AD28D42EB9EE1C6A1BD5E0E7FE8257CCF
+    start_lt: 48756818000002
+    end_lt: 48756826000001
+    start_utime: 1724743108
+    end_utime: 1724743167
+    mc_seqno_end: 39984053
+    parent_action_id: Ft/SRk8wtFXjQJ71pMFkz4G6XD+7MMDI6oVGiRBNFMo=
+    ancestor_type:
+      - jvault_claim
+  - type: call_contract
+    anchor: call_contract#ae9307ce@48756833000003
+    id: 70LASWc0UjcLl63StQOzrTv57rKfHxMUBMS/ioEnGZU=
+    success: true
+    source: 0:AA5C2D9CB469BECB874312C79ABC9DA6C2E64C92C108FE31A2F26B00D8134CD7
+    source_secondary: null
+    destination: 0:32F3F3C9881BF73850082C9F5F4D5B654F4062E71EDD93D868BC59447F9AA2AA
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: 320380400
+    opcode: 0xae9307ce
+    tx_hashes:
+      - cfX2fAq/aa6CulLqd2KYz7HLe++znTb8U5eootO54ZM=
+      - wv7NI/z+pSdJZV+tLQuqAMudmWIqSgy4f5zOgh6lUCE=
+    accounts:
+      - 0:32F3F3C9881BF73850082C9F5F4D5B654F4062E71EDD93D868BC59447F9AA2AA
+      - 0:AA5C2D9CB469BECB874312C79ABC9DA6C2E64C92C108FE31A2F26B00D8134CD7
+    start_lt: 48756833000003
+    end_lt: 48756842000001
+    start_utime: 1724743224
+    end_utime: 1724743307
+    mc_seqno_end: 39984061
+    parent_action_id: Ft/SRk8wtFXjQJ71pMFkz4G6XD+7MMDI6oVGiRBNFMo=
+    ancestor_type:
+      - jvault_claim
+  - type: call_contract
+    anchor: call_contract#d53276db@48756842000002
+    id: TvJkYqfOWd3jtoEOzCY2zlPuLYgRfUbIp63lxo2Aczg=
+    success: true
+    source: 0:32F3F3C9881BF73850082C9F5F4D5B654F4062E71EDD93D868BC59447F9AA2AA
+    source_secondary: null
+    destination: 0:D94FCAE73C2E76C960834E0F5E739B0AD28D42EB9EE1C6A1BD5E0E7FE8257CCF
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: 317130000
+    opcode: 0xd53276db
+    tx_hashes:
+      - cfX2fAq/aa6CulLqd2KYz7HLe++znTb8U5eootO54ZM=
+      - snr7sw7PWBok31PKWLw8nd1Uqr+MyJGE4o2yL9JQFXs=
+    accounts:
+      - 0:32F3F3C9881BF73850082C9F5F4D5B654F4062E71EDD93D868BC59447F9AA2AA
+      - 0:D94FCAE73C2E76C960834E0F5E739B0AD28D42EB9EE1C6A1BD5E0E7FE8257CCF
+    start_lt: 48756842000002
+    end_lt: 48756849000001
+    start_utime: 1724743307
+    end_utime: 1724743363
+    mc_seqno_end: 39984062
+    parent_action_id: Ft/SRk8wtFXjQJ71pMFkz4G6XD+7MMDI6oVGiRBNFMo=
+    ancestor_type:
+      - jvault_claim
+  - type: jetton_transfer
+    matcher: jetton_transfer
+    anchor: jetton_transfer@48756833000002
+    id: miNHXY5p4XnciAjQ/nmvy/Cl46hlKY/WjGuiDyVp8UA=
+    success: true
+    source: 0:AA5C2D9CB469BECB874312C79ABC9DA6C2E64C92C108FE31A2F26B00D8134CD7
+    source_secondary: 0:A048BDFAAC1F51AEAE2C1100CF5F1C1D1D316AD4E013A4030F7E2DF2A4ADE68D
+    destination: 0:D94FCAE73C2E76C960834E0F5E739B0AD28D42EB9EE1C6A1BD5E0E7FE8257CCF
+    destination_secondary: 0:F9BA962A111CBCE8A616759D1F0A2EFC337FF5824D7CB39E04A52C26B2CD5666
+    asset: 0:BC16864C941719859E8FAFDB071B21F3905BFDCB60795FDB4DEB546FB9C2D1CC
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: 7919563
+    value: null
+    opcode: null
+    jetton_transfer_data:
+      comment: Claim staking rewards
+      custom_payload: null
+      forward_amount: 1
+      forward_payload: cellhash:C1A0F6F3BDCEEA31756ABBF389B1C3B2F65461D149D32726D90FDAEAA27B7471
+      is_encrypted_comment: false
+      query_id: 1724742998050577044
+      response_destination: 0:D94FCAE73C2E76C960834E0F5E739B0AD28D42EB9EE1C6A1BD5E0E7FE8257CCF
+    tx_hashes:
+      - 5HArE56qKFtuwZGRqKTqUAo6VlBVWhaT6OCsA6vYt7Q=
+      - 8Ou2g38Cv3f8+sRAHIkUscGxRR0UvdYyI5uZb7tjCas=
+      - ACCAqz4d8b+0caiJyXjxXZzU+A8XU0zCiMjaGm6zN0I=
+      - OTfRrO+GahgKIINGIAR1ZegoZXCy9JWIVVFxfI3LkSw=
+      - wv7NI/z+pSdJZV+tLQuqAMudmWIqSgy4f5zOgh6lUCE=
+    accounts:
+      - 0:A048BDFAAC1F51AEAE2C1100CF5F1C1D1D316AD4E013A4030F7E2DF2A4ADE68D
+      - 0:AA5C2D9CB469BECB874312C79ABC9DA6C2E64C92C108FE31A2F26B00D8134CD7
+      - 0:D94FCAE73C2E76C960834E0F5E739B0AD28D42EB9EE1C6A1BD5E0E7FE8257CCF
+      - 0:F9BA962A111CBCE8A616759D1F0A2EFC337FF5824D7CB39E04A52C26B2CD5666
+    start_lt: 48756833000002
+    end_lt: 48756849000003
+    start_utime: 1724743224
+    end_utime: 1724743363
+    mc_seqno_end: 39984062
+    parent_action_id: Ft/SRk8wtFXjQJ71pMFkz4G6XD+7MMDI6oVGiRBNFMo=
+    ancestor_type:
+      - jvault_claim
+  - type: jvault_claim
+    matcher: jvault_claim
+    anchor: jvault_claim@48756818000002
+    id: Ft/SRk8wtFXjQJ71pMFkz4G6XD+7MMDI6oVGiRBNFMo=
+    success: true
+    source: 0:D94FCAE73C2E76C960834E0F5E739B0AD28D42EB9EE1C6A1BD5E0E7FE8257CCF
+    source_secondary: 0:32F3F3C9881BF73850082C9F5F4D5B654F4062E71EDD93D868BC59447F9AA2AA
+    destination: 0:AA5C2D9CB469BECB874312C79ABC9DA6C2E64C92C108FE31A2F26B00D8134CD7
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: null
+    opcode: null
+    jvault_claim_data:
+      claimed_amounts:
+        - 7919563
+      claimed_jettons:
+        - 0:A048BDFAAC1F51AEAE2C1100CF5F1C1D1D316AD4E013A4030F7E2DF2A4ADE68D
+    tx_hashes:
+      - 5HArE56qKFtuwZGRqKTqUAo6VlBVWhaT6OCsA6vYt7Q=
+      - 8Ou2g38Cv3f8+sRAHIkUscGxRR0UvdYyI5uZb7tjCas=
+      - ACCAqz4d8b+0caiJyXjxXZzU+A8XU0zCiMjaGm6zN0I=
+      - Lsy5I/gotIvt0EYwoPuqd+1s+IyYNR3Sc0XmM/lWKa8=
+      - OTfRrO+GahgKIINGIAR1ZegoZXCy9JWIVVFxfI3LkSw=
+      - YFU0GyIqweV4yEvgslz44GGfZPWiOe01FSsHY96Q2Ck=
+      - cfX2fAq/aa6CulLqd2KYz7HLe++znTb8U5eootO54ZM=
+      - snr7sw7PWBok31PKWLw8nd1Uqr+MyJGE4o2yL9JQFXs=
+      - wv7NI/z+pSdJZV+tLQuqAMudmWIqSgy4f5zOgh6lUCE=
+    accounts:
+      - 0:32F3F3C9881BF73850082C9F5F4D5B654F4062E71EDD93D868BC59447F9AA2AA
+      - 0:A048BDFAAC1F51AEAE2C1100CF5F1C1D1D316AD4E013A4030F7E2DF2A4ADE68D
+      - 0:AA5C2D9CB469BECB874312C79ABC9DA6C2E64C92C108FE31A2F26B00D8134CD7
+      - 0:D94FCAE73C2E76C960834E0F5E739B0AD28D42EB9EE1C6A1BD5E0E7FE8257CCF
+      - 0:F9BA962A111CBCE8A616759D1F0A2EFC337FF5824D7CB39E04A52C26B2CD5666
+    start_lt: 48756818000002
+    end_lt: 48756849000003
+    start_utime: 1724743108
+    end_utime: 1724743363
+    mc_seqno_end: 39984062

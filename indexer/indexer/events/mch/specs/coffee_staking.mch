@@ -44,7 +44,7 @@
 #
 # `admin` is read but never serialized (the fill drops it — "always the same
 # highload and we have no basic field for it"); it stays in the block data
-# because the legacy block carries it and the parity sweep compares data
+# because the legacy block carries it and produced data must match
 # key-for-key.
 #
 # ORDERING. 0xf9471134 / 0xcb03bfaf / 0xb30c7310 are claimed by no other spec.

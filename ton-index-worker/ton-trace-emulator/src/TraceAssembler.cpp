@@ -247,8 +247,13 @@ td::Result<TraceTransition> TraceAssembler::apply(const ActiveTrace& current, co
   }
 
   auto patch_interfaces = mch::make_interface_map(patch);
-  for (auto& [account, interfaces] : patch_interfaces) {
-    transition.next_trace.classifier_interfaces.insert_or_assign(std::move(account), std::move(interfaces));
+  if (!patch_interfaces.empty()) {
+    auto next_interfaces =
+        std::make_shared<mch::ParsedBlockLookupSource::InterfaceMap>(*current.classifier_interfaces);
+    for (auto& [account, interfaces] : patch_interfaces) {
+      next_interfaces->insert_or_assign(std::move(account), std::move(interfaces));
+    }
+    transition.next_trace.classifier_interfaces = std::move(next_interfaces);
   }
 
   auto root_account = account_key(patch.root->address);
@@ -332,7 +337,7 @@ td::Result<mch::EmuTraceView> TraceAssembler::build_full_trace(const ActiveTrace
     }
     mch::EmuTxRef full_trace_node;
     full_trace_node.address.workchain = node.workchain;
-    full_trace_node.tx_boc = *node.transaction_boc;
+    full_trace_node.tx_boc = node.transaction_boc;
     full_trace_node.mc_seqno = node.mc_seqno;
     full_trace_node.finality = static_cast<mch::EmuFinality>(static_cast<std::uint8_t>(node.finality));
     view.nodes.push_back(std::move(full_trace_node));

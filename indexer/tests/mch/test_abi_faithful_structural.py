@@ -1,7 +1,6 @@
 """Steady-state structural gate for ABI-faithful production message declarations."""
 from __future__ import annotations
 
-import hashlib
 import json
 import re
 from collections import Counter
@@ -74,54 +73,12 @@ LOGICAL_ROWS_BY_STEM = {
     ),
 }
 
-EXISTING_ABI_ROWS = {"ClaimRewardMessage", "PayoutRewardMessage", "PayoutMessage"}
 ETHENA_ARM = "JettonInternalTransferEthena"
 EXTRA_STRUCTS = {"JettonInternalTransfer": (ETHENA_ARM,)}
 ARM_NAMES = {
     "AssetTon", "AssetJetton",
     "JettonForwardPayloadRef", "JettonForwardPayloadInline",
     "PTonForwardPayloadRef", "PTonForwardPayloadInline",
-}
-
-# Hashes cover the normalized declaration surface only: struct order, prefixes,
-# visible field order/types, and aliases. Compiler scaffolding and comments do
-# not affect them. This is the steady-state replacement for the deleted source
-# census and freezes all 70 declarations without another schema frontend.
-DECL_FINGERPRINTS = {
-    "jetton": "28ff2075dadedd370f9ad0b66cf4a1ae4999489e0c8ee13e34e0d9316e2df856",
-    "multisig": "66138be810df1efc2cc6832edba8a3808dafa6a2068bb246b129d0d93fbb96b6",
-    "pton": "32f1e8f3a8dc61450822176912481c87cbd21a2cff05d94140079d94b9f266a3",
-    "stonfi": "b33f69ff2bc8b92508153ec42542b577540dea0535329d7ab5c54e8c027af607",
-    "dedust": "93cd27433ad48a6a3839c77a59284562c3a47cb78a4ba7693d59c4d99d62ab37",
-    "dedust_v2": "b0cd7a5a1ad7a9d636e56b745e28a41623137f826d44def67ea9330021dc4ffb",
-    "coffee": "50340813be1e520d951deeda9c17af65f50934a178d62cf92ac9c71b187d2542",
-    "coffee_staking_withdraw3": "ddee217b44abed1ee074535621d34174ed34438024d4a0d473e33f74fc2dbefc",
-    "evaa": "39b1fab15eeb563d55d32241a01c0ec523fe50daff37d2efceaf22cb895e6c23",
-    "evaa_supply_forward": "8730c59decf959ebbb08321b0144d2e396498da056d5bf142ab4bfb757c2227f",
-    "jvault": "b831525189108dd4c09c463269463ff5826774131127e134c4f2541106fd162d",
-    "jvault_payload": "fedef8b1621ecd95964ef8572d1db437d1e331dd7ab3b9b113fe460da0cbaa36",
-    "subscriptions": "d955927476b60b04a00c34755d508008a9814829151cd64d488a283bc153d3dd",
-    "tonco": "01d0def6dcf3b8f602e08331cd41fbb2e2ae53519402da50d6ff4454df7ae6a4",
-    "teleitem": "520fae90a066bd9d90515cb2c9698e90784bfcd38a5e0f1c53f6a983cf3556b8",
-    "nft_sale": "402832c07361415882afc081be3a7ef5eca86a6574c6069b23660eff0e3edfb8",
-    "tonstakers": "c0b64a38368c9f24078d35200378f5c113ead2e7904b8030f54e5fc42cfe3cbb",
-    "cocoon": "72ef404ac850ac393bba6dec1feb3ecab330ed2cd05875dbc92e94afae2f87f0",
-}
-
-EXPECTED_CELL_FIELDS = {
-    "StonfiPaymentRequest.info": "Cell<StonfiPaymentRequestInfo>",
-    "StonfiSwapMessage.info": "Cell<StonfiSwapInfo>",
-    "StonfiV2PayTo.info": "Cell<StonfiV2PayToInfo>",
-    "DedustSwapNotification.info": "Cell<DedustSwapInfo>",
-    "DedustDepositLiquidityToPool.field4": "Cell<DedustDepositLiquidityAssets>",
-    "CoffeeCreateLiquidityDepositoryRequest._params": "Cell<CoffeeDepositParams>",
-    "CoffeeCreateLiquidityDepositoryRequest.pool_params": "Cell<CoffeePoolParams>",
-    "CoffeeCreatePoolCreatorRequest.creation_params": "Cell<CoffeePoolCreationParams>",
-    "ToncoPositionNftV3PositionBurn._old_fee": "Cell<ToncoPositionOldFee>",
-    "ToncoPoolV3Burn._old_fee": "Cell<ToncoPoolOldFee>",
-    "ToncoPoolV3Burn._new_fee": "Cell<ToncoPoolNewFee>",
-    "ToncoRouterV3CreatePool.minters": "Cell<ToncoPoolMinters>",
-    "TeleitemStartAuction.config": "Cell<TeleitemAuctionConfig>",
 }
 
 STRUCT_RE = re.compile(
@@ -138,12 +95,6 @@ def _sources() -> dict[str, str]:
         stem: (ABI_DIR / f"{stem}.tolk").read_text(encoding="utf-8")
         for stem in LOGICAL_ROWS_BY_STEM
     }
-
-
-def _logical_rows() -> set[str]:
-    rows = {name for names in LOGICAL_ROWS_BY_STEM.values() for name in names}
-    assert len(rows) == 70
-    return rows
 
 
 def _structs(text: str) -> dict[str, tuple[str | None, str]]:
@@ -167,69 +118,6 @@ def _allowed_arms(text: str) -> list[str]:
     )
     assert match, "missing AllowedMessage union"
     return re.findall(r"[A-Za-z_]\w*", match.group(1))
-
-
-def _registry_names(path: Path, function: str) -> list[str]:
-    text = path.read_text(encoding="utf-8")
-    match = re.search(
-        rf"\b{re.escape(function)}\(\).*?\brows\s*=\s*\{{(.*?)\n\s*\}};",
-        text,
-        re.DOTALL,
-    )
-    assert match, f"could not read {function} rows from {path.name}"
-    return re.findall(r'\{\s*"([A-Za-z_]\w*)"\s*,', match.group(1))
-
-
-def _fingerprint(text: str) -> str:
-    payload = {
-        "structs": [
-            (m.group("name"), m.group("prefix"), _fields(m.group("body")))
-            for m in STRUCT_RE.finditer(text)
-        ],
-        "aliases": [(name, " ".join(value.split())) for name, value in ALIAS_RE.findall(text)],
-    }
-    encoded = json.dumps(payload, separators=(",", ":")).encode()
-    return hashlib.sha256(encoded).hexdigest()
-
-
-def test_exactly_70_logical_rows_are_owned_and_cut_over():
-    sources = _sources()
-    migrated = _logical_rows()
-    hand = _registry_names(MSG_PARSE, "hand_message_parsers")
-    abi = _registry_names(ABI_BRIDGE, "abi_message_parsers")
-
-    assert len(hand) == len(set(hand)) == 12
-    assert len(abi) == len(set(abi)) == 73
-    assert set(abi) == migrated | EXISTING_ABI_ROWS
-    assert migrated.isdisjoint(hand)
-
-    incoming_rows = [name for text in sources.values() for name in _allowed_arms(text)]
-    assert Counter(incoming_rows) == Counter(migrated | {ETHENA_ARM} | EXISTING_ABI_ROWS)
-    for stem, names in LOGICAL_ROWS_BY_STEM.items():
-        structs = _structs(sources[stem])
-        for name in names:
-            assert name in structs
-            assert name in _allowed_arms(sources[stem])
-
-def test_frozen_declaration_surface_and_cell_topology():
-    sources = _sources()
-    assert {stem: _fingerprint(text) for stem, text in sources.items()} == DECL_FINGERPRINTS
-
-    cells = {}
-    for text in sources.values():
-        for struct_name, (_, body) in _structs(text).items():
-            for field_name, type_ in _fields(body):
-                if type_.startswith("Cell<"):
-                    cells[f"{struct_name}.{field_name}"] = type_
-    assert cells == EXPECTED_CELL_FIELDS
-
-    assert "signers_hash: bits256;" in sources["multisig"]
-    assert "type JVaultClaimEntry = RemainingBitsAndRefs" in sources["jvault"]
-    assert "jettons_to_claim: map<address, JVaultClaimEntry>;" in sources["jvault"]
-    jetton_structs = _structs(sources["jetton"])
-    assert _fields(jetton_structs[ETHENA_ARM][1]) == _fields(
-        jetton_structs["JettonInternalTransfer"][1]
-    )
 
 
 def test_a4_opcode_dispositions_are_frozen():

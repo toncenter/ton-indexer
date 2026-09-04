@@ -1,0 +1,69 @@
+# jetton-transfer / Failed jetton transfers (external, identical transfers)
+# trace: S4XM4TRqBSWvsrGUQY_NLEbIRM7q7iS6hx-uWg4Hv14=
+actions:
+  - type: jetton_transfer
+    anchor: jetton_transfer@57491040000001
+    id: WFgRo+7pDLJDS4Kc5em2vlDqR7NpMSaylyQ9TlttHHE=
+    success: false
+    source: 0:7F8555013B5A6763BB4977DB0A82C7D392661B0D24AF87FED8D6D12F92AE9F45
+    source_secondary: 0:736970BE2E90397FD41BE40718348C6D238FC1705D657D2452B95E5DB8725487
+    destination: 0:70D18DAD8161E4CA924B75C3AE9CB647039188EBD56E4110580F857245873730
+    destination_secondary: null
+    asset: 0:2F956143C461769579BAEF2E32CC2D7BC18283F40D20BB03E432CD603AC33FFC
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: 1000000000
+    value: null
+    opcode: null
+    jetton_transfer_data:
+      comment: "11"
+      custom_payload: null
+      forward_amount: 1
+      forward_payload: cellhash:A15BE6C42302853D479BB6BCF654D93D399536514190F1AF7497B35F48FEA71D
+      is_encrypted_comment: false
+      query_id: 31
+      response_destination: 0:7F8555013B5A6763BB4977DB0A82C7D392661B0D24AF87FED8D6D12F92AE9F45
+    tx_hashes:
+      - S4XM4TRqBSWvsrGUQY/NLEbIRM7q7iS6hx+uWg4Hv14=
+    accounts:
+      - 0:736970BE2E90397FD41BE40718348C6D238FC1705D657D2452B95E5DB8725487
+      - 0:7F8555013B5A6763BB4977DB0A82C7D392661B0D24AF87FED8D6D12F92AE9F45
+    start_lt: 57491040000001
+    end_lt: 57491040000001
+    start_utime: 1748012085
+    end_utime: 1748012085
+    mc_seqno_end: 48099914
+  - type: jetton_transfer
+    anchor: jetton_transfer@57491040000001
+    id: Xl9dvVCk86xCyghgCNj4eTkRlQaLcQKZy6nGn2n6CwU=
+    success: false
+    source: 0:7F8555013B5A6763BB4977DB0A82C7D392661B0D24AF87FED8D6D12F92AE9F45
+    source_secondary: 0:736970BE2E90397FD41BE40718348C6D238FC1705D657D2452B95E5DB8725487
+    destination: 0:70D18DAD8161E4CA924B75C3AE9CB647039188EBD56E4110580F857245873730
+    destination_secondary: null
+    asset: 0:2F956143C461769579BAEF2E32CC2D7BC18283F40D20BB03E432CD603AC33FFC
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: 1000000000
+    value: null
+    opcode: null
+    jetton_transfer_data:
+      comment: "11"
+      custom_payload: null
+      forward_amount: 1
+      forward_payload: cellhash:A15BE6C42302853D479BB6BCF654D93D399536514190F1AF7497B35F48FEA71D
+      is_encrypted_comment: false
+      query_id: 31
+      response_destination: 0:7F8555013B5A6763BB4977DB0A82C7D392661B0D24AF87FED8D6D12F92AE9F45
+    tx_hashes:
+      - S4XM4TRqBSWvsrGUQY/NLEbIRM7q7iS6hx+uWg4Hv14=
+    accounts:
+      - 0:736970BE2E90397FD41BE40718348C6D238FC1705D657D2452B95E5DB8725487
+      - 0:7F8555013B5A6763BB4977DB0A82C7D392661B0D24AF87FED8D6D12F92AE9F45
+    start_lt: 57491040000001
+    end_lt: 57491040000001
+    start_utime: 1748012085
+    end_utime: 1748012085
+    mc_seqno_end: 48099914

@@ -1,23 +1,11 @@
-// ABI-inspection tests port the pure ABI-parse assertions from OnlyHeader/
-// LotsOfAnnotations/
-// LotsOfThrows/LotsOfStorage/HasNotInitializedStorage.spec.ts onto our already
-// -committed .abi.json fixtures, using AbiModel/AbiLoader/AbiKernel accessors
-// directly (no AbiInterp needed -- these are declaration/type-tree
-// inspections, not (de)serialization).
+// ABI-inspection tests over committed .abi.json fixtures via
+// AbiModel/AbiLoader/AbiKernel. These are declaration/type-tree inspections,
+// not (de)serialization.
 //
-// Deliberately out of scope:
-//  - LotsOfThrows' `isDefaultValueSupported` / `CodegenCtx` check -- a CODEGEN
-//    concern (emit-field-defs.ts), belongs with the emitter's defaults
-//    support gate, not the loader/kernel. We still assert every
-//    WithUnsupportedDefaults field HAS a default_value (that much is a loader
-//    fact), just not whether the emitter could legally encode it.
-//  - HasNotInitializedStorage's address/shard-derivation tests ("toShard and
-//    workchain", "fromStorage takes only 2 args") -- these need real contract-
-//    address derivation (StateInit hash + shard-prefix rewriting via
-//    fixedPrefixLength/closeTo), which is new, non-trivial surface (shard
-//    prefix math), not "genuinely cheap" per the lead's delegated criterion.
-//    SKIPPED, deferred register. Only the pure ABI-parse fact (the
-//    storage_at_deployment_ty_idx points at the right struct) is ported below.
+// Deliberately out of scope: whether the emitter can legally encode
+// WithUnsupportedDefaults; address/shard derivation (StateInit hash +
+// shard-prefix rewriting). Only the ABI-parse fact
+// (storage_at_deployment_ty_idx points at the right struct) is asserted.
 
 #include "AbiTestSupport.h"
 
@@ -87,9 +75,6 @@ TEST_CASE("W10 OnlyHeader: outgoing/emitted/thrown_errors from the contract head
     REQUIRE(e->members.size() == 1);
     CHECK(e->members[0].name == "NotFound");
     CHECK(e->members[0].value->to_dec_string() == "404");
-    // ABIEnumMember carries
-    // {name, value, description}; parse_enum reads the JSON's per-member
-    // "description" field (previously silently dropped).
     REQUIRE(e->members[0].description.has_value());
     CHECK(e->members[0].description.value() == "desc NotFound");
   }

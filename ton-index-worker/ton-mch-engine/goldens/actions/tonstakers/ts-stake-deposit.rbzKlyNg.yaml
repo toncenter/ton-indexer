@@ -1,0 +1,65 @@
+# tonstakers / TS Stake deposit
+# trace: rbzKlyNgAhDnQ15r4tremaPVl_xURNgmSJQSyhGLSX4=
+actions:
+  - type: contract_deploy
+    anchor: contract_deploy#178d4519@55918551000006
+    id: 8UEimYLbXc8ZJ72U2Zx1IXsc0/wHBqQKkW67dap4DNE=
+    success: true
+    source: 0:BDF3FA8098D129B54B4F73B5BAC5D1E1FD91EB054169C3916DFC8CCD536D1000
+    source_secondary: null
+    destination: 0:E42D6A4F3EA62E2B57376AA23331BE5243F9ACFB0E46CD67AD652FD574C99DAF
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: 987924800
+    opcode: 0x178d4519
+    tx_hashes:
+      - iLXG2yPGnNkIhXk52pSa+RjNXNSZyg+qI/v9nkFDaQ8=
+      - tYvFEuKkQWuOCmnuERN03ffK+rplYJJoSoh+ZAzSRgE=
+    accounts:
+      - 0:BDF3FA8098D129B54B4F73B5BAC5D1E1FD91EB054169C3916DFC8CCD536D1000
+      - 0:E42D6A4F3EA62E2B57376AA23331BE5243F9ACFB0E46CD67AD652FD574C99DAF
+    start_lt: 55918551000006
+    end_lt: 55918553000001
+    start_utime: 1744293847
+    end_utime: 1744293853
+    mc_seqno_end: 46695397
+  - type: stake_deposit
+    matcher: tonstakers_deposit
+    anchor: tonstakers_deposit@55918551000002
+    id: 4CAWeWm/TyfrJ4uYqbhH51gPv/8iXUV2+gEhY/SkxGo=
+    success: true
+    source: 0:90D9D438C3D05F474DD5ABC232C2A7D493D3D890C43EF74742999A68015AB874
+    source_secondary: null
+    destination: 0:A45B17F28409229B78360E3290420F13E4FE20F90D7E2BF8C4AC6703259E22FA
+    destination_secondary: null
+    asset: 0:BDF3FA8098D129B54B4F73B5BAC5D1E1FD91EB054169C3916DFC8CCD536D1000
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: 10000000000
+    value: null
+    opcode: null
+    staking_data:
+      provider: liquid_staking
+      tokens_minted: 9439323796
+    tx_hashes:
+      - /7lfl/nvDY009KqdkU8BK6ieEAAxSGzUP5/eMdA/2zk=
+      - iLXG2yPGnNkIhXk52pSa+RjNXNSZyg+qI/v9nkFDaQ8=
+      - rbzKlyNgAhDnQ15r4tremaPVl/xURNgmSJQSyhGLSX4=
+      - tYvFEuKkQWuOCmnuERN03ffK+rplYJJoSoh+ZAzSRgE=
+      - wHE+TagEFmWT9cWI3hvxtG1bKfcS4UQ+y7ySifFcBs8=
+      - xcbagVRZBwqnCl+FTkfJcW0WwmG9Sjrl3hFETNKR2dE=
+    accounts:
+      - 0:90D9D438C3D05F474DD5ABC232C2A7D493D3D890C43EF74742999A68015AB874
+      - 0:A45B17F28409229B78360E3290420F13E4FE20F90D7E2BF8C4AC6703259E22FA
+      - 0:BDF3FA8098D129B54B4F73B5BAC5D1E1FD91EB054169C3916DFC8CCD536D1000
+      - 0:E42D6A4F3EA62E2B57376AA23331BE5243F9ACFB0E46CD67AD652FD574C99DAF
+    start_lt: 55918551000002
+    end_lt: 55918557000002
+    start_utime: 1744293847
+    end_utime: 1744293862
+    mc_seqno_end: 46695401

@@ -1,13 +1,14 @@
 #include "fixtures/IrLoader.h"
+#include "fixtures/IrJson.h"
 
 #include "td/utils/JsonBuilder.h"
-#include "td/utils/crypto.h"
 
 #include <algorithm>
 #include <exception>
 #include <fstream>
 #include <sstream>
 #include <string>
+#include <string_view>
 
 namespace mch {
 
@@ -15,43 +16,6 @@ namespace {
 
 using Json = td::JsonValue;
 using JType = td::JsonValue::Type;
-
-const std::unordered_set<std::string> kBuiltins = {
-    "account", "amount", "asset", "ton_asset", "addr_none", "b64",
-    "asset_of", "tail_unwrap", "bytes_of", "first", "last", "len", "sum",
-    "zip", "map", "concat", "contains"};
-
-const Json *jfield(const Json &e, td::Slice name) {
-  if (e.type() != JType::Object) {
-    return nullptr;
-  }
-  for (const auto &kv : e.get_object().field_values_) {
-    if (kv.first == name) {
-      return &kv.second;
-    }
-  }
-  return nullptr;
-}
-
-bool has(const Json &e, td::Slice name) { return jfield(e, name) != nullptr; }
-
-std::string jstr(const Json &e, td::Slice name, const std::string &dflt = {}) {
-  const Json *f = jfield(e, name);
-  return (f != nullptr && f->type() == JType::String) ? f->get_string().str() : dflt;
-}
-
-std::int64_t jint(const Json &e, td::Slice name, std::int64_t dflt = 0) {
-  const Json *f = jfield(e, name);
-  if (f == nullptr || f->type() != JType::Number) {
-    return dflt;
-  }
-  return std::stoll(f->get_number().str());
-}
-
-bool jbool(const Json &e, td::Slice name, bool dflt = false) {
-  const Json *f = jfield(e, name);
-  return (f != nullptr && f->type() == JType::Boolean) ? f->get_boolean() : dflt;
-}
 
 // Parse a JSON Number token as int64. A malformed / overflowing token in a
 // corrupt artifact becomes a clean Status error instead of an uncaught
@@ -68,9 +32,8 @@ td::Result<std::int64_t> num_i64(const Json &n) {
   }
 }
 
-// Node ids referenced by a node record, in the fixed order Python's _edge_refs
-// uses (child, children..., parent, branches..., step, exit), remap discovery
-// order depends on it.
+// Node ids in a fixed order (child, children..., parent, branches..., step,
+// exit). Remap discovery order depends on it. Intentional.
 std::vector<int> edge_refs(const Json &rec) {
   std::vector<int> out;
   if (has(rec, "child")) {
@@ -111,14 +74,12 @@ td::Result<NodeKind> parse_kind(const std::string &k) {
   return td::Status::Error("unknown node kind '" + k + "'");
 }
 
-// Recursively collect host-fn / lookup / parse-type names from a build_program
-// JSON subtree for dependency discovery.
 void scan_program(const Json &e, CompiledMatcher &m) {
   if (e.type() == JType::Object) {
     const std::string k = jstr(e, "k");
     if (k == "call") {
       std::string fn = jstr(e, "fn");
-      if (!fn.empty() && kBuiltins.count(fn) == 0) {
+      if (!fn.empty() && !is_builtin_name(fn)) {
         m.ref_fns.insert(fn);
       }
     } else if (k == "lookup") {
@@ -127,7 +88,10 @@ void scan_program(const Json &e, CompiledMatcher &m) {
         m.ref_lookups.insert(nm);
       }
     }
-    if (jstr(e, "s") == "parse") {
+    if (k == "parse" || jstr(e, "s") == "parse") {
+      // Missing `nullable` defaults to strict parse.
+      const bool nullable = k == "parse" && jbool(e, "nullable", false);
+      (void)nullable;
       if (const Json *types = jfield(e, "types"); types != nullptr && types->type() == JType::Array) {
         for (const auto &t : types->get_array()) {
           if (t.type() == JType::String) {
@@ -147,7 +111,7 @@ void scan_program(const Json &e, CompiledMatcher &m) {
 }
 
 // Local reachability over every edge kind (child/parent/step/exit/children/
-// branches), mirroring IrMatcher._reachable, cycle-safe, discovery order.
+// branches), cycle-safe, discovery order. Intentional.
 std::vector<int> reachable(const std::vector<CompiledNode> &nodes, int start) {
   std::vector<int> out{start};
   std::unordered_set<int> seen{start};
@@ -241,8 +205,8 @@ td::Status build_matcher(const Json &rec, const std::vector<const Json *> &pool,
   }
 
   // Reachable subgraph remapped to local ids (root = 0), discovery order over
-  // edge_refs, mirrors IrMatcher.__init__. A missing or out-of-range root is
-  // a corrupt artifact, not a default to node 0.
+  // edge_refs. A missing or out-of-range root is a corrupt artifact, not a
+  // default to node 0.
   if (!has(rec, "root")) {
     return td::Status::Error("matcher " + m.name + ": missing 'root'");
   }
@@ -282,13 +246,17 @@ td::Status build_matcher(const Json &rec, const std::vector<const Json *> &pool,
       cn.pred_name = jstr(nrec, "pred");
     }
     cn.where_name = jstr(nrec, "where");
-    // Only the PRESENCE of an inline where is compiled: the tree itself is
-    // emitted as a generated function keyed by cn.global_id (GenWheres.h), and
-    // nothing reads the JSON subtree any more.
+    // Only the presence of an inline where is compiled; the tree is a generated
+    // function keyed by cn.global_id (GenWheres.h).
     cn.has_where_expr = jfield(nrec, "where_expr") != nullptr;
     std::string cap = jstr(nrec, "capture");
     cn.slot = (!cap.empty() && slot_of.count(cap)) ? slot_of[cap] : -1;
     cn.optional = jbool(nrec, "optional");
+    if (const Json *peek = jfield(nrec, "peek");
+        peek != nullptr && peek->type() != JType::Boolean) {
+      return td::Status::Error("matcher " + m.name + ": node 'peek' must be a bool");
+    }
+    cn.peek = jbool(nrec, "peek");
     cn.child = has(nrec, "child") ? rm(static_cast<int>(jint(nrec, "child"))) : -1;
     if (const Json *ch = jfield(nrec, "children"); ch != nullptr && ch->type() == JType::Array) {
       for (const auto &c : ch->get_array()) {
@@ -370,17 +338,74 @@ td::Status build_matcher(const Json &rec, const std::vector<const Json *> &pool,
     scan_program(*bp, m);
   }
 
-  // Match-phase host dependencies: named predicates (the anchor's, already in
-  // ref_preds for pred/mixed anchors, plus every `pred` / named-`where` node).
-  // Whether the linked host supplies them is match_skip_reason()'s call, not the
-  // loader's. Inline where_exprs are evaluated by the generated where table, so
-  // they are not host dependencies at all.
+  // Match-phase host dependencies: named predicates plus every `pred` /
+  // named-`where` node. Inline where_exprs are not host dependencies
+  // (generated where table). Host presence is match_skip_reason()'s call.
   for (const CompiledNode &n : m.nodes) {
     if (n.kind == NodeKind::Pred && !n.pred_name.empty()) {
       m.ref_preds.insert(n.pred_name);
     }
     if (!n.where_name.empty()) {
       m.ref_preds.insert(n.where_name);
+    }
+  }
+  return td::Status::OK();
+}
+
+td::Status validate_btype_references(const std::vector<CompiledMatcher> &matchers) {
+  std::unordered_set<std::string> known;
+  for (std::string_view btype : kLeafBtypes) {
+    known.emplace(btype);
+  }
+  for (const CompiledMatcher &matcher : matchers) {
+    known.insert(matcher.produces.begin(), matcher.produces.end());
+  }
+
+  for (const CompiledMatcher &matcher : matchers) {
+    auto validate = [&](const std::string &btype) -> td::Status {
+      if (known.count(btype) == 0) {
+        return td::Status::Error("matcher " + matcher.name + ": unknown btype reference '" +
+                                 btype + "'");
+      }
+      return td::Status::OK();
+    };
+    if (matcher.anchor_kind == AnchorKind::BType) {
+      for (const std::string &btype : matcher.anchor_btypes) {
+        TRY_STATUS(validate(btype));
+      }
+    } else if (matcher.anchor_kind == AnchorKind::Mixed) {
+      for (const CompiledMatcher::AnchorBranch &branch : matcher.anchor_branches) {
+        if (!branch.is_op) {
+          TRY_STATUS(validate(branch.btype));
+        }
+      }
+    }
+    for (const CompiledNode &node : matcher.nodes) {
+      if (node.kind == NodeKind::BlockType) {
+        TRY_STATUS(validate(node.btype));
+      }
+    }
+  }
+  return td::Status::OK();
+}
+
+td::Status validate_peek_invariants(const std::vector<CompiledMatcher> &matchers) {
+  for (const CompiledMatcher &matcher : matchers) {
+    if (!matcher.nodes.empty() && matcher.nodes[0].peek) {
+      return td::Status::Error("matcher " + matcher.name +
+                               ": root node cannot be peek (the entry is always consumed)");
+    }
+    for (int nid = 0; nid < static_cast<int>(matcher.nodes.size()); nid++) {
+      if (!matcher.nodes[nid].peek) {
+        continue;
+      }
+      for (int reached : reachable(matcher.nodes, nid)) {
+        if (!matcher.nodes[reached].peek) {
+          return td::Status::Error(
+              "matcher " + matcher.name +
+              ": a peek subtree contains a consuming node; every reachable node must also be peek");
+        }
+      }
     }
   }
   return td::Status::OK();
@@ -397,17 +422,8 @@ td::Result<LoadedIr> load_ir(const std::string &path) {
   ss << in.rdbuf();
   std::string buf = ss.str();
 
-  std::string source_sha;
-  {
-    // Hash BEFORE json_decode mutates the buffer.
-    unsigned char digest[32];
-    td::sha256(td::Slice(buf), td::MutableSlice(digest, 32));
-    static const char *hex = "0123456789abcdef";
-    for (int i = 0; i < 32; i++) {
-      source_sha += hex[digest[i] >> 4];
-      source_sha += hex[digest[i] & 0xF];
-    }
-  }
+  // Hash BEFORE json_decode mutates the buffer.
+  std::string source_sha = sha256_hex(td::Slice(buf));
 
   auto r_root = td::json_decode(td::MutableSlice(buf));
   if (r_root.is_error()) {
@@ -442,6 +458,8 @@ td::Result<LoadedIr> load_ir(const std::string &path) {
     TRY_STATUS(build_matcher(rec, pool, m));
     compiled.push_back(std::move(m));
   }
+  TRY_STATUS(validate_peek_invariants(compiled));
+  TRY_STATUS(validate_btype_references(compiled));
 
   // registration_order (default: identity), then stable-sort by priority.
   std::vector<int> reg_order;

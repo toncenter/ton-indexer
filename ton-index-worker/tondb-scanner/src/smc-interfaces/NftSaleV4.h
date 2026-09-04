@@ -33,6 +33,11 @@ public:
 
   void start_up() override;
 
+  static td::Result<Result> detect(const block::StdAddress& address,
+                                   const td::Ref<vm::Cell>& code_cell,
+                                   const td::Ref<vm::Cell>& data_cell,
+                                   const std::shared_ptr<block::ConfigInfo>& config);
+
 private:
   block::StdAddress address_;
   td::Ref<vm::Cell> code_cell_;

@@ -57,7 +57,7 @@ matcher ethena_deposit {
 # the destination up with get_jetton_wallet() and returns None when the address
 # is not a wallet. So no trace can satisfy this matcher's guards AND be a
 # transfer the jetton family would have taken; whichever runs first, the other
-# declines. The corpus confirms it — the sweep runs this spec on every fixture
+# declines. The corpus confirms it — this spec runs on every fixture
 # carrying 0x0f8a7ea5.
 #
 # Within the file it is listed AFTER the deposit, the reverse of the legacy list

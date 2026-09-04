@@ -1,0 +1,112 @@
+# dedust-liquidities / DeDust v2 deposit jetton and TON, final leg
+# trace: f-PQvtcLmt4lrRMFr9OlMrkLoFLt6hXatdfQHMI3GZM=
+actions:
+  - type: contract_deploy
+    anchor: contract_deploy#855afcbd@80908329000051
+    id: ZiE/BnsN9nmQl5Jb+mfGl1xAVI/I1wt7Gio/pZilrIo=
+    success: true
+    source: 0:00BA322D6C069ED0D84529DDF63643C5F31909137B68E7BC692EA2B34286FA7A
+    source_secondary: null
+    destination: 0:001AF15D22ED5C36E5655F8EC516E01EE0B6E778763B169F742EBBFDFE106481
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: 145759792
+    opcode: 0x855afcbd
+    tx_hashes:
+      - F3iQLPBOGqNA5fF1oeRzdoMttyKYFrl0was2zWid7RY=
+      - e+y9YV0cFuu00t9u60zO4SV+vtbFEpZdcXRelOmFt/U=
+    accounts:
+      - 0:001AF15D22ED5C36E5655F8EC516E01EE0B6E778763B169F742EBBFDFE106481
+      - 0:00BA322D6C069ED0D84529DDF63643C5F31909137B68E7BC692EA2B34286FA7A
+    start_lt: 80908329000051
+    end_lt: 80908329000052
+    start_utime: 1780342223
+    end_utime: 1780342223
+    mc_seqno_end: 70590332
+  - type: contract_deploy
+    anchor: contract_deploy#dc5ddba1@80908329000042
+    id: HWkOScQbgvKwGxOSrhGepYHo6TQ0l+K8ZsDjUTcehXE=
+    success: true
+    source: 0:00BA322D6C069ED0D84529DDF63643C5F31909137B68E7BC692EA2B34286FA7A
+    source_secondary: null
+    destination: 0:0065B43BCEC4814DCF68458A185FD01EE7E2980E5B356642E2D31B4D39AE8D8F
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: 248666450
+    opcode: 0xdc5ddba1
+    tx_hashes:
+      - 5c/5VsOBwL1r1n3J3EHQ3Bxl4oE06vqczrtiro/LNSA=
+      - ZR4l+Q8qWxv28lfoke7gryF8AMdgS6ng7CiKAltqb18=
+    accounts:
+      - 0:0065B43BCEC4814DCF68458A185FD01EE7E2980E5B356642E2D31B4D39AE8D8F
+      - 0:00BA322D6C069ED0D84529DDF63643C5F31909137B68E7BC692EA2B34286FA7A
+    start_lt: 80908329000042
+    end_lt: 80908329000043
+    start_utime: 1780342223
+    end_utime: 1780342223
+    mc_seqno_end: 70590332
+  - type: dex_deposit_liquidity
+    matcher: dedust_v2_deposit_final
+    anchor: dedust_v2_deposit_liquidity@80908329000039
+    id: 8T8hhm6apPWzNJzKTbjmWwC+px7Qcc8bZIyIQkozQUs=
+    success: true
+    source: 0:8ECD8E7F5FC89C75437D56D7E0D96256FBF595449DB7F0086AF64B15F919A263
+    source_secondary: null
+    destination: 0:00BA322D6C069ED0D84529DDF63643C5F31909137B68E7BC692EA2B34286FA7A
+    destination_secondary: 0:0065B43BCEC4814DCF68458A185FD01EE7E2980E5B356642E2D31B4D39AE8D8F
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: null
+    opcode: null
+    dex_deposit_liquidity_data:
+      amount1: 46543920065588
+      amount2: 151756020744
+      asset1: 0:EE1A0A9953BFC012088EC047BE69BA3321E7EEA1A8AB4D62CEC9DEDCFDFF0687
+      asset2: null
+      dex: dedust_v2
+      lp_tokens_minted: 2657690739975
+      target_amount_1: 46543920065588
+      target_amount_2: 151756020745
+      target_asset_1: 0:EE1A0A9953BFC012088EC047BE69BA3321E7EEA1A8AB4D62CEC9DEDCFDFF0687
+      target_asset_2: null
+      user_jetton_wallet_1: 0:FDF41673C4E371BCA254E621BD92BA7EC5089DF1D5D719E31114AB46AA6BFA2C
+      user_jetton_wallet_2: null
+      vault_excesses:
+        - amount: 1
+          asset: null
+    tx_hashes:
+      - 1b+XtXQ8ziXUb9IKzbQ3L/Ak8w1UxHL2wvKPtUGgpgg=
+      - 5c/5VsOBwL1r1n3J3EHQ3Bxl4oE06vqczrtiro/LNSA=
+      - F3iQLPBOGqNA5fF1oeRzdoMttyKYFrl0was2zWid7RY=
+      - MPZ/3RBKPemZ4u/BrqnS6kokiIn9I8vbUWPzHYYacok=
+      - NJAgSECKGGiAERVWJY/rzZ+4IJUPqtw6j/cExv1qrsc=
+      - SKv8GdKruOam/a/QoWVb//uI14CveQek50+qMgNTzt8=
+      - W584ACMuQweXQFQI5newjFk+L6XKSKHqO+gZvc2zjqo=
+      - ZR4l+Q8qWxv28lfoke7gryF8AMdgS6ng7CiKAltqb18=
+      - e+y9YV0cFuu00t9u60zO4SV+vtbFEpZdcXRelOmFt/U=
+      - f+PQvtcLmt4lrRMFr9OlMrkLoFLt6hXatdfQHMI3GZM=
+      - fa/n4vsHKfPJ35Co0o9W1wwRxl9GH2GNjfFy1mUahmo=
+      - tn5AqJ+3FSJ0Hr9eXkiw9V6kNJ7R+B+Xu9G2NypzVFs=
+    accounts:
+      - 0:001AF15D22ED5C36E5655F8EC516E01EE0B6E778763B169F742EBBFDFE106481
+      - 0:0065B43BCEC4814DCF68458A185FD01EE7E2980E5B356642E2D31B4D39AE8D8F
+      - 0:00BA322D6C069ED0D84529DDF63643C5F31909137B68E7BC692EA2B34286FA7A
+      - 0:8ECD8E7F5FC89C75437D56D7E0D96256FBF595449DB7F0086AF64B15F919A263
+      - 0:9E1F5D31F32AE04F01D7D0B88C6540D8C6CDD6CF5FB2C618AABB91D9B55F9170
+      - 0:FDF41673C4E371BCA254E621BD92BA7EC5089DF1D5D719E31114AB46AA6BFA2C
+    start_lt: 80908329000039
+    end_lt: 80908329000054
+    start_utime: 1780342223
+    end_utime: 1780342223
+    mc_seqno_end: 70590332

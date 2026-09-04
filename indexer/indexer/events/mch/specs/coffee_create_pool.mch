@@ -41,13 +41,13 @@
 # NB the legacy `CoffeeCreatePoolCreatorRequest` class (messages/coffee.py:713)
 # CANNOT be that reader: it parses `creation_params` inline where the wire has
 # `creation_params:^PoolCreationParams`, so it throws on a real body. Nothing
-# calls it (the legacy matcher only reads its `.opcode`), which is why the bug
-# went unnoticed. The mch twin in mch/builders/coffee.py parses the ref.
+# calls it (the legacy matcher only reads its `.opcode`).
+# The mch twin in mch/builders/coffee.py parses the ref.
 #
 # LEGACY DATA RESHAPED (blocks/liquidity.py, both dataclasses). The legacy
 # blocks store `pool_params` as a live `PoolParams` PARSER OBJECT and
 # `pool_creation_params` as a `PublicPoolCreationParams` one. A declarative
-# build can only emit language values, and the parity sweep compares `data`
+# build can only emit language values, and the produced `data` must match
 # key-for-key including type — so those two fields were replaced by what is
 # actually consumed:
 #   - `pool_params` -> `pool_first` / `pool_second`, the only two subfields any

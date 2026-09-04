@@ -1,0 +1,237 @@
+# evaa / Withdraw tsTon
+# trace: OyAQgEdEKZcuU2-3dAkKpk_RFjTYJXXQYxCKoZSB7uA=
+actions:
+  - type: call_contract
+    anchor: call_contract#00000002@56467984000002
+    id: AUuhQG92Dx0zQbr93tDJcnnKbpIerV54cZOKDNWp89Q=
+    success: true
+    source: 0:B9C2F27E009E3B27734CF7EC5E9627F8F646920ABEC4B2ED83619F6226CFF821
+    source_secondary: null
+    destination: 0:BCAD466A47FA565750729565253CD073CA24D856804499090C2100D95C809F9E
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: 350000000
+    opcode: 0x00000002
+    tx_hashes:
+      - OyAQgEdEKZcuU2+3dAkKpk/RFjTYJXXQYxCKoZSB7uA=
+      - lm3GydZZgRu8az2mHcYLWfNOBE97H6ZBPcDWi9wR1wU=
+    accounts:
+      - 0:B9C2F27E009E3B27734CF7EC5E9627F8F646920ABEC4B2ED83619F6226CFF821
+      - 0:BCAD466A47FA565750729565253CD073CA24D856804499090C2100D95C809F9E
+    start_lt: 56467984000002
+    end_lt: 56467984000003
+    start_utime: 1745625126
+    end_utime: 1745625126
+    mc_seqno_end: 47178503
+    parent_action_id: D6y5HPnJm/YAgYYHls9rdBv5gSlddZ4qu46lEUvCo5w=
+    ancestor_type:
+      - evaa_withdraw
+  - type: call_contract
+    anchor: call_contract#00000211@56467984000006
+    id: uSzPwQ+OX9hlaYebWqtsanhmJ78VDCOdhsrGHXjQAiY=
+    success: true
+    source: 0:A378E318EFE4DDCECBAFB9275CBB003C79644E92DB7D058CB35E55E1B1E3C273
+    source_secondary: null
+    destination: 0:BCAD466A47FA565750729565253CD073CA24D856804499090C2100D95C809F9E
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: 241453954
+    opcode: 0x00000211
+    tx_hashes:
+      - Gfpse+4t8rFmlifFmdLRnvyDkfLiUNvmuQHPWE7qgZE=
+      - KNmtpg++oHP1XERiPCVv6M346M5OvfNcmdzcQ3d1Dnk=
+    accounts:
+      - 0:A378E318EFE4DDCECBAFB9275CBB003C79644E92DB7D058CB35E55E1B1E3C273
+      - 0:BCAD466A47FA565750729565253CD073CA24D856804499090C2100D95C809F9E
+    start_lt: 56467984000006
+    end_lt: 56467984000007
+    start_utime: 1745625126
+    end_utime: 1745625126
+    mc_seqno_end: 47178503
+    parent_action_id: D6y5HPnJm/YAgYYHls9rdBv5gSlddZ4qu46lEUvCo5w=
+    ancestor_type:
+      - evaa_withdraw
+  - type: call_contract
+    anchor: call_contract#10660000@56467984000008
+    id: ZbTZZW4Glvxtnbxm1uUsBepvLZAV359+dKh1TgFchKw=
+    success: true
+    source: 0:BCAD466A47FA565750729565253CD073CA24D856804499090C2100D95C809F9E
+    source_secondary: null
+    destination: 0:A378E318EFE4DDCECBAFB9275CBB003C79644E92DB7D058CB35E55E1B1E3C273
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: 30338808
+    opcode: 0x10660000
+    tx_hashes:
+      - Gfpse+4t8rFmlifFmdLRnvyDkfLiUNvmuQHPWE7qgZE=
+      - wicb/qOdePNJGX2yfrmeRYQ0J5sAdpy6iXzZGkUFeZo=
+    accounts:
+      - 0:A378E318EFE4DDCECBAFB9275CBB003C79644E92DB7D058CB35E55E1B1E3C273
+      - 0:BCAD466A47FA565750729565253CD073CA24D856804499090C2100D95C809F9E
+    start_lt: 56467984000008
+    end_lt: 56467984000009
+    start_utime: 1745625126
+    end_utime: 1745625126
+    mc_seqno_end: 47178503
+    parent_action_id: D6y5HPnJm/YAgYYHls9rdBv5gSlddZ4qu46lEUvCo5w=
+    ancestor_type:
+      - evaa_withdraw
+  - type: call_contract
+    anchor: call_contract#106e0000@56467984000004
+    id: NquXduQ7k6S1CD1UatYHAypr2gqEHvI9O5sspy2rB6s=
+    success: true
+    source: 0:BCAD466A47FA565750729565253CD073CA24D856804499090C2100D95C809F9E
+    source_secondary: null
+    destination: 0:A378E318EFE4DDCECBAFB9275CBB003C79644E92DB7D058CB35E55E1B1E3C273
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: 275613600
+    opcode: 0x106e0000
+    tx_hashes:
+      - KNmtpg++oHP1XERiPCVv6M346M5OvfNcmdzcQ3d1Dnk=
+      - lm3GydZZgRu8az2mHcYLWfNOBE97H6ZBPcDWi9wR1wU=
+    accounts:
+      - 0:A378E318EFE4DDCECBAFB9275CBB003C79644E92DB7D058CB35E55E1B1E3C273
+      - 0:BCAD466A47FA565750729565253CD073CA24D856804499090C2100D95C809F9E
+    start_lt: 56467984000004
+    end_lt: 56467984000005
+    start_utime: 1745625126
+    end_utime: 1745625126
+    mc_seqno_end: 47178503
+    parent_action_id: D6y5HPnJm/YAgYYHls9rdBv5gSlddZ4qu46lEUvCo5w=
+    ancestor_type:
+      - evaa_withdraw
+  - type: evaa_withdraw
+    matcher: evaa_withdraw
+    anchor: evaa_withdraw@56467984000002
+    id: D6y5HPnJm/YAgYYHls9rdBv5gSlddZ4qu46lEUvCo5w=
+    success: true
+    source: 0:B9C2F27E009E3B27734CF7EC5E9627F8F646920ABEC4B2ED83619F6226CFF821
+    source_secondary: null
+    destination: 0:B9C2F27E009E3B27734CF7EC5E9627F8F646920ABEC4B2ED83619F6226CFF821
+    destination_secondary: 0:A378E318EFE4DDCECBAFB9275CBB003C79644E92DB7D058CB35E55E1B1E3C273
+    asset: 0:BDF3FA8098D129B54B4F73B5BAC5D1E1FD91EB054169C3916DFC8CCD536D1000
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: 1000000040
+    value: null
+    opcode: null
+    evaa_withdraw_data:
+      asset_id: "0x3313e2f57ba870af34480350c789b0987d15b43a53172bfce294de21e7d724e7"
+      fail_reason: null
+      is_ton: false
+      master: 0:BCAD466A47FA565750729565253CD073CA24D856804499090C2100D95C809F9E
+      master_jetton_wallet: 0:910B4B5E961BF54044AF4F1DB89CDA94581EF6CC2CAC5D0D01C7DEE5573B9C43
+      recipient_jetton_wallet: 0:FCDA58A21B343F303964401D89ABCD922B6A51EF6EA3A8DC2A4B7BD37494A2D5
+    tx_hashes:
+      - 4wX2SPh3FBJCP8ZQ5ixnLQK+kf8hNgctvLPsB8ttbns=
+      - 7mlRkxcRRp8K4mxz/15Rdato4NqFjJzmcM0vVSO39S4=
+      - Gfpse+4t8rFmlifFmdLRnvyDkfLiUNvmuQHPWE7qgZE=
+      - KNmtpg++oHP1XERiPCVv6M346M5OvfNcmdzcQ3d1Dnk=
+      - OyAQgEdEKZcuU2+3dAkKpk/RFjTYJXXQYxCKoZSB7uA=
+      - b/LTj8HoCL5NTEIZCvVGp9Z1x0uKCXMls0eLKnSIT2o=
+      - lh0/qlYYgUOeQ7830l/NVdGJ6DXwGWzfWNGvuxFenFE=
+      - lm3GydZZgRu8az2mHcYLWfNOBE97H6ZBPcDWi9wR1wU=
+      - wicb/qOdePNJGX2yfrmeRYQ0J5sAdpy6iXzZGkUFeZo=
+    accounts:
+      - 0:910B4B5E961BF54044AF4F1DB89CDA94581EF6CC2CAC5D0D01C7DEE5573B9C43
+      - 0:A378E318EFE4DDCECBAFB9275CBB003C79644E92DB7D058CB35E55E1B1E3C273
+      - 0:B9C2F27E009E3B27734CF7EC5E9627F8F646920ABEC4B2ED83619F6226CFF821
+      - 0:BCAD466A47FA565750729565253CD073CA24D856804499090C2100D95C809F9E
+      - 0:FCDA58A21B343F303964401D89ABCD922B6A51EF6EA3A8DC2A4B7BD37494A2D5
+    start_lt: 56467984000002
+    end_lt: 56467991000001
+    start_utime: 1745625126
+    end_utime: 1745625141
+    mc_seqno_end: 47178509
+  - type: jetton_transfer
+    matcher: jetton_transfer
+    anchor: jetton_transfer@56467984000010
+    id: GjqmgxVCMKHYOa9zuo5OHAblDs149EOIDsWakqBXtMA=
+    success: true
+    source: 0:BCAD466A47FA565750729565253CD073CA24D856804499090C2100D95C809F9E
+    source_secondary: 0:910B4B5E961BF54044AF4F1DB89CDA94581EF6CC2CAC5D0D01C7DEE5573B9C43
+    destination: 0:B9C2F27E009E3B27734CF7EC5E9627F8F646920ABEC4B2ED83619F6226CFF821
+    destination_secondary: 0:FCDA58A21B343F303964401D89ABCD922B6A51EF6EA3A8DC2A4B7BD37494A2D5
+    asset: 0:BDF3FA8098D129B54B4F73B5BAC5D1E1FD91EB054169C3916DFC8CCD536D1000
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: 1000000040
+    value: null
+    opcode: null
+    jetton_transfer_data:
+      comment: null
+      custom_payload: cellhash:76E9C2382A6537C4FCA66AD5C2DC92D6E318B5AD0FA1F8C856CF8C4B0590465F
+      forward_amount: 0
+      forward_payload: cellhash:76E9C2382A6537C4FCA66AD5C2DC92D6E318B5AD0FA1F8C856CF8C4B0590465F
+      is_encrypted_comment: false
+      query_id: 0
+      response_destination: 0:B9C2F27E009E3B27734CF7EC5E9627F8F646920ABEC4B2ED83619F6226CFF821
+    tx_hashes:
+      - 4wX2SPh3FBJCP8ZQ5ixnLQK+kf8hNgctvLPsB8ttbns=
+      - 7mlRkxcRRp8K4mxz/15Rdato4NqFjJzmcM0vVSO39S4=
+      - Gfpse+4t8rFmlifFmdLRnvyDkfLiUNvmuQHPWE7qgZE=
+      - b/LTj8HoCL5NTEIZCvVGp9Z1x0uKCXMls0eLKnSIT2o=
+    accounts:
+      - 0:910B4B5E961BF54044AF4F1DB89CDA94581EF6CC2CAC5D0D01C7DEE5573B9C43
+      - 0:B9C2F27E009E3B27734CF7EC5E9627F8F646920ABEC4B2ED83619F6226CFF821
+      - 0:BCAD466A47FA565750729565253CD073CA24D856804499090C2100D95C809F9E
+      - 0:FCDA58A21B343F303964401D89ABCD922B6A51EF6EA3A8DC2A4B7BD37494A2D5
+    start_lt: 56467984000010
+    end_lt: 56467991000001
+    start_utime: 1745625126
+    end_utime: 1745625141
+    mc_seqno_end: 47178509
+    parent_action_id: D6y5HPnJm/YAgYYHls9rdBv5gSlddZ4qu46lEUvCo5w=
+    ancestor_type:
+      - evaa_withdraw
+  - type: ton_transfer
+    anchor: ton_transfer@56467984000010
+    id: YYcidvff4fiY/j5Zzf0WWvUXptHTwg38zAiMta2/z/M=
+    success: true
+    source: 0:A378E318EFE4DDCECBAFB9275CBB003C79644E92DB7D058CB35E55E1B1E3C273
+    source_secondary: null
+    destination: 0:B9C2F27E009E3B27734CF7EC5E9627F8F646920ABEC4B2ED83619F6226CFF821
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: 22017208
+    opcode: null
+    ton_transfer_data:
+      content: EVAA withdraw.
+      encrypted: false
+    tx_hashes:
+      - lh0/qlYYgUOeQ7830l/NVdGJ6DXwGWzfWNGvuxFenFE=
+      - wicb/qOdePNJGX2yfrmeRYQ0J5sAdpy6iXzZGkUFeZo=
+    accounts:
+      - 0:A378E318EFE4DDCECBAFB9275CBB003C79644E92DB7D058CB35E55E1B1E3C273
+      - 0:B9C2F27E009E3B27734CF7EC5E9627F8F646920ABEC4B2ED83619F6226CFF821
+    start_lt: 56467984000010
+    end_lt: 56467984000011
+    start_utime: 1745625126
+    end_utime: 1745625126
+    mc_seqno_end: 47178503
+    parent_action_id: D6y5HPnJm/YAgYYHls9rdBv5gSlddZ4qu46lEUvCo5w=
+    ancestor_type:
+      - evaa_withdraw

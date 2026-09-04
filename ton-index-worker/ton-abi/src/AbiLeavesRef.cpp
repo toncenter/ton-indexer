@@ -8,26 +8,11 @@ namespace ton_abi {
 
 namespace {
 
-// Open a ref as an ordinary slice, fail-closed on special/exotic cells (the
-// reference assumes none; the top-level body open also rejects exotic cells).
-td::Result<vm::CellSlice> open_ordinary(const td::Ref<vm::Cell> &cell) {
-  if (cell.is_null()) {
-    return td::Status::Error("ref: null cell");
-  }
-  bool is_special = false;
-  vm::CellSlice cs = vm::load_cell_slice_special(cell, is_special);
-  if (is_special) {
-    return td::Status::Error("ref: special/exotic cell not supported");
-  }
-  return cs;
-}
-
-// Snake reader: byte-aligned bytes per cell + at most one continuation ref
-// (@ton/core strings.js readBuffer).
+// Snake reader: byte-aligned bytes per cell + at most one continuation ref.
 td::Result<std::string> read_snake(td::Ref<vm::Cell> cell) {
   std::string out;
   for (;;) {
-    TRY_RESULT(cs, open_ordinary(cell));
+    TRY_RESULT(cs, open_ordinary(cell, "ref"));
     if (cs.size() % 8 != 0) {
       return td::Status::Error(PSLICE() << "string: invalid length, " << cs.size() << " bits not byte-aligned");
     }
@@ -53,8 +38,7 @@ td::Result<std::string> read_snake(td::Ref<vm::Cell> cell) {
   }
 }
 
-// Snake writer: chunk at 127 bytes/cell, tail in a continuation ref
-// (@ton/core strings.js writeBuffer over a fresh 1023-bit builder).
+// Snake writer: chunk at 127 bytes/cell, tail in a continuation ref.
 td::Result<td::Ref<vm::Cell>> string_to_cell(td::Slice bytes) {
   vm::CellBuilder b;
   std::size_t n = bytes.size();
@@ -75,7 +59,6 @@ td::Result<td::Ref<vm::Cell>> string_to_cell(td::Slice bytes) {
 
 }  // namespace
 
-// ---- cell ----
 
 td::Result<td::Ref<vm::Cell>> load_cell(vm::CellSlice &cs) {
   if (!cs.have_refs(1)) {
@@ -98,15 +81,13 @@ td::Status store_cell(vm::CellBuilder &cb, td::Ref<vm::Cell> cell) {
   return td::Status::OK();
 }
 
-// ---- cellOf ----
 
-td::Result<td::Ref<vm::CellSlice>> load_ref_slice(vm::CellSlice &cs) {
+td::Result<std::pair<td::Ref<vm::Cell>, td::Ref<vm::CellSlice>>> load_ref_cell_and_slice(vm::CellSlice &cs) {
   TRY_RESULT(cell, load_cell(cs));
-  TRY_RESULT(inner, open_ordinary(cell));
-  return td::make_ref<vm::CellSlice>(std::move(inner));
+  TRY_RESULT(inner, open_ordinary(cell, "ref"));
+  return std::make_pair(std::move(cell), td::make_ref<vm::CellSlice>(std::move(inner)));
 }
 
-// ---- maybe_ref ----
 
 td::Result<td::Ref<vm::Cell>> load_maybe_ref(vm::CellSlice &cs) {
   unsigned long long present = 0;
@@ -139,7 +120,6 @@ td::Status store_maybe_ref(vm::CellBuilder &cb, td::Ref<vm::Cell> maybe_cell) {
   return td::Status::OK();
 }
 
-// ---- nullable presence prefix ----
 
 td::Result<bool> load_maybe_prefix(vm::CellSlice &cs) {
   unsigned long long b = 0;
@@ -156,7 +136,6 @@ td::Status store_maybe_prefix(vm::CellBuilder &cb, bool present) {
   return td::Status::OK();
 }
 
-// ---- string (snake ref-tail) ----
 
 td::Result<std::string> load_string(vm::CellSlice &cs) {
   if (!cs.have_refs(1)) {
@@ -177,7 +156,6 @@ td::Status store_string(vm::CellBuilder &cb, const std::string &s) {
   return td::Status::OK();
 }
 
-// ---- remaining ----
 
 td::Result<td::Ref<vm::CellSlice>> load_remaining(vm::CellSlice &cs) {
   td::Ref<vm::CellSlice> snap = cs.fetch_subslice_ext(cs.size_ext());

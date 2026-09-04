@@ -1,0 +1,554 @@
+{
+  "abi_schema_version": "1.0",
+  "contract_name": "LayerZeroMessages",
+  "unique_types": [
+    {
+      "kind": "void"
+    },
+    {
+      "kind": "int"
+    },
+    {
+      "kind": "slice"
+    },
+    {
+      "kind": "cell"
+    },
+    {
+      "kind": "builder"
+    },
+    {
+      "kind": "bool"
+    },
+    {
+      "kind": "coins"
+    },
+    {
+      "kind": "address"
+    },
+    {
+      "kind": "intN",
+      "n": 32
+    },
+    {
+      "kind": "uintN",
+      "n": 32
+    },
+    {
+      "kind": "intN",
+      "n": 64
+    },
+    {
+      "kind": "uintN",
+      "n": 64
+    },
+    {
+      "kind": "AliasRef",
+      "alias_name": "AllowedMessage"
+    },
+    {
+      "kind": "StructRef",
+      "struct_name": "LayerzeroChannelSendCallbackAbi"
+    },
+    {
+      "kind": "StructRef",
+      "struct_name": "LzChannelSendCallbackRef1"
+    },
+    {
+      "kind": "StructRef",
+      "struct_name": "LzChannelSendCallbackRef2"
+    },
+    {
+      "kind": "StructRef",
+      "struct_name": "LzMdLzSend"
+    },
+    {
+      "kind": "uintN",
+      "n": 80
+    },
+    {
+      "kind": "uintN",
+      "n": 180
+    },
+    {
+      "kind": "intN",
+      "n": 90
+    },
+    {
+      "kind": "uintN",
+      "n": 256
+    },
+    {
+      "kind": "StructRef",
+      "struct_name": "LzPacket"
+    },
+    {
+      "kind": "uintN",
+      "n": 152
+    },
+    {
+      "kind": "intN",
+      "n": 198
+    },
+    {
+      "kind": "StructRef",
+      "struct_name": "LzPath"
+    },
+    {
+      "kind": "cellOf",
+      "inner_ty_idx": 24
+    },
+    {
+      "kind": "cellOf",
+      "inner_ty_idx": 21
+    },
+    {
+      "kind": "StructRef",
+      "struct_name": "LzMdLzSendRef"
+    },
+    {
+      "kind": "uintN",
+      "n": 128
+    },
+    {
+      "kind": "cellOf",
+      "inner_ty_idx": 27
+    },
+    {
+      "kind": "cellOf",
+      "inner_ty_idx": 16
+    },
+    {
+      "kind": "cellOf",
+      "inner_ty_idx": 15
+    },
+    {
+      "kind": "cellOf",
+      "inner_ty_idx": 14
+    },
+    {
+      "kind": "StructRef",
+      "struct_name": "Storage"
+    },
+    {
+      "kind": "StructRef",
+      "struct_name": "LayerZeroOappExecuteCallbackAbi"
+    },
+    {
+      "kind": "StructRef",
+      "struct_name": "LzOappExecutePacketRef"
+    },
+    {
+      "kind": "cellOf",
+      "inner_ty_idx": 35
+    },
+    {
+      "kind": "StructRef",
+      "struct_name": "ChannelCommitPacketAbi"
+    },
+    {
+      "kind": "StructRef",
+      "struct_name": "LzExtendedMd"
+    },
+    {
+      "kind": "cellOf",
+      "inner_ty_idx": 38
+    },
+    {
+      "kind": "StructRef",
+      "struct_name": "UlnConnectionVerifyCallbackAbi"
+    },
+    {
+      "kind": "StructRef",
+      "struct_name": "UlnMdObj"
+    },
+    {
+      "kind": "StructRef",
+      "struct_name": "UlnVerificationStatus"
+    },
+    {
+      "kind": "uintN",
+      "n": 116
+    },
+    {
+      "kind": "intN",
+      "n": 234
+    },
+    {
+      "kind": "EnumRef",
+      "enum_name": "UlnVerificationStatusCode"
+    },
+    {
+      "kind": "cellOf",
+      "inner_ty_idx": 42
+    },
+    {
+      "kind": "cellOf",
+      "inner_ty_idx": 41
+    }
+  ],
+  "struct_instantiations": [],
+  "alias_instantiations": [],
+  "declarations": [
+    {
+      "kind": "struct",
+      "name": "LzPath",
+      "ty_idx": 24,
+      "fields": [
+        {
+          "name": "header_info",
+          "ty_idx": 22,
+          "default_value": {
+            "kind": "int",
+            "v": "8903714975572488637007080065659"
+          }
+        },
+        {
+          "name": "header_filler",
+          "ty_idx": 23,
+          "default_value": {
+            "kind": "int",
+            "v": "-1"
+          }
+        },
+        {
+          "name": "src_eid",
+          "ty_idx": 9
+        },
+        {
+          "name": "src_oapp",
+          "ty_idx": 20
+        },
+        {
+          "name": "dst_eid",
+          "ty_idx": 9
+        },
+        {
+          "name": "dst_oapp",
+          "ty_idx": 20
+        }
+      ]
+    },
+    {
+      "kind": "struct",
+      "name": "LzPacket",
+      "ty_idx": 21,
+      "fields": [
+        {
+          "name": "header_info",
+          "ty_idx": 22,
+          "default_value": {
+            "kind": "int",
+            "v": "417359019239977417716476838698419835"
+          }
+        },
+        {
+          "name": "header_filler",
+          "ty_idx": 23,
+          "default_value": {
+            "kind": "int",
+            "v": "-1"
+          }
+        },
+        {
+          "name": "path",
+          "ty_idx": 25
+        },
+        {
+          "name": "message",
+          "ty_idx": 3
+        },
+        {
+          "name": "nonce",
+          "ty_idx": 11
+        },
+        {
+          "name": "guid",
+          "ty_idx": 20
+        }
+      ]
+    },
+    {
+      "kind": "struct",
+      "name": "LzMdLzSendRef",
+      "ty_idx": 27,
+      "fields": [
+        {
+          "name": "send_msglib_connection",
+          "ty_idx": 20
+        },
+        {
+          "name": "native_fee",
+          "ty_idx": 28
+        },
+        {
+          "name": "zro_fee",
+          "ty_idx": 28
+        },
+        {
+          "name": "enforced_options",
+          "ty_idx": 3
+        },
+        {
+          "name": "callback_data",
+          "ty_idx": 3
+        }
+      ]
+    },
+    {
+      "kind": "struct",
+      "name": "LzMdLzSend",
+      "ty_idx": 16,
+      "fields": [
+        {
+          "name": "name",
+          "ty_idx": 17,
+          "default_value": {
+            "kind": "int",
+            "v": "119272640966244"
+          }
+        },
+        {
+          "name": "header_info",
+          "ty_idx": 18,
+          "default_value": {
+            "kind": "int",
+            "v": "582890735024998957421269964955452773563747974476099581"
+          }
+        },
+        {
+          "name": "header_filler",
+          "ty_idx": 19,
+          "default_value": {
+            "kind": "int",
+            "v": "-1"
+          }
+        },
+        {
+          "name": "send_request_id",
+          "ty_idx": 11
+        },
+        {
+          "name": "send_msglib_manager",
+          "ty_idx": 20
+        },
+        {
+          "name": "send_msglib",
+          "ty_idx": 20
+        },
+        {
+          "name": "packet",
+          "ty_idx": 26
+        },
+        {
+          "name": "extra_options",
+          "ty_idx": 3
+        },
+        {
+          "name": "ref",
+          "ty_idx": 29
+        }
+      ]
+    },
+    {
+      "kind": "enum",
+      "name": "UlnVerificationStatusCode",
+      "ty_idx": 45,
+      "encoded_as_ty_idx": 9,
+      "members": [
+        {
+          "name": "succeeded",
+          "value": "1002188907"
+        },
+        {
+          "name": "nonce_out_of_range",
+          "value": "2144056492"
+        },
+        {
+          "name": "dvn_not_configured",
+          "value": "700792747"
+        }
+      ]
+    },
+    {
+      "kind": "struct",
+      "name": "UlnVerificationStatus",
+      "ty_idx": 42,
+      "fields": [
+        {
+          "name": "header_info",
+          "ty_idx": 43,
+          "default_value": {
+            "kind": "int",
+            "v": "38421788582694199859296615363593851"
+          }
+        },
+        {
+          "name": "header_filler",
+          "ty_idx": 44,
+          "default_value": {
+            "kind": "int",
+            "v": "-1"
+          }
+        },
+        {
+          "name": "nonce",
+          "ty_idx": 11
+        },
+        {
+          "name": "status_code",
+          "ty_idx": 45
+        }
+      ]
+    },
+    {
+      "kind": "struct",
+      "name": "LzOappExecutePacketRef",
+      "ty_idx": 35,
+      "fields": [
+        {
+          "name": "packet",
+          "ty_idx": 26
+        }
+      ]
+    },
+    {
+      "kind": "struct",
+      "name": "LayerZeroOappExecuteCallbackAbi",
+      "ty_idx": 34,
+      "fields": [
+        {
+          "name": "packet_ref",
+          "ty_idx": 36
+        }
+      ]
+    },
+    {
+      "kind": "struct",
+      "name": "LzChannelSendCallbackRef2",
+      "ty_idx": 15,
+      "fields": [
+        {
+          "name": "lz_send",
+          "ty_idx": 30
+        }
+      ]
+    },
+    {
+      "kind": "struct",
+      "name": "LzChannelSendCallbackRef1",
+      "ty_idx": 14,
+      "fields": [
+        {
+          "name": "next",
+          "ty_idx": 31
+        }
+      ]
+    },
+    {
+      "kind": "struct",
+      "name": "LayerzeroChannelSendCallbackAbi",
+      "ty_idx": 13,
+      "prefix": {
+        "prefix_num": 2729835438,
+        "prefix_len": 32
+      },
+      "fields": [
+        {
+          "name": "next",
+          "ty_idx": 32
+        }
+      ]
+    },
+    {
+      "kind": "struct",
+      "name": "LzExtendedMd",
+      "ty_idx": 38,
+      "fields": [
+        {
+          "name": "packet",
+          "ty_idx": 26
+        }
+      ]
+    },
+    {
+      "kind": "struct",
+      "name": "ChannelCommitPacketAbi",
+      "ty_idx": 37,
+      "fields": [
+        {
+          "name": "extended_md",
+          "ty_idx": 39
+        }
+      ]
+    },
+    {
+      "kind": "struct",
+      "name": "UlnMdObj",
+      "ty_idx": 41,
+      "fields": [
+        {
+          "name": "verification_status",
+          "ty_idx": 46
+        }
+      ]
+    },
+    {
+      "kind": "struct",
+      "name": "UlnConnectionVerifyCallbackAbi",
+      "ty_idx": 40,
+      "fields": [
+        {
+          "name": "md_obj",
+          "ty_idx": 47
+        }
+      ]
+    },
+    {
+      "kind": "alias",
+      "name": "AllowedMessage",
+      "ty_idx": 12,
+      "target_ty_idx": 13
+    },
+    {
+      "kind": "struct",
+      "name": "Storage",
+      "ty_idx": 33,
+      "fields": [
+        {
+          "name": "oapp_execute_callback",
+          "ty_idx": 34
+        },
+        {
+          "name": "channel_commit_packet",
+          "ty_idx": 37
+        },
+        {
+          "name": "uln_connection_verify_callback",
+          "ty_idx": 40
+        }
+      ]
+    }
+  ],
+  "storage": {
+    "storage_ty_idx": 33
+  },
+  "incoming_messages": [
+    {
+      "body_ty_idx": 12
+    }
+  ],
+  "incoming_external": [],
+  "outgoing_messages": [],
+  "emitted_events": [],
+  "get_methods": [],
+  "thrown_errors": [
+    {
+      "kind": "plain_int",
+      "err_code": 65535
+    }
+  ],
+  "compiler_name": "tolk",
+  "compiler_version": "1.4.1",
+  "code_boc64": "te6ccgEBAgEALQABFP8A9KQT9LzyyAsBADzT+JHyQCDXLCUVr910MZeEDwHHAPL04IQPAccA8vQ="
+}

@@ -1,0 +1,33 @@
+# nominator / Withdraw request, zero payouts (CwcL)
+# trace: CwcLdAHHpMSrEbbd_9S7YRvBreXTQHSGIov5Mbv39KA=
+actions:
+  - type: stake_withdrawal_request
+    matcher: nominator_pool_withdraw_request
+    anchor: nominator_pool_withdraw_request@68258480000002
+    id: iEN1ClNiTSK1msqalgccDbHj1WRTaWfXncAebxJaEQo=
+    success: false
+    source: 0:7C91AA4F1C204DAD44E38E588BBD83AC92B1640C98AFF709EEA439541B523812
+    source_secondary: null
+    destination: "-1:A97069032F8AA37F8E2F37C883F3ECAB8ECFB05563A2E4B550B9D6C329BBA41D"
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: null
+    opcode: null
+    staking_data:
+      provider: nominator
+    tx_hashes:
+      - CwcLdAHHpMSrEbbd/9S7YRvBreXTQHSGIov5Mbv39KA=
+      - UlGGUqfDzs+wdhNAvh/Du4oiBWX0pylK06xI8nh5sdY=
+      - WqUiTMnOMdej2j17oOdbYmuSQa1Aq/IHyS4bWYlMGok=
+    accounts:
+      - "-1:A97069032F8AA37F8E2F37C883F3ECAB8ECFB05563A2E4B550B9D6C329BBA41D"
+      - 0:7C91AA4F1C204DAD44E38E588BBD83AC92B1640C98AFF709EEA439541B523812
+    start_lt: 68258480000002
+    end_lt: 68258483000001
+    start_utime: 1774210692
+    end_utime: 1774210699
+    mc_seqno_end: 58595095

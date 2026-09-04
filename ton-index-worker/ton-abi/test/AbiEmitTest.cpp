@@ -1,24 +1,14 @@
-// ton-abi-gen emitter units cover codegen-level facts that the
-// vector gate structurally CANNOT see, because they are about the emitted TEXT
-// or about generation failing, not about wire behaviour.
-//  (A) create() default materialization: defaults live only in
-//      the ABI's ConstExprs, never on the wire, so no vector can reach them.
-//      (The wire-behaviour cases that used to sit here -- IncreaseCounter,
-//      IncreaseBy, EmptyMsg, MsgPair, MsgAliasInt16 round-trips and the prefix
-//      mismatch -- were hand-copies of conformance vectors and were deleted;
-//      AbiABGateTest drives those same shapes from testdata/abi_vectors.json,
-//      and it is also where "every generated pair compiles + links" is proven.)
-//  (B) Per-direction custom gate: a ONE-SIDED
-//      custom STRUCT delegates ONLY the registered direction to the typed
-//      registry; the other direction keeps the normal baked path. This is the
-//      reference-emitter bug (unpack gated on the pack flag) that we must NOT
-//      port -- proven at codegen level since the A/B gate cannot catch it.
-//  (C) Decl-level non-standard map key -> HARD generation failure.
-//  (D) Non-serializable field (callable) -> compiling stubs, both directions.
+// Emitter units cover codegen-level facts the vector gate cannot see:
+// (A) create() default materialization (defaults never on the wire),
+// (B) one-sided custom gate delegates only the registered direction
+//     (do not port the reference-emitter bug),
+// (C) non-standard map key = hard generation failure,
+// (D) non-serializable field = compiling stubs.
 
 #include "AbiTestSupport.h"
 
 #include "lots_of_messages_gen.h"
+#include "lots_of_wrappers_gen.h"
 
 #include <cstdlib>
 #include <filesystem>
@@ -43,17 +33,75 @@ std::string emit_source_of(const std::string &fixture) {
   return r.move_as_ok().source;
 }
 
+td::Result<GeneratedFiles> emit_with_manifest(const ValidateManifest &manifest) {
+  auto box = std::make_unique<ContractABI>(load_fixture_abi("lots-of-wrappers"));
+  auto kernel = AbiKernel::create(*box).move_as_ok();
+  return emit_abi(*box, kernel, {}, manifest);
+}
+
+std::string edge_case_ints_from_slice_body(const std::string &src) {
+  auto start = src.find("EdgeCaseInts::from_slice(");
+  REQUIRE(start != std::string::npos);
+  auto end = src.find("\n}\n", start);
+  REQUIRE(end != std::string::npos);
+  return src.substr(start, end - start);
+}
+
 }  // namespace
 
-// (A) create() default materialization: a defaulted field left out of
-// CreateArgs is filled from the ABI's ConstExpr. Defaults never appear on the
-// wire, so this is unreachable from the vector corpus.
 TEST_CASE("emit: lots-of-messages IncreaseBy create()-with-default") {
   gen::lots_of_messages::IncreaseBy::CreateArgs args;
   args.counter_id = 7;  // int8 -> td::int64
   auto made = gen::lots_of_messages::IncreaseBy::create(args);
   CHECK(made.inc_by == 1);  // int32 -> td::int64, ABI default 1
   CHECK(made.counter_id == 7);
+}
+
+TEST_CASE("emit: manifest-marked RefInt256 default uses value comparison after its load") {
+  auto r = emit_with_manifest({"EdgeCaseInts.maxUint"});
+  REQUIRE_MESSAGE(r.is_ok(), (r.is_error() ? r.error().message().str() : ""));
+  std::string body = edge_case_ints_from_slice_body(r.move_as_ok().source);
+
+  std::string load = "TRY_RESULT_PREFIX_ASSIGN(r.maxUint, (load_uint(cs, 256)), \"EdgeCaseInts.maxUint: \");";
+  std::string check =
+      "if (td::cmp(r.maxUint, td::dec_string_to_int256(std::string(\"115792089237316195423570985008687907853269984665640564039457584007913129639935\"))) != 0)";
+  auto load_pos = body.find(load);
+  auto check_pos = body.find(check);
+  REQUIRE(load_pos != std::string::npos);
+  CHECK(check_pos != std::string::npos);
+  CHECK(check_pos > load_pos);
+  CHECK(body.find("if (r.maxUint !=") == std::string::npos);
+}
+
+TEST_CASE("emit: manifest-marked default mismatch emits a field-prefixed error") {
+  auto r = emit_with_manifest({"EdgeCaseInts.maxInt"});
+  REQUIRE_MESSAGE(r.is_ok(), (r.is_error() ? r.error().message().str() : ""));
+  std::string body = edge_case_ints_from_slice_body(r.move_as_ok().source);
+
+  CHECK(body.find("if (td::cmp(r.maxInt,") != std::string::npos);
+  CHECK(body.find("return td::Status::Error(PSLICE() << \"EdgeCaseInts.maxInt: expected \"") != std::string::npos);
+  CHECK(body.find(" << \", got \"") != std::string::npos);
+}
+
+TEST_CASE("emit: default field absent from manifest gets no validation") {
+  auto r = emit_with_manifest({"EdgeCaseInts.maxUint"});
+  REQUIRE_MESSAGE(r.is_ok(), (r.is_error() ? r.error().message().str() : ""));
+  std::string body = edge_case_ints_from_slice_body(r.move_as_ok().source);
+
+  CHECK(body.find("td::cmp(r.maxUint,") != std::string::npos);
+  CHECK(body.find("td::cmp(r.maxInt,") == std::string::npos);
+  CHECK(body.find("td::cmp(r.minInt,") == std::string::npos);
+}
+
+TEST_CASE("emit: validation manifest rejects unknown fields") {
+  auto r = emit_with_manifest({"EdgeCaseInts.notAField"});
+  REQUIRE(r.is_error());
+  CHECK(r.error().message().str().find("EdgeCaseInts.notAField") != std::string::npos);
+
+  auto no_default = emit_with_manifest({"JustUint5.value"});
+  REQUIRE(no_default.is_error());
+  CHECK(no_default.error().message().str().find("JustUint5.value") != std::string::npos);
+  CHECK(no_default.error().message().str().find("no default_value") != std::string::npos);
 }
 
 // (B) per-direction custom gate: do not port the reference bug
@@ -111,7 +159,7 @@ TEST_CASE("emit: unpack-only custom struct delegates ONLY from_slice, not store"
   CHECK(body_mentions(src, "S::store(", "store_uint"));               // normal baked path
 }
 
-// (C) decl-level non-standard map key -> HARD failure (ErrorsAtCodegen parity)
+// (C) decl-level non-standard map key -> HARD failure
 TEST_CASE("emit: err-invalid-map-key hard-fails with map-key error") {
   for (const char *fx : {"err-invalid-map-key-1", "err-invalid-map-key-2"}) {
     auto box = std::make_unique<ContractABI>(load_fixture_abi(fx));
@@ -135,6 +183,14 @@ TEST_CASE("emit: err-cont-on-stack emits cleanly; callable field -> stub") {
   // is non-serializable, so it emits cleanly with no stub.
   std::string src2 = emit_source_of("err-cont-on-stack-2");
   CHECK(src2.find("not serializable") == std::string::npos);
+}
+
+TEST_CASE("emit: enum member names are available without restricting scalar values") {
+  auto known = gen::lots_of_wrappers::EStoredAsInt8_name_of(td::make_refint(-100));
+  REQUIRE(known.has_value());
+  CHECK(*known == "M100");
+
+  CHECK_FALSE(gen::lots_of_wrappers::EStoredAsInt8_name_of(td::make_refint(42)).has_value());
 }
 
 // The ton-abi-gen executable writes a pair to disk; the emitted header contains

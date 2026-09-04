@@ -658,7 +658,7 @@ async def build_dedust_swap_core(block: Block, other_blocks: list[Block]) -> Jet
         sender_wallet = sender_jetton_transfer_block.data['sender_wallet']
         sender = sender_jetton_transfer_block.data['sender']
         asset_in = sender_jetton_transfer_block.data['asset']
-        if int(sender_jetton_transfer_block.data['payload_opcode'], 0) != DedustSwapPayload.opcode:
+        if sender_jetton_transfer_block.data['payload_opcode'] != DedustSwapPayload.opcode:
             return None
         amount_in = sender_jetton_transfer_block.data['amount']
         swap_steps_slice = Slice.one_from_boc(sender_jetton_transfer_block.data['forward_payload'])

@@ -1,13 +1,8 @@
 """Shared synchronous evaluator for IR expressions.
 
-Home of the single implementation of node-level inline `where (expr)`
-evaluation, composed onto `test_self` by BOTH engines:
-
-- the compiled path (mch/compiler.py) converts the ast_ expression to its IR
-  encoding at compile time (mch/expr_ir.py) and wraps `test_self` with
-  `eval_where_expr`;
-- the v2 IR engine (mch_ir/engine.py) evaluates the artifact's `where_expr`
-  node field with the same function.
+Home of the Python implementation of node-level inline `where (expr)`
+evaluation. The IR engine evaluates each node's encoded expression with the
+candidate block and the matcher's entry capture.
 
 Import boundary: mch_ir must not import the frontend (parser/ast_/compiler)
 and the frontend must not import mch_ir, so the evaluator lives here as a leaf
@@ -269,7 +264,7 @@ def _eq_result(op: str, left: Any, right: Any) -> bool:
     elif (isinstance(left, Amount) and isinstance(left.value, float)) or \
             (isinstance(right, Amount) and isinstance(right.value, float)):
         # The language has no floats. Comparing a float-backed Amount faults
-        # to preserve C++ parity rather than silently comparing float values.
+        # rather than silently comparing float values.
         raise EvalError("'==' on a float-backed Amount (the language has no floats)")
     else:
         try:
@@ -422,7 +417,7 @@ def _access(obj: Any, field: str, bodies: dict[int, Any]) -> Any:
             if isinstance(obj.value, float):
                 # The language has no floats; a float-backed Amount (getgems
                 # price) is render-only, so `.value` faults instead of leaking
-                # a float into an integer output field, preserving C++ parity.
+                # a float into an integer output field.
                 raise EvalError("`.value` on a float-backed Amount (the language has no floats)")
             return obj.value
         raise EvalError(f"unknown Amount accessor {field!r} (expected value)")
@@ -446,7 +441,12 @@ def _access(obj: Any, field: str, bodies: dict[int, Any]) -> Any:
 # Sync evaluator (node-level `where_expr`)
 
 
-def _sync_eval(e: dict, block: Block) -> Any:
+def _sync_eval(
+    e: dict,
+    block: Block,
+    entry_name: str | None = None,
+    entry_block: Block | None = None,
+) -> Any:
     k = e.get("k")
     if k in ("int", "str", "bool"):
         return e["v"]
@@ -462,34 +462,46 @@ def _sync_eval(e: dict, block: Block) -> Any:
             return data[e["name"]]
         return _access(data, e["name"], {})
     if k == "name":
-        # No environment exists at test_self time; captures are not yet bound.
-        raise EvalError(f"name {e['id']!r} is not bound in a `where` clause")
+        if entry_block is None or e["id"] != entry_name:
+            raise EvalError(f"name {e['id']!r} is not bound in a `where` clause")
+        return entry_block
     if k == "attr":
-        return _access(_sync_eval(e["of"], block), e["name"], {})
+        return _access(
+            _sync_eval(e["of"], block, entry_name, entry_block), e["name"], {}
+        )
     if k == "call":
         # Loader guarantees builtin-only calls in where_expr (host fns and
         # lookups are async and rejected at load time).
         name = e["fn"]
         if name not in BUILTINS:
             raise EvalError(f"host fn {name!r} is not callable in a `where` clause")
-        return _call_builtin(name, [_sync_eval(a, block) for a in e["args"]])
+        return _call_builtin(
+            name,
+            [_sync_eval(a, block, entry_name, entry_block) for a in e["args"]],
+        )
     if k == "unary":
         if e["op"] == "not":
-            return not _require_bool(_sync_eval(e["x"], block))
+            return not _require_bool(_sync_eval(e["x"], block, entry_name, entry_block))
         if e["op"] == "-":
-            return _neg_result(_sync_eval(e["x"], block))
+            return _neg_result(_sync_eval(e["x"], block, entry_name, entry_block))
         raise EvalError(f"unknown unary operator {e['op']!r}")
     if k == "bin":
         op = e["op"]
         if op == "and":
-            return _require_bool(_sync_eval(e["l"], block)) and _require_bool(_sync_eval(e["r"], block))
+            return _require_bool(
+                _sync_eval(e["l"], block, entry_name, entry_block)
+            ) and _require_bool(_sync_eval(e["r"], block, entry_name, entry_block))
         if op == "or":
-            return _require_bool(_sync_eval(e["l"], block)) or _require_bool(_sync_eval(e["r"], block))
+            return _require_bool(
+                _sync_eval(e["l"], block, entry_name, entry_block)
+            ) or _require_bool(_sync_eval(e["r"], block, entry_name, entry_block))
         if op == "??":
-            left = _sync_eval(e["l"], block)
-            return left if left is not None else _sync_eval(e["r"], block)
-        left = _sync_eval(e["l"], block)
-        right = _sync_eval(e["r"], block)
+            left = _sync_eval(e["l"], block, entry_name, entry_block)
+            return left if left is not None else _sync_eval(
+                e["r"], block, entry_name, entry_block
+            )
+        left = _sync_eval(e["l"], block, entry_name, entry_block)
+        right = _sync_eval(e["r"], block, entry_name, entry_block)
         if op in ("==", "!="):
             return _eq_result(op, left, right)
         if op in ("<", "<=", ">", ">="):
@@ -498,25 +510,33 @@ def _sync_eval(e: dict, block: Block) -> Any:
             return _arith_result(op, left, right)
         raise EvalError(f"unknown binary operator {op!r}")
     if k == "ternary":
-        if _require_bool(_sync_eval(e["cond"], block)):
-            return _sync_eval(e["then"], block)
-        return _sync_eval(e["else"], block)
+        if _require_bool(_sync_eval(e["cond"], block, entry_name, entry_block)):
+            return _sync_eval(e["then"], block, entry_name, entry_block)
+        return _sync_eval(e["else"], block, entry_name, entry_block)
     if k == "list":
-        return [_sync_eval(it, block) for it in e["items"]]
+        return [_sync_eval(it, block, entry_name, entry_block) for it in e["items"]]
     if k == "record":
-        return {f["name"]: _sync_eval(f["expr"], block) for f in e["fields"]}
+        return {
+            f["name"]: _sync_eval(f["expr"], block, entry_name, entry_block)
+            for f in e["fields"]
+        }
     if k == "lookup":
         raise EvalError("lookup is not evaluable in a `where` clause")
     raise EvalError(f"unsupported expression kind {k!r}")
 
 
-def eval_where_expr(e: dict, block: Block) -> bool:
+def eval_where_expr(
+    e: dict,
+    block: Block,
+    entry_name: str | None = None,
+    entry_block: Block | None = None,
+) -> bool:
     """Evaluate a node's inline `where (expr)` against the candidate block.
 
     Composed onto test_self, so it must never raise: an evaluation fault or a
     non-bool result simply fails the test.
     """
     try:
-        return _require_bool(_sync_eval(e, block))
+        return _require_bool(_sync_eval(e, block, entry_name, entry_block))
     except EvalError:
         return False

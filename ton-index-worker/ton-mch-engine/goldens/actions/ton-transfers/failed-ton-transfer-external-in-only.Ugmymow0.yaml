@@ -1,0 +1,30 @@
+# ton-transfers / Failed ton transfer (external-in only)
+# trace: Ugmymow0mpGDSuNUKC1YHkd28o7qceVvYtokZ--D-3E=
+actions:
+  - type: ton_transfer
+    anchor: ton_transfer@53779439000001
+    id: /Yg2IQk+sP8C4Vxyfm3mhKDyThBTW+lgjP4TuhjBbwM=
+    success: false
+    source: 0:9E53B9A59CC76005E9B00D571D4933D8548361F87608D58BC1A0029FACCEF345
+    source_secondary: null
+    destination: 0:F99B14600AE44D2F12B178E8C6EABD78892AE82C5E45B6898F9DEB7EB203F9C4
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: 17192063
+    opcode: null
+    ton_transfer_data:
+      content: "109872119"
+      encrypted: false
+    tx_hashes:
+      - Ugmymow0mpGDSuNUKC1YHkd28o7qceVvYtokZ++D+3E=
+    accounts:
+      - 0:9E53B9A59CC76005E9B00D571D4933D8548361F87608D58BC1A0029FACCEF345
+    start_lt: 53779439000001
+    end_lt: 53779439000001
+    start_utime: 1739064306
+    end_utime: 1739064306
+    mc_seqno_end: 44763241

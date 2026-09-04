@@ -1,0 +1,27 @@
+# wallet-v5-extensions / Wallet v5 remove extension
+# trace: m9eS5wXOsBwyUn9GToVIPeLYaieGF_Ye46_GYVDwg4A=
+actions:
+  - type: unknown
+    anchor: unknown
+    id: m9eS5wXOsBwyUn9GToVIPeLYaieGF/Ye46/GYVDwg4A=
+    success: true
+    source: null
+    source_secondary: null
+    destination: null
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: null
+    opcode: null
+    tx_hashes:
+      - m9eS5wXOsBwyUn9GToVIPeLYaieGF/Ye46/GYVDwg4A=
+    accounts:
+      - 0:4C8FC9B86FF27F4B9423F4353DDA56C3F48D8979E815FE11FD3F486DEDDA503B
+    start_lt: 64925502000001
+    end_lt: 64925502000001
+    start_utime: 1776947109
+    end_utime: 1776947109
+    mc_seqno_end: 53944450

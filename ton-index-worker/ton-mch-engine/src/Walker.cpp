@@ -1,6 +1,7 @@
 #include "Walker.h"
 
 #include "HostRegistry.h"
+#include "btypes_gen.h"
 
 #include <algorithm>
 #include <map>
@@ -11,14 +12,11 @@ namespace mch {
 
 namespace {
 
-constexpr std::uint32_t kExcessOpcode = 0xD53276DB;
-constexpr std::uint32_t kBounceOpcode = 0xFFFFFFFF;
 constexpr long kExitIdx = -1;  // frame idx marker for the exit attempt
 
 // Match recursion depth cap. depth == block-tree depth reached through the
 // mutual recursion (match_node -> child/children/parent/or/recursive edges).
-// Python's default recursion limit is 1000 with several frames per level;
-// 500 here trips well before either runtime's native stack fails. No corpus
+// 500 trips well before either runtime's native stack fails. No corpus
 // trace is anywhere near this (max depth 2); this only guards pathological
 // inputs, converting an undefined stack overflow into a clean per-trace fail.
 constexpr int kMaxMatchDepth = 500;
@@ -50,7 +48,14 @@ std::vector<Block *> canonical(const std::vector<Block *> &v) {
 // immutable.
 class MatchState {
  public:
-  MatchState(const CompiledMatcher &m, const WhereTable &gen) : m_(m), gen_(gen) {
+  MatchState(const CompiledMatcher &m, const WhereTable &gen, Block *anchor)
+      : m_(m), gen_(gen), where_slots_(m.slot_names.size(), Value::null()) {
+    if (!m_.nodes.empty()) {
+      int entry_slot = m_.nodes[0].slot;
+      if (entry_slot >= 0 && entry_slot < static_cast<int>(where_slots_.size())) {
+        where_slots_[entry_slot] = Value::make_block(anchor);
+      }
+    }
   }
 
   bool match_node(int nid, Block *block, bool absorb = true) {
@@ -72,7 +77,9 @@ class MatchState {
     if (!test_head(nid, block)) {
       return false;
     }
-    consume(block);
+    if (!node.peek) {
+      consume(block);
+    }
     if (node.slot >= 0) {
       bind(node.slot, block);
     }
@@ -85,7 +92,7 @@ class MatchState {
     if (!match_parent_edge(node, block)) {
       return false;
     }
-    if (absorb) {
+    if (absorb && !node.peek) {
       absorb_aux(block);
     }
     return true;
@@ -99,25 +106,24 @@ class MatchState {
   }
 
  private:
-  // where_expr evaluation
   // Never raises/aborts: a fault or a non-bool result is simply False.
   bool eval_where(const CompiledNode &node, Block *block) const {
     auto it = gen_.find(node.global_id);
     if (it == gen_.end()) {
       return false;  // coverage is validated at setup (prepare_classify)
     }
-    WhereEnv w{block, nullptr, 0};
+    WhereEnv w{block, where_slots_.data(), where_slots_.size()};
     EvalResult r = it->second(w);
     return !r.faulted && r.value.t == VType::Bool && r.value.boolean;
   }
 
-  // Head test (no edges)
   bool test_head(int nid, Block *block) const {
     const CompiledNode &node = m_.nodes[nid];
     bool ok = false;
     switch (node.kind) {
       case NodeKind::Contract:
-        ok = block->btype == "call_contract" && block->opcode && *block->opcode == node.opcode;
+        ok = block->btype == mch::btype::kCallContract && block->opcode &&
+             *block->opcode == node.opcode;
         break;
       case NodeKind::BlockType:
         ok = block->btype == node.btype;
@@ -153,9 +159,9 @@ class MatchState {
     if (!ok) {
       return false;
     }
-    // Named `where` predicate (engine.py: `node.where(block)`), then inline
-    // where_exprs compose onto the head test. Loader gates runnability
-    // on the registry, so a missing name here means an unrunnable matcher.
+    // Named `where` predicate, then inline where_exprs compose onto the head
+    // test. Loader gates runnability on the registry, so a missing name here
+    // means an unrunnable matcher.
     if (!node.where_name.empty()) {
       auto it = host_predicates().find(node.where_name);
       if (it == host_predicates().end() || !it->second(block)) {
@@ -235,7 +241,7 @@ class MatchState {
 
   bool match_recursive(int nid, const CompiledNode &node, Block *entry) {
     // Entry gate: the recursive node's own where clauses run against the entry
-    // block before the strategy dispatch (engine.py _match_recursive).
+    // block before the strategy dispatch.
     if (!node.where_name.empty()) {
       auto it = host_predicates().find(node.where_name);
       if (it == host_predicates().end() || !it->second(entry)) {
@@ -294,7 +300,7 @@ class MatchState {
 
   void absorb_aux(Block *block) {
     for (Block *nb : canonical(block->next_blocks)) {
-      if (nb->btype == "call_contract" && nb->opcode &&
+      if (nb->btype == mch::btype::kCallContract && nb->opcode &&
           (*nb->opcode == kExcessOpcode || *nb->opcode == kBounceOpcode)) {
         consume(nb);
       }
@@ -375,6 +381,7 @@ class MatchState {
 
   const CompiledMatcher &m_;
   const WhereTable &gen_;
+  std::vector<Value> where_slots_;
   std::vector<std::tuple<int, Frame, Block *>> bindings_;
   std::vector<Block *> consumed_;
   std::unordered_set<Block *> visited_;
@@ -388,11 +395,12 @@ class MatchState {
 bool matcher_test_self(const CompiledMatcher &m, const Block *b) {
   switch (m.anchor_kind) {
     case AnchorKind::OpcodeSet:
-      return b->btype == "call_contract" && b->opcode && m.anchor_opcodes.count(*b->opcode) > 0;
+      return b->btype == mch::btype::kCallContract && b->opcode &&
+             m.anchor_opcodes.count(*b->opcode) > 0;
     case AnchorKind::BType:
       return m.anchor_btypes.count(b->btype) > 0;
     case AnchorKind::Pred: {
-      // engine.py test_self: full-scan predicate anchor, no prefilter.
+      // Full-scan predicate anchor, no prefilter.
       auto it = host_predicates().find(m.anchor_pred);
       return it != host_predicates().end() && it->second(b);
     }
@@ -401,7 +409,8 @@ bool matcher_test_self(const CompiledMatcher &m, const Block *b) {
       // the matching branch's `where`, a head match whose predicate fails
       // falls through to a later branch sharing the head.
       for (const auto &br : m.anchor_branches) {
-        bool ok = br.is_op ? (b->btype == "call_contract" && b->opcode && *b->opcode == br.opcode)
+        bool ok = br.is_op ? (b->btype == mch::btype::kCallContract && b->opcode &&
+                              *b->opcode == br.opcode)
                            : (b->btype == br.btype);
         if (!ok) {
           continue;
@@ -425,7 +434,7 @@ std::optional<MatchResult> matcher_match(const CompiledMatcher &m, Block *anchor
   if (!matcher_test_self(m, anchor)) {
     return std::nullopt;
   }
-  MatchState st(m, gen);
+  MatchState st(m, gen, anchor);
   // Root skips nested aux absorption (root-level excess/bounce are a build-
   // result concern, appended after build, not part of the match consumed set).
   if (!st.match_node(0, anchor, /*absorb=*/false)) {

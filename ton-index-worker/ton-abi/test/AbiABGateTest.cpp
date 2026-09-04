@@ -1,16 +1,10 @@
-// The conformance gate runs every vector in testdata/abi_vectors.json through
-// the GENERATED typed structs (from_slice -> to_abi_value ->
-// canonical JSON) and the result must byte-match the vector's expected value.
-// The vectors ARE the oracle: tools/gen_vectors.mjs produces them from the
-// reference TS implementation, so generated == vector means generated ==
-// reference. Error vectors must make the generated from_slice fail; non-error /
-// non-unpack_only vectors additionally round-trip (generated store hash ==
-// golden cell hash). Compiling this TU is also what proves every committed
-// generated pair compiles and links.
-//
-// Custom-serializer vectors are driven via the typed registry:
-// register_abi_custom<T> in setup, keyed <contract_name>::<decl>. TelegramString
-// and CustomPoint are AbiValue-form (type-erased); Custom8 is td::uint64.
+// Conformance gate: every testdata/abi_vectors.json vector runs through
+// generated from_slice -> to_abi_value -> canonical JSON and must match.
+// Error vectors must fail from_slice; others also round-trip store hash.
+// Compiling this TU proves every committed generated pair links.
+// Custom-serializer vectors use register_abi_custom<T>, keyed
+// <contract_name>::<decl>. TelegramString and CustomPoint are AbiValue-form;
+// Custom8 is td::uint64.
 
 #include "AbiTestSupport.h"
 
@@ -37,7 +31,6 @@ using namespace ton_abi;
 using Json = td::JsonValue;
 using JType = td::JsonValue::Type;
 
-// JSON helpers
 const Json *jfield(const Json &e, td::Slice name) {
   if (e.type() != JType::Object) return nullptr;
   for (const auto &kv : e.get_object().field_values_) {
@@ -399,17 +392,12 @@ TEST_CASE("A/B gate corpus: full vector set present, no orphan dispatch entries"
   }
 }
 
-// Union dispatch forms on the generated path. Ported from the former
-// AbiLeavesPrefixTest cases that drove the interpreter's runtime dispatch_union
-// helper (deleted: pure codegen bakes its own dispatch chain, so the runtime
-// helper had no callers). The semantics still need a home:
+// Union dispatch forms on the generated path.
 //   - an EXPLICIT prefix is peeked, never eaten (the variant re-reads it);
 //   - exact T|void: an empty slice is the void, anything else is the T;
 //   - a general union with a trailing void matches void LAST, and a non-empty
 //     no-match is an ERROR rather than a silent void.
-// The implicit-prefix EAT form is vector-covered already (generic-union-labels
-// MsgPair exercises both branches of a 1-bit Either), as is no-match-without-
-// void (the w8-hand-union::Holder expect_error vector).
+// Implicit-prefix EAT and no-match-without-void are vector-covered.
 TEST_CASE("union dispatch forms (generated): explicit peek, T|void, void-last") {
   namespace lw = ton_abi::gen::lots_of_wrappers;
   namespace whu = ton_abi::gen::w8_hand_union;
@@ -544,11 +532,9 @@ TEST_CASE("client_ty_idx: ClientPayload note reads as string (generated)") {
   CHECK(cb2.finalize()->get_hash() == cell->get_hash());
 }
 
-// Custom declared-but-not-registered -> runtime error, preserving the former
-// Color-asymmetry, generated typed registry). Color is a custom enum; the A/B
-// setup deliberately never registers it, so every direction must fail with a
-// 'not registered' runtime error (NOT a compile/link error) -- reference
-// semantics for registerCustomPackUnpack.
+// Custom declared-but-not-registered -> runtime error. Color is a custom
+// enum never registered here, so every direction must fail with a
+// 'not registered' runtime error (NOT a compile/link error).
 TEST_CASE("custom not registered: Color errors at runtime, all directions (generated)") {
   namespace lw = ton_abi::gen::lots_of_wrappers;
   ensure_customs();  // registers Custom8/TelegramString/CustomPoint/MyBorderedInt, NOT Color

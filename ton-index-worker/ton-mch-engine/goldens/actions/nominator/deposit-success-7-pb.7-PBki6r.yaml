@@ -1,0 +1,87 @@
+# nominator / Deposit success (7-PB)
+# trace: 7-PBki6rgQj5bmiG-BxVXPDpkbSM1TucbB83OFr2CC4=
+actions:
+  - type: call_contract
+    anchor: call_contract#00000046@92194912000016
+    id: O2SGNOIrLt0KXLPVru5uKhjULmWQXfw4hXei1lXYPng=
+    success: true
+    source: 0:FE30D125C03B816CE9E638ACF7D35D23CBDDDB66B326988B5172AE69E8ADF505
+    source_secondary: null
+    destination: 0:CD872FA7C5816052ACDF5332260443FAEC9AACC8C21CCA4D92E7F47034D11892
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: 9902732
+    opcode: 0x00000046
+    tx_hashes:
+      - 7+PBki6rgQj5bmiG+BxVXPDpkbSM1TucbB83OFr2CC4=
+      - SfMA6Ze8RSaefqBM2rrdiGoPUwe+TchHjpgnVkCILfc=
+    accounts:
+      - 0:CD872FA7C5816052ACDF5332260443FAEC9AACC8C21CCA4D92E7F47034D11892
+      - 0:FE30D125C03B816CE9E638ACF7D35D23CBDDDB66B326988B5172AE69E8ADF505
+    start_lt: 92194912000016
+    end_lt: 92194912000017
+    start_utime: 1784873236
+    end_utime: 1784873236
+    mc_seqno_end: 81682361
+  - type: stake_deposit
+    matcher: nominator_pool_deposit
+    anchor: nominator_pool_deposit@92194912000020
+    id: p9csJiMkRdFOK3Zkf+Fu89isi6Rb4EoIu11IHj+4oXo=
+    success: true
+    source: 0:0CDE9962F7230FE1B6F5024984439B5092C9BFCA643C2B6DDF0B72BB765673AB
+    source_secondary: null
+    destination: "-1:B7683E13C8833407E7E116E38CFF1C5543E43190A0BB2CA6F52E1ACA3C32AC8A"
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: 1346898335834463
+    value: null
+    opcode: null
+    staking_data:
+      provider: nominator
+    tx_hashes:
+      - ezruN+Gzhi1ZZSQ/UCeDf3Kz7TPekGxrRDJCvkVXydg=
+      - z7L9BXr84WUtSLQRKMI7XfkPNcJbC1qqRkHgto4KK8A=
+    accounts:
+      - "-1:B7683E13C8833407E7E116E38CFF1C5543E43190A0BB2CA6F52E1ACA3C32AC8A"
+      - 0:0CDE9962F7230FE1B6F5024984439B5092C9BFCA643C2B6DDF0B72BB765673AB
+    start_lt: 92194912000020
+    end_lt: 92194914000001
+    start_utime: 1784873236
+    end_utime: 1784873237
+    mc_seqno_end: 81682361
+  - type: ton_transfer
+    anchor: ton_transfer@92194912000018
+    id: xv7tGBg7JDuALxx5RzJ5RKFFJTCKVhEIF7Ye/s5V5xk=
+    success: true
+    source: 0:CD872FA7C5816052ACDF5332260443FAEC9AACC8C21CCA4D92E7F47034D11892
+    source_secondary: null
+    destination: 0:0CDE9962F7230FE1B6F5024984439B5092C9BFCA643C2B6DDF0B72BB765673AB
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: 1346898345834463
+    opcode: null
+    ton_transfer_data:
+      content: null
+      encrypted: false
+    tx_hashes:
+      - SfMA6Ze8RSaefqBM2rrdiGoPUwe+TchHjpgnVkCILfc=
+      - z7L9BXr84WUtSLQRKMI7XfkPNcJbC1qqRkHgto4KK8A=
+    accounts:
+      - 0:0CDE9962F7230FE1B6F5024984439B5092C9BFCA643C2B6DDF0B72BB765673AB
+      - 0:CD872FA7C5816052ACDF5332260443FAEC9AACC8C21CCA4D92E7F47034D11892
+    start_lt: 92194912000018
+    end_lt: 92194912000019
+    start_utime: 1784873236
+    end_utime: 1784873236
+    mc_seqno_end: 81682361

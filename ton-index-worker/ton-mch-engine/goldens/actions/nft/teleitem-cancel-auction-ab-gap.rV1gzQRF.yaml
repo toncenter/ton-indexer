@@ -1,0 +1,106 @@
+# nft / teleitem cancel auction (ab-gap)
+# trace: rV1gzQRFXipz6XEByCTq_3Q2LZpa4i61aLsvHf1CR1A=
+actions:
+  - type: call_contract
+    anchor: call_contract#371638ae@93508108000002
+    id: ZlNy8gExViTHDDnfryjASye2l5NzJLYouB438i4utJ8=
+    success: true
+    source: 0:6F59E2157E96B8F0A624C1DD4298F2243EA17366AAC6E5B8E6E469F50B83E0B4
+    source_secondary: null
+    destination: 0:783E76C88CA49A5854F0CA74507A45C2D3C6A4A80FA3418091720841326F6808
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: 100000000
+    opcode: 0x371638ae
+    tx_hashes:
+      - h3d3X/T9Z08TV9GghZ6Blbq22GTXaoy1evuR1HBl5o8=
+      - rV1gzQRFXipz6XEByCTq/3Q2LZpa4i61aLsvHf1CR1A=
+    accounts:
+      - 0:6F59E2157E96B8F0A624C1DD4298F2243EA17366AAC6E5B8E6E469F50B83E0B4
+      - 0:783E76C88CA49A5854F0CA74507A45C2D3C6A4A80FA3418091720841326F6808
+    start_lt: 93508108000002
+    end_lt: 93508108000003
+    start_utime: 1785414332
+    end_utime: 1785414332
+    mc_seqno_end: 82931345
+    parent_action_id: EEfDt0AOz1oOTXCRezq/Qp+oHqRUouTKI7roBG+qi0g=
+    ancestor_type:
+      - teleitem_cancel_auction
+  - type: call_contract
+    anchor: call_contract#a37a0983@93508108000004
+    id: qUrFq5XoLkhuwRzgRVR6gKIboz/wn36FVctFPOei4Ok=
+    success: true
+    source: 0:783E76C88CA49A5854F0CA74507A45C2D3C6A4A80FA3418091720841326F6808
+    source_secondary: null
+    destination: 0:6F59E2157E96B8F0A624C1DD4298F2243EA17366AAC6E5B8E6E469F50B83E0B4
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: 99403665
+    opcode: 0xa37a0983
+    tx_hashes:
+      - WD00yAC9NsYVsUTzBnjZSp4mcczBC0tgGuw+YH41X7k=
+      - h3d3X/T9Z08TV9GghZ6Blbq22GTXaoy1evuR1HBl5o8=
+    accounts:
+      - 0:6F59E2157E96B8F0A624C1DD4298F2243EA17366AAC6E5B8E6E469F50B83E0B4
+      - 0:783E76C88CA49A5854F0CA74507A45C2D3C6A4A80FA3418091720841326F6808
+    start_lt: 93508108000004
+    end_lt: 93508108000005
+    start_utime: 1785414332
+    end_utime: 1785414332
+    mc_seqno_end: 82931345
+    parent_action_id: EEfDt0AOz1oOTXCRezq/Qp+oHqRUouTKI7roBG+qi0g=
+    ancestor_type:
+      - teleitem_cancel_auction
+  - type: teleitem_cancel_auction
+    matcher: teleitem_cancel_auction
+    anchor: teleitem_cancel_auction@93508108000002
+    id: EEfDt0AOz1oOTXCRezq/Qp+oHqRUouTKI7roBG+qi0g=
+    success: true
+    source: 0:6F59E2157E96B8F0A624C1DD4298F2243EA17366AAC6E5B8E6E469F50B83E0B4
+    source_secondary: null
+    destination: 0:783E76C88CA49A5854F0CA74507A45C2D3C6A4A80FA3418091720841326F6808
+    destination_secondary: null
+    asset: 0:80D78A35F955A14B679FAA887FF4CD5BFC0F43B4A4EEA2A7E6927F3701B273C2
+    asset_secondary: 0:783E76C88CA49A5854F0CA74507A45C2D3C6A4A80FA3418091720841326F6808
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: null
+    opcode: null
+    nft_transfer_data:
+      custom_payload: null
+      forward_amount: null
+      forward_payload: null
+      is_purchase: null
+      marketplace: null
+      marketplace_address: null
+      nft_item_index: null
+      payout_amount: null
+      payout_comment: null
+      payout_comment_encoded: null
+      payout_comment_encrypted: null
+      price: null
+      query_id: null
+      real_prev_owner: null
+      response_destination: null
+      royalty_amount: null
+    tx_hashes:
+      - WD00yAC9NsYVsUTzBnjZSp4mcczBC0tgGuw+YH41X7k=
+      - h3d3X/T9Z08TV9GghZ6Blbq22GTXaoy1evuR1HBl5o8=
+      - rV1gzQRFXipz6XEByCTq/3Q2LZpa4i61aLsvHf1CR1A=
+    accounts:
+      - 0:6F59E2157E96B8F0A624C1DD4298F2243EA17366AAC6E5B8E6E469F50B83E0B4
+      - 0:783E76C88CA49A5854F0CA74507A45C2D3C6A4A80FA3418091720841326F6808
+    start_lt: 93508108000002
+    end_lt: 93508108000005
+    start_utime: 1785414332
+    end_utime: 1785414332
+    mc_seqno_end: 82931345

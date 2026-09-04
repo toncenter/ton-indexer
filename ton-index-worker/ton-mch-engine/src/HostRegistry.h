@@ -1,13 +1,6 @@
-// Host bindings corresponding to the reference registries.
-//
-// Predicates (`predicate NAME` in specs; Python impls live in
-// indexer/events/mch/builders/*.py registrations): sync `(Block) -> bool`,
-// consulted at MATCH time by the walker (pred-kind nodes, node-level named
-// `where` clauses, pred anchors). The IR loader gates matcher runnability on
-// this registry, a matcher whose pred names are all registered is runnable;
-// the missing names become its skip reason. The Python twins read the
-// registered-name list from twins/cpp_surface.json (CPP_PREDS), emitted by
-// `ton-mch-engine --surface` off THIS registry, not hand-mirrored.
+// Host predicate and fn bindings. The IR loader gates matcher runnability on
+// this registry: a matcher is runnable iff all its pred names are registered;
+// missing names become its skip reason.
 #pragma once
 
 #include "ExprRuntime.h"
@@ -25,32 +18,30 @@ struct BuildEnv;  // BuildRuntime.h
 
 using HostPredFn = bool (*)(const Block *);
 
-// Registered predicate implementations, name -> fn (names are the Python
-// registry keys).
+// Registered predicate implementations, name -> fn.
 const std::map<std::string, HostPredFn> &host_predicates();
 
-// Host `fn` implementations (Python registries.fns): the build-time escape
-// hatch. Unlike builtins, ARGUMENTS PASS THROUGH unchanged, a null arg is NOT
-// short-circuited (the fn decides). Signature takes the BuildEnv so a fn can
-// reach env.lookups (two-phase) / env.consumed. A thrown/faulted result is a
-// clean match rejection. Returning Null likewise rejects when the
-// spec `reject when`s the null.
+// Host `fn` implementations: the build-time escape hatch. After fixed arity
+// is validated, arguments pass through unchanged and a null arg is not
+// short-circuited. Signature takes the BuildEnv so a fn can reach env.lookups
+// / env.consumed. A thrown/faulted result is a clean match rejection.
+// Returning Null likewise rejects when the spec `reject when`s the null.
 using HostFn = EvalResult (*)(BuildEnv &, const std::vector<Value> &);
 
-// Registered host fns, name -> fn (names are the Python registry keys). The IR
-// loader / build_skip_reason gate a matcher's inclusion on this registry.
-const std::map<std::string, HostFn> &host_fns();
+struct HostFnEntry {
+  HostFn fn;
+  int arity;  // -1 leaves arity validation to the host function
+};
 
-// Host `shape` implementations (Python registries.shapers): a post-build
-// topology pass. The reference signature is `shaper(produced, match)`;
-// captured blocks are reached by name and an arena is needed to mint proxy
-// blocks (Python EmptyBlock() self-allocates; C++ blocks are arena-owned), so
-// both ride on ShaperMatch. The classify pipeline INVOKES them
-// from ClassifyCore::try_build after merge as the last build step. No
-// artifact matcher currently pairs a build_program with a `shape`, so the call
-// site is live but unexercised by the corpus. The --shape-test harness drives
-// them directly, and registration keeps build_skip_reason from reporting a
-// registered shaper as a missing binding.
+// Registered host fns, name -> fn. The IR loader / build_skip_reason gate a
+// matcher's inclusion on this registry.
+const std::map<std::string, HostFnEntry> &host_fns();
+
+// Host `shape` implementations: a post-build topology pass. Captured blocks
+// are reached by name; an arena is needed to mint proxy blocks (C++ blocks
+// are arena-owned). Shapers run from ClassifyCore::try_build after merge as
+// the last build step. Registration keeps build_skip_reason from reporting a
+// registered shaper as missing.
 struct ShaperMatch {
   std::map<std::string, Block *> captures;  // capture name -> block (or absent)
   std::vector<Block *> consumed;            // match consumed set (`match.consumed`)
@@ -64,7 +55,7 @@ struct ShaperMatch {
 
 using HostShaperFn = void (*)(Block *produced, const ShaperMatch &m);
 
-// Registered host shapers, name -> fn (names are the Python registry keys).
+// Registered host shapers, name -> fn.
 const std::map<std::string, HostShaperFn> &host_shapers();
 
 }  // namespace mch

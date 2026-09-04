@@ -1,16 +1,11 @@
 #pragma once
 
-// Shared prelude for the ton-abi doctest TUs. Include it FIRST in a test TU;
-// after it, include anything (generated/*_gen.h too) with no ceremony.
-//
-// WHY IT EXISTS: td/utils/Status.h -> logging.h -> check.h #defines CHECK as an
-// abort-style macro that shadows doctest's soft CHECK for the rest of the TU.
-// Every test TU used to hand-roll the same push_macro/#undef/pop_macro dance
-// around its own includes. Here that dance happens ONCE, around every td / vm /
-// ton-abi header the suite uses: check.h has an include guard, so the later
-// per-TU includes are no-ops and can no longer redefine CHECK.
-//
-// It also carries the two fixture helpers the ABI-loading TUs share.
+// Shared prelude for the ton-abi doctest TUs. Include it FIRST.
+// td/utils/Status.h -> logging.h -> check.h #defines CHECK as an abort-style
+// macro that shadows doctest's soft CHECK. The push_macro/#undef/pop_macro
+// dance happens once here around every td/vm/ton-abi header; include guards
+// make later per-TU includes no-ops so CHECK cannot be redefined.
+// Also carries the fixture helpers the ABI-loading TUs share.
 
 #include "doctest.h"
 
@@ -68,5 +63,15 @@ inline ton_abi::ContractABI load_fixture_abi(const std::string &stem) {
   REQUIRE_MESSAGE(r.is_ok(), stem << ": " << (r.is_error() ? r.error().message().str() : ""));
   return r.move_as_ok();
 }
+
+// All 18 fixtures that compile to a valid ABI. imports/ are not independently
+// compilable; small.tolk is a Tolk compiler error (see gen_vectors.mjs).
+inline constexpr const char *kLoadableFixtures[] = {
+    "client-type-anno", "debug-print-demos", "err-cont-on-stack-1", "err-cont-on-stack-2",
+    "err-invalid-map-key-1", "err-invalid-map-key-2", "generic-union-labels", "has-not-init-storage",
+    "jetton-minter-contract", "jetton-wallet-contract", "lots-of-annotations", "lots-of-getters",
+    "lots-of-messages", "lots-of-storage", "lots-of-throws", "lots-of-wrappers", "only-header",
+    "tolk_counter",
+};
 
 }  // namespace ton_abi_test

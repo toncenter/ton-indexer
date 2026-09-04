@@ -1,7 +1,6 @@
-// EVAA host predicates (builders/evaa.py). See host/HostImpls.h for the
-// internal registry surface and HostRegistry.h for the public one.
 #include "host/HostImpls.h"
 
+#include "host/HostAdapter.h"
 #include "host/HostCommon.h"
 
 #include "BlockTree.h"
@@ -9,6 +8,7 @@
 #include "MsgParse.h"
 #include "TraceLoader.h"
 #include "parse/PSlice.h"
+#include "btypes_gen.h"
 
 #include "common/refint.h"
 #include "vm/cellslice.h"
@@ -23,10 +23,10 @@ namespace mch {
 
 namespace {
 
-// load_user_header: skip the EVAA user header (version coins + maybe
-// upgrade-info ref + 2 exec bits), leaving the cursor on the 32-bit opcode.
+// Skip the EVAA user header (version coins + maybe upgrade-info ref + 2 exec
+// bits), leaving the cursor on the 32-bit opcode.
 bool skip_user_header(vm::CellSlice &cs) {
-  if (pyslice_load_coins(cs).is_error()) {  // user_version
+  if (load_coins_py(cs).is_error()) {  // user_version
     return false;
   }
   if (!cs.have(1)) {  // load_maybe_ref: the Maybe bit
@@ -47,7 +47,7 @@ bool skip_user_header(vm::CellSlice &cs) {
 
 // Open a user-contract body positioned on its 32-bit opcode.
 bool open_user_body(const Block *b, vm::CellSlice &cs) {
-  if (b->btype != "call_contract") {  // isinstance(block, CallContractBlock)
+  if (b->btype != mch::btype::kCallContract) {
     return false;
   }
   auto r_body = block_body(b);
@@ -63,8 +63,8 @@ bool open_user_body(const Block *b, vm::CellSlice &cs) {
   return skip_user_header(cs);
 }
 
-// _opcode_after_user_header: skip the header, then compare the 32-bit opcode.
-// Any malformed body never matches (Python's blanket except).
+// Skip the header, then compare the 32-bit opcode. Any malformed body
+// never matches.
 bool opcode_after_user_header(const Block *b, td::uint32 opcode) {
   vm::CellSlice cs;
   if (!open_user_body(b, cs)) {
@@ -200,34 +200,15 @@ td::Result<std::string> parse_liquidation_reason(const td::Ref<vm::Cell> &body) 
 }  // namespace
 
 bool evaa_user_withdraw_user(const Block *b) {
-  return opcode_after_user_header(b, 0x21);  // EvaaWithdrawUser.opcode
+  return opcode_after_user_header(b, 0x21);
 }
 
 bool evaa_user_withdraw_success(const Block *b) {
-  return opcode_after_user_header(b, 0x211a);  // EvaaWithdrawSuccess.opcode
+  return opcode_after_user_header(b, 0x211a);
 }
 
 bool evaa_user_withdraw_fail(const Block *b) {
-  return opcode_after_user_header(b, 0x211f);  // EvaaWithdrawFail.opcode
-}
-
-// evaa_service_comment: a TonTransferBlock whose comment is one of the EVAA
-// service comments (blocks/evaa.py EVAA_ACTION_COMMENTS). Comment derivation
-// mirrors TonTransferBlock exactly (ton_transfer_comment).
-bool evaa_service_comment(const Block *b) {
-  if (b->btype != "ton_transfer") {
-    return false;
-  }
-  auto r_body = block_body(b);
-  if (r_body.is_error()) {
-    return false;
-  }
-  auto comment = ton_transfer_comment(r_body.ok());
-  if (!comment) {
-    return false;
-  }
-  return *comment == "EVAA liquidation." || *comment == "EVAA supply." ||
-         *comment == "EVAA withdraw.";
+  return opcode_after_user_header(b, 0x211f);
 }
 
 bool evaa_user_supply(const Block *b) {
@@ -244,43 +225,18 @@ bool evaa_liquidate_success_header(const Block *b) {
 
 bool evaa_bounced_call(const Block *b) {
   const Message *m = block_msg(b);
-  return b->btype == "call_contract" && m != nullptr && m->bounced;
+  return b->btype == mch::btype::kCallContract && m != nullptr && m->bounced;
 }
 
-// EvaaSupplyBlockMatcher.test_self: the 0x1 supply_master call itself (TON side),
-// or a jetton transfer whose FORWARD PAYLOAD starts with the supply_master
-// opcode (jetton side). btype, not isinstance, the reference JettonTransferBlock
-// check is dead under the IR engine.
-bool evaa_supply_anchor(const Block *b) {
-  if (is_call_op(b, kSupplyMaster)) {
-    return true;
-  }
-  if (b->btype != "jetton_transfer") {
-    return false;
-  }
-  Value fp = data_field(b, "forward_payload");
-  if (fp.t != VType::Str) {
-    return false;
-  }
-  auto r_cell = cell_from_pystr(fp.str);
-  if (r_cell.is_error()) {
-    return false;
-  }
-  bool special = false;
-  vm::CellSlice cs;
-  try {
-    cs = vm::load_cell_slice_special(r_cell.ok(), special);
-  } catch (...) {
-    return false;
-  }
-  return cs.have(32) && static_cast<td::uint32>(cs.fetch_ulong(32)) == kSupplyMaster;
-}
+namespace {
 
-bool evaa_liquidate_anchor(const Block *b) {
-  if (is_call_op(b, kLiquidateMaster)) {
+// The master call itself (TON side), or a jetton transfer whose forward
+// payload starts with that opcode (jetton side). Match on btype.
+bool evaa_master_anchor(const Block *b, td::uint32 op) {
+  if (is_call_op(b, op)) {
     return true;
   }
-  if (b->btype != "jetton_transfer") {
+  if (b->btype != mch::btype::kJettonTransfer) {
     return false;
   }
   Value fp = data_field(b, "forward_payload");
@@ -297,29 +253,29 @@ bool evaa_liquidate_anchor(const Block *b) {
   }
   auto ctx = r_ctx.move_as_ok();
   return ctx.cs.have(32) &&
-         static_cast<td::uint32>(ctx.cs.fetch_ulong(32)) == kLiquidateMaster;
+         static_cast<td::uint32>(ctx.cs.fetch_ulong(32)) == op;
 }
 
-// builders/evaa.py _evaa_supply_data -> blocks/evaa.py build_evaa_supply_core.
-// The whole build of specs/evaa.mch's `evaa_supply`: the TON-vs-jetton
-// discriminator threads through nearly every field, and the jetton arm has to
-// parse a forward-payload BOC, which the DSL has no form for. Python wraps the
-// body in try/except returning None, so any parse/nav failure is a Null reject.
+}  // namespace
+
+bool evaa_supply_anchor(const Block *b) { return evaa_master_anchor(b, kSupplyMaster); }
+
+bool evaa_liquidate_anchor(const Block *b) {
+  return evaa_master_anchor(b, kLiquidateMaster);
+}
+
+// Spec supplies the parsed jetton recipient; the TON-vs-jetton discriminator
+// and role derivation remain here.
 EvalResult evaa_supply_data(BuildEnv &env, const std::vector<Value> &args) {
   (void)env;
-  if (args.size() != 1 || args[0].t != VType::List || args[0].items->empty()) {
+  auto decoded = decode_consumed_or_none(args);
+  if (!decoded) {
+    if (args[0].t == VType::List && !args[0].items->empty()) {
+      return host_reject("empty consumed");
+    }
     return host_reject("bad arguments");
   }
-  std::vector<const Block *> consumed;
-  for (const Value &v : *args[0].items) {
-    const Block *b = as_block(v);
-    if (b != nullptr) {
-      consumed.push_back(b);
-    }
-  }
-  if (consumed.empty()) {
-    return host_reject("empty consumed");
-  }
+  std::vector<const Block *> consumed = std::move(decoded->blocks);
   const Block *block = consumed.front();
 
   // Label roles, derived structurally from the consumed set (the anchor is
@@ -330,13 +286,13 @@ EvalResult evaa_supply_data(BuildEnv &env, const std::vector<Value> &args) {
     if (user == nullptr && opcode_after_user_header(b, kSupplyUser)) user = b;
     if (success == nullptr && is_call_op(b, kSupplySuccess)) success = b;
     if (fail == nullptr && is_call_op(b, kSupplyFail)) fail = b;
-    if (refund == nullptr && b->btype == "jetton_transfer") refund = b;
+    if (refund == nullptr && b->btype == mch::btype::kJettonTransfer) refund = b;
   }
   if (user == nullptr) {
     return host_reject("no supply_user block");
   }
 
-  bool is_ton = block->btype == "call_contract";
+  bool is_ton = block->btype == mch::btype::kCallContract;
   Value sender, recipient, master, asset;
   Value sender_jetton_wallet = Value::null();
   Value recipient_jetton_wallet = Value::null();
@@ -369,34 +325,18 @@ EvalResult evaa_supply_data(BuildEnv &env, const std::vector<Value> &args) {
     sender_jetton_wallet = data_field(block, "sender_wallet");
     master_jetton_wallet = data_field(block, "receiver_wallet");
     Value amt = data_field(block, "amount");
-    amount = amt.num;  // Amount.value
+    amount = amt.num;
     master = data_field(block, "receiver");
     asset = data_field(block, "asset");
-    Value fp = data_field(block, "forward_payload");
-    if (fp.t != VType::Str) {
-      return host_reject("no forward_payload in jetton supply");
-    }
-    auto r_cell = cell_from_pystr(fp.str);
-    if (r_cell.is_error()) {
-      return host_reject("forward_payload BOC");
-    }
-    auto rm = parse_message_body("EvaaSupplyJettonForward", r_cell.ok());
-    if (rm.is_error()) {
-      return host_reject("forward_payload parse");
-    }
-    const Value *ra = rm.ok().field("recipient_address");
-    if (ra == nullptr) {
-      return host_reject("forward_payload recipient");
-    }
-    recipient = *ra;
+    recipient = args[1];
     if (same_account(sender, recipient)) {
       recipient_jetton_wallet = sender_jetton_wallet;
     } else {
       // Supplying on someone else's behalf: name their wallet from the sibling
-      // transfer the master sent out. (No corpus coverage; ported for parity.)
+      // transfer the master sent out.
       for (std::size_t i = 1; i < consumed.size(); i++) {
         const Block *b = consumed[i];
-        if (b->btype != "jetton_transfer") continue;
+        if (b->btype != mch::btype::kJettonTransfer) continue;
         if (same_account(data_field(b, "sender_wallet"), master_jetton_wallet)) {
           recipient_jetton_wallet = data_field(b, "receiver_wallet");
           break;
@@ -441,7 +381,7 @@ EvalResult evaa_supply_data(BuildEnv &env, const std::vector<Value> &args) {
     }
     amount = as->num;  // the authoritative amount
   } else if (fail == nullptr && refund == nullptr) {
-    return host_reject("supply not completed");  // no outcome yet
+    return host_reject("supply not completed");
   }
 
   Value::Fields d;
@@ -462,18 +402,16 @@ EvalResult evaa_supply_data(BuildEnv &env, const std::vector<Value> &args) {
 
 EvalResult evaa_liquidate_data(BuildEnv &env, const std::vector<Value> &args) {
   (void)env;
-  if (args.size() != 1 || args[0].t != VType::List || args[0].items->empty()) {
+  auto decoded = decode_consumed_or_none(args);
+  if (!decoded) {
+    if (args[0].t == VType::List && !args[0].items->empty()) {
+      return host_reject("empty consumed");
+    }
     return host_reject("bad arguments");
   }
-  std::vector<const Block *> consumed;
-  for (const Value &v : *args[0].items) {
-    if (const Block *b = as_block(v); b != nullptr) consumed.push_back(b);
-  }
-  if (consumed.empty()) {
-    return host_reject("empty consumed");
-  }
+  std::vector<const Block *> consumed = std::move(decoded->blocks);
   const Block *block = consumed.front();
-  const bool is_ton = block->btype == "call_contract";
+  const bool is_ton = block->btype == mch::btype::kCallContract;
   Value liquidator;
   td::Ref<vm::Cell> master_cell;
   if (is_ton) {
@@ -527,7 +465,7 @@ EvalResult evaa_liquidate_data(BuildEnv &env, const std::vector<Value> &args) {
     bool immediate = false;
     for (std::size_t i = 1; i < consumed.size(); i++) {
       immediate = immediate || evaa_bounced_call(consumed[i]) ||
-                  consumed[i]->btype == "jetton_transfer";
+                  consumed[i]->btype == mch::btype::kJettonTransfer;
     }
     if (!immediate) return host_reject("no immediate refund");
     return output(master.borrower, Value::null(), master.collateral_asset_id,

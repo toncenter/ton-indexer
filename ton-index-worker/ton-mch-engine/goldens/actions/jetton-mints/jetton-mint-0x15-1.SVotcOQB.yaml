@@ -1,0 +1,34 @@
+# jetton-mints / Jetton mint(0x15) 1
+# trace: SVotcOQBV7MZ-CdW7WsaOucRods9-SF0vnl646rxsBc=
+actions:
+  - type: jetton_mint
+    matcher: jetton_mint
+    anchor: jetton_mint@55454719000002
+    id: IrtAHtzQ9OOyBf1x7OZZsGaLCfwDUu1kblGOOoRgaI8=
+    success: true
+    source: null
+    source_secondary: null
+    destination: 0:A35884719E3B78E40800FC85E15E74DFCD6C41B0D386BCCD020B7F063AE4BAA1
+    destination_secondary: 0:A259E2FB6509E67EF4830F728DF159C117768E605471717B95FB61588A1652D1
+    asset: 0:08BF01CF8AA70279972B3EAD61EE511114432D9A3F4B6BBA9F0CF01AF3CDFA12
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: 1000000000
+    value: 20000000
+    opcode: null
+    tx_hashes:
+      - IgkgJTTWPznzVFnPe2Bhgtu7NvwjbL567t1H0c0RIGQ=
+      - JfdjYKfULZHi6Efz+B00Rv+7VCIOZZUQMTZwCijmGyw=
+      - SVotcOQBV7MZ+CdW7WsaOucRods9+SF0vnl646rxsBc=
+      - VmAAw+L+RkImZmRRzkcB4MH2q3f51foqfJW2iyBiO1s=
+      - l8J2VJljExYJFZB+l2X/j/oBBbZFUaTej15hHkdiKO0=
+    accounts:
+      - 0:08BF01CF8AA70279972B3EAD61EE511114432D9A3F4B6BBA9F0CF01AF3CDFA12
+      - 0:A259E2FB6509E67EF4830F728DF159C117768E605471717B95FB61588A1652D1
+      - 0:A35884719E3B78E40800FC85E15E74DFCD6C41B0D386BCCD020B7F063AE4BAA1
+    start_lt: 55454719000002
+    end_lt: 55454724000004
+    start_utime: 1743164935
+    end_utime: 1743164949
+    mc_seqno_end: 46284833

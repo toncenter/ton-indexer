@@ -1,0 +1,33 @@
+# subscriptions / Subscribe 3
+# trace: FhwMKeBugwmrUMHFRwumUY1Klw5XVO3wPJqGBVhqM68=
+actions:
+  - type: subscribe
+    matcher: subscribe
+    anchor: subscribe@62939615000002
+    id: p9jUz3CjHcrboLIOFJbAUtzQHtxvnAOS6edbYYFPiYo=
+    success: true
+    source: 0:069F42740B3E95DD67492FD4632CA84038A21CA2BF9D3BDE54AAFF7611AAD71A
+    source_secondary: null
+    destination: 0:0D2BCC9F810BB3383345B9220C8D83AC808356019694FF956D419592B89B29E0
+    destination_secondary: 0:2A2839EECC2D56BED665D7211C44019BD19E3F424C2F63FB74720F2B38939128
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: 2000000000
+    value: null
+    opcode: null
+    tx_hashes:
+      - FhwMKeBugwmrUMHFRwumUY1Klw5XVO3wPJqGBVhqM68=
+      - N+pKY5r8Ow6rkZvB7MvH1io+67GBgxLgMznaVpOVCqo=
+      - PNFzCelR+RrJn3s7bCndmDyg5ozbXm+BjPPfRt8jApA=
+      - n4t0Pdr6clcZOd+6fTQYOZW4XPIDPv3O8wQ1xiouPq0=
+    accounts:
+      - 0:069F42740B3E95DD67492FD4632CA84038A21CA2BF9D3BDE54AAFF7611AAD71A
+      - 0:0D2BCC9F810BB3383345B9220C8D83AC808356019694FF956D419592B89B29E0
+      - 0:2A2839EECC2D56BED665D7211C44019BD19E3F424C2F63FB74720F2B38939128
+    start_lt: 62939615000002
+    end_lt: 62939615000011
+    start_utime: 1761435777
+    end_utime: 1761435777
+    mc_seqno_end: 53333585

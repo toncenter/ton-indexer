@@ -26,7 +26,7 @@ struct EmuClassifierStats {
   std::size_t queue_us_max{0}, classify_us_max{0}, classify_us_total{0}, latency_samples{0};
   std::size_t serialize_us_max{0}, serialize_us_total{0}, actions_blob_bytes{0};
   // Serializer sightings of a Value shape an Action field should not carry.
-  std::size_t ser_float_values{0}, ser_cell_values{0}, ser_unrenderable{0};
+  std::size_t ser_cell_values{0}, ser_unrenderable{0};
   std::array<std::size_t, 3> by_finality{};  // root-node EmuFinality of the emission
   std::map<FailureCategory, std::size_t> by_category;
   ParsedBlockLookupSource::LookupStats lookups;  // tier1 / tier2 / miss

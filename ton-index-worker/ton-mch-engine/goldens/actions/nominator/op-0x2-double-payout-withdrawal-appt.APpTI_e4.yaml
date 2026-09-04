@@ -1,0 +1,113 @@
+# nominator / Op-0x2 double-payout withdrawal (APpT)
+# trace: APpTI_e4-tKeBPZgtCDXmZhharEE-tvVh0tBPoCK6i0=
+actions:
+  - type: call_contract
+    anchor: call_contract#00000001@93437993000002
+    id: qKdZbgcLr5gmzynR8PCxY5C3LC0TtUaBueUIVk/VTbY=
+    success: true
+    source: 0:0CDE9962F7230FE1B6F5024984439B5092C9BFCA643C2B6DDF0B72BB765673AB
+    source_secondary: null
+    destination: 0:CD872FA7C5816052ACDF5332260443FAEC9AACC8C21CCA4D92E7F47034D11892
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: 1349623110732929
+    opcode: 0x00000001
+    tx_hashes:
+      - 8ToiWZyJ2SHT27rd7BvbUbzFVGsyZ6VbezOlDHNWMVY=
+      - 9uDhiI9rm53pc1DD57qdQ8fqVR22msei96jnXvZuvPA=
+    accounts:
+      - 0:0CDE9962F7230FE1B6F5024984439B5092C9BFCA643C2B6DDF0B72BB765673AB
+      - 0:CD872FA7C5816052ACDF5332260443FAEC9AACC8C21CCA4D92E7F47034D11892
+    start_lt: 93437993000002
+    end_lt: 93437993000003
+    start_utime: 1785385123
+    end_utime: 1785385123
+    mc_seqno_end: 82866114
+  - type: call_contract
+    anchor: call_contract#00000002@93437989000002
+    id: G1Up7h7KYMml2JhnOpiUg6lVmpXA0guFlXsXitdNX3I=
+    success: true
+    source: "-1:70DD043BE9B7D9883485574D72F3D54D455EF119608892AE6609DC2637E6106F"
+    source_secondary: null
+    destination: "-1:B7683E13C8833407E7E116E38CFF1C5543E43190A0BB2CA6F52E1ACA3C32AC8A"
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: 10000000000
+    opcode: 0x00000002
+    tx_hashes:
+      - APpTI/e4+tKeBPZgtCDXmZhharEE+tvVh0tBPoCK6i0=
+      - BGY9j0qPl6M9MY+mUepKFMEMPhY5bIazY2WqcCVLLXY=
+    accounts:
+      - "-1:70DD043BE9B7D9883485574D72F3D54D455EF119608892AE6609DC2637E6106F"
+      - "-1:B7683E13C8833407E7E116E38CFF1C5543E43190A0BB2CA6F52E1ACA3C32AC8A"
+    start_lt: 93437989000002
+    end_lt: 93437989000003
+    start_utime: 1785385122
+    end_utime: 1785385122
+    mc_seqno_end: 82866109
+  - type: stake_withdrawal
+    matcher: nominator_pool_withdraw
+    anchor: nominator_pool_withdraw_request@93437989000004
+    id: I8pZtRCqHwQL/S+/RI2o4cet7yTGAG1aRVgx75+AqTw=
+    success: true
+    source: 0:0CDE9962F7230FE1B6F5024984439B5092C9BFCA643C2B6DDF0B72BB765673AB
+    source_secondary: null
+    destination: "-1:B7683E13C8833407E7E116E38CFF1C5543E43190A0BB2CA6F52E1ACA3C32AC8A"
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: 1349623120732929
+    value: null
+    opcode: null
+    staking_data:
+      provider: nominator
+    tx_hashes:
+      - 8ToiWZyJ2SHT27rd7BvbUbzFVGsyZ6VbezOlDHNWMVY=
+      - BGY9j0qPl6M9MY+mUepKFMEMPhY5bIazY2WqcCVLLXY=
+    accounts:
+      - "-1:B7683E13C8833407E7E116E38CFF1C5543E43190A0BB2CA6F52E1ACA3C32AC8A"
+      - 0:0CDE9962F7230FE1B6F5024984439B5092C9BFCA643C2B6DDF0B72BB765673AB
+    start_lt: 93437989000004
+    end_lt: 93437993000001
+    start_utime: 1785385122
+    end_utime: 1785385123
+    mc_seqno_end: 82866114
+  - type: stake_withdrawal
+    matcher: nominator_pool_withdraw
+    anchor: nominator_pool_withdraw_request@93437989000005
+    id: 0cb49tWL9nfX4QoGFfQPSekAkp5aTBa6Q8RYyYHjMSU=
+    success: true
+    source: "-1:70DD043BE9B7D9883485574D72F3D54D455EF119608892AE6609DC2637E6106F"
+    source_secondary: null
+    destination: "-1:B7683E13C8833407E7E116E38CFF1C5543E43190A0BB2CA6F52E1ACA3C32AC8A"
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: 9829610000
+    value: null
+    opcode: null
+    staking_data:
+      provider: nominator
+    tx_hashes:
+      - 39bbiyc6qrAiBFOVvAY5sNsANNWS8UGqZ/x749usk0c=
+      - BGY9j0qPl6M9MY+mUepKFMEMPhY5bIazY2WqcCVLLXY=
+    accounts:
+      - "-1:70DD043BE9B7D9883485574D72F3D54D455EF119608892AE6609DC2637E6106F"
+      - "-1:B7683E13C8833407E7E116E38CFF1C5543E43190A0BB2CA6F52E1ACA3C32AC8A"
+    start_lt: 93437989000005
+    end_lt: 93437989000006
+    start_utime: 1785385122
+    end_utime: 1785385122
+    mc_seqno_end: 82866109

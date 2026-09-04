@@ -4,9 +4,9 @@
 // tables feed the production classifier.
 #include "ExprCodegen.h"
 #include "MatcherCodegen.h"
+#include "fixtures/IrJson.h"
 
 #include "td/utils/JsonBuilder.h"
-#include "td/utils/crypto.h"
 
 #include <cstdio>
 #include <fstream>
@@ -97,6 +97,7 @@ int main(int argc, char *argv[]) {
   std::string wheres_path;
   std::string builds_path;
   std::string matchers_path;
+  std::string btypes_path;
   std::string suffix;
   std::string out_path;
   for (int i = 1; i < argc; i++) {
@@ -111,6 +112,8 @@ int main(int argc, char *argv[]) {
       builds_path = argv[++i];
     } else if (a == "--matchers" && i + 1 < argc) {
       matchers_path = argv[++i];
+    } else if (a == "--btypes" && i + 1 < argc) {
+      btypes_path = argv[++i];
     } else if (a == "--suffix" && i + 1 < argc) {
       suffix = argv[++i];
     } else if ((a == "-o" || a == "--output") && i + 1 < argc) {
@@ -121,17 +124,21 @@ int main(int argc, char *argv[]) {
   }
   const int n_modes = static_cast<int>(!vectors_path.empty()) + static_cast<int>(!wheres_path.empty()) +
                       static_cast<int>(!builds_path.empty()) +
-                      static_cast<int>(!matchers_path.empty());
+                      static_cast<int>(!matchers_path.empty()) +
+                      static_cast<int>(!btypes_path.empty());
   const std::string in_path = !vectors_path.empty()
                                   ? vectors_path
                                   : (!wheres_path.empty()
                                          ? wheres_path
-                                         : (!builds_path.empty() ? builds_path : matchers_path));
+                                         : (!builds_path.empty()
+                                                ? builds_path
+                                                : (!matchers_path.empty() ? matchers_path
+                                                                          : btypes_path)));
   if (in_path.empty() || out_path.empty() || n_modes != 1) {
     return fail(
         "usage: mch-codegen (--vectors <expr_vectors.json> | --wheres <mch_ir.json> --suffix "
         "<sfx> | --builds <mch_ir.json|build_vectors.json> --suffix <sfx> | --matchers "
-        "<mch_ir.json> --suffix <sfx>) -o <out.cpp>");
+        "<mch_ir.json> --suffix <sfx> | --btypes <mch_ir.json>) -o <output>");
   }
   if (!builds_path.empty() && suffix.empty()) {
     return fail("--builds requires --suffix <sfx> (names the gen_builds_<sfx> table symbols)");
@@ -142,21 +149,24 @@ int main(int argc, char *argv[]) {
   if (!matchers_path.empty() && suffix.empty()) {
     return fail("--matchers requires --suffix <sfx> (names the gen_matchers_<sfx> table symbols)");
   }
-  if (!vectors_path.empty() && !suffix.empty()) {
-    return fail("--suffix is not valid with --vectors");
+  if ((!vectors_path.empty() || !btypes_path.empty()) && !suffix.empty()) {
+    return fail("--suffix is only valid with --wheres, --builds, or --matchers");
   }
 
-  // --matchers goes through the LOADER (mch-ir-load), which owns the whole
+  // Matcher and btype generation go through the loader, which owns the whole
   // artifact->table compile step; this tool only prints its output, so there is
   // no second parser to keep in step. The other modes walk the JSON directly.
-  if (!matchers_path.empty()) {
-    auto r_ir = mch::load_ir(matchers_path);
+  if (!matchers_path.empty() || !btypes_path.empty()) {
+    auto r_ir = mch::load_ir(in_path);
     if (r_ir.is_error()) {
       return fail("cannot load IR artifact: " + r_ir.error().message().str());
     }
     std::string src;
     try {
-      src = mch_codegen::generate_matchers_file(r_ir.move_as_ok(), kMatchersHeader, suffix);
+      mch::LoadedIr ir = r_ir.move_as_ok();
+      src = !matchers_path.empty()
+                ? mch_codegen::generate_matchers_file(ir, kMatchersHeader, suffix)
+                : mch_codegen::generate_btypes_header(ir);
     } catch (const std::exception &e) {
       return fail(std::string("codegen failed: ") + e.what());
     }
@@ -173,16 +183,7 @@ int main(int argc, char *argv[]) {
 
   // Source identity, hashed BEFORE json_decode mutates the buffer. Emitted
   // into the generated table so runners can hard-fail on a wrong pairing.
-  std::string source_sha;
-  {
-    unsigned char digest[32];
-    td::sha256(td::Slice(buf), td::MutableSlice(digest, 32));
-    static const char *hex = "0123456789abcdef";
-    for (int i = 0; i < 32; i++) {
-      source_sha += hex[digest[i] >> 4];
-      source_sha += hex[digest[i] & 0xF];
-    }
-  }
+  std::string source_sha = mch::sha256_hex(td::Slice(buf));
 
   auto r_root = td::json_decode(td::MutableSlice(buf));
   if (r_root.is_error()) {

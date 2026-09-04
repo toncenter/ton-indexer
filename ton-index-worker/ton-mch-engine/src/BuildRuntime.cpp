@@ -15,9 +15,8 @@ namespace mch {
 
 namespace {
 
-// Block.get_body(): the first event node's message body cell. Any failure
-// (no node / no content / undecodable BOC) behaves like Python's get_body()
-// raising INSIDE the per-type try of _soft_parse: that alternative fails.
+// First event node's message body cell. Any failure (no node / no content /
+// undecodable BOC) fails that soft-parse alternative.
 td::Result<td::Ref<vm::Cell>> block_body_cell(const Block *b) {
   if (b->event_nodes.empty() || b->event_nodes.front()->msg == nullptr ||
       !b->event_nodes.front()->msg->content) {
@@ -27,19 +26,18 @@ td::Result<td::Ref<vm::Cell>> block_body_cell(const Block *b) {
   return vm::std_boc_deserialize(raw);
 }
 
-// program.py _soft_parse: first type whose parser succeeds wins; a parser
-// failure tries the next alternative; all failed -> Null body. An
-// unregistered type name is an EvalError (fault -> rejection).
-EvalResult soft_parse(const Block *b, const std::vector<std::string> &types, Value &out) {
-  auto r_body = block_body_cell(b);
+// First type whose parser succeeds wins; parser failures try the next
+// alternative. A null body means target resolution failed.
+EvalResult soft_parse(const td::Ref<vm::Cell> &body,
+                      const std::vector<std::string> &types, Value &out) {
   for (const std::string &name : types) {
     if (message_parsers().find(name) == message_parsers().end()) {
       return rt_fault("message type '" + name + "' is not registered");
     }
-    if (r_body.is_error()) {
-      continue;  // get_body() raised inside this alternative's try
+    if (body.is_null()) {
+      continue;
     }
-    auto r = parse_message_body(name, r_body.ok());
+    auto r = parse_message_body(name, body);
     if (r.is_ok()) {
       out = r.move_as_ok();
       return rt_ok(Value::null());
@@ -49,12 +47,31 @@ EvalResult soft_parse(const Block *b, const std::vector<std::string> &types, Val
   return rt_ok(Value::null());
 }
 
+EvalResult soft_parse(const Block *b, const std::vector<std::string> &types, Value &out) {
+  auto r_body = block_body_cell(b);
+  if (r_body.is_error()) {
+    return soft_parse(td::Ref<vm::Cell>{}, types, out);
+  }
+  return soft_parse(r_body.move_as_ok(), types, out);
+}
+
+td::Result<td::Ref<vm::Cell>> parse_expr_cell(const Value &target) {
+  if (target.t == VType::Block && target.block != nullptr) {
+    return block_body_cell(target.block);
+  }
+  if (target.t == VType::Cell && target.cell.not_null()) {
+    return target.cell;
+  }
+  if (target.t == VType::Str) {
+    TRY_RESULT(raw, td::base64_decode(td::Slice(target.str)));
+    return vm::std_boc_deserialize(raw);
+  }
+  return td::Status::Error("target is null or not a block, cell, or string");
+}
+
 }  // namespace
 
 EvalResult rt_parse(BuildEnv &env, const Value &target, const std::vector<std::string> &types) {
-  if (target.is_null()) {
-    return rt_ok(Value::null());  // absent optional capture: `.body` null-propagates
-  }
   if (target.t == VType::List) {
     for (const Value &el : *target.items) {
       if (el.t != VType::Block || el.block == nullptr) {
@@ -78,28 +95,26 @@ EvalResult rt_parse(BuildEnv &env, const Value &target, const std::vector<std::s
     env.bodies[target.block] = std::move(body);
     return rt_ok(Value::null());
   }
-  // Non-block target: Python's per-type try swallows the get_body attribute
-  // error, leaving the body unset for anything `.body` could reach — no-op.
+  // Null and other non-block targets leave the body unset.
   return rt_ok(Value::null());
 }
 
 EvalResult rt_parse_expr(BuildEnv &env, const Value &target,
-                         const std::vector<std::string> &types) {
+                         const std::vector<std::string> &types, bool nullable) {
   (void)env;  // stateless: no env.bodies store, unlike the statement form
-  // expr.py _eval_parse: a null target or a non-block target (no get_body)
-  // faults — the deliberate inversion of rt_parse's soft no-op on those.
-  if (target.t != VType::Block || target.block == nullptr) {
-    return rt_fault("parse expression: target is null or not a block");
+  auto r_cell = parse_expr_cell(target);
+  if (r_cell.is_error()) {
+    return nullable ? rt_ok(Value::null())
+                    : rt_fault("parse expression: " + r_cell.error().message().str());
   }
   Value body;
-  EvalResult r = soft_parse(target.block, types, body);
+  EvalResult r = soft_parse(r_cell.move_as_ok(), types, body);
   if (r.faulted) {
     return r;  // unregistered type name
   }
   if (body.is_null()) {
-    // Every alternative failed to parse the body: total failure -> fault
-    // (build reject), NOT the statement form's soft-null.
-    return rt_fault("parse expression: no message type parsed the body");
+    return nullable ? rt_ok(Value::null())
+                    : rt_fault("parse expression: no message type parsed the body");
   }
   return rt_ok(std::move(body));
 }
@@ -135,7 +150,6 @@ EvalResult rt_access_build(const BuildEnv &env, const Value &obj, const std::str
   return rt_access(obj, field);
 }
 
-// Two-phase lookup runtime
 
 std::string lookup_key(const std::string &kind, const std::vector<Value> &args) {
   // Type-tagged, length-prefixed encoding. An embedded NUL, a differing arity, or the same
@@ -176,8 +190,16 @@ std::string lookup_key(const std::string &kind, const std::vector<Value> &args) 
       case VType::Amount:
         frame(key, 'm', a.num.is_null() ? "nan" : a.num->to_dec_string());
         break;
-      default:
+      case VType::Null:
+      case VType::Bool:
+      case VType::Asset:
+      case VType::Cell:
+      case VType::List:
+      case VType::Dict:
+      case VType::Obj:
+      case VType::Block:
         frame(key, '?', a.describe());
+        break;
     }
   }
   return key;

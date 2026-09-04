@@ -19,11 +19,10 @@ td::Status load_array(vm::CellSlice &cs,
                       const std::function<td::Status(vm::CellSlice &)> &unpack_one);
 
 // `pack_one(builder, idx)` packs element `idx` into the given (fresh chunk)
-// builder. STORE = TS parity (1 element per ref cell).
+// builder. STORE writes 1 element per ref cell.
 td::Status store_array(vm::CellBuilder &cb, std::size_t count,
                        const std::function<td::Status(vm::CellBuilder &, std::size_t)> &pack_one);
 
-// lispListOf.
 td::Status load_lisp_list(vm::CellSlice &cs,
                           const std::function<td::Status(vm::CellSlice &)> &unpack_one);
 td::Status store_lisp_list(vm::CellBuilder &cb, std::size_t count,

@@ -13,7 +13,6 @@
 namespace mch {
 
 // A node parse failure rejects the whole trace; partial trees are not classified.
-td::Result<std::vector<schema::Transaction>> emu_to_schema_txs(const EmuTraceView &view,
-                                                               int global_version);
+td::Result<std::vector<schema::Transaction>> emu_to_schema_txs(const EmuTraceView &view);
 
 }  // namespace mch

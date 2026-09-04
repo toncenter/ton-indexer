@@ -1,20 +1,18 @@
-// tgBTC host functions and shaper. See
-// host/HostImpls.h for the internal registry surface.
-//
-// tgbtc_mint_data derives its head, success log, and jetton_mint from the consumed
-// set. Four shared event-log parsers return field objects or Null for unreadable
-// bodies; each serves a full matcher and its log-only fallback.
-// TgBTCBurnEvent tolerates truncated addresses by yielding addr_none, while an
-// ABI address leaf would fail the whole parse. The other events need hexadecimal
-// renderings unavailable in the expression language.
+// tgbtc_mint_data derives head, success log, and jetton_mint from the consumed
+// set. Event-log parsers return Null for unreadable bodies. BurnEvent
+// tolerates truncated addresses as addr_none (an ABI address leaf would fail
+// the whole parse). Other events need hex renderings the language cannot express.
 #include "host/HostImpls.h"
 
+#include "host/BlockViews.h"
+#include "host/HostAdapter.h"
 #include "host/HostCommon.h"
 
 #include "BlockTree.h"
 #include "BuildRuntime.h"
 #include "HostRegistry.h"
 #include "MsgParse.h"
+#include "btypes_gen.h"
 #include "parse/PSlice.h"
 
 #include "common/bigint.hpp"
@@ -31,16 +29,7 @@ namespace {
 constexpr std::uint32_t kTgbtcMintHead = 0x3F781D24;
 constexpr std::uint32_t kTgbtcMintSuccessLog = 0x77A80EF3;
 
-const Block *first_call_op(const std::vector<const Block *> &consumed, std::uint32_t op) {
-  for (const Block *b : consumed) {
-    if (is_call_op(b, op)) {
-      return b;
-    }
-  }
-  return nullptr;
-}
-
-// int(txid).to_bytes(32, "little").hex(): 32-byte little-endian, lowercase hex.
+// 32-byte little-endian, lowercase hex.
 std::string txid_le_hex(const td::RefInt256 &v) {
   unsigned char le[32] = {0};
   v->export_bytes_lsb(le, 32, /*sgnd=*/false);
@@ -53,16 +42,14 @@ std::string txid_le_hex(const td::RefInt256 &v) {
   return out;
 }
 
-// hex(x)[2:]: Python's minimal-length lowercase hex, no leading zeros, "0" for
-// zero (to_hex_string(false, 0), bigint.hpp:2333). Used for both tgBTC pubkeys.
+// Minimal-length lowercase hex, no leading zeros, "0" for zero. Used for
+// both tgBTC pubkeys.
 Value hex_min(const td::RefInt256 &v) {
   return Value::make_str(td::hex_string(v, /*upcase=*/false));
 }
 
-// `AccountId(x)` where x came straight out of pytoniq load_address(): an
-// Account passes through, addr_none (a NULL Value, MsgParse.h contract) becomes
-// AccountId(None), and an ExternalAddress (a Str) RAISES in Python
-// (ton_utils.py AccountId.__init__), so `ok` clears and the caller rejects.
+// Account passes through; addr_none stays none; an external-address Str
+// rejects (ok is cleared).
 Value account_id_of(const Value &v, bool &ok) {
   if (v.t == VType::Account) {
     return v;
@@ -74,15 +61,13 @@ Value account_id_of(const Value &v, bool &ok) {
   return Value::null();
 }
 
-// TgBTCBurnEvent's GUARDED form, `AccountId(x) if isinstance(x, Address) else
-// AccountId(None)`: an extern address is addr_none here, never a raise.
+// Guarded form: an extern address is addr_none here, never a reject.
 Value account_id_or_none(const Value &v) {
   return v.t == VType::Account ? v : Value::make_account_none();
 }
 
-// The single argument every parse fn below takes: a log Block whose body is
-// opened and positioned past the 32 opcode bits (skipped unchecked, like every
-// Python parser's leading load_uint(32)). Absent/unreadable -> no context.
+// Log Block whose body is opened and positioned past the 32 opcode bits
+// (skipped unchecked). Absent/unreadable -> no context.
 struct LogCursor {
   BodyCtx ctx;
   bool ok{false};
@@ -90,9 +75,6 @@ struct LogCursor {
 
 LogCursor open_log(const std::vector<Value> &args) {
   LogCursor lc;
-  if (args.size() != 1) {
-    return lc;
-  }
   const Block *b = as_block(args[0]);
   if (b == nullptr) {
     return lc;
@@ -114,26 +96,57 @@ LogCursor open_log(const std::vector<Value> &args) {
   return lc;
 }
 
+// TgBTCMintEvent tail after the 32-bit opcode: coins, recipient, uint256 txid.
+// Any step failure leaves ok false; callers return Null.
+struct MintLog {
+  td::RefInt256 amount;
+  Value recipient;
+  td::RefInt256 txid;
+  bool ok{false};
+};
+
+MintLog parse_mint_log(vm::CellSlice &cs) {
+  MintLog out;
+  auto r_amt = load_coins_py(cs);
+  if (r_amt.is_error()) {
+    return out;
+  }
+  auto r_rcpt = load_address_py(cs);
+  if (r_rcpt.is_error()) {
+    return out;
+  }
+  bool rcpt_ok = true;
+  out.recipient = account_id_of(r_rcpt.ok(), rcpt_ok);
+  if (!rcpt_ok || !cs.have(256)) {
+    return out;
+  }
+  out.txid = cs.fetch_int256(256, false);
+  if (out.txid.is_null()) {
+    return out;
+  }
+  out.amount = r_amt.move_as_ok();
+  out.ok = true;
+  return out;
+}
+
 }  // namespace
 
-// builders/tgbtc.py tgbtc_mint_data(consumed): the 9-field namespace, or Null
-// to reject (missing head/log/mint or unparseable log).
+// 9-field mint record, or Null if head/log/mint is missing or the log is
+// unparseable.
 EvalResult tgbtc_mint_data(BuildEnv &, const std::vector<Value> &args) {
-  if (args.size() != 1 || args[0].t != VType::List) {
+  if (args[0].t != VType::List) {
     return rt_fault("tgbtc_mint_data: bad arguments");
   }
-  std::vector<const Block *> consumed;
-  for (const Value &v : *args[0].items) {
-    const Block *b = as_block(v);
-    if (b != nullptr) {
-      consumed.push_back(b);
-    }
+  auto decoded = decode_consumed_or_none(args);
+  if (!decoded) {
+    return rt_ok(Value::null());
   }
-  const Block *head = first_call_op(consumed, kTgbtcMintHead);
-  const Block *success_log = first_call_op(consumed, kTgbtcMintSuccessLog);
+  std::vector<const Block *> consumed = std::move(decoded->blocks);
+  const Block *head = first_call(consumed, kTgbtcMintHead);
+  const Block *success_log = first_call(consumed, kTgbtcMintSuccessLog);
   const Block *jetton_mint = nullptr;
   for (const Block *b : consumed) {
-    if (b->btype == "jetton_mint") {
+    if (b->btype == mch::btype::kJettonMint) {
       jetton_mint = b;
       break;
     }
@@ -145,12 +158,11 @@ EvalResult tgbtc_mint_data(BuildEnv &, const std::vector<Value> &args) {
   const Message *hmsg = block_msg(head);
   Value sender = account_from_opt(hmsg != nullptr ? hmsg->source : std::nullopt);
 
-  // TgBTCMintEvent(success_log body): the reference `success` flag is set right
-  // after the log parse; a later failure (jetton_mint field access) keeps the
-  // already-built fields. Mirror by treating a parse failure as reject.
+  // Success flag is set after the log parse; treat a parse failure as reject
+  // rather than keeping a half-built record.
   auto r_body = block_body(success_log);
   if (r_body.is_error()) {
-    return rt_ok(Value::null());  // success stays False -> None
+    return rt_ok(Value::null());  // unreadable log -> Null reject
   }
   auto r_ctx = open_body(r_body.ok());
   if (r_ctx.is_error()) {
@@ -162,27 +174,18 @@ EvalResult tgbtc_mint_data(BuildEnv &, const std::vector<Value> &args) {
     return rt_ok(Value::null());
   }
   cs.advance(32);
-  auto r_amt = load_coins_py(cs);
-  td::RefInt256 amount = r_amt.is_ok() ? r_amt.move_as_ok() : td::make_refint(0);
-  auto r_rcpt = load_address_py(cs);
-  if (r_rcpt.is_error()) {
+  auto parsed = parse_mint_log(cs);
+  if (!parsed.ok) {
     return rt_ok(Value::null());
   }
-  bool rcpt_ok = true;
-  Value recipient = account_id_of(r_rcpt.ok(), rcpt_ok);
-  if (!rcpt_ok || !cs.have(256)) {
-    return rt_ok(Value::null());
-  }
-  auto txid = cs.fetch_int256(256, false);
-  if (txid.is_null()) {
-    return rt_ok(Value::null());
-  }
+  td::RefInt256 amount = std::move(parsed.amount);
+  Value recipient = std::move(parsed.recipient);
+  td::RefInt256 txid = std::move(parsed.txid);
 
   const Message *lmsg = block_msg(success_log);
   Value teleport_contract = account_from_opt(lmsg != nullptr ? lmsg->source : std::nullopt);
   std::string bitcoin_txid = txid_le_hex(txid);
 
-  // jetton_mint.data['asset'] + AccountId(jetton_mint.data['to_jetton_wallet']).
   Value asset = data_field(jetton_mint, "asset");
   Value to_wallet = data_field(jetton_mint, "to_jetton_wallet");
   Value recipient_wallet =
@@ -203,7 +206,6 @@ EvalResult tgbtc_mint_data(BuildEnv &, const std::vector<Value> &args) {
   return rt_ok(Value::make_obj(std::move(ns)));
 }
 
-// Event-log parsers
 
 // TgBTCMintEvent 0x77A80EF3: coins amount, MsgAddress recipient, uint256 txid.
 EvalResult tgbtc_mint_log(BuildEnv &, const std::vector<Value> &args) {
@@ -211,33 +213,20 @@ EvalResult tgbtc_mint_log(BuildEnv &, const std::vector<Value> &args) {
   if (!lc.ok) {
     return rt_ok(Value::null());
   }
-  auto &cs = lc.ctx.cs;
-  auto r_amt = load_coins_py(cs);
-  if (r_amt.is_error()) {
-    return rt_ok(Value::null());
-  }
-  auto r_rcpt = load_address_py(cs);
-  if (r_rcpt.is_error()) {
-    return rt_ok(Value::null());
-  }
-  bool rcpt_ok = true;
-  Value recipient = account_id_of(r_rcpt.ok(), rcpt_ok);
-  auto txid = cs.have(256) ? cs.fetch_int256(256, false) : td::RefInt256{};
-  if (!rcpt_ok || txid.is_null()) {
+  auto parsed = parse_mint_log(lc.ctx.cs);
+  if (!parsed.ok) {
     return rt_ok(Value::null());
   }
   Value::Fields ns;
-  ns.emplace_back("amount", Value::make_int(r_amt.move_as_ok()));
-  ns.emplace_back("recipient", std::move(recipient));
-  ns.emplace_back("bitcoin_txid", Value::make_str(txid_le_hex(txid)));
+  ns.emplace_back("amount", Value::make_int(std::move(parsed.amount)));
+  ns.emplace_back("recipient", std::move(parsed.recipient));
+  ns.emplace_back("bitcoin_txid", Value::make_str(txid_le_hex(parsed.txid)));
   return rt_ok(Value::make_obj(std::move(ns)));
 }
 
-// TgBTCBurnEvent 0xCA444CE6: coins amount, then TWO MsgAddresses parsed
-// TOLERANTLY. The Python parser assigns both locals to None up front and wraps
-// the pair in one try/except, so a body that runs out mid-address leaves the
-// already-read one set and the rest addr_none, reproduced exactly: on the
-// first load_address error, everything from there on stays addr_none.
+// Two addresses parsed tolerantly. On the first address-load error, the
+// already-parsed address stays set and the rest remain addr_none (partial
+// results retained deliberately; no atomic rollback).
 EvalResult tgbtc_burn_log(BuildEnv &, const std::vector<Value> &args) {
   LogCursor lc = open_log(args);
   if (!lc.ok) {
@@ -246,7 +235,7 @@ EvalResult tgbtc_burn_log(BuildEnv &, const std::vector<Value> &args) {
   auto &cs = lc.ctx.cs;
   auto r_amt = load_coins_py(cs);
   if (r_amt.is_error()) {
-    return rt_ok(Value::null());  // the one failure the Python try does NOT cover
+    return rt_ok(Value::null());  // amount underflow rejects; only address loads are tolerant
   }
   Value sender = Value::make_account_none();
   Value pegout = Value::make_account_none();
@@ -317,13 +306,13 @@ EvalResult tgbtc_dkg_completed_log(BuildEnv &, const std::vector<Value> &args) {
   return rt_ok(Value::make_obj(std::move(ns)));
 }
 
-// builders/tgbtc.py tgbtc_deploy_absorb shaper: merge every ContractDeploy in
-// the consumed set's children_blocks into the produced block (post wrapper-merge).
+// Merge every ContractDeploy in the consumed set's children into the
+// produced block (after wrapper-merge).
 void tgbtc_deploy_absorb(Block *produced, const ShaperMatch &m) {
   std::vector<Block *> deploys;
   for (Block *b : m.consumed) {
     for (Block *c : b->children_blocks) {
-      if (c->btype == "contract_deploy") {
+      if (c->btype == mch::btype::kContractDeploy) {
         deploys.push_back(c);
       }
     }

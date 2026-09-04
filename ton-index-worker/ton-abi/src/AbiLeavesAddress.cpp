@@ -58,7 +58,6 @@ td::Result<int> fetch_tag(vm::CellSlice &cs) {
   return static_cast<int>(tag);
 }
 
-// Store helpers
 
 td::Status store_std_body(vm::CellBuilder &cb, const AbiAddress &a) {
   if (a.workchain < -128 || a.workchain > 127) {
@@ -95,7 +94,6 @@ td::Status store_none_body(vm::CellBuilder &cb) {
 
 }  // namespace
 
-// address (addr_std only)
 
 td::Result<AbiAddress> load_address(vm::CellSlice &cs) {
   TRY_RESULT(tag, fetch_tag(cs));
@@ -112,7 +110,6 @@ td::Status store_address(vm::CellBuilder &cb, const AbiAddress &a) {
   return store_std_body(cb, a);
 }
 
-// address? (addr_none | addr_std)
 
 td::Result<AbiAddress> load_maybe_address(vm::CellSlice &cs) {
   TRY_RESULT(tag, fetch_tag(cs));
@@ -137,7 +134,6 @@ td::Status store_maybe_address(vm::CellBuilder &cb, const AbiAddress &a) {
   return td::Status::Error("address?: unknown kind");
 }
 
-// ext_address (addr_extern only)
 
 td::Result<AbiAddress> load_external_address(vm::CellSlice &cs) {
   TRY_RESULT(tag, fetch_tag(cs));
@@ -154,7 +150,6 @@ td::Status store_external_address(vm::CellBuilder &cb, const AbiAddress &a) {
   return store_extern_body(cb, a);
 }
 
-// any_address (none | std | extern; addr_var rejected)
 
 td::Result<AbiAddress> load_address_any(vm::CellSlice &cs) {
   TRY_RESULT(tag, fetch_tag(cs));

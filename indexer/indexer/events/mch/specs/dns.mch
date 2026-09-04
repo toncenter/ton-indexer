@@ -10,6 +10,46 @@
 # is an OPTIONAL key (`name?: expr`) — emitted only when the destination resolves
 # to an NftItem, mirroring the legacy conditional `data['collection_address'] = …`.
 
+# Declared before change_dns on purpose: the anchor's parent must still be an
+# unmatched call_contract when this matcher peeks it (python runs DnsPurchaseMatcher
+# ahead of ChangeDnsRecordMatcher; the first message into a DNS item after its
+# auction ends is usually the winner's ChangeDnsRecord).
+opcode AuctionFillUp      = 0x370fec51
+
+matcher dns_purchase {
+    produces dns_purchase
+    entry    @anchor
+
+    op AuctionFillUp @anchor
+      <- peek btype call_contract @purchase_parent
+
+    parse anchor as AuctionFillUpMessage
+    let buyer = account(purchase_parent.msg.source) ?? addr_none()
+    let nft = lookup nft_item(anchor.msg.source)
+    reject when nft == null or (nft.code_hash != "i1/8nr/TkGTY1fVuRlnIJrt1k5I/XKSHKL5NYK9vUfk=" and nft.collection_address != "0:B774D95EB20543F186C06B371AB88AD704F7E256130CAF96189368A7D0CB6CCF")
+    failed when anchor.failed
+    out {
+        nft_address:              account(anchor.msg.source)
+        collection_address:       account(nft.collection_address)
+        nft_index:                nft.index
+        prev_owner:               null
+        new_owner:                buyer
+        query_id:                 anchor.body.query_id
+        forward_amount:           null
+        response_destination:     null
+        custom_payload:           null
+        forward_payload:          null
+        payout_amount:            amount(anchor.msg.value)
+        payout_comment_encrypted: null
+        payout_comment_encoded:   null
+        payout_comment:           null
+        price:                    amount(anchor.msg.value)
+        real_prev_owner:          null
+        marketplace:              null
+        marketplace_address:      null
+    }
+}
+
 opcode ChangeDnsRecord = 0x4eb1f0f9
 
 matcher change_dns {
@@ -44,42 +84,7 @@ matcher change_dns {
     }
 }
 
-opcode AuctionFillUp      = 0x370fec51
 opcode DnsReleaseBalance = 0x4ed14b65
-
-matcher dns_purchase {
-    produces dns_purchase
-    entry    @anchor
-
-    op AuctionFillUp @anchor
-
-    parse anchor as AuctionFillUpMessage
-    let buyer = dns_purchase_buyer(anchor)
-    reject when buyer == null
-    let nft = lookup nft_item(anchor.msg.source)
-    reject when nft == null or (nft.code_hash != "i1/8nr/TkGTY1fVuRlnIJrt1k5I/XKSHKL5NYK9vUfk=" and nft.collection_address != "0:B774D95EB20543F186C06B371AB88AD704F7E256130CAF96189368A7D0CB6CCF")
-    failed when anchor.failed
-    out {
-        nft_address:              account(anchor.msg.source)
-        collection_address:       account(nft.collection_address)
-        nft_index:                nft.index
-        prev_owner:               null
-        new_owner:                buyer
-        query_id:                 anchor.body.query_id
-        forward_amount:           null
-        response_destination:     null
-        custom_payload:           null
-        forward_payload:          null
-        payout_amount:            amount(anchor.msg.value)
-        payout_comment_encrypted: null
-        payout_comment_encoded:   null
-        payout_comment:           null
-        price:                    amount(anchor.msg.value)
-        real_prev_owner:          null
-        marketplace:              null
-        marketplace_address:      null
-    }
-}
 
 matcher dns_release {
     produces dns_release

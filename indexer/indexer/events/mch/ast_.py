@@ -113,17 +113,14 @@ class ListLit(Expr):
 
 @dataclass(frozen=True)
 class ParseExpr(Expr):
-    """`parse <target> as T (| T)*` in expression position.
+    """Parse a Block, Cell, or base64-BOC string against message types.
 
-    Evaluates `target` to a block and parses its body against the message types
-    in source order (first success wins). On total failure (no type parses, or a
-    null/non-block target) it faults and the build rejects. There is no soft-null
-    variant; the result is the parsed message object. Distinct
-    from the `parse CAPTURE as T` build STATEMENT (ParseStmt), which records the
-    body in a side table for later `.body` access."""
+    Strict parsing faults on an invalid target or total failure; `try parse`
+    sets `nullable` and returns null for those failures instead."""
     target: Expr
     msg_types: tuple[str, ...]
     span: Span
+    nullable: bool = False
 
 
 @dataclass(frozen=True)
@@ -212,6 +209,12 @@ class ChildrenBlock(PatternExpr):
 
 @dataclass(frozen=True)
 class Maybe(PatternExpr):
+    inner: PatternExpr
+    span: Span
+
+
+@dataclass(frozen=True)
+class Peek(PatternExpr):
     inner: PatternExpr
     span: Span
 

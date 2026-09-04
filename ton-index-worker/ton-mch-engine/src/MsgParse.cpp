@@ -24,31 +24,32 @@
 
 namespace mch {
 
-// The registered parser set = the kept-hand parsers (13) + ABI-generated rows
-// (73, under stable BARE declaration names).
-// First-source-wins on a collision; a key claimed by more than one source is
-// instead poisoned to a nullptr parser at merge time, so parse_message_body
-// fails closed on an ambiguous name with the same map lookup it already does.
-// The collision NAMES are kept alongside the map purely so validate_registries()
-// can list them at startup. The total registered set and
-// --surface / cpp_surface.json) is unchanged either way.
+// Merge handwritten and ABI-generated parsers by key. Duplicate keys map to a
+// null parser so dispatch fails closed; startup validation reports their names.
 namespace {
 
-// Kept hand parsers (irregular / single-use constructs).
+using ParserSources = std::vector<const std::vector<std::pair<std::string, MsgParserFn>> *>;
+
+std::vector<std::string> duplicate_parser_keys(const ParserSources &sources) {
+  std::set<std::string> seen;
+  std::set<std::string> dup_set;
+  std::vector<std::string> dups;
+  for (const auto *src : sources) {
+    for (const auto &row : *src) {
+      if (!seen.insert(row.first).second && dup_set.insert(row.first).second) {
+        dups.push_back(row.first);
+      }
+    }
+  }
+  return dups;
+}
+
+// Hand parsers still without an ABI declaration; everything else lives in
+// AbiBridge.cpp.
 const std::vector<std::pair<std::string, MsgParserFn>> &hand_message_parsers() {
   static const std::vector<std::pair<std::string, MsgParserFn>> rows = {
-      {"JettonTransfer", parse_jetton_transfer},         // forward-payload tail hook
-      {"MinterJettonMint", parse_minter_jetton_mint},    // nested ref-capture
       {"ChangeDnsRecordMessage", parse_change_dns},
-      {"AuctionFillUpMessage", parse_auction_fill_up},
-      {"DnsReleaseBalanceMessage", parse_dns_release_balance},
       {"VestingSendMessage", parse_vesting_send_message},
-      {"VestingAddWhiteList", parse_vesting_add_whitelist},  // unbounded ref chain
-      {"EvaaWithdrawFailExcess", parse_evaa_withdraw_fail_excess},  // opcode-enum
-      {"LayerZeroOappExecuteCallback", parse_layerzero_oapp_execute_callback},
-      {"LayerzeroChannelSendCallback", parse_layerzero_channel_send_callback},
-      {"ChannelCommitPacket", parse_layerzero_channel_commit_packet},
-      {"UlnConnectionVerifyCallbackParser", parse_uln_connection_verify_callback},
   };
   return rows;
 }
@@ -80,20 +81,6 @@ const BuiltRegistry &built_registry() {
 }
 
 }  // namespace
-
-std::vector<std::string> duplicate_parser_keys(const ParserSources &sources) {
-  std::set<std::string> seen;
-  std::set<std::string> dup_set;
-  std::vector<std::string> dups;
-  for (const auto *src : sources) {
-    for (const auto &row : *src) {
-      if (!seen.insert(row.first).second && dup_set.insert(row.first).second) {
-        dups.push_back(row.first);
-      }
-    }
-  }
-  return dups;
-}
 
 const std::map<std::string, MsgParserFn> &message_parsers() {
   return built_registry().map;

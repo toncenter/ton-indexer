@@ -1,0 +1,27 @@
+# wallet-v5-extensions / Wallet v5 add extension (failed, exit_code 139)
+# trace: L2m2NaOmby0AZmK8R_zw_lJJvNQjoNeBtG4ALFJiJ5s=
+actions:
+  - type: unknown
+    anchor: unknown
+    id: L2m2NaOmby0AZmK8R/zw/lJJvNQjoNeBtG4ALFJiJ5s=
+    success: true
+    source: null
+    source_secondary: null
+    destination: null
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: null
+    opcode: null
+    tx_hashes:
+      - L2m2NaOmby0AZmK8R/zw/lJJvNQjoNeBtG4ALFJiJ5s=
+    accounts:
+      - 0:4C8FC9B86FF27F4B9423F4353DDA56C3F48D8979E815FE11FD3F486DEDDA503B
+    start_lt: 64915087000001
+    end_lt: 64915087000001
+    start_utime: 1776942990
+    end_utime: 1776942990
+    mc_seqno_end: 53934141

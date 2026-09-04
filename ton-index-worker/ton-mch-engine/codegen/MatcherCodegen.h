@@ -12,4 +12,6 @@ namespace mch_codegen {
 std::string generate_matchers_file(const mch::LoadedIr &ir, const std::string &header,
                                    const std::string &suffix);
 
+std::string generate_btypes_header(const mch::LoadedIr &ir);
+
 }  // namespace mch_codegen

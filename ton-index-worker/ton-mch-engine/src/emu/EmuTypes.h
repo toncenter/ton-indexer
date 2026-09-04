@@ -36,7 +36,7 @@ enum class EmuFinality : std::uint8_t { emulated = 0, confirmed = 1, finalized =
 struct EmuTxRef {
   block::StdAddress address;
   // Standalone BOC: classifier input never depends on a source BlockData.
-  std::string tx_boc;
+  std::shared_ptr<const std::string> tx_boc;
   std::uint32_t mc_seqno{0};
   EmuFinality finality{EmuFinality::emulated};
 };
@@ -47,7 +47,8 @@ struct EmuTraceView {
   bool tx_limit_exceeded{false};
   // Pre-order nodes; to_tree reconstructs edges by message hash.
   std::vector<EmuTxRef> nodes;
-  ParsedBlockLookupSource::InterfaceMap interfaces;  // already V2-adapted
+  std::shared_ptr<const ParsedBlockLookupSource::InterfaceMap> interfaces =
+      std::make_shared<const ParsedBlockLookupSource::InterfaceMap>();  // already V2-adapted
   // Shared shard-state and config handles for tier-2 lookups. Listener traces
   // leave them empty and receive no tier-2 results.
   AllShardStates shard_states;

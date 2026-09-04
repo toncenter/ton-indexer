@@ -1,12 +1,11 @@
-# Coffee swap (T17) — ported from blocks/swaps.py CoffeeSwapBlockMatcher.
+# Coffee swap — ported from blocks/swaps.py CoffeeSwapBlockMatcher.
 #
 # New shapes vs earlier ports (jettons/dns/dedust_swap):
 # - recursion step is a two-node CHAIN (`op CoffeeSwapInternal -> op
 #   CoffeeSwapSuccessfulEvent`): each unrolling consumes the swap AND its
 #   success event, mirroring legacy RecursiveMatcher(repeating=ContractMatcher(
 #   SwapInternal, child=ContractMatcher(SuccessEvent)));
-# - same-name capture across exclusive parent branches (@in_transfer, T02) —
-#   first port to use it;
+# - same-name capture across exclusive parent branches (@in_transfer);
 # - three-way mixed op/btype alternative under the payout exit.
 #
 # The anchor children set mirrors legacy children_matchers=[event,

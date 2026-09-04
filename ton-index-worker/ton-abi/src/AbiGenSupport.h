@@ -34,25 +34,38 @@
 namespace ton_abi {
 namespace gen {
 
-// CellOf<T>: a value of type T that lives in a child cell (Tolk `Cell<T>`).
-// Emitted field type for the `cellOf` ABI kind. Holds the inner
-// value behind a shared_ptr indirection: cellOf is a cell-boundary, so a type
-// may be recursive THROUGH a cellOf (e.g. `struct Node { next: Cell<Node> }`),
-// which an inline by-value member could not represent. The indirection also
-// means cellOf<Struct> only needs Struct forward-declared, not complete.
+struct EnumNameEntry {
+  std::string name;
+  td::RefInt256 value;
+};
+
+using EnumNameTable = std::vector<EnumNameEntry>;
+
+inline std::optional<std::string> enum_name_lookup(const EnumNameTable &table, const td::RefInt256 &value) {
+  if (value.is_null()) {
+    return std::nullopt;
+  }
+  for (const auto &member : table) {
+    if (member.value.not_null() && td::cmp(member.value, value) == 0) {
+      return member.name;
+    }
+  }
+  return std::nullopt;
+}
+
+// CellOf<T> mirrors Tolk Cell<T>, holding its decoded value and raw child cell.
+// Shared indirection permits cell-linked recursion and forward declarations.
 template <class T>
 struct CellOf {
   std::shared_ptr<T> ref;
+  td::Ref<vm::Cell> cell;
 };
 
-// Typed custom-serializer registry.
-//
-// One registry PER value type T (a function-local static, so no global-init
-// ordering issues). Keys have the form "<contract_name>::<decl name>".
-// pack / unpack / to_abi_value are independently optional. Missing registration
-// or a missing operation at call time is
-// a runtime td::Status error -- NEVER a compile/link error (reference
-// semantics: registerCustomPackUnpack is a runtime map, not a specialization).
+// Typed custom-serializer registry. One registry per value type T (function-local
+// static; no global-init ordering). Keys are "<contract_name>::<decl name>".
+// pack/unpack/to_abi_value are independently optional. Missing registration or
+// operation is a runtime Status error, never a compile/link error: the registry
+// is a runtime map, not a specialization.
 template <class T>
 struct AbiCustomEntry {
   std::function<td::Status(const T &, vm::CellBuilder &)> pack;
@@ -130,13 +143,13 @@ inline AbiAddress address_from_string(const std::string &s) {
   AbiAddress a;
   auto colon = s.find(':');
   if (colon == std::string::npos) {
-    return a;  // None
+    return a;
   }
   unsigned char buf[64];
   std::string hex = s.substr(colon + 1);
   long bits = td::bitstring::parse_bitstring_hex_literal(buf, sizeof(buf), hex.data(), hex.data() + hex.size());
   if (bits != 256) {
-    return a;  // None
+    return a;
   }
   a.kind = AbiAddressKind::Std;
   a.workchain = std::atoi(s.substr(0, colon).c_str());

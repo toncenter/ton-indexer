@@ -12,6 +12,14 @@ def load_address_list(slice: Slice) -> list[Address]:
     return list(addr_dict.keys())
 
 
+class JVaultStakePeriodPayload:
+    stake_period: int
+
+    def __init__(self, slice: Slice):
+        slice.load_uint(32)
+        self.stake_period = slice.load_uint(32)
+
+
 class JVaultReceiveJettons:
     # ?? -> stake_wallet
     # receive_jettons#d68a4ac1

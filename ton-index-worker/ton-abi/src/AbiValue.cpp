@@ -27,10 +27,9 @@ std::string lower(std::string s) {
   return s;
 }
 
-// Lossy UTF-8 decode matching Node Buffer.toString('utf8'). Invalid first
-// continuation bytes are reprocessed; after a valid continuation, a later
-// failure replaces the valid prefix and leaves the failing byte for the next
-// iteration.
+// Lossy UTF-8 decode: invalid first continuation bytes are reprocessed;
+// after a valid continuation, a later failure replaces the valid prefix
+// and leaves the failing byte for the next iteration.
 std::string decode_utf8_lossy(const std::string &bytes) {
   std::string out;
   const std::size_t n = bytes.size();
@@ -167,10 +166,11 @@ AbiValue AbiValue::make_cell(td::Ref<vm::Cell> c) {
   return r;
 }
 
-AbiValue AbiValue::make_cell_of(AbiValue inner_value) {
+AbiValue AbiValue::make_cell_of(AbiValue inner_value, td::Ref<vm::Cell> raw_cell) {
   AbiValue r;
   r.kind = AbiValueKind::CellOf;
   r.inner = std::make_unique<AbiValue>(std::move(inner_value));
+  r.cell_v = std::move(raw_cell);
   return r;
 }
 

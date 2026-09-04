@@ -1,7 +1,5 @@
-// mapKV dict adapter. STORE is proven byte-identical to @ton/core
-// storeDict (dict built both sides -> same BOC); LOAD yields entries in
-// ascending key order (matching @ton/core's HashmapE order). uint8->uint8
-// key/value callbacks stand in for the generated walker.
+// mapKV dict adapter. STORE is proven byte-identical via root cell hash;
+// LOAD yields entries in ascending key order.
 
 #include "AbiTestSupport.h"
 
@@ -77,6 +75,16 @@ TEST_CASE("mapKV: empty dict loads to zero entries") {
   };
   REQUIRE(load_dict(cs, 8, on_entry).is_ok());
   CHECK(calls == 0);
+}
+
+TEST_CASE("mapKV: malformed dict returns an error without throwing") {
+  vm::CellBuilder malformed;
+  REQUIRE(malformed.store_long_bool(1, 1));  // Non-empty HashmapE without its root reference.
+  auto cs = vm::load_cell_slice(malformed.finalize());
+  auto on_entry = [](vm::CellSlice &, vm::CellSlice &) { return td::Status::OK(); };
+  td::Status status;
+  CHECK_NOTHROW(status = load_dict(cs, 8, on_entry));
+  CHECK(status.is_error());
 }
 
 TEST_CASE("mapKV: store rejects duplicate key") {

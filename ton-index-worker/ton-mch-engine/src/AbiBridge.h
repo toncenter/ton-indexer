@@ -1,8 +1,7 @@
 // Converts Tolk-ABI generated structs into mch::Value instances so parsed
-// message bodies plug into the existing message_parsers() registry alongside the kept
-// bodies plug into the existing message_parsers() registry alongside the kept
-// hand parsers. Registration uses compile-time static rows and loads no ABI model
-// at runtime.
+// message bodies plug into the existing message_parsers() registry alongside
+// the kept hand parsers. Registration uses compile-time static rows and loads
+// no ABI model at runtime.
 #pragma once
 
 #include "Value.h"
@@ -20,11 +19,9 @@
 
 namespace mch {
 
-// AbiValue -> mch::Value adapter (impl in AbiBridge.cpp). TOLK-FAITHFUL value
-// conventions (@ton/core / AbiValue.h dump semantics, NOT pytoniq). Total: never
-// errors. Every AbiValueKind maps onto an existing VType. ABI bodies
-// form a NEW value universe; this does NOT imitate PSlice's extern-string / None
-// -> null conventions.
+// AbiValue -> mch::Value adapter. Tolk-faithful dump conventions, not the
+// PSlice extern-string / none-as-null universe. Total: never errors. Every
+// AbiValueKind maps onto an existing VType.
 Value abi_value_to_mch(const ton_abi::AbiValue &v);
 
 // Parse a message body as the generated ABI struct T, returning an mch::Value.
@@ -33,9 +30,9 @@ Value abi_value_to_mch(const ton_abi::AbiValue &v);
 //   td::Result<ton_abi::AbiValue> to_abi_value() const;
 //
 // &abi_parse_body<T> has type td::Result<Value>(*)(const td::Ref<vm::Cell>&) ==
-// MsgParserFn exactly. Dispatch is baked into from_slice, so
-// the instantiation registers as an ordinary parser row. Top-level exotic cells
-// return a clean error for top-level exotic cells rather than aborting.
+// MsgParserFn exactly. Dispatch is baked into from_slice, so the instantiation
+// registers as an ordinary parser row. Top-level exotic cells return a clean
+// error rather than aborting.
 template <class T>
 td::Result<Value> abi_parse_body(const td::Ref<vm::Cell> &body) {
   if (body.is_null()) {

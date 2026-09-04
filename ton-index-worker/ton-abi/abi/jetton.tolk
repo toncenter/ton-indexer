@@ -10,6 +10,22 @@ struct (0b0) JettonForwardPayloadInline {
 
 type JettonForwardTail = JettonForwardPayloadRef | JettonForwardPayloadInline
 
+struct MinterJettonMintMasterMsg {
+    _op: uint32;
+    query_id: uint64;
+    jetton_amount: coins;
+}
+
+@overflow1023_policy("suppress")
+struct (0x0f8a7ea5) JettonTransfer {
+    query_id: uint64;
+    amount: coins;
+    destination: any_address;
+    response_destination: any_address;
+    custom_payload: cell?;
+    forward_ton_amount: coins;
+}
+
 @overflow1023_policy("suppress")
 struct (0x178d4519) JettonInternalTransfer {
     query_id: uint64;
@@ -50,7 +66,15 @@ struct (0x642b7d07) JettonMint {
     ton_amount: coins;
 }
 
-type AllowedMessage = JettonInternalTransfer | JettonInternalTransferEthena | JettonBurn | JettonNotify | JettonMint
+@overflow1023_policy("suppress")
+struct (0x00000015) MinterJettonMint {
+    query_id: uint64;
+    to_address: any_address;
+    ton_amount: coins;
+    master_msg: Cell<MinterJettonMintMasterMsg>;
+}
+
+type AllowedMessage = JettonTransfer | JettonInternalTransfer | JettonInternalTransferEthena | JettonBurn | JettonNotify | JettonMint | MinterJettonMint
 
 struct Storage {
     dummy: uint1
@@ -64,6 +88,9 @@ contract JettonMessages {
 fun onInternalMessage(in: InMessage) {
     val msg = lazy AllowedMessage.fromSlice(in.body);
     match (msg) {
+        JettonTransfer => {
+            assert (in.body.isEmpty()) throw 0xFFFF
+        }
         JettonInternalTransfer => {
             assert (in.body.isEmpty()) throw 0xFFFF
         }
@@ -77,6 +104,9 @@ fun onInternalMessage(in: InMessage) {
             assert (in.body.isEmpty()) throw 0xFFFF
         }
         JettonMint => {
+            assert (in.body.isEmpty()) throw 0xFFFF
+        }
+        MinterJettonMint => {
             assert (in.body.isEmpty()) throw 0xFFFF
         }
         else => {

@@ -53,8 +53,6 @@ ABI_PREFIXES = {
 HOST_CALLS = (
     HostCall("HostEvaa.cpp", 1, "EvaaSupplyMaster", (0x00000001,),
              "evaa_supply_anchor accepts the call arm only through is_call_op(kSupplyMaster)"),
-    HostCall("HostEvaa.cpp", 1, "EvaaSupplyJettonForward", (0x00000001,),
-             "evaa_supply_anchor opens this same forward-payload cell and checks kSupplyMaster"),
     HostCall("HostEvaa.cpp", 1, "EvaaSupplySuccess", (0x0000011A,),
              "success is assigned only by is_call_op(kSupplySuccess)"),
     HostCall("HostStonfi.cpp", 1, "StonfiPaymentRequest", (0xF93BB43F,),
@@ -74,11 +72,10 @@ HOST_CALLS = (
     HostCall("HostTonco.cpp", 1, "JettonNotify", (0x7362D09C,),
              "jetton_notify_block is selected only by find_call/is_call_op(kJettonNotify)"),
     HostCall("HostTonco.cpp", 1, "PTonTransfer", (0x01F3835D,),
-             "pton is returned by find_call(..., kPTonTransfer)"),
-    HostCall("HostTonco.cpp", 2, "PTonTransfer", (0x01F3835D,),
-             "pton is returned by find_call(..., kPTonTransfer)"),
-    HostCall("HostTonco.cpp", 3, "PTonTransfer", (0x01F3835D,),
              "same branch checks m->opcode32() == kPTonTransfer"),
+    HostCall("HostCommon.cpp", 1, "PTonTransfer", (0x01F3835D,),
+             "pton_ton_amount is called only on blocks its callers selected "
+             "via first_call/is_call_op(kPTonTransfer)"),
     HostCall("HostDedustDeposit.cpp", 1, "DedustDepositLiquidityToPool", (0xB56B9598,),
              "all helper inputs are the matcher's pool opcode anchor"),
     HostCall("HostDedustDeposit.cpp", 1, "JettonInternalTransfer", (0x178D4519,),
@@ -95,8 +92,6 @@ HOST_CALLS = (
              "event is returned by first_next_call(kCoffeeSwapSuccessfulEvent)"),
     HostCall("HostNft.cpp", 1, "NftOwnershipAssignedPrevOwner", (0x05138D91,),
              "the sole helper caller receives the exact assigned contract capture"),
-    HostCall("HostJvault.cpp", 1, "JVaultStakePeriodPayload", (),
-             "prefixless payload retains its arbitrary first 32-bit word as payload_opcode"),
 )
 
 

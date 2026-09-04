@@ -131,10 +131,9 @@ BuildOutcome run_two_phase(BuildOutcome (*fn)(BuildEnv &), const Block *anchor,
       fetched.emplace(key, src.fetch(ka.first, ka.second));
     }
   }
-  // Python resolves any lookup-arg-of-lookup depth inline, so an unconverged
-  // fixpoint here is a genuine divergence, not a benign truncation — do not
-  // proceed with a partial table (silent wrongness). Throw to the classify
-  // trace boundary (Python's per-trace fallback). Today's artifacts have max
+  // An unconverged fixpoint here is a genuine divergence, not a benign
+  // truncation — do not proceed with a partial table. Throw to the classify
+  // trace boundary. Today's artifacts have max
   // lookup depth 2 and converge in <=2 rounds, so this never fires.
   if (!converged) {
     throw std::runtime_error("two-phase lookup did not converge after 8 rounds");

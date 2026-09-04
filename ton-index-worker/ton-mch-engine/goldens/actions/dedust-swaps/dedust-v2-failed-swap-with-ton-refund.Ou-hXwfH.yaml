@@ -1,0 +1,80 @@
+# dedust-swaps / DeDust v2 failed swap with TON refund
+# note: dedust_v2_failed_swap matcher; refund leg is an unsuccessful ton_transfer, outgoing amount 0
+# trace: Ou-hXwfHtNeTs97mBY3LVCmlnsoySA7hJXeoZSfOAao=
+actions:
+  - type: jetton_swap
+    matcher: dedust_v2_failed_swap
+    anchor: jetton_swap@75914987000003
+    id: CRt7WaOspIN6jHSpsV8DaUBU4617IQ6LQBjJGBtVxtc=
+    success: false
+    source: 0:52A3A107CA90CF372EA89360B4D13A57681297DB55A81A1491090AA636E2EBA2
+    source_secondary: null
+    destination: 0:52A3A107CA90CF372EA89360B4D13A57681297DB55A81A1491090AA636E2EBA2
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: null
+    opcode: null
+    jetton_swap_data:
+      dex: dedust_v2
+      dex_incoming_transfer:
+        amount: 349999999865
+        asset: null
+        destination: 0:1309FE836D986792A1AF59F560E168E02E84B4276191498EFF0C1C78C877A7C5
+        destination_jetton_wallet: null
+        source: 0:52A3A107CA90CF372EA89360B4D13A57681297DB55A81A1491090AA636E2EBA2
+        source_jetton_wallet: null
+      dex_outgoing_transfer:
+        amount: 0
+        asset: null
+        destination: 0:52A3A107CA90CF372EA89360B4D13A57681297DB55A81A1491090AA636E2EBA2
+        destination_jetton_wallet: null
+        source: 0:1309FE836D986792A1AF59F560E168E02E84B4276191498EFF0C1C78C877A7C5
+        source_jetton_wallet: null
+      min_out_amount: 746186621886
+      peer_swaps: []
+      sender: 0:52A3A107CA90CF372EA89360B4D13A57681297DB55A81A1491090AA636E2EBA2
+    tx_hashes:
+      - Ou+hXwfHtNeTs97mBY3LVCmlnsoySA7hJXeoZSfOAao=
+      - Z0cmIg9iv2E0ApMNKQg4tw9gNzj241hFRY6J/YhFEt8=
+      - iXW+aNSowtVIW2eDLlhbxPsPgtUPSCD0/+uHaFFmFJs=
+      - w5mrq9ZpqIyuczqEkrCFwvHz6HBHXcSJkKiHQhZTXmU=
+    accounts:
+      - 0:1309FE836D986792A1AF59F560E168E02E84B4276191498EFF0C1C78C877A7C5
+      - 0:52A3A107CA90CF372EA89360B4D13A57681297DB55A81A1491090AA636E2EBA2
+    start_lt: 75914987000003
+    end_lt: 75915001000007
+    start_utime: 1778355998
+    end_utime: 1778356004
+    mc_seqno_end: 65723071
+  - type: ton_transfer
+    anchor: ton_transfer@75914987000002
+    id: Bh7KoasFxjAJYsWysC2hBJJlvClt5ZKdpP8GB9lL6eY=
+    success: false
+    source: 0:52A3A107CA90CF372EA89360B4D13A57681297DB55A81A1491090AA636E2EBA2
+    source_secondary: null
+    destination: 0:52A3A107CA90CF372EA89360B4D13A57681297DB55A81A1491090AA636E2EBA2
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: 0
+    opcode: null
+    ton_transfer_data:
+      content: null
+      encrypted: false
+    tx_hashes:
+      - 4ZXCgz56MQBJxn0VMGU3Ypgpu7Xr3kg39YnTS68sunc=
+      - Ou+hXwfHtNeTs97mBY3LVCmlnsoySA7hJXeoZSfOAao=
+    accounts:
+      - 0:52A3A107CA90CF372EA89360B4D13A57681297DB55A81A1491090AA636E2EBA2
+    start_lt: 75914987000002
+    end_lt: 75915001000001
+    start_utime: 1778355998
+    end_utime: 1778356004
+    mc_seqno_end: 65723071

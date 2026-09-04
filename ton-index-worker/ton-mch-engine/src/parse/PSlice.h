@@ -1,7 +1,5 @@
-// Shared pytoniq-Slice stand-in machinery used by every per-family message
-// parser (see MsgParse.h for the semantics contract). These helpers reproduce
-// the pytoniq Slice quirks the family adapters rely on; they were internal to
-// MsgParse.cpp and are declared here so the split parser TUs can share them.
+// Shared Slice stand-in used by every per-family message parser. Helpers
+// keep the Slice quirks the family adapters rely on (see MsgParse.h).
 #pragma once
 
 #include "Value.h"
@@ -20,18 +18,15 @@ std::string hex_upper(const unsigned char *p, size_t n);
 
 td::RefInt256 refint_u64(unsigned long long v);
 
-// pytoniq Slice.load_address(). Advances `cs`. Error == the Python parser
-// raising (whole message parse fails, or the enclosing try downgrades it).
+// Load an address; advances `cs`. Error fails the whole message parse, or
+// the enclosing try downgrades it. Intentional.
 td::Result<Value> load_address_py(vm::CellSlice &cs);
 
-// pytoniq Slice.load_coins(): len nibble 0 -> 0. Advances `cs`.
+// Load coins; len nibble 0 yields 0. Advances `cs`.
 td::Result<td::RefInt256> load_coins_py(vm::CellSlice &cs);
 
-td::Result<td::RefInt256> var_uint16(const td::Ref<vm::CellSlice> &csr);
-
-// pytoniq-Slice stand-in: `cs` carries the bit cursor, `refs`/`off` carry the
-// ref list SEPARATELY, because pytoniq's copy()/to_cell()/snake semantics do
-// not always agree with the CellSlice's own ref cursor (see MsgParse.cpp header).
+// `cs` is the bit cursor; `refs`/`off` hold the ref list separately because
+// copy()/to_cell() do not always agree with CellSlice's own ref cursor.
 struct PSlice {
   vm::CellSlice cs;
   std::vector<td::Ref<vm::Cell>> refs;
@@ -40,30 +35,32 @@ struct PSlice {
 
 PSlice pslice_from_cell(const td::Ref<vm::Cell> &c);
 
-// pytoniq Slice.to_cell(): Cell(remaining bits, refs[off:]).
+// Remaining bits plus refs[off:].
 td::Result<td::Ref<vm::Cell>> pslice_to_cell(const PSlice &ps);
 
-// pytoniq Slice.load_snake_bytes(): byte-aligned, <=1 ref per link.
-td::Result<std::string> load_snake_bytes(PSlice ps);
+// Byte-aligned snake; at most one ref per link.
+td::Result<std::string> load_snake_bytes(vm::CellSlice &cs);
 
 struct BodyCtx {
   vm::CellSlice cs;
-  std::vector<td::Ref<vm::Cell>> all_refs;  // body refs from index 0 (copy() quirk)
+  std::vector<td::Ref<vm::Cell>> all_refs;  // body refs from index 0; copy() starts there
 };
 
 td::Result<BodyCtx> open_body(const td::Ref<vm::Cell> &body);
 
-// pytoniq ref.begin_parse(): open a ref cell into a CellSlice, abort-safe (a
-// throwing load becomes an Error, never abort()). The shared "open a ref"
-// helper the stonfi + tonco cores and the dedust step walk each duplicated.
+// Open a ref cell into a CellSlice. A throwing load becomes an Error, never abort().
 td::Result<vm::CellSlice> open_ref_cell(const td::Ref<vm::Cell> &c);
 
-// pytoniq StateInit.deserialize: split_depth:(Maybe (## 5)) special:(Maybe
-// TickTock) code/data/library:(Maybe ^Cell). Only the cursor matters, but every
-// field is walked because Python parses (and can raise on) them all.
+// StateInit: split_depth:(Maybe (## 5)) special:(Maybe TickTock)
+// code/data/library:(Maybe ^Cell). Only the cursor matters, but every field
+// is walked because any of them can fail the parse. Intentional.
 td::Status skip_state_init_py(vm::CellSlice &cs);
 
-// pytoniq Slice.to_cell(): Cell(remaining bits, remaining refs).
+// After the StateInit prefix, skip the code maybe-ref and return the required
+// data cell.
+td::Result<td::Ref<vm::Cell>> state_init_data_cell(vm::CellSlice &cs);
+
+// Remaining bits plus remaining refs.
 td::Result<td::Ref<vm::Cell>> slice_to_cell(const vm::CellSlice &cs);
 
 // The Message/MessageRelaxed tail, resumed after CommonMsgInfo:

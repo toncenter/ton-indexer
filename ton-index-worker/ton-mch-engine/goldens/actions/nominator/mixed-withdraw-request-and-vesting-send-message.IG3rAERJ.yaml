@@ -1,0 +1,122 @@
+# nominator / Mixed withdraw request and vesting send message
+# trace: IG3rAERJtYBswEBCpy_3redfrE-4cQS0cAfg1-W1UO8=
+actions:
+  - type: call_contract
+    anchor: call_contract#a7733acd@89876948000002
+    id: 4cQzZwVwLXeUaUBq6d5f4pxiZcMiZh6EdJ6PZH985uE=
+    success: true
+    source: 0:EDBA9C58843012F296DCC70B9E0DA8948FBB06E580D8417F2FAF6996C6EC98AE
+    source_secondary: null
+    destination: 0:28CAFA0E3C98C78380BF9FF1117926D2DA53C8E1792647551176D3F9861AFCE1
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: 50000000
+    opcode: 0xa7733acd
+    tx_hashes:
+      - IG3rAERJtYBswEBCpy/3redfrE+4cQS0cAfg1+W1UO8=
+      - mnDlbgOSyeo1vKPnm1cZiFcooxRDLgkriK425p+1wPQ=
+    accounts:
+      - 0:28CAFA0E3C98C78380BF9FF1117926D2DA53C8E1792647551176D3F9861AFCE1
+      - 0:EDBA9C58843012F296DCC70B9E0DA8948FBB06E580D8417F2FAF6996C6EC98AE
+    start_lt: 89876948000002
+    end_lt: 89876948000003
+    start_utime: 1783943656
+    end_utime: 1783943656
+    mc_seqno_end: 79394498
+    parent_action_id: 7ybKw/5E7aF00EufkqIGXYM+u6bP8Kx9mw0YfPuK2Cs=
+    ancestor_type:
+      - vesting_send_message
+  - type: call_contract
+    anchor: call_contract#f7733acd@89876948000005
+    id: hP3KX+aeW7Kz8b/3nxEgxVxu7Rrzg7vfuPNlpyNFAkw=
+    success: true
+    source: 0:28CAFA0E3C98C78380BF9FF1117926D2DA53C8E1792647551176D3F9861AFCE1
+    source_secondary: null
+    destination: 0:EDBA9C58843012F296DCC70B9E0DA8948FBB06E580D8417F2FAF6996C6EC98AE
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: 49129465
+    opcode: 0xf7733acd
+    tx_hashes:
+      - mnDlbgOSyeo1vKPnm1cZiFcooxRDLgkriK425p+1wPQ=
+      - s4bqZjbajPVi9iw7/qd+VRGdH98WjncVHEiJnz1LRJo=
+    accounts:
+      - 0:28CAFA0E3C98C78380BF9FF1117926D2DA53C8E1792647551176D3F9861AFCE1
+      - 0:EDBA9C58843012F296DCC70B9E0DA8948FBB06E580D8417F2FAF6996C6EC98AE
+    start_lt: 89876948000005
+    end_lt: 89876948000006
+    start_utime: 1783943656
+    end_utime: 1783943656
+    mc_seqno_end: 79394498
+    parent_action_id: 7ybKw/5E7aF00EufkqIGXYM+u6bP8Kx9mw0YfPuK2Cs=
+    ancestor_type:
+      - vesting_send_message
+  - type: stake_withdrawal_request
+    matcher: nominator_pool_withdraw_request
+    anchor: nominator_pool_withdraw_request@89876948000004
+    id: gKoeKDOi+s2JzueThdVOfG5w+naau/cTMs4FUYJmNkI=
+    success: true
+    source: 0:28CAFA0E3C98C78380BF9FF1117926D2DA53C8E1792647551176D3F9861AFCE1
+    source_secondary: null
+    destination: "-1:38A38549467969D70B2A487A2FD50B6DA924D075AD99D6F18AF9BEC468F42878"
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: null
+    opcode: null
+    staking_data:
+      provider: nominator
+    tx_hashes:
+      - Qoi/anYdaO9ksxCoZ7IQ3V8gtySPuvnGR5yx/NsxWAE=
+      - dF+QsiLaJ4/OeqpTJSNUY4kNi3FmrEXTbi3JuOa31Bo=
+    accounts:
+      - "-1:38A38549467969D70B2A487A2FD50B6DA924D075AD99D6F18AF9BEC468F42878"
+      - 0:28CAFA0E3C98C78380BF9FF1117926D2DA53C8E1792647551176D3F9861AFCE1
+    start_lt: 89876948000004
+    end_lt: 89876951000001
+    start_utime: 1783943656
+    end_utime: 1783943657
+    mc_seqno_end: 79394501
+  - type: vesting_send_message
+    matcher: vesting_send_message
+    anchor: vesting_send_message@89876948000002
+    id: 7ybKw/5E7aF00EufkqIGXYM+u6bP8Kx9mw0YfPuK2Cs=
+    success: true
+    source: 0:EDBA9C58843012F296DCC70B9E0DA8948FBB06E580D8417F2FAF6996C6EC98AE
+    source_secondary: null
+    destination: 0:28CAFA0E3C98C78380BF9FF1117926D2DA53C8E1792647551176D3F9861AFCE1
+    destination_secondary: "-1:38A38549467969D70B2A487A2FD50B6DA924D075AD99D6F18AF9BEC468F42878"
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: 1000000000
+    value: null
+    opcode: null
+    vesting_send_message_data:
+      message_boc: cellhash:CEB5BD0850B644C8E4115BE9EF8FF3E9AB54BD20B3478AA67E73FE150D9FFF3A
+      query_id: 0
+    tx_hashes:
+      - IG3rAERJtYBswEBCpy/3redfrE+4cQS0cAfg1+W1UO8=
+      - mnDlbgOSyeo1vKPnm1cZiFcooxRDLgkriK425p+1wPQ=
+      - s4bqZjbajPVi9iw7/qd+VRGdH98WjncVHEiJnz1LRJo=
+    accounts:
+      - "-1:38A38549467969D70B2A487A2FD50B6DA924D075AD99D6F18AF9BEC468F42878"
+      - 0:28CAFA0E3C98C78380BF9FF1117926D2DA53C8E1792647551176D3F9861AFCE1
+      - 0:EDBA9C58843012F296DCC70B9E0DA8948FBB06E580D8417F2FAF6996C6EC98AE
+    start_lt: 89876948000002
+    end_lt: 89876948000006
+    start_utime: 1783943656
+    end_utime: 1783943656
+    mc_seqno_end: 79394498

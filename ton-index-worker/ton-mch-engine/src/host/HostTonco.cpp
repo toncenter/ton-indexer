@@ -1,10 +1,9 @@
-// Tonco liquidity-deposit + swap host fns (builders/tonco.py, builders/tonco_swap.py
-// + blocks/liquidity.py build_tonco_deposit_liquidity_core / blocks/swaps.py
-// build_tonco_swap_core). See host/HostImpls.h for the internal registry surface.
 #include "host/HostImpls.h"
 
 #include "host/BlockViews.h"
+#include "host/DexRecords.h"
 #include "host/DexPton.h"
+#include "host/HostAdapter.h"
 #include "host/HostCommon.h"
 
 #include "BlockTree.h"
@@ -12,6 +11,7 @@
 #include "ExprRuntime.h"
 #include "MsgParse.h"
 #include "parse/PSlice.h"
+#include "btypes_gen.h"
 
 #include "common/refint.h"
 #include "vm/cellslice.h"
@@ -35,36 +35,29 @@ constexpr std::uint32_t kV3Swap = 0xa7fb58f8;         // POOLV3_SWAP (swap reque
 constexpr std::uint32_t kV3PayTo = 0xa1daa96d;        // ROUTERV3_PAY_TO
 constexpr std::uint32_t kJettonTransfer = 0x0f8a7ea5;
 constexpr std::uint32_t kPTonTransfer = 0x01f3835d;
-// blocks/liquidity.py TONCO_ROUTER_WTTON_WALLET_ADDR, the router's own wTON
-// jetton wallet. A PayTo slot naming it is a native-TON leg, not a jetton one.
+// Router's own wTON jetton wallet. A PayTo slot naming it is a native-TON
+// leg, not a jetton one.
 constexpr const char *kRouterWttonWallet =
     "0:871DA9215B14902166F0EA2A16DB56278D528108377F8158C5F4CCFDFDD22E17";
 
-// open_ref_cell is shared with the stonfi and dedust parsers.
-
-// get_jetton_wallet(addr) -> Asset (pton master -> TON), or Null when the
-// wallet lookup misses (caller decides fallback).
+// jetton_wallet lookup -> Asset (pTON master -> TON), or Null on a miss
+// (caller decides fallback).
 Value wallet_asset(BuildEnv &env, const std::string &addr) {
   Value jw = env.lookups->get("jetton_wallet", std::vector<Value>{Value::make_str(addr)});
   return wallet_jetton_asset(jw, /*pton_conversion=*/true);
 }
 
-// acc_str is shared with the stonfi core through host/BlockViews.h.
-
-// messages/swaps.py ToncoPoolV3Swap: the core reads only source_wallet (the
-// two ref cells carry amounts/payloads the core does not touch here).
-// ABI-faithful ToncoRouterV3SwapSourceWallet parser (only source_wallet is used).
+// Only source_wallet is used from the v3 swap body.
 td::Result<Value> parse_v3_swap_source_wallet(const td::Ref<vm::Cell> &body) {
   TRY_RESULT(v, parse_message_body("ToncoRouterV3SwapSourceWallet", body));
   return *v.field("source_wallet");
 }
 
-// messages/swaps.py ToncoRouterV3PayTo: exit_code + the coinsinfo maybe-ref
-// (amount0/jetton0/amount1/jetton1). The conditional swap/burn info cells are
-// unused by the core.
+// PayTo: exit_code + the coinsinfo maybe-ref (amount0/jetton0/amount1/jetton1).
+// Conditional swap/burn info cells are unused by the core.
 struct RouterPayTo {
   std::uint32_t exit_code{0};
-  td::RefInt256 amount0, amount1;  // null == None
+  td::RefInt256 amount0, amount1;  // null == absent
   Value jetton0, jetton1;          // account or Null
   Value receiver0, receiver1;      // account or Null (withdraw fallback legs only)
 };
@@ -100,10 +93,8 @@ td::Result<RouterPayTo> parse_v3_pay_to(const td::Ref<vm::Cell> &body) {
   return pt;
 }
 
-// messages/swaps.py ToncoPoolV3SwapPayload.get_target_wallets_and_amounts_
-// recursive: walk the nested in-transfer payload cells collecting
-// (target_wallet, min_out) pairs. Depth-guarded (malformed/adversarial nesting
-// must not unbound-recurse); a bad inner tail is swallowed (Python try/except).
+// Walk nested in-transfer payload cells collecting (target_wallet, min_out)
+// pairs. Depth-guarded against unbounded nesting; a bad inner tail is swallowed.
 constexpr int kMaxPayloadDepth = 64;
 void collect_payload_targets(vm::CellSlice cs, std::vector<std::pair<std::string, td::RefInt256>> &out,
                              int depth) {
@@ -128,7 +119,7 @@ void collect_payload_targets(vm::CellSlice cs, std::vector<std::pair<std::string
   }
   td::RefInt256 min_out = r_min.move_as_ok();
   if (auto ts = acc_str(target)) {
-    out.emplace_back(*ts, min_out.is_null() ? td::make_refint(0) : min_out);
+    out.emplace_back(*ts, or_zero(std::move(min_out)));
   }
   auto r_rcpt = load_address_py(cs);  // recipient
   if (r_rcpt.is_error()) {
@@ -147,31 +138,24 @@ void collect_payload_targets(vm::CellSlice cs, std::vector<std::pair<std::string
         }
       }
     } catch (...) {
-      // Python swallows inner-payload errors.
+      // Inner-payload errors are swallowed.
     }
   }
 }
 
 }  // namespace
 
-// builders/tonco.py _tonco_deposit_liquidity_data -> blocks/liquidity.py
-// build_tonco_deposit_liquidity_core. Python wraps the whole body in try/except
-// returning None, so any parse/nav failure is a Null reject here. Deterministic
-// (input transfer read via btype/children_blocks/data, not event_nodes[0]).
+// Any parse/nav failure is a Null reject. Input transfer is read via
+// btype/children_blocks/data, not event_nodes[0].
 EvalResult tonco_deposit_liquidity_data(BuildEnv &env, const std::vector<Value> &args) {
-  if (args.size() != 1 || args[0].t != VType::List || args[0].items->empty()) {
+  auto decoded = decode_consumed_or_none(args);
+  if (!decoded) {
+    if (args[0].t == VType::List && !args[0].items->empty()) {
+      return host_reject("empty consumed");
+    }
     return host_reject("bad arguments");
   }
-  std::vector<const Block *> consumed;
-  for (const Value &v : *args[0].items) {
-    const Block *b = as_block(v);
-    if (b != nullptr) {
-      consumed.push_back(b);
-    }
-  }
-  if (consumed.empty()) {
-    return host_reject("empty consumed");
-  }
+  std::vector<const Block *> consumed = std::move(decoded->blocks);
   const Block *block = consumed.front();
 
   // anchor <- FundAccount <- input transfer.
@@ -180,14 +164,11 @@ EvalResult tonco_deposit_liquidity_data(BuildEnv &env, const std::vector<Value> 
 
   const Block *nft_mint = nullptr;
   for (const Block *b : consumed) {
-    if (b->btype == "nft_mint") {
+    if (b->btype == mch::btype::kNftMint) {
       nft_mint = b;
       break;
     }
   }
-  // (excess_transfers are gathered below by btype near the record assembly.)
-
-  // add_liquidity body.
   auto r_body = block_body(block);
   if (r_body.is_error()) {
     return host_reject("add_liquidity body");
@@ -220,7 +201,6 @@ EvalResult tonco_deposit_liquidity_data(BuildEnv &env, const std::vector<Value> 
   std::int64_t tick_upper = acs.fetch_long(24);
   bool is_first = !new_amount0.is_null() && new_amount0->sgn() > 0;
 
-  // nft position init.
   Value lp_tokens_minted = Value::null();
   Value nft_index = Value::null();
   Value nft_address = Value::null();
@@ -270,8 +250,8 @@ EvalResult tonco_deposit_liquidity_data(BuildEnv &env, const std::vector<Value> 
   }
   const Block *jetton_notify_block = nullptr;
   Value sender_wallet = Value::null();
-  if (input_transfer->btype == "jetton_transfer") {
-    jetton_notify_block = find_call(input_transfer->children_blocks, kJettonNotify);
+  if (input_transfer->btype == mch::btype::kJettonTransfer) {
+    jetton_notify_block = first_call(input_transfer->children_blocks, kJettonNotify);
     sender_wallet = data_field(input_transfer, "sender_wallet");
   } else if (is_call_op(input_transfer, kJettonNotify)) {
     jetton_notify_block = input_transfer;
@@ -318,7 +298,7 @@ EvalResult tonco_deposit_liquidity_data(BuildEnv &env, const std::vector<Value> 
     return host_reject("fund_account other wallet parse");
   }
   Value other = r_other.move_as_ok();
-  // get_other_jetton_wallet(): raises if not an Address -> reject.
+  // Other wallet must be a present Account; addr_none rejects.
   if (other.t != VType::Account || other.addr_none) {
     return host_reject("fund_account other wallet addr_none");
   }
@@ -330,17 +310,14 @@ EvalResult tonco_deposit_liquidity_data(BuildEnv &env, const std::vector<Value> 
   }
   std::string router_wallet = *jnm->source;
 
-  // first asset (router wallet): null lookup -> REJECT, like the two branches
-  // above. Reference falls back to TON here, which publishes a missing counterparty
-  // wallet as a TON deposit, the one site in the engine that answers a lookup
-  // miss with a plausible WRONG value. A null record is what
-  // tonco_liquidity.mch's `reject when r == null` already gates on, so this
-  // drops only this action and leaves the rest of the trace classified.
+  // First asset (router wallet): a null lookup rejects. Falling back to TON
+  // would publish a missing counterparty wallet as a TON deposit. A null
+  // record drops only this action and leaves the rest of the trace classified.
   Value first_asset = wallet_asset(env, router_wallet);
   if (first_asset.is_null()) {
     return host_reject("router wallet jetton_wallet lookup miss (jetton_wallet=" + router_wallet + ")");
   }
-  // second asset (other wallet): null lookup -> stays None.
+  // second asset (other wallet): null lookup stays null.
   Value second_asset = wallet_asset(env, other_wallet);
 
   Value amount_1, asset_1, amount_2, asset_2, sw1, sw2;
@@ -360,9 +337,8 @@ EvalResult tonco_deposit_liquidity_data(BuildEnv &env, const std::vector<Value> 
     sw2 = sender_wallet;
   }
 
-  // Excesses are the up-to-two jetton_transfer children of ROUTERV3_PAY_TO,
-  // each carrying an asset and amount. A pTON child makes it a TON
-  // excess, else the leg's `.data`. No corpus coverage; ported for parity.
+  // Excesses are the up-to-two jetton_transfer children of ROUTERV3_PAY_TO.
+  // A pTON child makes it a TON excess, else the leg's data.
   std::vector<Value> excesses;
   {
     const Block *pay_to = nullptr;
@@ -373,27 +349,20 @@ EvalResult tonco_deposit_liquidity_data(BuildEnv &env, const std::vector<Value> 
       int n = 0;
       for (const Block *b : consumed) {
         if (n >= 2) break;
-        if (b->btype != "jetton_transfer" || b->previous_block != pay_to) continue;
+        if (b->btype != mch::btype::kJettonTransfer || b->previous_block != pay_to) continue;
         n++;
-        const Block *pton = find_call(b->next_blocks, kPTonTransfer);
+        const Block *pton = first_call(b->next_blocks, kPTonTransfer);
         Value ex_amount, ex_asset;
         if (pton != nullptr) {
-          td::RefInt256 ta;
-          auto rb = block_body(pton);
-          if (rb.is_ok()) {
-            auto rp = parse_message_body("PTonTransfer", rb.ok());
-            if (rp.is_ok()) {
-              const Value *tav = rp.ok().field("ton_amount");
-              if (tav != nullptr && (tav->t == VType::Int || tav->t == VType::Amount)) ta = tav->num;
-            }
-          }
+          auto parsed = pton_ton_amount(pton);
+          td::RefInt256 ta = parsed.is_ok() ? parsed.move_as_ok() : td::RefInt256();
           ex_amount = amount_or_zero(ta);
           ex_asset = Value::make_asset_ton();
         } else {
           ex_amount = data_field(b, "amount");
           ex_asset = data_field(b, "asset");
         }
-        excesses.push_back(Value::make_list(std::vector<Value>{ex_asset, ex_amount}));
+        excesses.push_back(excess_pair(std::move(ex_asset), std::move(ex_amount)));
       }
     }
   }
@@ -421,25 +390,18 @@ EvalResult tonco_deposit_liquidity_data(BuildEnv &env, const std::vector<Value> 
   return rt_ok(Value::make_obj(std::move(d)));
 }
 
-// builders/tonco.py _tonco_withdraw_payouts -> blocks/liquidity.py
-// resolve_tonco_withdraw_payouts. The payout half of the tonco withdraw build;
-// specs/tonco_liquidity.mch computes the scalar half declaratively from three
-// parsed bodies, so only the three things the DSL cannot express live here: the
-// unparseable-by-schema PayTo body (Maybe ^Cell coinsinfo + exit_code-conditional
-// tails), the jetton-wallet lookup behind a leg with no transfer, and the
-// leg->slot reordering that depends on both. Python wraps the whole body in
-// try/except returning None, so any parse/nav failure is a Null reject here.
+// Payout half of the withdraw build: PayTo body (Maybe ^Cell coinsinfo +
+// exit_code-conditional tails), the jetton-wallet lookup behind a no-transfer
+// leg, and the leg->slot reorder. Any parse/nav failure is a Null reject.
 EvalResult tonco_withdraw_payouts(BuildEnv &env, const std::vector<Value> &args) {
-  if (args.size() != 1 || args[0].t != VType::List || args[0].items->empty()) {
+  auto decoded = decode_consumed_or_none(args);
+  if (!decoded) {
+    if (args[0].t == VType::List && !args[0].items->empty()) {
+      return host_reject("no ROUTERV3_PAY_TO in consumed");
+    }
     return host_reject("bad arguments");
   }
-  std::vector<const Block *> consumed;
-  for (const Value &v : *args[0].items) {
-    const Block *b = as_block(v);
-    if (b != nullptr) {
-      consumed.push_back(b);
-    }
-  }
+  std::vector<const Block *> consumed = std::move(decoded->blocks);
   const Block *pay_to = nullptr;
   for (const Block *b : consumed) {
     if (is_call_op(b, kV3PayTo)) { pay_to = b; break; }
@@ -457,10 +419,9 @@ EvalResult tonco_withdraw_payouts(BuildEnv &env, const std::vector<Value> &args)
   }
   RouterPayTo pt = r_pt.move_as_ok();
 
-  // The two slots the pool declares, in asset0/asset1 order. A slot whose jetton
-  // wallet IS the router's wTON wallet is nulled, that leg is native TON. The
-  // reference loop dereferences the wallet unconditionally, so a slot with no
-  // jetton address raises there; here it rejects.
+  // The two slots the pool declares, in asset0/asset1 order. A slot whose
+  // jetton wallet is the router's wTON wallet is nulled (native TON). A slot
+  // with no jetton address rejects.
   struct Slot { Value amount, wallet, receiver; };
   Slot slots[2];
   td::RefInt256 slot_amounts[2] = {pt.amount0, pt.amount1};
@@ -477,13 +438,13 @@ EvalResult tonco_withdraw_payouts(BuildEnv &env, const std::vector<Value> &args)
   }
 
   // The up-to-two jetton_transfer legs hanging off the PayTo, in consumption
-  // order, padded to the reference fixed arity of two.
+  // order, padded to a fixed arity of two.
   const Block *legs[2] = {nullptr, nullptr};
   {
     int n = 0;
     for (const Block *b : consumed) {
       if (n >= 2) break;
-      if (b->btype != "jetton_transfer" || b->previous_block != pay_to) continue;
+      if (b->btype != mch::btype::kJettonTransfer || b->previous_block != pay_to) continue;
       legs[n++] = b;
     }
   }
@@ -492,17 +453,10 @@ EvalResult tonco_withdraw_payouts(BuildEnv &env, const std::vector<Value> &args)
   Leg out_legs[2];
   for (int i = 0; i < 2; i++) {
     if (legs[i] != nullptr) {
-      const Block *pton = find_call(legs[i]->next_blocks, kPTonTransfer);
+      const Block *pton = first_call(legs[i]->next_blocks, kPTonTransfer);
       if (pton != nullptr) {
-        td::RefInt256 ta;
-        auto pb = block_body(pton);
-        if (pb.is_ok()) {
-          auto rp = parse_message_body("PTonTransfer", pb.ok());
-          if (rp.is_ok()) {
-            const Value *tav = rp.ok().field("ton_amount");
-            if (tav != nullptr && (tav->t == VType::Int || tav->t == VType::Amount)) ta = tav->num;
-          }
-        }
+        auto parsed = pton_ton_amount(pton);
+        td::RefInt256 ta = parsed.is_ok() ? parsed.move_as_ok() : td::RefInt256();
         out_legs[i].amount = amount_or_zero(ta);
         out_legs[i].asset = Value::make_asset_ton();
       } else {
@@ -515,7 +469,7 @@ EvalResult tonco_withdraw_payouts(BuildEnv &env, const std::vector<Value> &args)
     } else {
       // No transfer for this slot: take what the router declared and ask the
       // interface repo whether that wallet is pTON (-> TON) or a jetton. A
-      // lookup miss leaves the asset Null, exactly like the reference.
+      // lookup miss leaves the asset Null.
       const Message *pm = block_msg(pay_to);
       out_legs[i].amount = slots[i].amount;
       out_legs[i].asset = Value::null();
@@ -529,9 +483,9 @@ EvalResult tonco_withdraw_payouts(BuildEnv &env, const std::vector<Value> &args)
   }
 
   // Reorder into the pool's asset0/asset1 order: leg 1 is the one whose dex
-  // jetton wallet is the asset0 wallet. (The reference logs when the swap does
-  // not fix it and carries on; nothing observable follows from the log.)
-  if (acc_str(out_legs[0].dex_jetton_wallet) != acc_str(slots[0].wallet)) {
+  // jetton wallet is the asset0 wallet. A failed reorder is not observable.
+  if (!same_account(account_from_opt(acc_str(out_legs[0].dex_jetton_wallet)),
+                    account_from_opt(acc_str(slots[0].wallet)))) {
     std::swap(out_legs[0], out_legs[1]);
   }
 
@@ -552,8 +506,8 @@ EvalResult tonco_withdraw_payouts(BuildEnv &env, const std::vector<Value> &args)
 
 namespace {
 
-// A jetton in/out leg's asset with the tonco pton conversion: a jetton master
-// in the pton set becomes TON; otherwise the block's `.data['asset']` is kept.
+// Jetton in/out-leg asset with pTON conversion: a pTON master becomes TON;
+// otherwise the block's asset field is kept.
 Value tonco_leg_asset(const Value &asset_v) {
   if (asset_v.t == VType::Asset && asset_v.has_jetton && is_pton_master(asset_v.str)) {
     return Value::make_asset_ton();
@@ -561,8 +515,7 @@ Value tonco_leg_asset(const Value &asset_v) {
   return asset_v;
 }
 
-// builders/tonco_swap.py _derive_parts: reconstruct the reference label roles from
-// the consumed set (cyclic bodies bind no captures).
+// Reconstruct label roles from the consumed set (cyclic bodies bind no captures).
 struct ToncoParts {
   const Block *anchor{nullptr};
   const Block *in_transfer{nullptr};
@@ -593,7 +546,8 @@ ToncoParts derive_tonco_parts(const std::vector<const Block *> &consumed) {
   std::stable_sort(p.peer_swaps.begin(), p.peer_swaps.end(), by_lt);
   const Block *prev = p.anchor->previous_block;
   if (prev != nullptr) {
-    p.in_transfer = (prev->btype == "jetton_transfer") ? prev : prev->previous_block;
+    p.in_transfer =
+        (prev->btype == mch::btype::kJettonTransfer) ? prev : prev->previous_block;
   }
   auto leads_to_hop = [&](const Block *b) -> bool {
     for (Block *c : b->next_blocks) {
@@ -612,7 +566,7 @@ ToncoParts derive_tonco_parts(const std::vector<const Block *> &consumed) {
   };
   for (const Block *b : consumed) {
     if (b->previous_block != nullptr && payout_ids.count(b->previous_block) &&
-        (b->btype == "jetton_transfer" || is_call_op(b, kJettonTransfer))) {
+        (b->btype == mch::btype::kJettonTransfer || is_call_op(b, kJettonTransfer))) {
       if (!leads_to_hop(b)) p.out_transfers.push_back(b);  // intermediates unused downstream
     }
   }
@@ -622,21 +576,18 @@ ToncoParts derive_tonco_parts(const std::vector<const Block *> &consumed) {
 
 }  // namespace
 
-// builders/tonco_swap.py _tonco_swap_data -> blocks/swaps.py build_tonco_swap_core
-// over the consumed list. The jetton legs are
-// read by btype/`.data` (swaps.py:856/926), the pTON in-leg from a single-leaf
-// call message. Multi-hop peer_swaps + the failed-swap recursive-payload
-// fallback are supported; the corpus covers only single-hop swaps.
+// Jetton legs are read by btype/data; the pTON in-leg from a single-leaf call
+// message. Multi-hop peer_swaps and the failed-swap recursive-payload fallback
+// are supported; the corpus covers only single-hop swaps.
 EvalResult tonco_swap_data(BuildEnv &env, const std::vector<Value> &args) {
-  if (args.size() != 1 || args[0].t != VType::List) {
+  auto decoded = decode_consumed_or_none(args);
+  if (!decoded) {
+    if (args[0].t == VType::List) {
+      return host_reject("empty consumed");
+    }
     return host_reject("bad arguments");
   }
-  std::vector<const Block *> consumed;
-  for (const Value &v : *args[0].items) {
-    const Block *b = as_block(v);
-    if (b != nullptr) consumed.push_back(b);
-  }
-  if (consumed.empty()) return host_reject("empty consumed");
+  std::vector<const Block *> consumed = std::move(decoded->blocks);
   ToncoParts parts = derive_tonco_parts(consumed);
 
   auto by_lt = [](const Block *a, const Block *b) { return a->min_lt < b->min_lt; };
@@ -685,10 +636,9 @@ EvalResult tonco_swap_data(BuildEnv &env, const std::vector<Value> &args) {
   std::stable_sort(swap_steps.begin(), swap_steps.end(),
                    [](const Step &a, const Step &b) { return a.min_lt < b.min_lt; });
 
-  // --- incoming transfer ---
   Value sender, in_asset, in_amount, in_source, in_source_jw, in_dest, in_dest_jw;
   td::Ref<vm::Cell> in_payload;
-  if (in_transfer_block->btype == "jetton_transfer") {
+  if (in_transfer_block->btype == mch::btype::kJettonTransfer) {
     in_asset = tonco_leg_asset(data_field(in_transfer_block, "asset"));
     sender = data_field(in_transfer_block, "sender");
     in_amount = data_field(in_transfer_block, "amount");
@@ -700,7 +650,7 @@ EvalResult tonco_swap_data(BuildEnv &env, const std::vector<Value> &args) {
     if (fp.t == VType::Cell && fp.cell.not_null()) in_payload = fp.cell;
   } else {
     const Message *m = block_msg(in_transfer_block);
-    if (m == nullptr) return host_reject("in_transfer has no message");  // except -> None
+    if (m == nullptr) return host_reject("in_transfer has no message");
     td::RefInt256 amt = m->value ? td::make_refint(*m->value) : td::RefInt256();
     if (m->opcode32() && *m->opcode32() == kPTonTransfer) {
       auto rb = block_body(in_transfer_block);
@@ -729,12 +679,11 @@ EvalResult tonco_swap_data(BuildEnv &env, const std::vector<Value> &args) {
     in_dest_jw = account_from_opt(m->destination);
   }
 
-  // --- outgoing transfer ---
   const Block *out_transfer = parts.out_transfers.empty() ? nullptr : parts.out_transfers.back();
   if (out_transfer == nullptr) {
     return host_reject("no out_transfer (payouts=" + std::to_string(all_payouts.size()) + ")");
   }
-  if (out_transfer->btype != "jetton_transfer") {
+  if (out_transfer->btype != mch::btype::kJettonTransfer) {
     // Unsupported out type. The out leg is found by btype, so a raw
     // call_contract here means the jetton_transfer matcher rejected that leg
     // (missing wallet interface) rather than the trace having an odd shape.
@@ -749,14 +698,14 @@ EvalResult tonco_swap_data(BuildEnv &env, const std::vector<Value> &args) {
   Value out_source = data_field(out_transfer, "sender");
   Value out_dest = data_field(out_transfer, "receiver");
 
-  // --- peer_swaps (multi-hop only; empty for single-hop corpus) ---
+  // peer_swaps (multi-hop only; empty for single-hop corpus)
   auto payout_assets = [](const RouterPayTo &pt) {
     std::vector<std::pair<td::RefInt256, Value>> a;
     if (!pt.amount0.is_null() && pt.jetton0.t == VType::Account) a.emplace_back(pt.amount0, pt.jetton0);
     if (!pt.amount1.is_null() && pt.jetton1.t == VType::Account) a.emplace_back(pt.amount1, pt.jetton1);
     std::stable_sort(a.begin(), a.end(), [](const auto &x, const auto &y) {
-      td::RefInt256 xa = x.first.is_null() ? td::make_refint(0) : x.first;
-      td::RefInt256 ya = y.first.is_null() ? td::make_refint(0) : y.first;
+      td::RefInt256 xa = or_zero(x.first);
+      td::RefInt256 ya = or_zero(y.first);
       return td::cmp(xa, ya) > 0;  // reverse
     });
     return a;
@@ -791,7 +740,7 @@ EvalResult tonco_swap_data(BuildEnv &env, const std::vector<Value> &args) {
     }
   }
 
-  // --- destination asset / min_out (+ failed-swap recursive-payload fallback) ---
+  // destination asset / min_out (+ failed-swap recursive-payload fallback)
   Value destination_asset = out_asset;
   Value min_out_amount = out_amount;
   if (!ok && !swap_steps.empty() && in_payload.not_null()) {

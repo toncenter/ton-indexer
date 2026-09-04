@@ -68,7 +68,7 @@ TEST(TraceAssembler, full_trace_is_ordered_and_owned) {
 
   ASSERT_EQ(2u, first.nodes.size());
   ASSERT_EQ(mch::EmuFinality::confirmed, first.nodes[1].finality);
-  ASSERT_TRUE(vm::std_boc_deserialize(first.nodes[1].tx_boc).is_ok());
+  ASSERT_TRUE(vm::std_boc_deserialize(*first.nodes[1].tx_boc).is_ok());
 
   auto second_result = assembler.build_full_trace(trace, "trace-id", lookup_context);
   ASSERT_TRUE(second_result.is_ok());

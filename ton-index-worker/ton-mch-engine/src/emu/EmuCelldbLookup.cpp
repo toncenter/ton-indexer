@@ -3,9 +3,13 @@
 #include "EmuInterfaces.h"
 #include "EmuJvaultChain.h"
 
+#include "smc-interfaces/Multisig.h"
 #include "smc-interfaces/NominatorPool.h"
+#include "smc-interfaces/NftSale.h"
+#include "smc-interfaces/NftSaleV4.h"
 #include "smc-interfaces/Tokens.h"
 
+#include <map>
 #include <utility>
 
 namespace mch {
@@ -42,13 +46,32 @@ const schema::AccountState *EmuCelldbTier2::account(const block::StdAddress &add
 }
 
 Value EmuCelldbTier2::resolve(const std::string &kind, const block::StdAddress &addr) {
-  // JVault uses raw data-cell reads rather than a V2 detector result.
-  if (kind == "jvault_assets") {
-    return jvault_assets(addr);
-  }
-  // Reject unsupported kinds before reading an account.
-  if (kind != "jetton_wallet" && kind != "dedust_pool" && kind != "nominator_pool") {
+  enum class Handler {
+    JvaultAssets,
+    JettonWallet,
+    DedustPool,
+    NominatorPool,
+    NftItem,
+    NftAuction,
+    NftSale,
+    MultisigOrder,
+  };
+  static const std::map<std::string, Handler> handlers = {
+      {"jvault_assets", Handler::JvaultAssets},
+      {"jetton_wallet", Handler::JettonWallet},
+      {"dedust_pool", Handler::DedustPool},
+      {"nominator_pool", Handler::NominatorPool},
+      {"nft_item", Handler::NftItem},
+      {"nft_auction", Handler::NftAuction},
+      {"nft_sale", Handler::NftSale},
+      {"multisig_order", Handler::MultisigOrder},
+  };
+  auto handler = handlers.find(kind);
+  if (handler == handlers.end()) {
     return Value::null();
+  }
+  if (handler->second == Handler::JvaultAssets) {
+    return jvault_assets(addr);
   }
 
   const schema::AccountState *st = account(addr);
@@ -56,32 +79,84 @@ Value EmuCelldbTier2::resolve(const std::string &kind, const block::StdAddress &
     return Value::null();
   }
 
-  // Run the scanner detector and render its V2 result through the tier-1 path.
   // Detectors that execute get-methods require config.
   std::optional<schema::BlockchainInterfaceV2> iface;
-  if (kind == "jetton_wallet") {
-    if (config_ == nullptr) {
-      return Value::null();
+  switch (handler->second) {
+    case Handler::NftItem: {
+      if (config_ == nullptr) {
+        return Value::null();
+      }
+      auto r = NftItemDetectorR::detect(addr, st->code, st->data, *shard_states_, config_);
+      if (r.is_ok()) {
+        iface = to_v2(r.move_as_ok());
+      }
+      break;
     }
-    auto r = JettonWalletDetectorR::detect(addr, st->code, st->data, *shard_states_, config_);
-    if (r.is_ok()) {
-      iface = to_v2(r.move_as_ok());
+    case Handler::NftAuction: {
+      if (config_ == nullptr) {
+        return Value::null();
+      }
+      auto r = GetGemsNftAuction::detect(addr, st->code, st->data, config_);
+      if (r.is_ok()) {
+        iface = to_v2(r.move_as_ok());
+      }
+      break;
     }
-  } else if (kind == "dedust_pool") {
-    if (config_ == nullptr) {
-      return Value::null();
+    case Handler::JettonWallet: {
+      if (config_ == nullptr) {
+        return Value::null();
+      }
+      auto r = JettonWalletDetectorR::detect(addr, st->code, st->data, *shard_states_, config_);
+      if (r.is_ok()) {
+        iface = to_v2(r.move_as_ok());
+      }
+      break;
     }
-    auto r = DedustPoolDetector::detect(addr, st->code, st->data, *shard_states_, config_);
-    if (r.is_ok()) {
-      iface = to_v2(r.move_as_ok());
+    case Handler::DedustPool: {
+      if (config_ == nullptr) {
+        return Value::null();
+      }
+      auto r = DedustPoolDetector::detect(addr, st->code, st->data, *shard_states_, config_);
+      if (r.is_ok()) {
+        iface = to_v2(r.move_as_ok());
+      }
+      break;
     }
-  } else if (kind == "nominator_pool") {
-    auto r = NominatorPoolContract::detect(addr, st->code, st->data);
-    if (r.is_ok()) {
-      iface = to_v2(r.move_as_ok());
+    case Handler::NominatorPool: {
+      auto r = NominatorPoolContract::detect(addr, st->code, st->data);
+      if (r.is_ok()) {
+        iface = to_v2(r.move_as_ok());
+      }
+      break;
     }
+    case Handler::NftSale: {
+      if (config_ == nullptr) {
+        return Value::null();
+      }
+      auto r = GetGemsNftFixPriceSale::detect(addr, st->code, st->data, config_);
+      if (r.is_ok()) {
+        iface = to_v2(r.move_as_ok());
+        break;
+      }
+      auto r4 = GetGemsNftFixPriceSaleV4::detect(addr, st->code, st->data, config_);
+      if (r4.is_ok()) {
+        iface = to_v2(r4.move_as_ok());
+      }
+      break;
+    }
+    case Handler::MultisigOrder: {
+      if (config_ == nullptr) {
+        return Value::null();
+      }
+      auto r = MultisigOrder::detect(addr, st->code, st->data, *shard_states_, config_);
+      if (r.is_ok()) {
+        iface = to_v2(r.move_as_ok());
+      }
+      break;
+    }
+    case Handler::JvaultAssets:
+      break;
   }
-  // Unsupported interface kinds remain tier-1-only.
   if (!iface) {
     return Value::null();
   }
@@ -112,25 +187,22 @@ Value EmuCelldbTier2::jvault_assets(const block::StdAddress &stake_wallet) {
 
   auto r_lock = parse_jvault_pool_lock_wallet(pool->data);
   if (r_lock.is_error()) {
-    // Python's KeyError on ['lock_wallet_address'] -> outer except -> None.
     return Value::null();
   }
-  // Resolve the lock wallet through fetch() to share memo state.
   Value jw = fetch("jetton_wallet", {Value::make_str(r_lock.move_as_ok())});
   const Value *jetton = jw.field("jetton");
   if (jetton == nullptr || jetton->t != VType::Str) {
-    return Value::null();  // get_jetton_wallet None -> .jetton raises -> None
+    return Value::null();
   }
-  auto jn = normalize_raw_address(jetton->str);
-  return jvault_record(parts.staking_pool, Value::make_asset_jetton(jn ? *jn : jetton->str),
+  auto master = canonicalize_or_passthrough(jetton->str);
+  return jvault_record(parts.staking_pool, Value::make_asset_jetton(master),
                        std::move(jvault_asset));
 }
 
 Value EmuCelldbTier2::fetch(const std::string &kind, const std::vector<Value> &args) {
   if (shard_states_ == nullptr || shard_states_->empty()) {
-    return Value::null();  // listener-emulated trace: no states to read
+    return Value::null();
   }
-  // One argument - str address or a non-addr_none Account
   if (args.size() != 1 ||
       !(args[0].t == VType::Str ||
         (args[0].t == VType::Account && !args[0].addr_none))) {
@@ -155,7 +227,6 @@ Value EmuCelldbTier2::fetch(const std::string &kind, const std::vector<Value> &a
   } catch (...) {
     v = Value::null();
   }
-  // Memoize misses so fixpoint rounds do not repeat failed detection.
   value_memo_.emplace(key, v);
   return v;
 }
