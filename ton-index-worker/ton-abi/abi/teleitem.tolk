@@ -1,4 +1,4 @@
-tolk 1.0
+tolk 1.4
 
 struct TeleitemAuctionConfig {
     beneficiary_address: any_address;
@@ -17,23 +17,6 @@ struct (0x487a8e81) TeleitemStartAuction {
 
 type AllowedMessage = TeleitemStartAuction
 
-struct Storage {
-    dummy: uint1
-}
-
 contract TeleitemMessages {
     incomingMessages: AllowedMessage
-    storage: Storage
-}
-
-fun onInternalMessage(in: InMessage) {
-    val msg = lazy AllowedMessage.fromSlice(in.body);
-    match (msg) {
-        TeleitemStartAuction => {
-            assert (in.body.isEmpty()) throw 0xFFFF
-        }
-        else => {
-            assert (in.body.isEmpty()) throw 0xFFFF
-        }
-    }
 }

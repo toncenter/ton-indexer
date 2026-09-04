@@ -1,4 +1,4 @@
-tolk 1.0
+tolk 1.4
 
 struct (0b1) JettonForwardPayloadRef {
     value: cell;
@@ -76,41 +76,6 @@ struct (0x00000015) MinterJettonMint {
 
 type AllowedMessage = JettonTransfer | JettonInternalTransfer | JettonInternalTransferEthena | JettonBurn | JettonNotify | JettonMint | MinterJettonMint
 
-struct Storage {
-    dummy: uint1
-}
-
 contract JettonMessages {
     incomingMessages: AllowedMessage
-    storage: Storage
-}
-
-fun onInternalMessage(in: InMessage) {
-    val msg = lazy AllowedMessage.fromSlice(in.body);
-    match (msg) {
-        JettonTransfer => {
-            assert (in.body.isEmpty()) throw 0xFFFF
-        }
-        JettonInternalTransfer => {
-            assert (in.body.isEmpty()) throw 0xFFFF
-        }
-        JettonInternalTransferEthena => {
-            assert (in.body.isEmpty()) throw 0xFFFF
-        }
-        JettonBurn => {
-            assert (in.body.isEmpty()) throw 0xFFFF
-        }
-        JettonNotify => {
-            assert (in.body.isEmpty()) throw 0xFFFF
-        }
-        JettonMint => {
-            assert (in.body.isEmpty()) throw 0xFFFF
-        }
-        MinterJettonMint => {
-            assert (in.body.isEmpty()) throw 0xFFFF
-        }
-        else => {
-            assert (in.body.isEmpty()) throw 0xFFFF
-        }
-    }
 }

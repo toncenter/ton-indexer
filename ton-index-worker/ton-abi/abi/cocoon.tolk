@@ -1,4 +1,4 @@
-tolk 1.0
+tolk 1.4
 
 @overflow1023_policy("suppress")
 struct (0xa040ad28) CocoonPayoutPayload {
@@ -110,68 +110,6 @@ struct (0xda068e78) CocoonOwnerClientWithdraw {
 
 type AllowedMessage = CocoonPayoutPayload | CocoonLastPayoutPayload | CocoonWorkerProxyRequest | CocoonClientProxyRequest | CocoonClientProxyRefundGranted | CocoonExtProxyPayoutRequest | CocoonChargePayload | CocoonGrantRefundPayload | CocoonExtClientTopUp | CocoonRegisterProxy | CocoonUnregisterProxy | CocoonOwnerClientRegister | CocoonOwnerClientChangeSecretHash | CocoonOwnerClientRequestRefund | CocoonOwnerClientIncreaseStake | CocoonOwnerClientWithdraw
 
-struct Storage {
-    dummy: uint1
-}
-
 contract CocoonMessages {
     incomingMessages: AllowedMessage
-    storage: Storage
-}
-
-fun onInternalMessage(in: InMessage) {
-    val msg = lazy AllowedMessage.fromSlice(in.body);
-    match (msg) {
-        CocoonPayoutPayload => {
-            assert (in.body.isEmpty()) throw 0xFFFF
-        }
-        CocoonLastPayoutPayload => {
-            assert (in.body.isEmpty()) throw 0xFFFF
-        }
-        CocoonWorkerProxyRequest => {
-            assert (in.body.isEmpty()) throw 0xFFFF
-        }
-        CocoonClientProxyRequest => {
-            assert (in.body.isEmpty()) throw 0xFFFF
-        }
-        CocoonClientProxyRefundGranted => {
-            assert (in.body.isEmpty()) throw 0xFFFF
-        }
-        CocoonExtProxyPayoutRequest => {
-            assert (in.body.isEmpty()) throw 0xFFFF
-        }
-        CocoonChargePayload => {
-            assert (in.body.isEmpty()) throw 0xFFFF
-        }
-        CocoonGrantRefundPayload => {
-            assert (in.body.isEmpty()) throw 0xFFFF
-        }
-        CocoonExtClientTopUp => {
-            assert (in.body.isEmpty()) throw 0xFFFF
-        }
-        CocoonRegisterProxy => {
-            assert (in.body.isEmpty()) throw 0xFFFF
-        }
-        CocoonUnregisterProxy => {
-            assert (in.body.isEmpty()) throw 0xFFFF
-        }
-        CocoonOwnerClientRegister => {
-            assert (in.body.isEmpty()) throw 0xFFFF
-        }
-        CocoonOwnerClientChangeSecretHash => {
-            assert (in.body.isEmpty()) throw 0xFFFF
-        }
-        CocoonOwnerClientRequestRefund => {
-            assert (in.body.isEmpty()) throw 0xFFFF
-        }
-        CocoonOwnerClientIncreaseStake => {
-            assert (in.body.isEmpty()) throw 0xFFFF
-        }
-        CocoonOwnerClientWithdraw => {
-            assert (in.body.isEmpty()) throw 0xFFFF
-        }
-        else => {
-            assert (in.body.isEmpty()) throw 0xFFFF
-        }
-    }
 }

@@ -1,4 +1,4 @@
-tolk 1.0
+tolk 1.4
 
 struct (0b00) AssetTon {}
 
@@ -122,50 +122,6 @@ struct (0xcb03bfaf) CoffeeStakingPositionWithdraw2 {
 
 type AllowedMessage = CoffeeCreateVault | CoffeeSwapEvent | CoffeeCreateLiquidityDepositoryRequest | CoffeeDepositLiquiditySuccessfulEvent | CoffeeLiquidityWithdrawalEvent | CoffeeCreatePoolCreatorRequest | CoffeeCreatePoolRequest | CoffeeMevProtectFailedSwap | CoffeeStakingClaimRewards | CoffeeStakingPositionWithdraw2
 
-struct Storage {
-    dummy: uint1
-}
-
 contract CoffeeMessages {
     incomingMessages: AllowedMessage
-    storage: Storage
-}
-
-fun onInternalMessage(in: InMessage) {
-    val msg = lazy AllowedMessage.fromSlice(in.body);
-    match (msg) {
-        CoffeeCreateVault => {
-            assert (in.body.isEmpty()) throw 0xFFFF
-        }
-        CoffeeSwapEvent => {
-            assert (in.body.isEmpty()) throw 0xFFFF
-        }
-        CoffeeCreateLiquidityDepositoryRequest => {
-            assert (in.body.isEmpty()) throw 0xFFFF
-        }
-        CoffeeDepositLiquiditySuccessfulEvent => {
-            assert (in.body.isEmpty()) throw 0xFFFF
-        }
-        CoffeeLiquidityWithdrawalEvent => {
-            assert (in.body.isEmpty()) throw 0xFFFF
-        }
-        CoffeeCreatePoolCreatorRequest => {
-            assert (in.body.isEmpty()) throw 0xFFFF
-        }
-        CoffeeCreatePoolRequest => {
-            assert (in.body.isEmpty()) throw 0xFFFF
-        }
-        CoffeeMevProtectFailedSwap => {
-            assert (in.body.isEmpty()) throw 0xFFFF
-        }
-        CoffeeStakingClaimRewards => {
-            assert (in.body.isEmpty()) throw 0xFFFF
-        }
-        CoffeeStakingPositionWithdraw2 => {
-            assert (in.body.isEmpty()) throw 0xFFFF
-        }
-        else => {
-            assert (in.body.isEmpty()) throw 0xFFFF
-        }
-    }
 }

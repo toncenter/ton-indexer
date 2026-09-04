@@ -1,4 +1,4 @@
-tolk 1.0
+tolk 1.4
 
 struct LzPath {
     header_info: uint152 = 8903714975572488637007080065659;
@@ -91,26 +91,9 @@ type AllowedMessage = LayerzeroChannelSendCallbackAbi
 
 // LayerZeroOappExecuteCallbackAbi, ChannelCommitPacketAbi, and
 // UlnConnectionVerifyCallbackAbi can't join AllowedMessage (they carry no opcode
-// prefix). Storage exists only to keep them visible to the C++ generator.
-struct Storage {
-    oapp_execute_callback: LayerZeroOappExecuteCallbackAbi;
-    channel_commit_packet: ChannelCommitPacketAbi;
-    uln_connection_verify_callback: UlnConnectionVerifyCallbackAbi;
-}
+// prefix); forceAbiExport keeps them visible to the C++ generator.
 
 contract LayerZeroMessages {
     incomingMessages: AllowedMessage
-    storage: Storage
-}
-
-fun onInternalMessage(in: InMessage) {
-    val msg = lazy AllowedMessage.fromSlice(in.body);
-    match (msg) {
-        LayerzeroChannelSendCallbackAbi => {
-            assert (in.body.isEmpty()) throw 0xFFFF
-        }
-        else => {
-            assert (in.body.isEmpty()) throw 0xFFFF
-        }
-    }
+    forceAbiExport: LayerZeroOappExecuteCallbackAbi | ChannelCommitPacketAbi | UlnConnectionVerifyCallbackAbi
 }

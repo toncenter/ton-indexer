@@ -1,7 +1,9 @@
-tolk 1.0
+tolk 1.4
 
-// Copy this template to abi/<contract>.tolk, add authoritative declarations,
-// list their names in AllowedMessage, and add the stem to PROD_DECLS.
+// Copy this template to abi/<contract>.tolk and add authoritative declarations.
+// The contract directive is what makes tolk export them: messages go into
+// incomingMessages, payload-only structs into forceAbiExport. The build picks
+// the file up by glob.
 struct (0x00000001) ExampleMessage {
     queryId: uint64;
     amount: coins;
@@ -10,23 +12,6 @@ struct (0x00000001) ExampleMessage {
 
 type AllowedMessage = ExampleMessage
 
-struct Storage {
-    dummy: uint1
-}
-
 contract TemplateContract {
     incomingMessages: AllowedMessage
-    storage: Storage
-}
-
-fun onInternalMessage(in: InMessage) {
-    val msg = lazy AllowedMessage.fromSlice(in.body);
-    match (msg) {
-        ExampleMessage => {
-            assert (msg.amount >= 0) throw 0xFFFF
-        }
-        else => {
-            assert (in.body.isEmpty()) throw 0xFFFF
-        }
-    }
 }

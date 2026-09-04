@@ -1,4 +1,4 @@
-tolk 1.0
+tolk 1.4
 
 struct (0b1) PTonForwardPayloadRef {
     value: cell;
@@ -20,23 +20,6 @@ struct (0x01f3835d) PTonTransfer {
 
 type AllowedMessage = PTonTransfer
 
-struct Storage {
-    dummy: uint1
-}
-
 contract PTonMessages {
     incomingMessages: AllowedMessage
-    storage: Storage
-}
-
-fun onInternalMessage(in: InMessage) {
-    val msg = lazy AllowedMessage.fromSlice(in.body);
-    match (msg) {
-        PTonTransfer => {
-            assert (in.body.isEmpty()) throw 0xFFFF
-        }
-        else => {
-            assert (in.body.isEmpty()) throw 0xFFFF
-        }
-    }
 }

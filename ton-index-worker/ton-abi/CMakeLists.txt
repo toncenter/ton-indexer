@@ -37,13 +37,49 @@ add_executable(ton-abi-gen tools/AbiGenMain.cpp)
 target_compile_features(ton-abi-gen PRIVATE cxx_std_20)
 target_link_libraries(ton-abi-gen ton-abi-codegen tdutils)
 
+# Production declarations: abi/<contract>.tolk is the single manifest. The
+# submodule's tolk compiler emits <contract>.abi.json into the build tree; no
+# JSON is tracked. _TEMPLATE.tolk is scaffolding, not a declaration.
+file(GLOB TON_ABI_PROD_DECLS CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/abi/*.tolk)
+list(FILTER TON_ABI_PROD_DECLS EXCLUDE REGEX "/_[^/]*\\.tolk$")
+
+set(TON_ABI_JSON_DIR "${CMAKE_CURRENT_BINARY_DIR}/abi")
+set(TON_ABI_TOLK_STDLIB "${CMAKE_CURRENT_SOURCE_DIR}/../external/ton/crypto/smartcont/tolk-stdlib")
+file(MAKE_DIRECTORY "${TON_ABI_JSON_DIR}")
+set(TON_ABI_PROD_ABIS)
+set(TON_ABI_PROD_STEMS)
+foreach(TON_ABI_DECL IN LISTS TON_ABI_PROD_DECLS)
+    get_filename_component(TON_ABI_STEM "${TON_ABI_DECL}" NAME_WE)
+    set(TON_ABI_JSON "${TON_ABI_JSON_DIR}/${TON_ABI_STEM}.abi.json")
+    add_custom_command(
+        OUTPUT "${TON_ABI_JSON}"
+        BYPRODUCTS "${TON_ABI_JSON_DIR}/${TON_ABI_STEM}.fif"
+        COMMAND ${CMAKE_COMMAND} -E env "TOLK_STDLIB=${TON_ABI_TOLK_STDLIB}"
+                $<TARGET_FILE:tolk> --allow-no-entrypoint --no-symbol-types
+                -o "${TON_ABI_JSON_DIR}/${TON_ABI_STEM}.fif" "${TON_ABI_DECL}"
+        DEPENDS tolk "${TON_ABI_DECL}"
+        COMMENT "Compile ${TON_ABI_STEM}.tolk -> ${TON_ABI_STEM}.abi.json"
+        VERBATIM
+    )
+    list(APPEND TON_ABI_PROD_ABIS "${TON_ABI_JSON}")
+    list(APPEND TON_ABI_PROD_STEMS "${TON_ABI_STEM}")
+endforeach()
+# ton-abi-gen reads <contract>.validate.json from next to the JSON it consumes.
+file(GLOB TON_ABI_VALIDATE_MANIFESTS CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/abi/*.validate.json)
+foreach(TON_ABI_MANIFEST IN LISTS TON_ABI_VALIDATE_MANIFESTS)
+    get_filename_component(TON_ABI_MANIFEST_NAME "${TON_ABI_MANIFEST}" NAME)
+    configure_file("${TON_ABI_MANIFEST}" "${TON_ABI_JSON_DIR}/${TON_ABI_MANIFEST_NAME}" COPYONLY)
+endforeach()
+# ton-mch-engine compiles one generated pair per production stem.
+set(TON_ABI_PROD_STEMS ${TON_ABI_PROD_STEMS} PARENT_SCOPE)
+
 # Generate every loadable fixture and production declaration in one batch.
 # The two err-invalid-map-key fixtures are intentional hard-fail cases and are
 # exercised directly by AbiEmitTest instead of through the CLI.
 file(GLOB TON_ABI_CHECK_ABIS CONFIGURE_DEPENDS
-     ${CMAKE_CURRENT_SOURCE_DIR}/testdata/fixtures/*.abi.json
-     ${CMAKE_CURRENT_SOURCE_DIR}/abi/*.abi.json)
+     ${CMAKE_CURRENT_SOURCE_DIR}/testdata/fixtures/*.abi.json)
 list(FILTER TON_ABI_CHECK_ABIS EXCLUDE REGEX "err-invalid-map-key")
+list(APPEND TON_ABI_CHECK_ABIS ${TON_ABI_PROD_ABIS})
 
 set(TON_ABI_GENERATED_DIR "${CMAKE_CURRENT_BINARY_DIR}/generated")
 set(TON_ABI_GENERATED_HEADERS)
@@ -107,10 +143,3 @@ add_test(NAME ton_abi_smoke COMMAND ton-abi-test)
 # and byte-compare it with the primary generation output in the build tree.
 add_test(NAME ton_abi_gen_check
          COMMAND ton-abi-gen ${TON_ABI_CHECK_ABIS} --out-dir ${TON_ABI_GENERATED_DIR} --check)
-
-# Source-declaration repro gate: compile every production .tolk declaration and
-# byte-compare its committed .abi.json before ton_abi_gen_check consumes it.
-add_test(NAME ton_abi_prod_json_check
-         COMMAND node tools/gen_prod_abi.mjs --check)
-set_tests_properties(ton_abi_prod_json_check PROPERTIES
-    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})

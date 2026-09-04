@@ -1,4 +1,4 @@
-tolk 1.0
+tolk 1.4
 
 struct StonfiPaymentRequestInfo {
     amount0_out: coins;
@@ -59,32 +59,6 @@ struct (0x657b54f5) StonfiV2PayTo {
 
 type AllowedMessage = StonfiV2ProvideLiquidity | StonfiPaymentRequest | StonfiSwapMessage | StonfiV2PayTo
 
-struct Storage {
-    dummy: uint1
-}
-
 contract StonfiMessages {
     incomingMessages: AllowedMessage
-    storage: Storage
-}
-
-fun onInternalMessage(in: InMessage) {
-    val msg = lazy AllowedMessage.fromSlice(in.body);
-    match (msg) {
-        StonfiV2ProvideLiquidity => {
-            assert (in.body.isEmpty()) throw 0xFFFF
-        }
-        StonfiPaymentRequest => {
-            assert (in.body.isEmpty()) throw 0xFFFF
-        }
-        StonfiSwapMessage => {
-            assert (in.body.isEmpty()) throw 0xFFFF
-        }
-        StonfiV2PayTo => {
-            assert (in.body.isEmpty()) throw 0xFFFF
-        }
-        else => {
-            assert (in.body.isEmpty()) throw 0xFFFF
-        }
-    }
 }

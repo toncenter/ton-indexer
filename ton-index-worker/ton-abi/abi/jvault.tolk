@@ -1,4 +1,4 @@
-tolk 1.0
+tolk 1.4
 
 type JVaultClaimEntry = RemainingBitsAndRefs
 
@@ -22,29 +22,6 @@ struct (0x78d9f109) JVaultClaim {
 
 type AllowedMessage = JVaultUnstakeJettons | JVaultUnstakeRequest | JVaultClaim
 
-struct Storage {
-    dummy: uint1
-}
-
 contract JVaultMessages {
     incomingMessages: AllowedMessage
-    storage: Storage
-}
-
-fun onInternalMessage(in: InMessage) {
-    val msg = lazy AllowedMessage.fromSlice(in.body);
-    match (msg) {
-        JVaultUnstakeJettons => {
-            assert (in.body.isEmpty()) throw 0xFFFF
-        }
-        JVaultUnstakeRequest => {
-            assert (in.body.isEmpty()) throw 0xFFFF
-        }
-        JVaultClaim => {
-            assert (in.body.isEmpty()) throw 0xFFFF
-        }
-        else => {
-            assert (in.body.isEmpty()) throw 0xFFFF
-        }
-    }
 }

@@ -1,4 +1,4 @@
-tolk 1.0
+tolk 1.4
 
 @overflow1023_policy("suppress")
 struct (0x00000001) EvaaSupplyMaster {
@@ -42,44 +42,6 @@ struct (0x000021ec) EvaaWithdrawExecutionCrashed {}
 
 type AllowedMessage = EvaaSupplyMaster | EvaaSupplySuccess | EvaaWithdrawMaster | EvaaWithdrawCollateralized | EvaaWithdrawLockedExcess | EvaaWithdrawNotCollateralizedExcess | EvaaWithdrawMissingPricesExcess | EvaaWithdrawExecutionCrashed
 
-struct Storage {
-    dummy: uint1
-}
-
 contract EvaaMessages {
     incomingMessages: AllowedMessage
-    storage: Storage
-}
-
-fun onInternalMessage(in: InMessage) {
-    val msg = lazy AllowedMessage.fromSlice(in.body);
-    match (msg) {
-        EvaaSupplyMaster => {
-            assert (in.body.isEmpty()) throw 0xFFFF
-        }
-        EvaaSupplySuccess => {
-            assert (in.body.isEmpty()) throw 0xFFFF
-        }
-        EvaaWithdrawMaster => {
-            assert (in.body.isEmpty()) throw 0xFFFF
-        }
-        EvaaWithdrawCollateralized => {
-            assert (in.body.isEmpty()) throw 0xFFFF
-        }
-        EvaaWithdrawLockedExcess => {
-            assert (in.body.isEmpty()) throw 0xFFFF
-        }
-        EvaaWithdrawNotCollateralizedExcess => {
-            assert (in.body.isEmpty()) throw 0xFFFF
-        }
-        EvaaWithdrawMissingPricesExcess => {
-            assert (in.body.isEmpty()) throw 0xFFFF
-        }
-        EvaaWithdrawExecutionCrashed => {
-            assert (in.body.isEmpty()) throw 0xFFFF
-        }
-        else => {
-            assert (in.body.isEmpty()) throw 0xFFFF
-        }
-    }
 }

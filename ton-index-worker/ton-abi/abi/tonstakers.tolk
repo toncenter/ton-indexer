@@ -1,4 +1,4 @@
-tolk 1.0
+tolk 1.4
 
 @overflow1023_policy("suppress")
 struct (0xed58b0b2) TONStakersNftBurnNotification {
@@ -9,23 +9,6 @@ struct (0xed58b0b2) TONStakersNftBurnNotification {
 
 type AllowedMessage = TONStakersNftBurnNotification
 
-struct Storage {
-    dummy: uint1
-}
-
 contract TonstakersMessages {
     incomingMessages: AllowedMessage
-    storage: Storage
-}
-
-fun onInternalMessage(in: InMessage) {
-    val msg = lazy AllowedMessage.fromSlice(in.body);
-    match (msg) {
-        TONStakersNftBurnNotification => {
-            assert (in.body.isEmpty()) throw 0xFFFF
-        }
-        else => {
-            assert (in.body.isEmpty()) throw 0xFFFF
-        }
-    }
 }
