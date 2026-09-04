@@ -1,8 +1,10 @@
-#include "TraceInterfaceDetector.h"
-#include "smc-interfaces/InterfacesDetector.h"
-#include "smc-interfaces/FetchAccountFromShard.h"
-
 #include <cstdint>
+#include <unordered_set>
+
+#include "smc-interfaces/FetchAccountFromShard.h"
+#include "smc-interfaces/InterfacesDetector.h"
+
+#include "TraceInterfaceDetector.h"
 
 void TraceInterfaceDetector::start_up() {
     td::MultiPromise mp;
@@ -13,15 +15,13 @@ void TraceInterfaceDetector::start_up() {
     ig.add_promise(std::move(P));
 
     // Detect interfaces for final state of each emulated account
-    std::unordered_set<block::StdAddress> processed_addresses;
     std::int64_t emulated_detector_tasks = 0;
     std::int64_t committed_detector_tasks = 0;
     for (auto it = trace_.emulated_accounts.rbegin(); it != trace_.emulated_accounts.rend(); it++) {
         const auto& [address, account] = *it;
-        if (processed_addresses.count(address)) {
-            continue;
+        if (!emulated_addresses_.insert(address).second) {
+          continue;
         }
-        processed_addresses.insert(address);
         trace_.interfaces[address] = {};
         td::actor::create_actor<Trace::Detector>
             ("InterfacesDetector", address, account.code, account.data, shard_states_, config_,
@@ -100,9 +100,13 @@ void TraceInterfaceDetector::start_up() {
 }
 
 void TraceInterfaceDetector::got_interfaces(block::StdAddress address, std::vector<typename Trace::Detector::DetectedInterface> interfaces, bool is_committed, td::Promise<td::Unit> promise) {
-    trace_.interfaces[address] = std::move(interfaces);
     if (is_committed) {
-        trace_.committed_interfaces[address] = trace_.interfaces[address];
+      trace_.committed_interfaces[address] = interfaces;
+      if (emulated_addresses_.count(address) == 0) {
+        trace_.interfaces[address] = std::move(interfaces);
+      }
+    } else {
+      trace_.interfaces[address] = std::move(interfaces);
     }
     promise.set_value(td::Unit());
 }
@@ -114,4 +118,74 @@ void TraceInterfaceDetector::finish(td::Result<td::Unit> status) {
         promise_.set_value(std::move(trace_));
     }
     stop();
+}
+
+void TraceUpdateInterfaceDetector::start_up() {
+  if (update_.empty()) {
+    promise_.set_value(std::move(update_));
+    stop();
+    return;
+  }
+
+  if (update_.measurement) {
+    update_.measurement->start_otel_child_span("detect_interfaces");
+  }
+
+  remaining_ = update_.size();
+  for (std::size_t index = 0; index < update_.fragments.size(); ++index) {
+    auto promise = td::PromiseCreator::lambda([SelfId = actor_id(this), index](td::Result<Trace> result) mutable {
+      td::actor::send_closure(SelfId, &TraceUpdateInterfaceDetector::fragment_finished, index, std::move(result));
+    });
+    td::actor::create_actor<TraceInterfaceDetector>("TraceFragmentInterfaceDetector", shard_states_, config_,
+                                                    std::move(update_.fragments[index]), std::move(promise),
+                                                    MeasurementPtr{})
+        .release();
+  }
+}
+
+void TraceUpdateInterfaceDetector::fragment_finished(std::size_t index, td::Result<Trace> result) {
+  CHECK(remaining_ > 0);
+  if (result.is_error()) {
+    auto error = result.move_as_error();
+    if (!first_error_) {
+      first_error_.emplace(std::move(error));
+    }
+  } else {
+    update_.fragments[index] = result.move_as_ok();
+  }
+
+  --remaining_;
+  if (remaining_ == 0) {
+    finish();
+  }
+}
+
+void TraceUpdateInterfaceDetector::finish() {
+  if (update_.measurement) {
+    if (first_error_) {
+      update_.measurement->mark_otel_error("trace_emulator.interface_error", first_error_->to_string());
+    } else {
+      std::int64_t emulated_detector_tasks = 0;
+      std::int64_t committed_detector_tasks = 0;
+      for (const auto& trace : update_.fragments) {
+        std::unordered_set<block::StdAddress> emulated_addresses;
+        for (const auto& [address, _] : trace.emulated_accounts) {
+          emulated_addresses.insert(address);
+        }
+        emulated_detector_tasks += static_cast<std::int64_t>(emulated_addresses.size());
+        committed_detector_tasks += static_cast<std::int64_t>(trace.committed_accounts.size());
+      }
+      update_.measurement->set_otel_attribute("ton.interfaces.emulated_accounts_count", emulated_detector_tasks);
+      update_.measurement->set_otel_attribute("ton.interfaces.committed_accounts_count", committed_detector_tasks);
+      update_.measurement->set_otel_attribute("ton.interfaces.detector_tasks_count",
+                                              emulated_detector_tasks + committed_detector_tasks);
+    }
+    update_.measurement->end_otel_child_span("detect_interfaces");
+  }
+  if (first_error_) {
+    promise_.set_error(std::move(*first_error_));
+  } else {
+    promise_.set_value(std::move(update_));
+  }
+  stop();
 }

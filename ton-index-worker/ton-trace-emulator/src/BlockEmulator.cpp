@@ -1,8 +1,13 @@
-#include "BlockEmulator.h"
-#include "TraceInterfaceDetector.h"
+#include <algorithm>
 #include <cstdint>
+#include <iterator>
+#include <map>
 #include <mutex>
 #include <unordered_map>
+#include <unordered_set>
+
+#include "BlockEmulator.h"
+#include "TraceInterfaceDetector.h"
 
 namespace {
 class InterblockTraceStore {
@@ -35,6 +40,110 @@ InterblockTraceStore& finalized_interblock_trace_store() {
 InterblockTraceStore& confirmed_interblock_trace_store() {
   static InterblockTraceStore store;
   return store;
+}
+
+struct TraceTailUpdate {
+  TraceUpdate update;
+  std::vector<EmuRequest> requests;
+};
+
+using TraceTailUpdates = std::map<TraceId, TraceTailUpdate>;
+
+Trace make_trace_fragment(const TraceIds& trace_ids, std::unique_ptr<TraceNode> root) {
+  Trace trace;
+  trace.ext_in_msg_hash = trace_ids.ext_in_msg_hash;
+  trace.ext_in_msg_hash_norm = trace_ids.ext_in_msg_hash_norm;
+  trace.root_tx_hash = trace_ids.root_tx_hash;
+  trace.root = std::move(root);
+  return trace;
+}
+
+void add_trace_fragment(TraceTailUpdates& updates, const TraceIds& trace_ids, std::unique_ptr<TraceNode> root,
+                        std::vector<EmuRequest> requests) {
+  auto& update = updates[trace_ids.ext_in_msg_hash_norm];
+  update.update.fragments.push_back(make_trace_fragment(trace_ids, std::move(root)));
+  update.requests.insert(update.requests.end(), std::make_move_iterator(requests.begin()),
+                         std::make_move_iterator(requests.end()));
+}
+
+void collect_emulated_addresses(const TraceNode* node, std::unordered_set<block::StdAddress>& addresses) {
+  if (!node) {
+    return;
+  }
+  if (node->finality_state == FinalityState::Emulated) {
+    addresses.insert(node->address);
+  }
+  for (const auto& child : node->children) {
+    collect_emulated_addresses(child.get(), addresses);
+  }
+}
+
+MeasurementPtr start_update_tail_span(const TraceTailUpdate& tail_update) {
+  auto measurement = tail_update.update.measurement;
+  if (measurement) {
+    measurement->set_otel_attribute("ton.trace_state.update_fragments_count",
+                                    static_cast<std::int64_t>(tail_update.update.size()));
+    measurement->set_otel_attribute("ton.trace.update_tail_requests_count",
+                                    static_cast<std::int64_t>(tail_update.requests.size()));
+    measurement->start_otel_child_span("emulate_tail");
+  }
+  return measurement;
+}
+
+void finish_update_tail_span(const TraceUpdate& update) {
+  if (!update.measurement) {
+    return;
+  }
+  std::int64_t transactions_count = 0;
+  std::int64_t emulated_transactions_count = 0;
+  std::int64_t depth = 0;
+  bool tx_limit_exceeded = false;
+  for (const auto& trace : update.fragments) {
+    transactions_count += trace.transactions_count();
+    emulated_transactions_count += trace.root ? trace.root->emulated_transactions_count() : 0;
+    depth = std::max(depth, static_cast<std::int64_t>(trace.depth()));
+    tx_limit_exceeded = tx_limit_exceeded || trace.tx_limit_exceeded;
+  }
+  update.measurement->set_transactions_count(transactions_count);
+  update.measurement->set_emulated_transactions_count(emulated_transactions_count);
+  update.measurement->set_otel_attribute("ton.trace.depth", depth);
+  update.measurement->set_otel_attribute("ton.trace.tx_limit_exceeded", tx_limit_exceeded);
+  update.measurement->end_otel_child_span("emulate_tail");
+}
+
+td::Status attach_emulated_tails(TraceUpdate& update, std::vector<std::unique_ptr<TraceNode>> child_nodes,
+                                 const std::vector<EmuRequest>& requests,
+                                 const std::shared_ptr<EmulationContext>& context) {
+  if (child_nodes.size() != requests.size()) {
+    return td::Status::Error("Tail emulator returned an unexpected number of roots");
+  }
+  for (std::size_t index = 0; index < child_nodes.size(); ++index) {
+    const auto& request = requests[index];
+    if (!request.parent || request.insert_index >= request.parent->children.size()) {
+      return td::Status::Error("Invalid tail attachment point");
+    }
+    request.parent->children[request.insert_index] = std::move(child_nodes[index]);
+  }
+
+  if (!context) {
+    return td::Status::OK();
+  }
+
+  const auto rand_seed = context->get_rand_seed();
+  const auto tx_limit_exceeded = context->is_limit_exceeded();
+  auto account_states = context->release_account_states();
+  for (auto& trace : update.fragments) {
+    trace.rand_seed = rand_seed;
+    trace.tx_limit_exceeded = tx_limit_exceeded;
+    std::unordered_set<block::StdAddress> addresses;
+    collect_emulated_addresses(trace.root.get(), addresses);
+    for (const auto& [address, account] : account_states) {
+      if (addresses.count(address) != 0) {
+        trace.emulated_accounts.emplace(address, account);
+      }
+    }
+  }
+  return td::Status::OK();
 }
 }  // namespace
 
@@ -338,149 +447,154 @@ std::unique_ptr<TraceNode> McBlockEmulator::construct_commited_trace(const Trans
 }
 
 void McBlockEmulator::emulate_traces(MeasurementPtr measurement) {
-    for (auto& tx : txs_) {
-        auto tx_measurement = measurement->clone();
+  // Roots disconnected inside this block may still belong to one logical
+  // trace. Group their holes before emulation so account state is shared.
+  std::map<TraceId, std::vector<TransactionInfo*>> roots_by_trace;
+  for (auto& tx : txs_) {
+    if (!tx.trace_ids.has_value()) {
+      continue;
+    }
+    if (tx_by_out_msg_hash_.find(tx.in_msg_hash) != tx_by_out_msg_hash_.end()) {
+      continue;
+    }
+    roots_by_trace[tx.trace_ids->ext_in_msg_hash_norm].push_back(&tx);
+  }
 
-        if (!tx.trace_ids.has_value()) continue;
-        if (tx_by_out_msg_hash_.find(tx.in_msg_hash) != tx_by_out_msg_hash_.end()) continue;
+  TraceTailUpdates tail_updates;
+  for (auto& [trace_id, roots] : roots_by_trace) {
+    CHECK(!roots.empty() && roots.front()->trace_ids.has_value());
+    const auto& trace_ids = *roots.front()->trace_ids;
+    auto& tail_update = tail_updates[trace_id];
+    tail_update.update.measurement = measurement->clone();
+    tail_update.update.measurement->set_ext_msg_hash(trace_ids.ext_in_msg_hash);
+    tail_update.update.measurement->set_ext_msg_hash_norm(trace_ids.ext_in_msg_hash_norm);
+    tail_update.update.measurement->set_trace_root_tx_hash(trace_ids.root_tx_hash);
+    tail_update.update.measurement->set_otel_attribute("ton.trace_state.update_fragments_count",
+                                                       static_cast<std::int64_t>(roots.size()));
+    tail_update.update.measurement->start_otel_child_span("build_trace_tree");
 
-        in_progress_cnt_++;
+    for (auto* tx : roots) {
+      std::vector<EmuRequest> requests;
+      auto root = construct_commited_trace(*tx, requests, tail_update.update.measurement);
+      add_trace_fragment(tail_updates, *tx->trace_ids, std::move(root), std::move(requests));
+    }
 
-        tx_measurement->set_ext_msg_hash(tx.trace_ids->ext_in_msg_hash);
-        tx_measurement->set_ext_msg_hash_norm(tx.trace_ids->ext_in_msg_hash_norm);
-        tx_measurement->set_trace_root_tx_hash(tx.trace_ids->root_tx_hash);
-        tx_measurement->start_otel_child_span("build_trace_tree");
-        std::vector<EmuRequest> reqs;
-        auto parent_node = construct_commited_trace(tx, reqs, tx_measurement);
-        tx_measurement->set_otel_attribute("ton.trace.tail_requests_count", static_cast<std::int64_t>(reqs.size()));
-        tx_measurement->end_otel_child_span("build_trace_tree");
+    tail_update.update.measurement->set_otel_attribute("ton.trace.tail_requests_count",
+                                                       static_cast<std::int64_t>(tail_update.requests.size()));
+    tail_update.update.measurement->end_otel_child_span("build_trace_tree");
+  }
 
-        if (reqs.empty()) {
-            children_emulated(std::move(parent_node), {}, tx.trace_ids.value(), /*reqs*/{}, nullptr, tx_measurement);
-            continue;
-        }
+  in_progress_cnt_ += tail_updates.size();
+  for (auto& [_, tail_update] : tail_updates) {
+    auto update_measurement = start_update_tail_span(tail_update);
+    if (tail_update.requests.empty()) {
+      children_emulated(std::move(tail_update.update), {}, {}, nullptr);
+      continue;
+    }
 
-        auto context = std::make_shared<EmulationContext>(mc_data_state_.shard_blocks_[0].handle->id().id.seqno,
-                                                          mc_data_state_.config_);
-        for (const auto& shard_state : mc_data_state_.shard_blocks_) {
-            auto blkid = shard_state.handle->id().id;
-            auto timestamp = shard_state.handle->unix_time();
-            auto lt = shard_state.handle->logical_time();
-            lt = lt - lt % block::ConfigInfo::get_lt_align();
-            context->add_shard_state(blkid, timestamp, lt, shard_state.block_state);
-        }
-        context->increase_seqno(3);
-        std::vector<EmulationMessage> msgs_to_emulate;
-        msgs_to_emulate.reserve(reqs.size());
-        for (auto& r : reqs) {
-            msgs_to_emulate.push_back(EmulationMessage{r.msg, r.depth});
-        }
+    auto context = std::make_shared<EmulationContext>(mc_data_state_.shard_blocks_[0].handle->id().id.seqno,
+                                                      mc_data_state_.config_);
+    for (const auto& shard_state : mc_data_state_.shard_blocks_) {
+      auto blkid = shard_state.handle->id().id;
+      auto timestamp = shard_state.handle->unix_time();
+      auto lt = shard_state.handle->logical_time();
+      lt = lt - lt % block::ConfigInfo::get_lt_align();
+      context->add_shard_state(blkid, timestamp, lt, shard_state.block_state);
+    }
+    context->increase_seqno(3);
+    std::vector<EmulationMessage> msgs_to_emulate;
+    msgs_to_emulate.reserve(tail_update.requests.size());
+    for (auto& r : tail_update.requests) {
+      msgs_to_emulate.push_back(EmulationMessage{r.msg, r.depth});
+    }
 
-        tx_measurement->start_otel_child_span("emulate_tail");
-        auto P = td::PromiseCreator::lambda([SelfId = actor_id(this),
-                                             parent_node = std::move(parent_node),
-                                             tx_info = tx,
-                                             context,
-                                             reqs = std::move(reqs),
-                                             tx_measurement](td::Result<std::vector<std::unique_ptr<TraceNode>>> R) mutable {
-            if (R.is_error()) {
-                td::actor::send_closure(SelfId, &McBlockEmulator::trace_error,
-                    tx_info.hash, tx_info.trace_ids->root_tx_hash, R.move_as_error(), tx_measurement);
-            } else {
-                td::actor::send_closure(SelfId, &McBlockEmulator::children_emulated,
-                    std::move(parent_node), R.move_as_ok(), tx_info.trace_ids.value(),
-                    std::move(reqs), std::move(context), tx_measurement);
-            }
+    auto P = td::PromiseCreator::lambda(
+        [SelfId = actor_id(this), update = std::move(tail_update.update), context,
+         reqs = std::move(tail_update.requests)](td::Result<std::vector<std::unique_ptr<TraceNode>>> R) mutable {
+          if (R.is_error()) {
+            td::actor::send_closure(SelfId, &McBlockEmulator::trace_update_error, std::move(update), R.move_as_error());
+            return;
+          }
+          td::actor::send_closure(SelfId, &McBlockEmulator::children_emulated, std::move(update), R.move_as_ok(),
+                                  std::move(reqs), std::move(context));
         });
 
-        td::actor::create_actor<MasterchainBlockEmulator>("MasterchainBlockEmulator", context,
-                                                           std::move(msgs_to_emulate), std::move(P), tx_measurement)
-            .release();
-    }
-    finish_block_if_done();
+    td::actor::create_actor<MasterchainBlockEmulator>("MasterchainBlockEmulator", context, std::move(msgs_to_emulate),
+                                                      std::move(P), update_measurement)
+        .release();
+  }
+  finish_block_if_done();
 }
 
-void McBlockEmulator::children_emulated(std::unique_ptr<TraceNode> parent_node,
-                                        std::vector<std::unique_ptr<TraceNode>> child_nodes,
-                                        TraceIds trace_ids,
-                                        std::vector<EmuRequest> reqs,
-                                        std::shared_ptr<EmulationContext> context,
-                                        MeasurementPtr measurement) {
-    for (size_t i = 0; i < child_nodes.size(); ++i) {
-        auto& slot = reqs[i];
-        auto& siblings = slot.parent->children;
-        siblings[slot.insert_index] = std::move(child_nodes[i]);
-    }
+void McBlockEmulator::children_emulated(TraceUpdate update, std::vector<std::unique_ptr<TraceNode>> child_nodes,
+                                        std::vector<EmuRequest> reqs, std::shared_ptr<EmulationContext> context) {
+  auto attach_status = attach_emulated_tails(update, std::move(child_nodes), reqs, context);
+  if (attach_status.is_error()) {
+    trace_update_error(std::move(update), std::move(attach_status));
+    return;
+  }
 
-    Trace trace;
-    trace.ext_in_msg_hash = trace_ids.ext_in_msg_hash;
-    trace.ext_in_msg_hash_norm = trace_ids.ext_in_msg_hash_norm;
-    trace.root_tx_hash = trace_ids.root_tx_hash;
-    trace.root = std::move(parent_node);
+  finish_update_tail_span(update);
+  for (auto& trace : update.fragments) {
+    trace.cell_anchor = cell_anchor_;
+    // Carry the detector's lookup context on for the classifier's tier-2 hook.
+    trace.shard_states = shard_states_;
+    trace.config = mc_data_state_.config_;
+  }
 
-    measurement->set_ext_msg_hash(trace.ext_in_msg_hash);
-    measurement->set_ext_msg_hash_norm(trace.ext_in_msg_hash_norm);
-    measurement->set_trace_root_tx_hash(trace.root_tx_hash);
-    measurement->set_transactions_count(trace.transactions_count());
-    measurement->set_emulated_transactions_count(trace.root ? trace.root->emulated_transactions_count() : 0);
-    measurement->set_otel_attribute("ton.trace.depth", static_cast<std::int64_t>(trace.depth()));
-
-    if (context) {
-        trace.rand_seed = context->get_rand_seed();
-        trace.emulated_accounts = context->release_account_states();
-        trace.tx_limit_exceeded = context->is_limit_exceeded();
-    }
-    measurement->set_otel_attribute("ton.trace.tx_limit_exceeded", trace.tx_limit_exceeded);
-    measurement->end_otel_child_span("emulate_tail");
-
-    if constexpr (std::variant_size_v<Trace::Detector::DetectedInterface> > 0) {
-        auto P = td::PromiseCreator::lambda([SelfId = actor_id(this), trace_root_tx_hash = trace.root_tx_hash, measurement](td::Result<Trace> R) {
-            if (R.is_error()) {
-                td::actor::send_closure(SelfId, &McBlockEmulator::trace_interfaces_error, trace_root_tx_hash, R.move_as_error(), measurement);
-                return;
-            }
-            td::actor::send_closure(SelfId, &McBlockEmulator::trace_emulated, R.move_as_ok(), measurement);
+  if constexpr (std::variant_size_v<Trace::Detector::DetectedInterface> > 0) {
+    const auto trace_root_tx_hash = update.fragments.front().root_tx_hash;
+    auto measurement = update.measurement;
+    auto P = td::PromiseCreator::lambda(
+        [SelfId = actor_id(this), trace_root_tx_hash, measurement](td::Result<TraceUpdate> result) mutable {
+          if (result.is_error()) {
+            td::actor::send_closure(SelfId, &McBlockEmulator::trace_interfaces_error, trace_root_tx_hash,
+                                    result.move_as_error(), measurement);
+            return;
+          }
+          td::actor::send_closure(SelfId, &McBlockEmulator::trace_emulated, result.move_as_ok());
         });
-
-        measurement->start_otel_child_span("detect_interfaces");
-        td::actor::create_actor<TraceInterfaceDetector>("TraceInterfaceDetector", shard_states_, mc_data_state_.config_, std::move(trace), std::move(P), measurement).release();
-    } else {
-        trace_emulated(std::move(trace), measurement);
-    }
+    td::actor::create_actor<TraceUpdateInterfaceDetector>("TraceUpdateInterfaceDetector", shard_states_,
+                                                          mc_data_state_.config_, std::move(update), std::move(P))
+        .release();
+  } else {
+    trace_emulated(std::move(update));
+  }
 }
 
-void McBlockEmulator::trace_error(td::Bits256 tx_hash, td::Bits256 trace_root_tx_hash, td::Status error, MeasurementPtr measurement) {
-    LOG(ERROR) << "Failed to emulate trace with root tx " << td::base64_encode(trace_root_tx_hash.as_slice()) << " from tx " << tx_hash.to_hex() << ": " << error;
-    measurement->mark_otel_error("trace_emulator.processing_error", error.to_string());
-    measurement->end_otel_child_span("emulate_tail");
-    in_progress_cnt_--;
-    measurement->emit_otel_span();
-    finish_block_if_done();
+void McBlockEmulator::trace_update_error(TraceUpdate update, td::Status error) {
+  auto error_text = error.to_string();
+  for (const auto& trace : update.fragments) {
+    LOG(ERROR) << "Failed to emulate trace with root tx " << td::base64_encode(trace.root_tx_hash.as_slice()) << ": "
+               << error_text;
+  }
+  if (update.measurement) {
+    update.measurement->mark_otel_error("trace_emulator.processing_error", error_text);
+    update.measurement->end_otel_child_span("emulate_tail");
+    update.measurement->emit_otel_span();
+  }
+  CHECK(in_progress_cnt_ > 0);
+  in_progress_cnt_--;
+  finish_block_if_done();
 }
 
 void McBlockEmulator::trace_interfaces_error(td::Bits256 trace_root_tx_hash, td::Status error, MeasurementPtr measurement) {
     LOG(ERROR) << "Failed to detect interfaces on trace with root tx " << td::base64_encode(trace_root_tx_hash.as_slice()) << ": " << error;
-    measurement->mark_otel_error("trace_emulator.interface_error", error.to_string());
-    measurement->end_otel_child_span("detect_interfaces");
+    if (measurement) {
+      measurement->mark_otel_error("trace_emulator.interface_error", error.to_string());
+      measurement->emit_otel_span();
+    }
+    CHECK(in_progress_cnt_ > 0);
     in_progress_cnt_--;
-    measurement->emit_otel_span();
     finish_block_if_done();
 }
 
-void McBlockEmulator::trace_emulated(Trace trace, MeasurementPtr measurement) {
-    trace.cell_anchor = cell_anchor_;
-    // The same states TraceInterfaceDetector just ran against, carried on so the
-    // classifier's tier-2 hook can read accounts the trace never touched.
-    trace.shard_states = shard_states_;
-    trace.config = mc_data_state_.config_;
-    measurement->end_otel_child_span("detect_interfaces");
-    traces_.push_back(EmulatedTracePatch{
-        .trace = std::move(trace),
-        .measurement = std::move(measurement),
-    });
-    in_progress_cnt_--;
-    traces_cnt_++;
-    finish_block_if_done();
+void McBlockEmulator::trace_emulated(TraceUpdate update) {
+  traces_cnt_ += static_cast<int>(update.size());
+  trace_updates_.push_back(std::move(update));
+  CHECK(in_progress_cnt_ > 0);
+  in_progress_cnt_--;
+  finish_block_if_done();
 }
 
 void McBlockEmulator::finish_block_if_done() {
@@ -489,7 +603,12 @@ void McBlockEmulator::finish_block_if_done() {
     }
     finished_ = true;
     auto blkid = mc_data_state_.shard_blocks_[0].block_data->block_id().id;
-    LOG(INFO) << "Finished emulating block " << blkid.to_str() << ": " << traces_cnt_ << " traces in " << (td::Timestamp::now().at() - start_time_.at()) * 1000 << " ms";
+    std::sort(trace_updates_.begin(), trace_updates_.end(), [](const TraceUpdate& lhs, const TraceUpdate& rhs) {
+      return lhs.fragments.front().ext_in_msg_hash_norm < rhs.fragments.front().ext_in_msg_hash_norm;
+    });
+    LOG(INFO) << "Finished emulating block " << blkid.to_str() << ": " << traces_cnt_ << " traces in "
+              << (td::Timestamp::now().at() - start_time_.at()) * 1000 << " ms; grouped into " << trace_updates_.size()
+              << " updates";
     std::vector<ton::BlockIdExt> finalized_blocks;
     finalized_blocks.reserve(mc_data_state_.shard_blocks_diff_.size());
     std::vector<td::Ref<ton::validator::BlockData>> block_data_owners;
@@ -501,7 +620,8 @@ void McBlockEmulator::finish_block_if_done() {
     promise_.set_value(FinalizedBlockResult{
         .mc_seqno = blkid.seqno,
         .finalized_blocks = std::move(finalized_blocks),
-        .traces = std::move(traces_),
+        .trace_updates = std::move(trace_updates_),
+        .trace_fragments_count = static_cast<std::size_t>(traces_cnt_),
         .reused_confirmed_state = reuse_confirmed_state_,
         .block_data_owners = std::move(block_data_owners),
     });
@@ -585,82 +705,94 @@ void ConfirmedBlockEmulator::resolve_trace_ids(MeasurementPtr measurement) {
 }
 
 void ConfirmedBlockEmulator::emulate_traces(MeasurementPtr measurement) {
-    for (auto& tx : txs_) {
-        auto tx_measurement = measurement->clone();
+  // A signed block may contain several disconnected components of the same
+  // trace. Their speculative tails must advance one shared account state.
+  std::map<TraceId, std::vector<TransactionInfo*>> roots_by_trace;
+  for (auto& tx : txs_) {
+    if (!tx.trace_ids.has_value()) {
+      continue;
+    }
+    if (tx_by_out_msg_hash_.find(tx.in_msg_hash) != tx_by_out_msg_hash_.end()) {
+      continue;
+    }
+    roots_by_trace[tx.trace_ids->ext_in_msg_hash_norm].push_back(&tx);
+  }
 
-        if (!tx.trace_ids.has_value()) {
-            continue;
-        }
-        if (tx_by_out_msg_hash_.find(tx.in_msg_hash) != tx_by_out_msg_hash_.end()) {
-            continue;
-        }
+  TraceTailUpdates tail_updates;
+  for (auto& [trace_id, roots] : roots_by_trace) {
+    CHECK(!roots.empty() && roots.front()->trace_ids.has_value());
+    const auto& trace_ids = *roots.front()->trace_ids;
+    auto& tail_update = tail_updates[trace_id];
+    tail_update.update.measurement = measurement->clone();
+    tail_update.update.measurement->set_ext_msg_hash(trace_ids.ext_in_msg_hash);
+    tail_update.update.measurement->set_ext_msg_hash_norm(trace_ids.ext_in_msg_hash_norm);
+    tail_update.update.measurement->set_trace_root_tx_hash(trace_ids.root_tx_hash);
+    tail_update.update.measurement->set_otel_attribute("ton.trace_state.update_fragments_count",
+                                                       static_cast<std::int64_t>(roots.size()));
+    tail_update.update.measurement->start_otel_child_span("build_trace_tree");
 
-        in_progress_cnt_++;
-
-        tx_measurement->set_ext_msg_hash(tx.trace_ids->ext_in_msg_hash);
-        tx_measurement->set_ext_msg_hash_norm(tx.trace_ids->ext_in_msg_hash_norm);
-        tx_measurement->set_trace_root_tx_hash(tx.trace_ids->root_tx_hash);
-        tx_measurement->start_otel_child_span("build_trace_tree");
-        std::vector<EmuRequest> reqs;
-        auto parent_node = construct_confirmed_trace(tx, reqs, tx_measurement);
-        tx_measurement->set_otel_attribute("ton.trace.tail_requests_count", static_cast<std::int64_t>(reqs.size()));
-        tx_measurement->end_otel_child_span("build_trace_tree");
-
-        if (reqs.empty()) {
-            children_emulated(std::move(parent_node), {}, tx.trace_ids.value(), {}, nullptr, tx_measurement);
-            continue;
-        }
-
-        if (!config_ || shard_states_snapshot_.empty()) {
-            LOG(ERROR) << "Missing config or shard state snapshot for " << finality_label() << " block tails";
-            reusable_ = false;
-            children_emulated(std::move(parent_node), {}, tx.trace_ids.value(), {}, nullptr, tx_measurement);
-            continue;
-        }
-
-        auto context = std::make_shared<EmulationContext>(config_->block_id.id.seqno + 1, config_);
-        for (const auto& snapshot : shard_states_snapshot_) {
-            auto lt = snapshot.logical_time - snapshot.logical_time % block::ConfigInfo::get_lt_align();
-            context->add_shard_state(snapshot.blkid, snapshot.timestamp, lt, snapshot.state);
-        }
-        context->increase_seqno(3);
-        std::vector<EmulationMessage> msgs_to_emulate;
-        msgs_to_emulate.reserve(reqs.size());
-        for (auto& r : reqs) {
-            msgs_to_emulate.push_back(EmulationMessage{r.msg, r.depth});
-        }
-
-        tx_measurement->start_otel_child_span("emulate_tail");
-        auto P = td::PromiseCreator::lambda([SelfId = actor_id(this),
-                                             parent_node = std::move(parent_node),
-                                             tx_info = tx,
-                                             context,
-                                             reqs = std::move(reqs),
-                                             tx_measurement](td::Result<std::vector<std::unique_ptr<TraceNode>>> R) mutable {
-            if (R.is_error()) {
-                td::actor::send_closure(SelfId, &ConfirmedBlockEmulator::trace_error,
-                                        tx_info.hash, tx_info.trace_ids->root_tx_hash, R.move_as_error(), tx_measurement);
-            } else {
-                td::actor::send_closure(SelfId, &ConfirmedBlockEmulator::children_emulated,
-                                        std::move(parent_node), R.move_as_ok(), tx_info.trace_ids.value(),
-                                        std::move(reqs), std::move(context), tx_measurement);
-            }
-        });
-
-        auto actor_name = PSLICE() << finality_label() << "TailEmulator";
-        td::actor::create_actor<MasterchainBlockEmulator>(actor_name, context,
-                                                          std::move(msgs_to_emulate), std::move(P), tx_measurement)
-            .release();
+    for (auto* tx : roots) {
+      std::vector<EmuRequest> requests;
+      auto root = construct_confirmed_trace(*tx, requests, tail_update.update.measurement);
+      add_trace_fragment(tail_updates, *tx->trace_ids, std::move(root), std::move(requests));
+      trace_fragments_count_++;
     }
 
-    if (in_progress_cnt_ == 0) {
-        LOG(DEBUG) << "No " << finality_label() << " traces built for block " << block_data_state_.block_data->block_id().to_str();
-        promise_.set_value(ConfirmedBlockResult{
-            .reusable = reusable_,
-            .snapshots = std::move(snapshots_),
-        });
-        stop();
+    tail_update.update.measurement->set_otel_attribute("ton.trace.tail_requests_count",
+                                                       static_cast<std::int64_t>(tail_update.requests.size()));
+    tail_update.update.measurement->end_otel_child_span("build_trace_tree");
+  }
+
+  trace_updates_count_ = tail_updates.size();
+  in_progress_cnt_ = tail_updates.size();
+  for (auto& [_, tail_update] : tail_updates) {
+    auto update_measurement = start_update_tail_span(tail_update);
+    if (tail_update.requests.empty()) {
+      children_emulated(std::move(tail_update.update), {}, {}, nullptr);
+      continue;
     }
+
+    if (!config_ || shard_states_snapshot_.empty()) {
+      LOG(ERROR) << "Missing config or shard state snapshot for " << finality_label() << " block tails";
+      reusable_ = false;
+      children_emulated(std::move(tail_update.update), {}, {}, nullptr);
+      continue;
+    }
+
+    auto context = std::make_shared<EmulationContext>(config_->block_id.id.seqno + 1, config_);
+    for (const auto& snapshot : shard_states_snapshot_) {
+      auto lt = snapshot.logical_time - snapshot.logical_time % block::ConfigInfo::get_lt_align();
+      context->add_shard_state(snapshot.blkid, snapshot.timestamp, lt, snapshot.state);
+    }
+    context->increase_seqno(3);
+    std::vector<EmulationMessage> msgs_to_emulate;
+    msgs_to_emulate.reserve(tail_update.requests.size());
+    for (auto& r : tail_update.requests) {
+      msgs_to_emulate.push_back(EmulationMessage{r.msg, r.depth});
+    }
+
+    auto P = td::PromiseCreator::lambda(
+        [SelfId = actor_id(this), update = std::move(tail_update.update), context,
+         reqs = std::move(tail_update.requests)](td::Result<std::vector<std::unique_ptr<TraceNode>>> R) mutable {
+          if (R.is_error()) {
+            td::actor::send_closure(SelfId, &ConfirmedBlockEmulator::trace_update_error, std::move(update),
+                                    R.move_as_error());
+            return;
+          }
+          td::actor::send_closure(SelfId, &ConfirmedBlockEmulator::children_emulated, std::move(update), R.move_as_ok(),
+                                  std::move(reqs), std::move(context));
+        });
+
+    auto actor_name = PSLICE() << finality_label() << "TailEmulator";
+    td::actor::create_actor<MasterchainBlockEmulator>(actor_name, context, std::move(msgs_to_emulate), std::move(P),
+                                                      update_measurement)
+        .release();
+  }
+
+  all_trace_updates_started_ = true;
+  if (in_progress_cnt_ == 0) {
+    finish_block();
+  }
 }
 
 std::unique_ptr<TraceNode> ConfirmedBlockEmulator::construct_confirmed_trace(const TransactionInfo& tx, std::vector<EmuRequest>& reqs, MeasurementPtr, size_t depth) {
@@ -703,141 +835,125 @@ std::unique_ptr<TraceNode> ConfirmedBlockEmulator::construct_confirmed_trace(con
     return trace_node;
 }
 
-void ConfirmedBlockEmulator::children_emulated(std::unique_ptr<TraceNode> parent_node,
-                                               std::vector<std::unique_ptr<TraceNode>> child_nodes,
-                                               TraceIds trace_ids,
+void ConfirmedBlockEmulator::children_emulated(TraceUpdate update, std::vector<std::unique_ptr<TraceNode>> child_nodes,
                                                std::vector<EmuRequest> reqs,
-                                               std::shared_ptr<EmulationContext> context,
-                                               MeasurementPtr measurement) {
-    for (size_t i = 0; i < child_nodes.size(); ++i) {
-        auto& slot = reqs[i];
-        auto& siblings = slot.parent->children;
-        siblings[slot.insert_index] = std::move(child_nodes[i]);
-    }
+                                               std::shared_ptr<EmulationContext> context) {
+  auto attach_status = attach_emulated_tails(update, std::move(child_nodes), reqs, context);
+  if (attach_status.is_error()) {
+    trace_update_error(std::move(update), std::move(attach_status));
+    return;
+  }
 
-    Trace trace;
-    trace.ext_in_msg_hash = trace_ids.ext_in_msg_hash;
-    trace.ext_in_msg_hash_norm = trace_ids.ext_in_msg_hash_norm;
-    trace.root_tx_hash = trace_ids.root_tx_hash;
-    trace.root = std::move(parent_node);
+  std::vector<td::Ref<vm::Cell>> shard_states;
+  shard_states.reserve(shard_states_snapshot_.size());
+  for (const auto& snapshot : shard_states_snapshot_) {
+    shard_states.push_back(snapshot.state);
+  }
 
-    measurement->set_ext_msg_hash(trace.ext_in_msg_hash);
-    measurement->set_ext_msg_hash_norm(trace.ext_in_msg_hash_norm);
-    measurement->set_trace_root_tx_hash(trace.root_tx_hash);
-    measurement->set_transactions_count(trace.transactions_count());
-    measurement->set_emulated_transactions_count(trace.root ? trace.root->emulated_transactions_count() : 0);
-    measurement->set_otel_attribute("ton.trace.depth", static_cast<std::int64_t>(trace.depth()));
+  finish_update_tail_span(update);
+  for (auto& trace : update.fragments) {
+    trace.cell_anchor = cell_anchor_;
+    // Carry the detector's lookup context on for the classifier's tier-2 hook.
+    trace.shard_states = shard_states;
+    trace.config = config_;
+  }
 
-    if (context) {
-        trace.rand_seed = context->get_rand_seed();
-        trace.emulated_accounts = context->release_account_states();
-        trace.tx_limit_exceeded = context->is_limit_exceeded();
-    }
-    measurement->set_otel_attribute("ton.trace.tx_limit_exceeded", trace.tx_limit_exceeded);
-    measurement->end_otel_child_span("emulate_tail");
-
-    if constexpr (std::variant_size_v<Trace::Detector::DetectedInterface> > 0) {
-        auto P = td::PromiseCreator::lambda([SelfId = actor_id(this), trace_root_tx_hash = trace.root_tx_hash, measurement](td::Result<Trace> R) {
-            if (R.is_error()) {
-                td::actor::send_closure(SelfId, &ConfirmedBlockEmulator::trace_interfaces_error, trace_root_tx_hash, R.move_as_error(), measurement);
-                return;
-            }
-            td::actor::send_closure(SelfId, &ConfirmedBlockEmulator::trace_emulated, R.move_as_ok(), measurement);
+  if constexpr (std::variant_size_v<Trace::Detector::DetectedInterface> > 0) {
+    const auto trace_root_tx_hash = update.fragments.front().root_tx_hash;
+    auto measurement = update.measurement;
+    auto P = td::PromiseCreator::lambda(
+        [SelfId = actor_id(this), trace_root_tx_hash, measurement](td::Result<TraceUpdate> result) mutable {
+          if (result.is_error()) {
+            td::actor::send_closure(SelfId, &ConfirmedBlockEmulator::trace_interfaces_error, trace_root_tx_hash,
+                                    result.move_as_error(), measurement);
+            return;
+          }
+          td::actor::send_closure(SelfId, &ConfirmedBlockEmulator::trace_emulated, result.move_as_ok());
         });
-
-        std::vector<td::Ref<vm::Cell>> shard_states;
-        shard_states.reserve(shard_states_snapshot_.size());
-        for (const auto& snapshot : shard_states_snapshot_) {
-            shard_states.push_back(snapshot.state);
-        }
-
-        measurement->start_otel_child_span("detect_interfaces");
-        td::actor::create_actor<TraceInterfaceDetector>("ConfirmedTraceInterfaceDetector",
-                                                        shard_states, config_, std::move(trace), std::move(P), measurement).release();
-    } else {
-        trace_emulated(std::move(trace), measurement);
-    }
+    td::actor::create_actor<TraceUpdateInterfaceDetector>(
+        "ConfirmedTraceUpdateInterfaceDetector", std::move(shard_states), config_, std::move(update), std::move(P))
+        .release();
+  } else {
+    trace_emulated(std::move(update));
+  }
 }
 
-void ConfirmedBlockEmulator::trace_error(td::Bits256 tx_hash, td::Bits256 trace_root_tx_hash, td::Status error, MeasurementPtr measurement) {
-    LOG(ERROR) << "Failed to emulate " << finality_label() << " trace with root tx " << td::base64_encode(trace_root_tx_hash.as_slice())
-               << " from tx " << tx_hash.to_hex() << ": " << error;
-    measurement->mark_otel_error("trace_emulator.processing_error", error.to_string());
-    measurement->end_otel_child_span("emulate_tail");
-    trace_finished(trace_root_tx_hash, {}, false, measurement);
+void ConfirmedBlockEmulator::trace_update_error(TraceUpdate update, td::Status error) {
+  reusable_ = false;
+  auto error_text = error.to_string();
+  for (const auto& trace : update.fragments) {
+    LOG(ERROR) << "Failed to emulate " << finality_label() << " trace with root tx "
+               << td::base64_encode(trace.root_tx_hash.as_slice()) << ": " << error_text;
+  }
+  if (update.measurement) {
+    update.measurement->mark_otel_error("trace_emulator.processing_error", error_text);
+    update.measurement->end_otel_child_span("emulate_tail");
+  }
+  trace_update_finished({}, false, std::move(update.measurement));
 }
 
 void ConfirmedBlockEmulator::trace_interfaces_error(td::Bits256 trace_root_tx_hash, td::Status error, MeasurementPtr measurement) {
     LOG(ERROR) << "Failed to detect interfaces on " << finality_label() << " trace with root tx "
                << td::base64_encode(trace_root_tx_hash.as_slice()) << ": " << error;
-    measurement->mark_otel_error("trace_emulator.interface_error", error.to_string());
-    measurement->end_otel_child_span("detect_interfaces");
-    trace_finished(trace_root_tx_hash, {}, false, measurement);
+    if (measurement) {
+      measurement->mark_otel_error("trace_emulator.interface_error", error.to_string());
+    }
+    trace_update_finished({}, false, std::move(measurement));
 }
 
-void ConfirmedBlockEmulator::trace_emulated(Trace trace, MeasurementPtr measurement) {
-    trace.cell_anchor = cell_anchor_;
-    // Same states TraceInterfaceDetector ran against (children_emulated builds
-    // the identical vector out of the snapshots), carried on for tier 2.
-    trace.shard_states.reserve(shard_states_snapshot_.size());
-    for (const auto& snapshot : shard_states_snapshot_) {
-        trace.shard_states.push_back(snapshot.state);
+void ConfirmedBlockEmulator::trace_emulated(TraceUpdate update) {
+  const auto root_hash = update.fragments.front().root_tx_hash;
+  auto measurement = update.measurement;
+  auto P = td::PromiseCreator::lambda([SelfId = actor_id(this), root_hash, label = std::string(finality_label()),
+                                       measurement](td::Result<ConfirmedTraceSnapshot> result) mutable {
+    bool success = true;
+    ConfirmedTraceSnapshot snapshot;
+    if (result.is_error()) {
+      success = false;
+      auto error = result.move_as_error();
+      LOG(ERROR) << "Failed to insert " << label << " trace " << td::base64_encode(root_hash.as_slice()) << ": "
+                 << error;
+      if (measurement) {
+        measurement->mark_otel_error("trace_emulator.insert_error", error.to_string());
+      }
+    } else {
+      snapshot = result.move_as_ok();
+      // An empty successful snapshot means that this trace was
+      // intentionally skipped and does not make the block unusable.
+      LOG(DEBUG) << "Processed " << label << " trace " << td::base64_encode(root_hash.as_slice());
     }
-    trace.config = config_;
-    measurement->end_otel_child_span("detect_interfaces");
-    auto root_hash = trace.root_tx_hash;
-    auto P = td::PromiseCreator::lambda([SelfId = actor_id(this), root_hash, label = std::string(finality_label()), measurement](td::Result<ConfirmedTraceSnapshot> R) {
-        bool success = true;
-        ConfirmedTraceSnapshot snapshot;
-        if (R.is_error()) {
-            success = false;
-            auto error = R.move_as_error();
-            LOG(ERROR) << "Failed to insert " << label << " trace " << td::base64_encode(root_hash.as_slice()) << ": " << error;
-            measurement->mark_otel_error("trace_emulator.insert_error", error.to_string());
-        } else {
-            snapshot = R.move_as_ok();
-            // An empty successful snapshot means that this trace was
-            // intentionally skipped and does not make the block unusable.
-            LOG(DEBUG) << "Processed " << label << " trace "
-                       << td::base64_encode(root_hash.as_slice());
-        }
-        measurement->end_otel_child_span("insert_trace");
-        td::actor::send_closure(
-            SelfId,
-            &ConfirmedBlockEmulator::trace_finished,
-            root_hash,
-            std::move(snapshot),
-            success,
-            measurement);
-    });
-
-    trace_processor_(std::move(trace), std::move(P), measurement);
+    td::actor::send_closure(SelfId, &ConfirmedBlockEmulator::trace_update_finished, std::move(snapshot), success,
+                            measurement);
+  });
+  trace_processor_(std::move(update), std::move(P));
 }
 
-void ConfirmedBlockEmulator::trace_finished(
-    td::Bits256,
-    ConfirmedTraceSnapshot snapshot,
-    bool success,
-    MeasurementPtr measurement) {
-    if (in_progress_cnt_ == 0) {
-        return;
-    }
-    reusable_ = reusable_ && success;
-    if (snapshot) {
-        snapshots_.push_back(std::move(snapshot));
-    }
-    in_progress_cnt_--;
-    traces_cnt_++;
+void ConfirmedBlockEmulator::trace_update_finished(ConfirmedTraceSnapshot snapshot, bool success,
+                                                   MeasurementPtr measurement) {
+  if (in_progress_cnt_ == 0) {
+    return;
+  }
+  reusable_ = reusable_ && success;
+  if (snapshot) {
+    snapshots_.push_back(std::move(snapshot));
+  }
+  if (measurement) {
+    measurement->end_otel_child_span("insert_trace");
     measurement->emit_otel_span();
+  }
+  in_progress_cnt_--;
+  if (in_progress_cnt_ == 0 && all_trace_updates_started_) {
+    finish_block();
+  }
+}
 
-    if (in_progress_cnt_ == 0) {
-        LOG(INFO) << "Finished " << finality_label() << " block " << block_data_state_.block_data->block_id().to_str()
-                  << ": " << traces_cnt_ << " traces in "
-                  << (td::Timestamp::now().at() - start_time_.at()) * 1000 << " ms";
-        promise_.set_value(ConfirmedBlockResult{
-            .reusable = reusable_,
-            .snapshots = std::move(snapshots_),
-        });
-        stop();
-    }
+void ConfirmedBlockEmulator::finish_block() {
+  LOG(INFO) << "Finished " << finality_label() << " block " << block_data_state_.block_data->block_id().to_str() << ": "
+            << trace_fragments_count_ << " traces in " << (td::Timestamp::now().at() - start_time_.at()) * 1000
+            << " ms; grouped into " << trace_updates_count_ << " updates";
+  promise_.set_value(ConfirmedBlockResult{
+      .reusable = reusable_,
+      .snapshots = std::move(snapshots_),
+  });
+  stop();
 }

@@ -96,32 +96,34 @@ NodeMap merge_update(const NodeMap& current, const TraceStateUpdate& update) {
     return result;
 }
 
+TraceStateDelta make_delta(const NodeMap& current, const NodeMap& resulting) {
+  TraceStateDelta delta;
+  for (const auto& [key, _] : current) {
+    if (resulting.count(key) == 0) {
+      delta.removed_node_keys.push_back(key);
+    }
+  }
+  for (const auto& [key, resulting_node] : resulting) {
+    auto cached = current.find(key);
+    if (cached == current.end() || cached->second != resulting_node) {
+      delta.upserted_nodes.push_back(resulting_node);
+    }
+  }
+
+  const auto cached_refs = collect_index_refs(current);
+  const auto resulting_refs = collect_index_refs(resulting);
+  std::set_difference(cached_refs.begin(), cached_refs.end(), resulting_refs.begin(), resulting_refs.end(),
+                      std::back_inserter(delta.removed_index_refs));
+  std::set_difference(resulting_refs.begin(), resulting_refs.end(), cached_refs.begin(), cached_refs.end(),
+                      std::back_inserter(delta.added_index_refs));
+  return delta;
+}
+
 TraceStateChange make_change(const NodeMap& current, NodeMap resulting) {
-    TraceStateChange change;
-    change.resulting_nodes = std::move(resulting);
-    auto& delta = change.delta;
-
-    for (const auto& [key, _] : current) {
-        if (change.resulting_nodes.count(key) == 0) {
-            delta.removed_node_keys.push_back(key);
-        }
-    }
-    for (const auto& [key, resulting_node] : change.resulting_nodes) {
-        auto cached = current.find(key);
-        if (cached == current.end() || cached->second != resulting_node) {
-            delta.upserted_nodes.push_back(resulting_node);
-        }
-    }
-
-    const auto cached_refs = collect_index_refs(current);
-    const auto resulting_refs = collect_index_refs(change.resulting_nodes);
-    std::set_difference(cached_refs.begin(), cached_refs.end(),
-                        resulting_refs.begin(), resulting_refs.end(),
-                        std::back_inserter(delta.removed_index_refs));
-    std::set_difference(resulting_refs.begin(), resulting_refs.end(),
-                        cached_refs.begin(), cached_refs.end(),
-                        std::back_inserter(delta.added_index_refs));
-    return change;
+  TraceStateChange change;
+  change.delta = make_delta(current, resulting);
+  change.resulting_nodes = std::move(resulting);
+  return change;
 }
 
 }  // namespace
@@ -152,6 +154,10 @@ TraceStateChange TraceState::upsert_nodes(
 
 void TraceState::apply(TraceStateChange&& change) noexcept {
     nodes_.swap(change.resulting_nodes);
+}
+
+TraceStateDelta TraceState::delta_to(const TraceState& resulting) const {
+  return make_delta(nodes_, resulting.nodes_);
 }
 
 const TraceStateNode* TraceState::find(const std::string& key) const {

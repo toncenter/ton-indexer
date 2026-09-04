@@ -35,6 +35,7 @@ target_link_libraries(
 
 add_library(ton-trace-emulator-core STATIC
     src/TraceEmulator.cpp
+    src/TraceUpdate.cpp
     src/ExternalMessageAdmission.cpp
     src/OverlayListener.cpp
     src/BlockEmulator.cpp
@@ -90,6 +91,7 @@ install(TARGETS ton-trace-emulator RUNTIME DESTINATION bin)
 add_executable(test-ton-trace-state
     test/TraceStateTest.cpp
     test/TraceAssemblerTest.cpp
+    test/TraceUpdateTest.cpp
     test/TraceLifecycleTest.cpp
     test/ConfirmedRootTrackerTest.cpp
     test/OrderedResultBufferTest.cpp

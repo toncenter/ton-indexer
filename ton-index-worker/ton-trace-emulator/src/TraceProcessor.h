@@ -13,6 +13,7 @@
 #include "Measurement.h"
 #include "TraceEmulator.h"
 #include "TraceLifecycle.h"
+#include "TraceUpdate.h"
 
 struct RedisWriteBatch;
 
@@ -26,9 +27,10 @@ enum class TraceCleanupMode {
 
 class ITraceProcessor : public td::actor::Actor {
  public:
-  virtual void process_trace_patch(Trace trace, td::Promise<td::Unit> promise, MeasurementPtr measurement) = 0;
-  virtual void process_confirmed_trace_patch(Trace trace, td::Promise<ConfirmedTraceSnapshot> promise,
-                                             MeasurementPtr measurement) = 0;
+  // One update is one observable trace transition. Its disconnected block
+  // fragments are merged before classification and Redis publication.
+  virtual void process_trace_update(TraceUpdate update, td::Promise<td::Unit> promise) = 0;
+  virtual void process_confirmed_trace_update(TraceUpdate update, td::Promise<ConfirmedTraceSnapshot> promise) = 0;
   virtual void promote_confirmed(std::vector<ConfirmedTraceSnapshot> snapshots, ton::BlockSeqno mc_seqno,
                                  td::Promise<td::Unit> promise) = 0;
   virtual void invalidate(std::vector<td::Bits256> trace_hashes) = 0;
@@ -45,8 +47,8 @@ class TraceProcessor : public ITraceProcessor {
   void start_replaced_confirmed_root_ttl(const std::string& trace_key);
   void update_lifecycle(const std::string& trace_key);
   bool touch_oversized_trace(const std::string& trace_key);
-  void enqueue_trace_patch(Trace trace, bool confirmed, td::Promise<td::Unit> regular_promise,
-                           td::Promise<ConfirmedTraceSnapshot> confirmed_promise, MeasurementPtr measurement);
+  void enqueue_trace_update(TraceUpdate update, bool confirmed, td::Promise<td::Unit> regular_promise,
+                            td::Promise<ConfirmedTraceSnapshot> confirmed_promise);
   void start_up() override;
   void alarm() override;
   void tear_down() override;
@@ -60,9 +62,8 @@ class TraceProcessor : public ITraceProcessor {
                  mch::EmuClassifierConfig classifier_config = {});
   ~TraceProcessor() override;
 
-  void process_trace_patch(Trace trace, td::Promise<td::Unit> promise, MeasurementPtr measurement) override;
-  void process_confirmed_trace_patch(Trace trace, td::Promise<ConfirmedTraceSnapshot> promise,
-                                     MeasurementPtr measurement) override;
+  void process_trace_update(TraceUpdate update, td::Promise<td::Unit> promise) override;
+  void process_confirmed_trace_update(TraceUpdate update, td::Promise<ConfirmedTraceSnapshot> promise) override;
   void promote_confirmed(std::vector<ConfirmedTraceSnapshot> snapshots, ton::BlockSeqno mc_seqno,
                          td::Promise<td::Unit> promise) override;
   void invalidate(std::vector<td::Bits256> trace_hashes) override;

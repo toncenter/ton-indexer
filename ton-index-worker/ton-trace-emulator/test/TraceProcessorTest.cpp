@@ -57,6 +57,21 @@ std::optional<std::string> redis_field(const RedisWritePlan& plan, std::string_v
   return std::nullopt;
 }
 
+td::Bits256 trace_hash(char digit) {
+  td::Bits256 result;
+  ASSERT_EQ(256, result.from_hex(std::string(64, digit)));
+  return result;
+}
+
+Trace trace_fragment(char trace_digit, FinalityState finality, ton::BlockSeqno mc_seqno) {
+  Trace trace;
+  trace.ext_in_msg_hash_norm = trace_hash(trace_digit);
+  trace.root = std::make_unique<TraceNode>();
+  trace.root->finality_state = finality;
+  trace.root->mc_block_seqno = mc_seqno;
+  return trace;
+}
+
 ActiveTrace trace_with_actions(FinalityState trace_finality, std::optional<std::uint8_t> action_finality) {
   ActiveTrace trace;
   trace.finality = trace_finality;
@@ -89,6 +104,77 @@ TEST(TraceProcessor, classification_telemetry_names_are_stable) {
   ASSERT_EQ(std::string_view("emulator.trace_processor.queue_full"),
             ticker_names.at(TRACE_PROCESSOR_QUEUE_FULL));
   ASSERT_EQ(std::string_view("emulator.classify.trace.micros"), histogram_names.at(CLASSIFY_TRACE));
+}
+
+TEST(TraceProcessor, update_requires_one_trace_id_finality_and_block_update) {
+  TraceUpdate valid;
+  valid.fragments.push_back(trace_fragment('a', FinalityState::Finalized, 10));
+  valid.fragments.push_back(trace_fragment('a', FinalityState::Finalized, 10));
+  ASSERT_TRUE(validate_trace_update(valid).is_ok());
+
+  TraceUpdate mixed_ids;
+  mixed_ids.fragments.push_back(trace_fragment('a', FinalityState::Finalized, 10));
+  mixed_ids.fragments.push_back(trace_fragment('b', FinalityState::Finalized, 10));
+  ASSERT_TRUE(validate_trace_update(mixed_ids).is_error());
+
+  TraceUpdate mixed_finality;
+  mixed_finality.fragments.push_back(trace_fragment('a', FinalityState::Confirmed, 10));
+  mixed_finality.fragments.push_back(trace_fragment('a', FinalityState::Finalized, 10));
+  ASSERT_TRUE(validate_trace_update(mixed_finality).is_error());
+
+  TraceUpdate mixed_blocks;
+  mixed_blocks.fragments.push_back(trace_fragment('a', FinalityState::Finalized, 10));
+  mixed_blocks.fragments.push_back(trace_fragment('a', FinalityState::Finalized, 11));
+  ASSERT_TRUE(validate_trace_update(mixed_blocks).is_error());
+}
+
+TEST(TraceProcessor, update_materialization_publishes_one_logical_update) {
+  ActiveTrace current;
+  TraceTransition transition;
+  transition.needs_redis_write = true;
+  transition.raw_external_message_hash = "raw-message";
+  transition.next_trace.update_seq = 9;
+  transition.next_trace.finality = FinalityState::Finalized;
+  transition.next_trace.metadata.emplace("root_node", "root");
+
+  std::vector<TraceStateNode> nodes;
+  for (const auto& key : {std::string("left"), std::string("right")}) {
+    nodes.push_back(TraceStateNode{
+        .key = key,
+        .finality = TraceStateFinality::Finalized,
+        .serialized = std::make_shared<const std::string>("node:" + key),
+        .index_refs = {TraceStateIndexRef{
+            .index_key = "account:" + key,
+            .member = "trace:" + key,
+            .score = 1,
+        }},
+    });
+    transition.accepted_nodes.push_back(AcceptedNode{
+        .key = key,
+        .finality = FinalityState::Finalized,
+    });
+  }
+  auto state_change = transition.next_trace.nodes.upsert_nodes(std::move(nodes));
+  transition.next_trace.nodes.apply(std::move(state_change));
+  transition.node_delta = current.nodes.delta_to(transition.next_trace.nodes);
+
+  TraceUpdate update;
+  update.fragments.push_back(trace_fragment('a', FinalityState::Finalized, 10));
+  update.fragments.push_back(trace_fragment('a', FinalityState::Finalized, 10));
+  mch::EmuActionPayload payload;
+  payload.state = "ok";
+  payload.finality = 2;
+  payload.update_seq = 9;
+
+  auto result = prepare_trace_materialization(current, std::move(transition), update, payload, "trace", {});
+  ASSERT_TRUE(result.is_ok());
+  auto prepared = result.move_as_ok();
+
+  ASSERT_EQ(2u, prepared.redis.publications.size());
+  ASSERT_EQ(std::string(kStreamingTransactionsChannel), prepared.redis.publications[0].first);
+  ASSERT_EQ(std::string(kStreamingActionsChannel), prepared.redis.publications[1].first);
+  ASSERT_EQ(std::string("9"), *redis_field(prepared.redis, "update_seq"));
+  ASSERT_EQ(2u, prepared.accepted_nodes.size());
 }
 
 TEST(TraceProcessor, ready_work_is_routed_by_write_capacity_requirement) {

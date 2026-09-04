@@ -230,3 +230,29 @@ TEST(TraceState, finalized_snapshot_can_restore_an_evicted_node) {
     state.apply(std::move(change));
     ASSERT_EQ(Finality::Finalized, state.find("A")->finality);
 }
+
+TEST(TraceState, delta_to_collapses_intermediate_changes) {
+  TraceState initial;
+  apply(initial, update("root", {
+                                    node("root", Finality::Emulated, {"old"}),
+                                    node("old", Finality::Emulated),
+                                }));
+
+  TraceState resulting = initial;
+  apply(resulting, update("root", {
+                                      node("root", Finality::Confirmed, {"new"}, "root-confirmed"),
+                                      node("new", Finality::Confirmed),
+                                  }));
+  apply(resulting, update("new", {
+                                     node("new", Finality::Finalized, {}, "new-finalized"),
+                                 }));
+
+  auto delta = initial.delta_to(resulting);
+
+  ASSERT_EQ(1u, delta.removed_node_keys.size());
+  ASSERT_EQ("old", delta.removed_node_keys.front());
+  ASSERT_EQ(2u, delta.upserted_nodes.size());
+  ASSERT_EQ("new", delta.upserted_nodes[0].key);
+  ASSERT_EQ(Finality::Finalized, delta.upserted_nodes[0].finality);
+  ASSERT_EQ("root", delta.upserted_nodes[1].key);
+}
