@@ -34,7 +34,7 @@ class TraceEmulatorScheduler : public td::actor::Actor {
     std::string input_redis_channel_;
     std::string working_dir_;
     std::string db_event_fifo_path_;
-    std::function<void(Trace, td::Promise<td::Unit>, MeasurementPtr)> process_trace_patch_;
+    std::function<void(Trace, td::Promise<td::Unit>, MeasurementPtr)> process_trace_update_;
     td::actor::ActorOwn<DbEventListener> db_event_listener_;
 
     ton::BlockSeqno last_known_seqno_{0};
@@ -131,17 +131,11 @@ class TraceEmulatorScheduler : public td::actor::Actor {
     void confirmed_block_finished(
         ton::BlockIdExt block_id,
         td::Result<ConfirmedBlockResult> result);
-    void process_confirmed_trace(
-        ton::BlockIdExt block_id,
-        Trace trace,
-        td::Promise<ConfirmedTraceSnapshot> promise,
-        MeasurementPtr measurement);
+    void process_confirmed_trace(ton::BlockIdExt block_id, TraceUpdate update,
+                                 td::Promise<ConfirmedTraceSnapshot> promise);
     bool remember_seen_signed_block(ton::BlockIdExt block_id);
-    std::function<void(
-        Trace,
-        td::Promise<ConfirmedTraceSnapshot>,
-        MeasurementPtr)> make_signed_trace_processor(
-            const ton::BlockIdExt& block_id_ext);
+    std::function<void(TraceUpdate, td::Promise<ConfirmedTraceSnapshot>)> make_signed_trace_processor(
+        const ton::BlockIdExt& block_id_ext);
     void discard_confirmed_snapshots(
         const std::vector<ton::BlockIdExt>& finalized_blocks);
     void publish_health();
@@ -157,15 +151,10 @@ class TraceEmulatorScheduler : public td::actor::Actor {
         inet_addr_(inet_addr), redis_dsn_(redis_dsn), input_redis_channel_(input_redis_channel),
         working_dir_(std::move(working_dir)), db_event_fifo_path_(std::move(db_event_fifo_path)) {
       health_redis_ = std::make_unique<sw::redis::Redis>(redis_dsn_);
-      process_trace_patch_ = [trace_processor = trace_processor_.get()](
-                                 Trace trace, td::Promise<td::Unit> promise,
-                                 MeasurementPtr measurement) {
-        td::actor::send_closure(
-            trace_processor,
-            &ITraceProcessor::process_trace_patch,
-            std::move(trace),
-            std::move(promise),
-            std::move(measurement));
+      process_trace_update_ = [trace_processor = trace_processor_.get()](Trace trace, td::Promise<td::Unit> promise,
+                                                                         MeasurementPtr measurement) {
+        td::actor::send_closure(trace_processor, &ITraceProcessor::process_trace_update,
+                                make_trace_update(std::move(trace), std::move(measurement)), std::move(promise));
       };
       external_message_admission_ = std::make_shared<ExternalMessageAdmission>();
     };

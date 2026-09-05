@@ -74,6 +74,9 @@ public:
     // Replaces this object with the resulting state of a prepared change.
     void apply(TraceStateChange&& change) noexcept;
 
+    // Computes the exact Redis-facing delta from this state to resulting.
+    TraceStateDelta delta_to(const TraceState& resulting) const;
+
     const TraceStateNode* find(const std::string& key) const;
     const std::map<std::string, TraceStateNode>& nodes() const;
 

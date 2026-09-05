@@ -12,6 +12,7 @@
 
 #include "TraceEmulator.h"
 #include "TraceState.h"
+#include "TraceUpdate.h"
 
 using TraceMetadata = std::map<std::string, std::string>;
 
@@ -61,6 +62,11 @@ struct TraceTransition {
 class TraceAssembler {
  public:
   td::Result<TraceTransition> apply(const ActiveTrace& current, const Trace& patch, const std::string& trace_key) const;
+
+  // Applies all disconnected fragments of one block update in order and
+  // exposes a single transition relative to current.
+  td::Result<TraceTransition> apply_update(const ActiveTrace& current, TraceUpdate& update,
+                                           const std::string& trace_key) const;
 
   td::Result<mch::EmuTraceView> build_full_trace(const ActiveTrace& trace, const std::string& trace_key,
                                                  const Trace& lookup_context) const;
