@@ -204,6 +204,14 @@ int main(int argc, char *argv[]) {
               << " workers=" << mch_classifier_config.workers;
   }
 
+  // Resolve once before the scheduler starts. Redis reconnects must not block
+  // actor workers in getaddrinfo(). Validate before the startup FLUSHDB too.
+  auto redis_options = parse_redis_connection_options(redis_dsn);
+  if (redis_options.is_error()) {
+    LOG(ERROR) << redis_options.move_as_error();
+    return 1;
+  }
+
   // This must happen before any actor can subscribe to events or write a trace.
   LOG(WARNING) << "Clearing pending Redis database before startup";
   auto flush_status = flush_pending_redis_database(redis_dsn);
@@ -220,7 +228,7 @@ int main(int argc, char *argv[]) {
   scheduler.run_in_context([&] { 
     db_scanner = td::actor::create_actor<DbScanner>("scanner", db_root, dbs_secondary, working_dir, 0.05f);
     trace_processor = td::actor::create_actor<TraceProcessor>(
-        "TraceProcessor", redis_dsn, trace_retention,
+        "TraceProcessor", redis_options.move_as_ok(), trace_retention,
         mch_classifier_config);
     td::actor::create_actor<TraceEmulatorScheduler>("integritychecker", db_scanner.get(), trace_processor.get(),
       global_config_path, inet_addr, redis_dsn, redis_channel, working_dir,
