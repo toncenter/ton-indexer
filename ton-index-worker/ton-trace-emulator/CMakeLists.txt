@@ -66,6 +66,7 @@ add_executable(ton-trace-emulator
     src/TraceScheduler.cpp
     src/TraceProcessor.cpp
     src/RedisMaterializer.cpp
+    src/RedisConnectionActor.cpp
     src/RedisListener.cpp
     src/Measurement.h
 )
@@ -114,7 +115,9 @@ target_compile_features(test-ton-trace-state PRIVATE cxx_std_20)
 # White-box coverage for TraceProcessor's translation-unit-local prepare helpers.
 add_executable(test-ton-trace-processor
     test/TraceProcessorTest.cpp
+    test/RedisTransportTest.cpp
     src/RedisMaterializer.cpp
+    src/RedisConnectionActor.cpp
 )
 target_include_directories(test-ton-trace-processor
     PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/../external/redis-plus-plus/src

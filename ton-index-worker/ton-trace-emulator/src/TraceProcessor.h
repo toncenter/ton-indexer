@@ -16,6 +16,7 @@
 #include "TraceUpdate.h"
 
 struct RedisWriteBatch;
+struct RedisConnectionOptions;
 
 enum class TraceCleanupMode {
   Retention,
@@ -58,7 +59,7 @@ class TraceProcessor : public ITraceProcessor {
   void write_finished(std::string trace_key, td::Status status, RedisWriteBatch batch);
 
  public:
-  TraceProcessor(const std::string& redis_dsn, TraceRetentionConfig retention,
+  TraceProcessor(RedisConnectionOptions redis_options, TraceRetentionConfig retention,
                  mch::EmuClassifierConfig classifier_config = {});
   ~TraceProcessor() override;
 

@@ -4,14 +4,16 @@
 #include <cstdint>
 #include <functional>
 #include <map>
-#include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "td/actor/actor.h"
 #include "td/utils/Status.h"
 #include "td/utils/Timer.h"
 
+#include "RedisConnectionActor.h"
 #include "TraceEmulator.h"
 #include "TraceState.h"
 
@@ -72,24 +74,39 @@ struct RedisWriteBatch {
   void discard_trace_publications();
 };
 
-// Executes an already prepared Redis batch. It owns no trace state and makes
-// no retention or classification decisions.
-class RedisMaterializer {
+// CPU actor: encodes prepared batches and owns the bounded connection pool.
+// It owns no trace state and makes no retention or classification decisions.
+class RedisMaterializer final : public td::actor::Actor {
  public:
   using Completion = std::function<void(td::Status, RedisWriteBatch)>;
 
-  RedisMaterializer(const std::string& redis_dsn, std::size_t connection_pool_size);
-  ~RedisMaterializer();
+  RedisMaterializer(RedisConnectionOptions options, std::size_t max_concurrent_batches);
 
   RedisMaterializer(const RedisMaterializer&) = delete;
   RedisMaterializer& operator=(const RedisMaterializer&) = delete;
 
-  // Completion is called exactly once, including pipeline creation errors.
+  // Invoke with send_closure. Completion runs in this actor's scheduler
+  // context and returns the original batch even on partial-write errors.
   void write(RedisWriteBatch batch, Completion completion, td::Timer timer);
 
  private:
-  struct Impl;
-  std::unique_ptr<Impl> impl_;
+  struct Pending {
+    RedisWriteBatch batch;
+    Completion completion;
+    td::Timer timer;
+  };
+  struct Slot {
+    td::actor::ActorOwn<RedisConnectionActor> connection;
+    std::optional<Pending> pending;
+  };
+
+  RedisConnectionOptions options_;
+  std::size_t limit_;
+  std::vector<Slot> slots_;
+
+  void finished(std::size_t index, td::Result<td::Unit> result);
+  static void complete(Completion completion, td::Status status, RedisWriteBatch batch, td::Timer timer);
+  void tear_down() override;
 };
 
 // Clears the entire logical Redis database selected by redis_dsn.

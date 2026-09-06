@@ -1041,8 +1041,10 @@ static_assert(!publishes_invalidation(TraceCleanupMode::Oversized));
 }  // namespace
 
 struct TraceProcessor::Impl {
-  Impl(const std::string& redis_dsn, TraceRetentionConfig retention_config, mch::EmuClassifierConfig classifier_config)
-      : materializer(redis_dsn, kMaxConcurrentWrites)
+  Impl(RedisConnectionOptions redis_options, TraceRetentionConfig retention_config,
+       mch::EmuClassifierConfig classifier_config)
+      : materializer(td::actor::create_actor<RedisMaterializer>("RedisMaterializer", std::move(redis_options),
+                                                               kMaxConcurrentWrites))
       , retention(std::move(retention_config))
       , classifier_config(std::move(classifier_config)) {
     if (this->classifier_config.prep) {
@@ -1055,7 +1057,7 @@ struct TraceProcessor::Impl {
     }
   }
 
-  RedisMaterializer materializer;
+  td::actor::ActorOwn<RedisMaterializer> materializer;
   TraceRetentionConfig retention;
   mch::EmuClassifierConfig classifier_config;
   std::vector<td::actor::ActorOwn<mch::EmuClassifierActor>> classifiers;
@@ -1071,9 +1073,9 @@ struct TraceProcessor::Impl {
   td::Timestamp next_queue_stats_log;
 };
 
-TraceProcessor::TraceProcessor(const std::string& redis_dsn, TraceRetentionConfig retention,
+TraceProcessor::TraceProcessor(RedisConnectionOptions redis_options, TraceRetentionConfig retention,
                                mch::EmuClassifierConfig classifier_config)
-    : impl_(std::make_unique<Impl>(redis_dsn, std::move(retention), std::move(classifier_config))) {
+    : impl_(std::make_unique<Impl>(std::move(redis_options), std::move(retention), std::move(classifier_config))) {
 }
 
 TraceProcessor::~TraceProcessor() = default;
@@ -1316,7 +1318,8 @@ void TraceProcessor::start_next_operations() {
           .cleanup_mode = slot.cleanup_mode,
       });
       ++impl_->active_writes;
-      impl_->materializer.write(std::move(batch), std::move(completion), td::Timer());
+      td::actor::send_closure(impl_->materializer, &RedisMaterializer::write, std::move(batch),
+                              std::move(completion), td::Timer());
       continue;
     }
 
@@ -1534,7 +1537,8 @@ void TraceProcessor::start_next_operations() {
         .confirmed_trace = std::move(confirmed_trace),
     });
     ++impl_->active_writes;
-    impl_->materializer.write(std::move(batch), std::move(completion), request_timer);
+    td::actor::send_closure(impl_->materializer, &RedisMaterializer::write, std::move(batch),
+                            std::move(completion), request_timer);
   }
 }
 
@@ -1690,7 +1694,8 @@ void TraceProcessor::materialize_classified_trace(std::string trace_key) {
       .confirmed_trace = std::move(confirmed_trace),
   });
   ++impl_->active_writes;
-  impl_->materializer.write(std::move(batch), std::move(completion), work.insert_timer);
+  td::actor::send_closure(impl_->materializer, &RedisMaterializer::write, std::move(batch),
+                          std::move(completion), work.insert_timer);
 }
 
 void TraceProcessor::write_finished(std::string trace_key, td::Status status, RedisWriteBatch batch) {
