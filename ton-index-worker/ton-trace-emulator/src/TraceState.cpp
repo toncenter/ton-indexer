@@ -1,10 +1,10 @@
-#include "TraceState.h"
-
 #include <algorithm>
 #include <iterator>
 #include <set>
 #include <stdexcept>
 #include <utility>
+
+#include "TraceState.h"
 
 namespace {
 
@@ -53,22 +53,62 @@ IndexSet collect_index_refs(const NodeMap& nodes) {
     return refs;
 }
 
-void erase_subtree(NodeMap& nodes, const std::string& key) {
-    auto it = nodes.find(key);
-    if (it == nodes.end()) {
-        return;
-    }
-
-    const auto child_keys = it->second.child_keys;
-    nodes.erase(it);
-    for (const auto& child_key : child_keys) {
-        erase_subtree(nodes, child_key);
+void collect_subtree(const NodeMap& nodes, const std::string& root, std::set<std::string>& visited) {
+    std::vector<std::string> pending{root};
+    while (!pending.empty()) {
+        auto key = std::move(pending.back());
+        pending.pop_back();
+        auto it = nodes.find(key);
+        if (it == nodes.end() || !visited.insert(key).second) {
+            continue;
+        }
+        pending.insert(pending.end(), it->second.child_keys.begin(), it->second.child_keys.end());
     }
 }
 
-NodeMap merge_update(const NodeMap& current, const TraceStateUpdate& update) {
+void replace_node(const NodeMap& current, NodeMap& result, TraceStateNode node, std::set<std::string>& detached) {
+    auto cached = current.find(node.key);
+    if (cached != current.end()) {
+        for (const auto& child : cached->second.child_keys) {
+            if (std::find(node.child_keys.begin(), node.child_keys.end(), child) == node.child_keys.end()) {
+                collect_subtree(current, child, detached);
+            }
+        }
+    }
+    result.insert_or_assign(node.key, std::move(node));
+}
+
+void prune_detached(NodeMap& result, const std::set<std::string>& detached,
+                    const std::set<std::string>& explicit_roots = {}) {
+    if (detached.empty()) {
+        return;
+    }
+    // Only a removed edge (or a replaced root) proves a branch obsolete.
+    // Keep shared descendants reachable through the resulting graph, including
+    // partial fragments outside that branch. An omitted child is not a deletion.
+    std::set<std::string> retained;
+    for (const auto& [key, _] : result) {
+        if (detached.count(key) == 0 || explicit_roots.count(key) != 0) {
+            collect_subtree(result, key, retained);
+        }
+    }
+    for (const auto& key : detached) {
+        if (retained.count(key) == 0) {
+            result.erase(key);
+        }
+    }
+}
+
+NodeMap merge_update(const NodeMap& current, const TraceStateUpdate& update, const std::string& previous_root_key) {
     const auto incoming = normalize_update(update);
+    auto previous_root = current.find(previous_root_key.empty() ? update.root_key : previous_root_key);
+    if (previous_root != current.end() &&
+        is_more_final(previous_root->second.finality, incoming.at(update.root_key).finality)) {
+        return current;
+    }
+
     NodeMap result = current;
+    std::set<std::string> detached;
     std::vector<std::string> pending{update.root_key};
 
     while (!pending.empty()) {
@@ -81,11 +121,10 @@ NodeMap merge_update(const NodeMap& current, const TraceStateUpdate& update) {
             continue;
         }
 
-        if (cached != current.end() &&
-            incoming_node.finality != TraceStateFinality::Emulated) {
-            erase_subtree(result, key);
+        if (key == update.root_key && !previous_root_key.empty() && previous_root_key != key) {
+            collect_subtree(current, previous_root_key, detached);
         }
-        result.insert_or_assign(key, incoming_node);
+        replace_node(current, result, incoming_node, detached);
 
         for (const auto& child_key : incoming_node.child_keys) {
             if (incoming.count(child_key) != 0) {
@@ -93,22 +132,24 @@ NodeMap merge_update(const NodeMap& current, const TraceStateUpdate& update) {
             }
         }
     }
+
+    prune_detached(result, detached, {update.root_key});
     return result;
 }
 
 TraceStateDelta make_delta(const NodeMap& current, const NodeMap& resulting) {
-  TraceStateDelta delta;
-  for (const auto& [key, _] : current) {
-    if (resulting.count(key) == 0) {
-      delta.removed_node_keys.push_back(key);
+    TraceStateDelta delta;
+    for (const auto& [key, _] : current) {
+        if (resulting.count(key) == 0) {
+            delta.removed_node_keys.push_back(key);
+        }
     }
-  }
-  for (const auto& [key, resulting_node] : resulting) {
-    auto cached = current.find(key);
-    if (cached == current.end() || cached->second != resulting_node) {
-      delta.upserted_nodes.push_back(resulting_node);
+    for (const auto& [key, resulting_node] : resulting) {
+        auto cached = current.find(key);
+        if (cached == current.end() || cached->second != resulting_node) {
+            delta.upserted_nodes.push_back(resulting_node);
+        }
     }
-  }
 
   const auto cached_refs = collect_index_refs(current);
   const auto resulting_refs = collect_index_refs(resulting);
@@ -133,8 +174,8 @@ bool TraceStateDelta::empty() const {
            added_index_refs.empty();
 }
 
-TraceStateChange TraceState::prepare(const TraceStateUpdate& update) const {
-    return make_change(nodes_, merge_update(nodes_, update));
+TraceStateChange TraceState::prepare(const TraceStateUpdate& update, const std::string& previous_root_key) const {
+    return make_change(nodes_, merge_update(nodes_, update, previous_root_key));
 }
 
 TraceStateChange TraceState::upsert_nodes(

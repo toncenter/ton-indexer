@@ -274,13 +274,13 @@ public:
 McBlockEmulator::McBlockEmulator(schema::MasterchainBlockDataState mc_data_state,
                                  std::function<void(ton::BlockSeqno)>
                                      trace_ids_resolved,
-                                 bool reuse_confirmed_state,
+                                 std::function<void(td::Promise<td::Unit>)> promote_confirmed,
                                  td::Promise<FinalizedBlockResult> promise)
     : mc_data_state_(std::move(mc_data_state)),
       trace_ids_resolved_(std::move(trace_ids_resolved)),
       promise_(std::move(promise)),
       blocks_left_to_parse_(mc_data_state_.shard_blocks_diff_.size()),
-      reuse_confirmed_state_(reuse_confirmed_state) {
+      promote_confirmed_(std::move(promote_confirmed)) {
 }
 
 void McBlockEmulator::start_up() {
@@ -380,23 +380,20 @@ void McBlockEmulator::resolve_trace_ids() {
     auto mc_seqno =
         mc_data_state_.shard_blocks_[0].handle->id().seqno();
     trace_ids_resolved_(mc_seqno);
-    if (reuse_confirmed_state_) {
-        const auto has_masterchain_trace =
-            std::any_of(txs_.begin(), txs_.end(), [](const auto& tx) {
-                return tx.block_id.is_masterchain() &&
-                       tx.trace_ids.has_value();
-            });
-        if (!has_masterchain_trace) {
-            LOG(INFO) << "Reusing confirmed shard state for mc block "
-                      << mc_seqno
-                      << "; finalized trace emulation is not needed";
-            finish_block_if_done();
-            return;
-        }
-        LOG(INFO) << "Cannot fully reuse confirmed shard state for mc block "
-                  << mc_seqno
-                  << " because the masterchain block contributes to a trace";
-        reuse_confirmed_state_ = false;
+    auto promote = std::move(promote_confirmed_);
+    const auto has_masterchain_trace = std::any_of(txs_.begin(), txs_.end(), [](const auto& tx) {
+        return tx.block_id.is_masterchain() && tx.trace_ids.has_value();
+    });
+    if (promote && !has_masterchain_trace) {
+        // The scheduler grants this attempt its normal finalized commit turn.
+        // No result is emitted until promotion or ordinary emulation finishes.
+        promote(td::PromiseCreator::lambda([self = actor_id(this)](td::Result<td::Unit> result) mutable {
+            td::actor::send_closure(self, &McBlockEmulator::promotion_finished, std::move(result));
+        }));
+        return;
+    }
+    if (promote && has_masterchain_trace) {
+        LOG(INFO) << "Skipping confirmed promotion for mc block " << mc_seqno << " reason=masterchain_trace";
     }
     emulate_traces(measurement_);
 }
@@ -597,7 +594,24 @@ void McBlockEmulator::trace_emulated(TraceUpdate update) {
   finish_block_if_done();
 }
 
-void McBlockEmulator::finish_block_if_done() {
+void McBlockEmulator::promotion_finished(td::Result<td::Unit> result) {
+    if (result.is_ok()) {
+        finish_block_if_done(true);
+        return;
+    }
+    auto error = result.move_as_error();
+    const auto seqno = mc_data_state_.shard_blocks_[0].block_data->block_id().seqno();
+    if (error.code() == kConfirmedPromotionUnavailable) {
+        LOG(INFO) << "Using finalized emulation for mc block " << seqno
+                  << " reason=promotion_declined detail=" << error;
+    } else {
+        LOG(ERROR) << "Using finalized emulation for mc block " << seqno
+                   << " reason=promotion_error detail=" << error;
+    }
+    emulate_traces(measurement_);
+}
+
+void McBlockEmulator::finish_block_if_done(bool promoted) {
     if (finished_ || in_progress_cnt_ != 0) {
         return;
     }
@@ -606,9 +620,11 @@ void McBlockEmulator::finish_block_if_done() {
     std::sort(trace_updates_.begin(), trace_updates_.end(), [](const TraceUpdate& lhs, const TraceUpdate& rhs) {
       return lhs.fragments.front().ext_in_msg_hash_norm < rhs.fragments.front().ext_in_msg_hash_norm;
     });
-    LOG(INFO) << "Finished emulating block " << blkid.to_str() << ": " << traces_cnt_ << " traces in "
-              << (td::Timestamp::now().at() - start_time_.at()) * 1000 << " ms; grouped into " << trace_updates_.size()
-              << " updates";
+    LOG(INFO) << "Finished processing mc block " << blkid.seqno
+              << " mode=" << (promoted ? "promotion" : "emulation")
+              << " parsed_transactions=" << txs_.size() << " trace_fragments=" << traces_cnt_
+              << " trace_updates=" << trace_updates_.size()
+              << " elapsed_ms=" << (td::Timestamp::now().at() - start_time_.at()) * 1000;
     std::vector<ton::BlockIdExt> finalized_blocks;
     finalized_blocks.reserve(mc_data_state_.shard_blocks_diff_.size());
     std::vector<td::Ref<ton::validator::BlockData>> block_data_owners;
@@ -622,7 +638,6 @@ void McBlockEmulator::finish_block_if_done() {
         .finalized_blocks = std::move(finalized_blocks),
         .trace_updates = std::move(trace_updates_),
         .trace_fragments_count = static_cast<std::size_t>(traces_cnt_),
-        .reused_confirmed_state = reuse_confirmed_state_,
         .block_data_owners = std::move(block_data_owners),
     });
     stop();
@@ -911,10 +926,18 @@ void ConfirmedBlockEmulator::trace_emulated(TraceUpdate update) {
     if (result.is_error()) {
       success = false;
       auto error = result.move_as_error();
-      LOG(ERROR) << "Failed to insert " << label << " trace " << td::base64_encode(root_hash.as_slice()) << ": "
-                 << error;
-      if (measurement) {
-        measurement->mark_otel_error("trace_emulator.insert_error", error.to_string());
+      if (error.code() == kConfirmedSnapshotRootMismatch) {
+        LOG(INFO) << "Cannot reuse " << label << " snapshot for trace " << td::base64_encode(root_hash.as_slice())
+                  << "; will emulate finalized data: " << error;
+        if (measurement) {
+          measurement->set_otel_attribute("ton.trace_state.confirmed_snapshot_reusable", false);
+        }
+      } else {
+        LOG(ERROR) << "Failed to insert " << label << " trace " << td::base64_encode(root_hash.as_slice()) << ": "
+                   << error;
+        if (measurement) {
+          measurement->mark_otel_error("trace_emulator.insert_error", error.to_string());
+        }
       }
     } else {
       snapshot = result.move_as_ok();

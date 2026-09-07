@@ -66,6 +66,17 @@ td::Status append_redis_data_commands(RedisPipeline& pipeline, const RedisWriteP
     return td::Status::OK();
   }
 
+  // Switch the payload, root pointer and update_seq in one HSET before removing
+  // obsolete fields. A reader of an older hint then sees either the intact old
+  // graph or the new version, never a pointer to a root we have just deleted.
+  if (!plan.fields_to_set.empty()) {
+    std::vector<td::Slice> args{"HSET", plan.trace_key};
+    for (const auto& [field, value] : plan.fields_to_set) {
+      args.emplace_back(field);
+      args.emplace_back(value);
+    }
+    TRY_STATUS(pipeline.append(args, max_bytes));
+  }
   if (!plan.node_fields_to_delete.empty()) {
     std::vector<td::Slice> args{"HDEL", plan.trace_key};
     for (const auto& field : plan.node_fields_to_delete)
@@ -95,14 +106,6 @@ td::Status append_redis_data_commands(RedisPipeline& pipeline, const RedisWriteP
       }
       TRY_STATUS(pipeline.append(args, max_bytes));
     }
-  }
-  if (!plan.fields_to_set.empty()) {
-    std::vector<td::Slice> args{"HSET", plan.trace_key};
-    for (const auto& [field, value] : plan.fields_to_set) {
-      args.emplace_back(field);
-      args.emplace_back(value);
-    }
-    TRY_STATUS(pipeline.append(args, max_bytes));
   }
   for (const auto& account : plan.account_states) {
     auto hint = pack_streaming_hint(StreamingAccountStateHint{

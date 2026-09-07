@@ -43,12 +43,17 @@ void TraceEmulatorScheduler::handle_db_event(ton::tl_object_ptr<ton::ton_api::db
 }
 
 void TraceEmulatorScheduler::handle_block_signed(ton::BlockIdExt block_id) {
-    if (block_id.is_masterchain()) {
+    if (block_id.is_masterchain() || confirmed_block_is_closed(block_id)) {
         return;
     }
     if (!remember_seen_signed_block(block_id)) {
         LOG(INFO) << "Skipping duplicate signed shard block " << block_id.to_str();
         return;
+    }
+    // Count observed versions, including ones still in flight or later failed.
+    auto [version, first] = confirmed_block_versions_.try_emplace(block_id.id, block_id);
+    if (!first && version->second != block_id) {
+        version->second.reset();
     }
     pending_signed_blocks_.push_back(block_id);
     request_db_catch_up();
@@ -257,7 +262,7 @@ void TraceEmulatorScheduler::seqno_fetched(std::uint32_t seqno, schema::Masterch
 void TraceEmulatorScheduler::start_next_finalized_block() {
     if (last_started_finalized_seqno_ == 0) {
         last_started_finalized_seqno_ = last_fetched_seqno_;
-        finalized_results_.reset(last_fetched_seqno_ + 1);
+        finalized_ready_.reset(last_fetched_seqno_ + 1);
     }
 
     if (finalized_trace_ids_in_progress_ ||
@@ -274,6 +279,8 @@ void TraceEmulatorScheduler::start_next_finalized_block() {
     finalized_trace_ids_in_progress_ = seqno;
     bool reuse_confirmed_state = false;
     bool has_shard_blocks = false;
+    const char* promotion_skip_reason = "no_shard_blocks";
+    std::vector<ConfirmedTraceSnapshot> snapshots;
     for (const auto& block : it->second.shard_blocks_diff_) {
         const auto block_id = block.block_data->block_id();
         close_confirmed_block(block_id.id);
@@ -284,25 +291,26 @@ void TraceEmulatorScheduler::start_next_finalized_block() {
             reuse_confirmed_state = true;
             has_shard_blocks = true;
         }
-        if (confirmed_block_snapshots_.count(block_id) == 0) {
+        if (!can_reuse_confirmed_block(block_id)) {
             reuse_confirmed_state = false;
+            auto version = confirmed_block_versions_.find(block_id.id);
+            promotion_skip_reason = version != confirmed_block_versions_.end() && !version->second
+                                        ? "multiple_confirmed_versions" : "confirmed_snapshot_unavailable";
+        } else {
+            const auto& block_snapshots = confirmed_block_snapshots_.at(block_id);
+            snapshots.insert(snapshots.end(), block_snapshots.begin(), block_snapshots.end());
         }
     }
 
-    start_finalized_emulator(seqno, reuse_confirmed_state);
-}
-
-void TraceEmulatorScheduler::start_finalized_emulator(
-    ton::BlockSeqno seqno,
-    bool reuse_confirmed_state) {
-    auto it = blocks_to_emulate_.find(seqno);
-    if (it == blocks_to_emulate_.end()) {
-        LOG(FATAL) << "Missing mc block selected for emulation " << seqno;
+    std::function<void(td::Promise<td::Unit>)> promote;
+    if (reuse_confirmed_state) {
+        promote = [self = actor_id(this), seqno, snapshots = std::move(snapshots)](td::Promise<td::Unit> promise) mutable {
+            td::actor::send_closure(self, &TraceEmulatorScheduler::request_confirmed_promotion,
+                                   seqno, std::move(snapshots), std::move(promise));
+        };
     }
-    LOG(INFO) << "Emulating mc block " << seqno
-              << (reuse_confirmed_state
-                      ? " with reusable confirmed shard state"
-                      : "");
+    LOG(INFO) << "Starting mc block " << seqno
+              << " promotion=" << (promote ? "candidate" : promotion_skip_reason);
 
     auto trace_ids_resolved = [
         SelfId = actor_id(this)
@@ -326,12 +334,7 @@ void TraceEmulatorScheduler::start_finalized_emulator(
     auto actor_name = PSLICE() << "McBlockEmulator" << seqno;
     auto block = std::move(it->second);
     td::actor::create_actor<McBlockEmulator>(
-        actor_name,
-        std::move(block),
-        std::move(trace_ids_resolved),
-        reuse_confirmed_state,
-        std::move(P))
-        .release();
+        actor_name, std::move(block), std::move(trace_ids_resolved), std::move(promote), std::move(P)).release();
 
     blocks_to_emulate_.erase(it);
     last_started_finalized_seqno_++;
@@ -358,26 +361,15 @@ void TraceEmulatorScheduler::finalized_block_emulated(
     }
 
     auto block = result.move_as_ok();
-    if (block.reused_confirmed_state) {
-        for (const auto& block_id : block.finalized_blocks) {
-            if (block_id.is_masterchain()) {
-                continue;
-            }
-            auto snapshots =
-                confirmed_block_snapshots_.find(block_id);
-            if (snapshots == confirmed_block_snapshots_.end()) {
-                LOG(FATAL) << "Reusable confirmed block snapshot disappeared: "
-                           << block_id.to_str();
-            }
-            block.confirmed_snapshots.insert(
-                block.confirmed_snapshots.end(),
-                snapshots->second.begin(),
-                snapshots->second.end());
-        }
-    }
-    LOG(INFO) << "Mc block " << seqno << " finished computation with " << block.trace_fragments_count
+    LOG(DEBUG) << "Mc block " << seqno << " finished computation with " << block.trace_fragments_count
               << " trace fragments (" << block.trace_updates.size() << " updates)";
-    if (!finalized_results_.insert(seqno, std::move(block))) {
+    if (finalized_commit_ && finalized_commit_->seqno == seqno) {
+        // A promotion attempt already acquired this block's commit turn.
+        CHECK(finalized_commit_->pending_writes == 0);
+        commit_finalized_block(std::move(block));
+        return;
+    }
+    if (!finalized_ready_.insert(seqno, std::move(block))) {
         LOG(FATAL) << "Duplicate finalized result for mc block "
                    << seqno;
     }
@@ -389,12 +381,20 @@ void TraceEmulatorScheduler::try_commit_finalized_block() {
         return;
     }
 
-    auto outcome = finalized_results_.take_next();
+    auto outcome = finalized_ready_.take_next();
     if (!outcome) {
         return;
     }
 
-    commit_finalized_block(std::move(outcome->value));
+    if (auto* request = std::get_if<ConfirmedPromotionRequest>(&outcome->value)) {
+        // Hold the barrier through the attempt and, if declined, its ordinary
+        // emulation. The actor still owes us its single FinalizedBlockResult.
+        finalized_commit_.emplace(FinalizedCommitState{.seqno = outcome->seqno, .pending_writes = 0});
+        td::actor::send_closure(trace_processor_, &ITraceProcessor::promote_confirmed,
+                               std::move(request->snapshots), outcome->seqno, std::move(request->promise));
+    } else {
+        commit_finalized_block(std::move(std::get<FinalizedBlockResult>(outcome->value)));
+    }
 }
 
 void TraceEmulatorScheduler::commit_finalized_block(
@@ -403,7 +403,7 @@ void TraceEmulatorScheduler::commit_finalized_block(
     finalized_commit_.emplace(FinalizedCommitState{
         .seqno = seqno,
         .finalized_blocks = result.finalized_blocks,
-        .pending_writes = result.reused_confirmed_state ? 1 : result.trace_updates.size(),
+        .pending_writes = result.trace_updates.size(),
         .block_data_owners = std::move(result.block_data_owners),
     });
 
@@ -455,31 +455,17 @@ void TraceEmulatorScheduler::commit_finalized_block(
                               std::move(P));
     }
 
-    if (result.reused_confirmed_state) {
-        auto P = td::PromiseCreator::lambda([
-            SelfId = actor_id(this),
-            seqno
-        ](td::Result<td::Unit> result) mutable {
-            if (result.is_error()) {
-                LOG(ERROR) << "Failed to materialize reused confirmed state for mc block "
-                           << seqno << ": " << result.move_as_error();
-            }
-            td::actor::send_closure(
-                SelfId,
-                &TraceEmulatorScheduler::finalized_trace_write_finished,
-                seqno);
-        });
-        td::actor::send_closure(
-            trace_processor_,
-            &ITraceProcessor::promote_confirmed,
-            std::move(result.confirmed_snapshots),
-            seqno,
-            std::move(P));
-    }
-
     if (finalized_commit_->pending_writes == 0) {
         finish_finalized_commit();
     }
+}
+
+void TraceEmulatorScheduler::request_confirmed_promotion(
+    ton::BlockSeqno seqno, std::vector<ConfirmedTraceSnapshot> snapshots, td::Promise<td::Unit> promise) {
+    if (!finalized_ready_.insert(seqno, ConfirmedPromotionRequest{std::move(snapshots), std::move(promise)})) {
+        LOG(FATAL) << "Duplicate finalized promotion request for mc block " << seqno;
+    }
+    try_commit_finalized_block();
 }
 
 void TraceEmulatorScheduler::finalized_trace_write_finished(
@@ -549,12 +535,19 @@ bool TraceEmulatorScheduler::confirmed_block_is_closed(
     return closed_confirmed_blocks_.count(block_id.id) != 0;
 }
 
+bool TraceEmulatorScheduler::can_reuse_confirmed_block(const ton::BlockIdExt& block_id) const {
+    auto version = confirmed_block_versions_.find(block_id.id);
+    return version != confirmed_block_versions_.end() && version->second == block_id &&
+           confirmed_block_snapshots_.count(block_id) != 0;
+}
+
 void TraceEmulatorScheduler::discard_confirmed_snapshots(
     const std::vector<ton::BlockIdExt>& finalized_blocks) {
     std::set<ton::BlockId> logical_blocks;
     for (const auto& block : finalized_blocks) {
         if (!block.is_masterchain()) {
             logical_blocks.insert(block.id);
+            confirmed_block_versions_.erase(block.id);
         }
     }
     for (auto it = confirmed_block_snapshots_.begin();

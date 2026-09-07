@@ -288,6 +288,32 @@ TEST(RedisTransport, command_error_suppresses_publications_and_next_batch_reconn
   ASSERT_EQ(2, server.accepted_.load());
 }
 
+TEST(RedisTransport, new_root_and_version_are_written_before_obsolete_fields_are_deleted) {
+  FakeRedis server;
+  server.run([&] {
+    auto peer = server.accept();
+    ASSERT_EQ(std::vector<std::string>({"HSET", "trace", "root_node", "new-root", "new-root", "payload",
+                                       "update_seq", "2"}), peer.command());
+    ASSERT_EQ(std::vector<std::string>({"HDEL", "trace", "old-root"}), peer.command());
+    ASSERT_EQ(std::vector<std::string>({"SETEX", "tr_in_msg:external-hash", "600", "trace"}), peer.command());
+    peer.expect_no_command();
+    peer.reply(":3\r\n:1\r\n+OK\r\n");
+    ASSERT_EQ(std::vector<std::string>({"PUBLISH", "streaming_transactions", "notice"}), peer.command());
+    peer.reply(":0\r\n");
+  });
+  auto replacement = batch();
+  replacement.plans.front().fields_to_set = {{"root_node", "new-root"}, {"new-root", "payload"}, {"update_seq", "2"}};
+  replacement.plans.front().node_fields_to_delete = {"old-root"};
+  with_materializer(server.options(), 1, [&](auto& materializer) {
+    td::actor::send_closure(materializer, &RedisMaterializer::write, std::move(replacement),
+                            [](td::Status status, RedisWriteBatch) {
+                              status.ensure();
+                              stop_scheduler();
+                            }, td::Timer());
+  });
+  server.join();
+}
+
 TEST(RedisTransport, disconnect_after_partial_reply_does_not_replay_batch) {
   FakeRedis server;
   server.run([&] {

@@ -9,6 +9,7 @@
 #include <functional>
 #include <cstdint>
 #include <optional>
+#include <variant>
 #include "td/actor/actor.h"
 #include "DbScanner.h"
 #include "OverlayListener.h"
@@ -26,6 +27,7 @@
 
 
 class TraceEmulatorScheduler : public td::actor::Actor {
+    friend struct TraceSchedulerTest;
   private: 
     td::actor::ActorId<DbScanner> db_scanner_;
     std::string global_config_path_;
@@ -82,14 +84,21 @@ class TraceEmulatorScheduler : public td::actor::Actor {
         std::vector<td::Ref<ton::validator::BlockData>> block_data_owners;
     };
 
-    // Blocks resolve inter-block trace ids one by one, then emulate their
-    // tails in parallel. Completed blocks are committed in masterchain order.
+    struct ConfirmedPromotionRequest {
+        std::vector<ConfirmedTraceSnapshot> snapshots;
+        td::Promise<td::Unit> promise;
+    };
+
+    // Blocks resolve ids in order, then compute in parallel. Both ready
+    // results and promotion attempts must acquire the same ordered commit turn.
     std::optional<ton::BlockSeqno> finalized_trace_ids_in_progress_;
-    OrderedResultBuffer<FinalizedBlockResult> finalized_results_;
+    OrderedResultBuffer<std::variant<FinalizedBlockResult, ConfirmedPromotionRequest>> finalized_ready_;
     std::optional<FinalizedCommitState> finalized_commit_;
 
     std::map<ton::BlockIdExt, std::vector<ConfirmedTraceSnapshot>>
         confirmed_block_snapshots_;
+    // nullopt means more than one version was observed for this logical block.
+    std::map<ton::BlockId, std::optional<ton::BlockIdExt>> confirmed_block_versions_;
     std::set<ton::BlockId> closed_confirmed_blocks_;
     std::deque<ton::BlockId> closed_confirmed_block_order_;
 
@@ -107,20 +116,20 @@ class TraceEmulatorScheduler : public td::actor::Actor {
     void fetch_error(std::uint32_t seqno, td::Status error);
     void seqno_fetched(std::uint32_t seqno, schema::MasterchainBlockDataState mc_data_state);
     void start_next_finalized_block();
-    void start_finalized_emulator(
-        ton::BlockSeqno seqno,
-        bool reuse_confirmed_state);
     void finalized_trace_ids_resolved(ton::BlockSeqno seqno);
     void finalized_block_emulated(
         ton::BlockSeqno seqno,
         td::Result<FinalizedBlockResult> result);
     void try_commit_finalized_block();
     void commit_finalized_block(FinalizedBlockResult result);
+    void request_confirmed_promotion(ton::BlockSeqno seqno, std::vector<ConfirmedTraceSnapshot> snapshots,
+                                     td::Promise<td::Unit> promise);
     void finalized_trace_write_finished(ton::BlockSeqno seqno);
     void finish_finalized_commit();
     void finalized_block_done();
     void close_confirmed_block(ton::BlockId block_id);
     bool confirmed_block_is_closed(const ton::BlockIdExt& block_id) const;
+    bool can_reuse_confirmed_block(const ton::BlockIdExt& block_id) const;
     void enqueue_signed_block(ton::BlockIdExt block_id);
     void queue_signed_block_fetch(ton::BlockIdExt block_id);
     void fetch_signed_blocks();
