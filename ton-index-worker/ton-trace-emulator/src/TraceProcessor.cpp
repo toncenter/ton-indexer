@@ -226,7 +226,8 @@ struct CachedConfirmedTrace {
 
 struct ConfirmedTraceSnapshotData {
   std::string trace_key;
-  std::shared_ptr<const ActiveTrace> state;
+  std::string root_key;
+  std::string root_transaction_hash;
   CachedConfirmedTrace confirmed;
 };
 
@@ -236,6 +237,11 @@ struct InsertCompletion {
   bool confirmed{false};
   td::Promise<td::Unit> regular_promise;
   td::Promise<ConfirmedTraceSnapshot> confirmed_promise;
+  std::string root_key;
+  std::string root_transaction_hash;
+
+  void set_snapshot(const std::string& trace_key, const ActiveTrace& state,
+                    CachedConfirmedTrace cached);
 
   void set_error(td::Status error) {
     if (confirmed) {
@@ -272,7 +278,7 @@ struct ClassificationWork {
 };
 
 struct PromoteConfirmedRequest {
-  std::shared_ptr<const ActiveTrace> fallback_state;
+  ConfirmedTraceSnapshot snapshot;
   CachedConfirmedTrace trace;
   ton::BlockSeqno mc_seqno;
   td::Promise<td::Unit> promise;
@@ -496,20 +502,16 @@ void remember_failed_write(TraceSlot& slot, ActiveTrace next_trace, RedisWriteBa
   slot.dirty = std::move(batch);
 }
 
-PreparedActionUpdate prepare_action_update(const ActionState& current, const mch::EmuActionPayload& payload,
-                                           const std::string& trace_key) {
+PreparedActionUpdate prepare_action_update(const ActionState& current, const mch::EmuActionPayload& payload) {
   PreparedActionUpdate prepared;
   prepared.state = current;
   prepared.state.blob_is_current = false;
   if (payload.state == nullptr) {
     return prepared;
   }
-  if (current.blob_finality && *current.blob_finality > payload.finality) {
-    LOG(DEBUG) << "skipping stale actions write for " << trace_key << ": stored finality "
-               << static_cast<int>(*current.blob_finality) << " > emission finality "
-               << static_cast<int>(payload.finality);
-    return prepared;
-  }
+  // This classification belongs to the accepted graph in the serialized trace
+  // queue. A new canonical branch may have a pending tail even when the old
+  // branch was complete; its fresh actions must replace the old branch's blob.
 
   prepared.fields_to_set.emplace_back(kActionsStateField, payload.state);
   prepared.state.classify_state = payload.state;
@@ -794,7 +796,7 @@ td::Result<PreparedTraceUpdate> prepare_trace_materialization(const ActiveTrace&
     return PreparedTraceUpdate{};
   }
 
-  auto action_update = prepare_action_update(current.actions, payload, trace_key);
+  auto action_update = prepare_action_update(current.actions, payload);
   transition.next_trace.actions = action_update.state;
   auto redis_result = build_redis_plan(transition, action_update, update, trace_key);
   if (redis_result.is_error()) {
@@ -830,13 +832,22 @@ td::Result<CachedConfirmedTrace> collect_confirmed_data(const ActiveTrace& resul
   return confirmed;
 }
 
-ConfirmedTraceSnapshot make_confirmed_snapshot(const std::string& trace_key, std::shared_ptr<const ActiveTrace> state,
-                                               CachedConfirmedTrace confirmed) {
-  return std::make_shared<const ConfirmedTraceSnapshotData>(ConfirmedTraceSnapshotData{
+void InsertCompletion::set_snapshot(const std::string& trace_key, const ActiveTrace& state,
+                                    CachedConfirmedTrace cached) {
+  const auto* root = state.root();
+  if (root && (root->key != root_key || root->transaction_hash() != root_transaction_hash)) {
+    // A disconnected update can have been applied while another confirmed
+    // variant owned the root. Do not reuse that mixed state as its snapshot;
+    // the existing block-level fallback will emulate finalized data normally.
+    set_error(td::Status::Error(kConfirmedSnapshotRootMismatch, "Confirmed snapshot has a different root execution"));
+    return;
+  }
+  set_value(std::make_shared<const ConfirmedTraceSnapshotData>(ConfirmedTraceSnapshotData{
       .trace_key = trace_key,
-      .state = std::move(state),
-      .confirmed = std::move(confirmed),
-  });
+      .root_key = root_key,
+      .root_transaction_hash = root_transaction_hash,
+      .confirmed = std::move(cached),
+  }));
 }
 
 td::Result<TraceStateNode> finalize_cached_node(const TraceStateNode& cached, ton::BlockSeqno mc_seqno) {
@@ -875,10 +886,17 @@ td::Result<std::vector<TraceStateNode>> prepare_finalized_nodes(const ActiveTrac
       return td::Status::Error("Snapshot contains an invalid confirmed node");
     }
     const auto* current_node = current.nodes.find(key);
-    if (current_node && current_node->finality == TraceStateFinality::Finalized) {
+    if (!current_node || current_node->transaction_hash() != cached_node.transaction_hash() ||
+        current_node->child_keys != cached_node.child_keys ||
+        current_node->finality < TraceStateFinality::Confirmed) {
+      return td::Status::Error(kConfirmedPromotionUnavailable, "Confirmed transaction is missing or has changed");
+    }
+    if (current_node->finality == TraceStateFinality::Finalized) {
       continue;
     }
-    TRY_RESULT(finalized, finalize_cached_node(cached_node, mc_seqno));
+    // Use the current node, not the snapshot: only finality and its
+    // masterchain inclusion change, never payload ownership or graph edges.
+    TRY_RESULT(finalized, finalize_cached_node(*current_node, mc_seqno));
     finalized_nodes.push_back(std::move(finalized));
   }
   return finalized_nodes;
@@ -910,86 +928,46 @@ void append_promoted_publications(RedisWritePlan& plan, const CachedConfirmedTra
   append_streaming_actions_hint(plan, next_trace, trace_key, StreamingUpdateFinality::Finalized, actions_updated);
 }
 
-td::Status append_full_trace_state(RedisWritePlan& plan, const ActiveTrace& trace) {
-  std::set<TraceStateIndexRef> indexes;
-  for (const auto& [key, node] : trace.nodes.nodes()) {
-    if (!node.serialized) {
-      return td::Status::Error("Trace snapshot contains a node without serialized payload");
-    }
-    plan.fields_to_set.emplace_back(key, *node.serialized);
-    indexes.insert(node.index_refs.begin(), node.index_refs.end());
-  }
-  plan.indexes_to_add.assign(indexes.begin(), indexes.end());
-  for (const auto& [field, value] : trace.metadata) {
-    plan.fields_to_set.emplace_back(field, value);
-  }
-  plan.fields_to_set.emplace_back("update_seq", std::to_string(trace.update_seq));
-  return td::Status::OK();
-}
-
 td::Result<PreparedTraceUpdate> prepare_confirmed_promotion(const ActiveTrace& current,
                                                             const CachedConfirmedTrace& cached,
                                                             const std::string& trace_key, ton::BlockSeqno mc_seqno,
-                                                            bool materialize_full_state) {
+                                                            const ConfirmedTraceSnapshotData& snapshot) {
+  const auto* root = current.root();
+  if (!root || root->key != snapshot.root_key || root->transaction_hash() != snapshot.root_transaction_hash) {
+    return td::Status::Error(kConfirmedPromotionUnavailable, "Confirmed trace root is missing or has changed");
+  }
+  // Validate the entire selection before preparing any write. Promotion is
+  // strictly a finality update; reconstruction belongs to finalized emulation.
   TRY_RESULT(finalized_nodes, prepare_finalized_nodes(current, cached, mc_seqno));
 
   PreparedTraceUpdate prepared;
   prepared.next_trace = current;
-  auto state_change = current.nodes.upsert_nodes(std::move(finalized_nodes));
-  auto node_delta = std::move(state_change.delta);
-  prepared.next_trace.nodes.apply(std::move(state_change));
-
+  auto& next = prepared.next_trace;
+  auto change = next.nodes.upsert_nodes(std::move(finalized_nodes));
+  auto node_delta = std::move(change.delta);
+  next.nodes.apply(std::move(change));
   if (!node_delta.empty()) {
     if (current.update_seq == std::numeric_limits<std::uint64_t>::max()) {
       return td::Status::Error("Trace update_seq overflow");
     }
-    prepared.next_trace.update_seq = current.update_seq + 1;
+    next.update_seq++;
   }
-  if (const auto root_key = trace_metadata_value(current, "root_node")) {
-    if (const auto* root = prepared.next_trace.nodes.find(*root_key)) {
-      prepared.next_trace.finality = static_cast<FinalityState>(static_cast<std::uint8_t>(root->finality));
-    }
-  }
-
-  const auto promoted_finality = trace_finality(prepared.next_trace);
-  TRY_RESULT(action_update, prepare_promoted_action_update(current.actions, prepared.next_trace.actions,
-                                                           promoted_finality, trace_key));
+  next.finality = static_cast<FinalityState>(next.root()->finality);
+  TRY_RESULT(action_update, prepare_promoted_action_update(current.actions, next.actions, trace_finality(next), trace_key));
 
   auto& plan = prepared.redis;
   plan.trace_key = trace_key;
-  plan.raw_external_message_hash = trace_metadata_value(prepared.next_trace, "root_node").value_or(std::string{});
-  if (plan.raw_external_message_hash.empty()) {
-    return td::Status::Error("Cannot finalize a trace without root_node metadata");
+  plan.raw_external_message_hash = snapshot.root_key;
+  for (const auto& node : node_delta.upserted_nodes) {
+    plan.fields_to_set.emplace_back(node.key, *node.serialized);
   }
-
-  if (materialize_full_state) {
-    TRY_STATUS(append_full_trace_state(plan, prepared.next_trace));
-    if (current.actions.classify_state) {
-      plan.fields_to_set.emplace_back(kActionsStateField, *current.actions.classify_state);
-    }
-    if (action_update.actions_updated) {
-      plan.indexes_to_add.insert(plan.indexes_to_add.end(), current.actions.aai_refs.begin(),
-                                 current.actions.aai_refs.end());
-    }
-  } else {
-    plan.node_fields_to_delete = node_delta.removed_node_keys;
-    plan.indexes_to_remove = node_delta.removed_index_refs;
-    plan.indexes_to_add = node_delta.added_index_refs;
-    for (const auto& node : node_delta.upserted_nodes) {
-      if (!node.serialized) {
-        return td::Status::Error("Finalized node has no serialized payload");
-      }
-      plan.fields_to_set.emplace_back(node.key, *node.serialized);
-    }
-    if (!node_delta.empty()) {
-      plan.fields_to_set.emplace_back("update_seq", std::to_string(prepared.next_trace.update_seq));
-    }
+  if (next.update_seq != current.update_seq) {
+    plan.fields_to_set.emplace_back("update_seq", std::to_string(next.update_seq));
   }
   plan.fields_to_set.insert(plan.fields_to_set.end(), action_update.fields_to_set.begin(),
                             action_update.fields_to_set.end());
-
   TRY_STATUS(append_promoted_account_states(plan, cached));
-  append_promoted_publications(plan, cached, prepared.next_trace, trace_key, action_update.actions_updated);
+  append_promoted_publications(plan, cached, next, trace_key, action_update.actions_updated);
   prepared.needs_redis_write = true;
   return prepared;
 }
@@ -1211,6 +1189,8 @@ void TraceProcessor::enqueue_trace_update(TraceUpdate update, bool confirmed, td
   }
 
   auto trace_key = td::base64_encode(update.fragments.front().ext_in_msg_hash_norm.as_slice());
+  completion.root_key = td::base64_encode(update.fragments.front().ext_in_msg_hash.as_slice());
+  completion.root_transaction_hash = td::base64_encode(update.fragments.front().root_tx_hash.as_slice());
   if (touch_oversized_trace(trace_key)) {
     set_update_attribute(update, "ton.trace_state.oversized", true);
     completion.set_value();
@@ -1337,13 +1317,6 @@ void TraceProcessor::start_next_operations() {
       continue;
     }
 
-    InsertCompletion insert_completion;
-    MeasurementPtr request_measurement;
-    td::Timer request_timer;
-    bool contains_real_root = false;
-    bool promotion = false;
-    bool materialize_full_state = false;
-    td::Result<PreparedTraceUpdate> prepared_result;
     if (auto* request = std::get_if<InsertRequest>(&work)) {
       auto update = std::move(request->update);
       auto completion = std::move(request->completion);
@@ -1375,7 +1348,7 @@ void TraceProcessor::start_next_operations() {
           update_lifecycle(trace_key);
         }
         if (completion.confirmed) {
-          completion.set_value(make_confirmed_snapshot(trace_key, slot.current, CachedConfirmedTrace{}));
+          completion.set_snapshot(trace_key, *slot.current, CachedConfirmedTrace{});
         } else {
           completion.set_value();
         }
@@ -1440,87 +1413,22 @@ void TraceProcessor::start_next_operations() {
       td::actor::send_closure(classifier, &mch::EmuClassifierActor::classify, std::move(full_trace),
                               enqueued_us, std::move(classification_promise));
       continue;
-    } else {
-      auto promotion_request = std::move(std::get<PromoteConfirmedRequest>(work));
-      insert_completion.regular_promise = std::move(promotion_request.promise);
-      promotion = true;
-      if (slot.current->nodes.nodes().empty() && slot.current->metadata.empty()) {
-        if (!promotion_request.fallback_state) {
-          LOG(FATAL) << "Confirmed snapshot has no fallback state for trace " << trace_key;
-        }
-        slot.current = std::move(promotion_request.fallback_state);
-        materialize_full_state = true;
-      }
-      const auto root_key = trace_metadata_value(*slot.current, "root_node");
-      contains_real_root = root_key && promotion_request.trace.nodes.count(*root_key) != 0;
-      try {
-        prepared_result = prepare_confirmed_promotion(*slot.current, promotion_request.trace, trace_key,
-                                                      promotion_request.mc_seqno, materialize_full_state);
-      } catch (const std::exception& error) {
-        prepared_result =
-            td::Status::Error("Got exception while promoting confirmed trace: " + std::string(error.what()));
-      }
     }
 
+    auto request = std::move(std::get<PromoteConfirmedRequest>(work));
+    td::Result<PreparedTraceUpdate> prepared_result;
+    try {
+      prepared_result = prepare_confirmed_promotion(*slot.current, request.trace, trace_key, request.mc_seqno,
+                                                    *request.snapshot);
+    } catch (const std::exception& error) {
+      prepared_result = td::Status::Error("Got exception while promoting confirmed trace: " + std::string(error.what()));
+    }
     if (prepared_result.is_error()) {
-      auto error = prepared_result.move_as_error();
-      if (promotion) {
-        LOG(FATAL) << "Failed to promote confirmed snapshot for trace " << trace_key << ": " << error;
-      }
-      insert_completion.set_error(std::move(error));
-      g_statistics.record_time(INSERT_TRACE, request_timer.elapsed() * 1e3);
+      request.promise.set_error(prepared_result.move_as_error());
       schedule_trace(trace_key);
       continue;
     }
-
     auto prepared = prepared_result.move_as_ok();
-    const auto resulting_nodes =
-        prepared.needs_redis_write ? prepared.next_trace.nodes.nodes().size() : slot.current->nodes.nodes().size();
-    if (resulting_nodes > kMaxCachedTraceNodes) {
-      LOG(WARNING) << "Dropping oversized trace " << trace_key << " with " << resulting_nodes << " nodes; limit is "
-                   << kMaxCachedTraceNodes;
-      if (request_measurement) {
-        request_measurement->set_otel_attribute("ton.trace_state.oversized", true);
-      }
-      impl_->oversized_traces.insert_or_assign(trace_key, td::Timestamp::in(impl_->retention.open_seconds));
-      slot.queued = resolve_terminal_queue(std::move(slot.queued), impl_->pending_updates, TraceCleanupMode::Oversized);
-      request_cleanup(trace_key, TraceCleanupMode::Oversized);
-      insert_completion.set_value();
-      g_statistics.record_time(INSERT_TRACE, request_timer.elapsed() * 1e3);
-      continue;
-    }
-
-    std::optional<CachedConfirmedTrace> confirmed_trace;
-    if (insert_completion.confirmed) {
-      const auto& resulting_trace = prepared.needs_redis_write ? prepared.next_trace : *slot.current;
-      auto confirmed_result = collect_confirmed_data(resulting_trace, prepared);
-      if (confirmed_result.is_error()) {
-        insert_completion.set_error(confirmed_result.move_as_error());
-        g_statistics.record_time(INSERT_TRACE, request_timer.elapsed() * 1e3);
-        schedule_trace(trace_key);
-        continue;
-      }
-      confirmed_trace = confirmed_result.move_as_ok();
-    }
-    if (!prepared.needs_redis_write) {
-      if (contains_real_root) {
-        real_root_applied(slot);
-        update_lifecycle(trace_key);
-      }
-      if (confirmed_trace) {
-        insert_completion.set_value(make_confirmed_snapshot(trace_key, slot.current, std::move(*confirmed_trace)));
-      } else {
-        insert_completion.set_value();
-      }
-      g_statistics.record_time(INSERT_TRACE, request_timer.elapsed() * 1e3);
-      schedule_trace(trace_key);
-      continue;
-    }
-
-    if (request_measurement) {
-      request_measurement->set_otel_attribute("ton.trace_state.carried_redis_writes_count",
-                                              static_cast<std::int64_t>(slot.dirty.plans.size()));
-    }
     RedisWriteBatch batch = std::move(slot.dirty);
     batch.plans.push_back(std::move(prepared.redis));
 
@@ -1532,13 +1440,12 @@ void TraceProcessor::start_next_operations() {
     slot.in_flight.emplace(InFlightWork{
         .kind = InFlightKind::Update,
         .next_trace = std::move(prepared.next_trace),
-        .completion = std::move(insert_completion),
-        .contains_real_root = contains_real_root,
-        .confirmed_trace = std::move(confirmed_trace),
+        .completion = InsertCompletion{.regular_promise = std::move(request.promise)},
+        .contains_real_root = request.trace.nodes.count(request.snapshot->root_key) != 0,
     });
     ++impl_->active_writes;
     td::actor::send_closure(impl_->materializer, &RedisMaterializer::write, std::move(batch),
-                            std::move(completion), request_timer);
+                            std::move(completion), td::Timer());
   }
 }
 
@@ -1663,7 +1570,7 @@ void TraceProcessor::materialize_classified_trace(std::string trace_key) {
       update_lifecycle(trace_key);
     }
     if (confirmed_trace) {
-      work.completion.set_value(make_confirmed_snapshot(trace_key, slot.current, std::move(*confirmed_trace)));
+      work.completion.set_snapshot(trace_key, *slot.current, std::move(*confirmed_trace));
     } else {
       work.completion.set_value();
     }
@@ -1768,8 +1675,7 @@ void TraceProcessor::write_finished(std::string trace_key, td::Status status, Re
     }
     update_lifecycle(trace_key);
     if (in_flight.confirmed_trace) {
-      in_flight.completion.set_value(
-          make_confirmed_snapshot(trace_key, slot.current, std::move(*in_flight.confirmed_trace)));
+      in_flight.completion.set_snapshot(trace_key, *slot.current, std::move(*in_flight.confirmed_trace));
     } else {
       in_flight.completion.set_value();
     }
@@ -1782,24 +1688,32 @@ void TraceProcessor::write_finished(std::string trace_key, td::Status status, Re
 void TraceProcessor::promote_confirmed(std::vector<ConfirmedTraceSnapshot> snapshots, ton::BlockSeqno mc_seqno,
                                        td::Promise<td::Unit> promise) {
   struct TracePromotion {
-    std::shared_ptr<const ActiveTrace> fallback_state;
+    ConfirmedTraceSnapshot snapshot;
     CachedConfirmedTrace confirmed;
   };
 
   std::map<std::string, TracePromotion> promotions;
   for (const auto& snapshot : snapshots) {
-    if (!snapshot || !snapshot->state) {
+    if (!snapshot) {
       LOG(FATAL) << "Got an empty confirmed snapshot for mc " << mc_seqno;
     }
     if (touch_oversized_trace(snapshot->trace_key)) {
       continue;
     }
     auto& promotion = promotions[snapshot->trace_key];
-    if (!promotion.fallback_state || snapshot->state->update_seq > promotion.fallback_state->update_seq) {
-      promotion.fallback_state = snapshot->state;
+    if (promotion.snapshot &&
+        (promotion.snapshot->root_key != snapshot->root_key ||
+         promotion.snapshot->root_transaction_hash != snapshot->root_transaction_hash)) {
+      promise.set_error(td::Status::Error(kConfirmedPromotionUnavailable, "Confirmed snapshots have different roots"));
+      return;
     }
+    promotion.snapshot = snapshot;
     for (const auto& [key, node] : snapshot->confirmed.nodes) {
-      promotion.confirmed.nodes.insert_or_assign(key, node);
+      auto [it, inserted] = promotion.confirmed.nodes.emplace(key, node);
+      if (!inserted && it->second.transaction_hash() != node.transaction_hash()) {
+        promise.set_error(td::Status::Error(kConfirmedPromotionUnavailable, "Confirmed snapshots have different transactions"));
+        return;
+      }
     }
     promotion.confirmed.account_states.insert(promotion.confirmed.account_states.end(),
                                               snapshot->confirmed.account_states.begin(),
@@ -1819,13 +1733,13 @@ void TraceProcessor::promote_confirmed(std::vector<ConfirmedTraceSnapshot> snaps
     if (slot.current->root_account) {
       impl_->candidates.forget(*slot.current->root_account, trace_key);
     }
-    // An exact finalized block is canonical. It supersedes a queued TTL
-    // cleanup or invalidation, and its snapshot can rebuild an evicted
-    // trace after an already-running cleanup finishes.
+    // The finalized block supersedes a queued expiry/invalidation. If cleanup
+    // is already in flight, promotion will see the empty slot and request
+    // ordinary finalized emulation instead of rebuilding it from a snapshot.
     slot.cleanup_requested = false;
     slot.cleanup_mode = TraceCleanupMode::Retention;
     slot.queued.push_back(PromoteConfirmedRequest{
-        .fallback_state = std::move(promotion.fallback_state),
+        .snapshot = std::move(promotion.snapshot),
         .trace = std::move(promotion.confirmed),
         .mc_seqno = mc_seqno,
         .promise = td::PromiseCreator::lambda(

@@ -26,6 +26,17 @@ std::string node_key(const TraceNode& node) {
   return td::base64_encode(node.node_id.as_slice());
 }
 
+bool stale_root_update(const ActiveTrace& current, const Trace& patch) {
+  const auto* root = current.root();
+  if (!root || !patch.root || root->finality <= to_state_finality(patch.root->finality_state)) {
+    return false;
+  }
+  // A continuation of this execution may legitimately be less final than its
+  // ancestor. A late root, or a continuation of a superseded execution, may not.
+  return patch.contains_root_transaction() || root->key != td::base64_encode(patch.ext_in_msg_hash.as_slice()) ||
+         root->transaction_hash() != td::base64_encode(patch.root_tx_hash.as_slice());
+}
+
 std::string account_key(const block::StdAddress& address) {
   return std::to_string(address.workchain) + ":" + address.addr.to_hex();
 }
@@ -222,6 +233,9 @@ td::Result<TraceTransition> TraceAssembler::apply(const ActiveTrace& current, co
                                                   const std::string& trace_key) const {
   TraceTransition transition;
   transition.cached_nodes_count = current.nodes.nodes().size();
+  if (stale_root_update(current, patch)) {
+    return transition;
+  }
 
   auto node_update_result = prepare_node_update(current, patch, trace_key);
   if (node_update_result.is_error()) {
@@ -235,7 +249,10 @@ td::Result<TraceTransition> TraceAssembler::apply(const ActiveTrace& current, co
     return transition;
   }
 
-  auto state_change = current.nodes.prepare(node_update.state_update);
+  const auto previous_root_key = patch.contains_root_transaction()
+                                     ? trace_metadata_value(current, "root_node").value_or(std::string{})
+                                     : std::string{};
+  auto state_change = current.nodes.prepare(node_update.state_update, previous_root_key);
   transition.node_delta = std::move(state_change.delta);
   transition.next_trace = current;
   transition.next_trace.nodes.apply(std::move(state_change));
@@ -264,7 +281,7 @@ td::Result<TraceTransition> TraceAssembler::apply(const ActiveTrace& current, co
 
   auto root_account = account_key(patch.root->address);
   transition.raw_external_message_hash = td::base64_encode(patch.ext_in_msg_hash.as_slice());
-  if (node_update.state_update.root_key == transition.raw_external_message_hash) {
+  if (patch.contains_root_transaction()) {
     transition.next_trace.root_account = std::move(root_account);
     auto root_accounts = patch.emulated_accounts.equal_range(patch.root->address);
     if (root_accounts.first != root_accounts.second) {
@@ -275,7 +292,9 @@ td::Result<TraceTransition> TraceAssembler::apply(const ActiveTrace& current, co
       }
     }
   }
-  add_metadata_change(current, transition, "root_node", transition.raw_external_message_hash);
+  if (patch.contains_root_transaction() || !current.root()) {
+    add_metadata_change(current, transition, "root_node", transition.raw_external_message_hash);
+  }
   add_metadata_change(current, transition, "depth_limit_exceeded", patch.tx_limit_exceeded ? "1" : "0");
 
   transition.next_trace.tx_limit_exceeded = patch.tx_limit_exceeded;
@@ -303,6 +322,17 @@ td::Result<TraceTransition> TraceAssembler::apply_update(const ActiveTrace& curr
   TraceTransition combined;
   combined.cached_nodes_count = current.nodes.nodes().size();
   if (update.empty()) {
+    return combined;
+  }
+
+  // Establish the accepted root before applying disconnected continuations.
+  // This also makes rejecting a stale root reject its entire TraceUpdate.
+  auto root_fragment = std::find_if(update.fragments.begin(), update.fragments.end(),
+                                    [](const Trace& fragment) { return fragment.contains_root_transaction(); });
+  if (root_fragment != update.fragments.end()) {
+    std::rotate(update.fragments.begin(), root_fragment, std::next(root_fragment));
+  }
+  if (stale_root_update(current, update.fragments.front())) {
     return combined;
   }
 

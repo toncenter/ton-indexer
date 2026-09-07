@@ -41,6 +41,11 @@ struct ActiveTrace {
   std::optional<std::string> root_account;
   FinalityState finality{FinalityState::Emulated};
   bool tx_limit_exceeded{false};
+
+  const TraceStateNode* root() const {
+    auto it = metadata.find("root_node");
+    return it == metadata.end() ? nullptr : nodes.find(it->second);
+  }
 };
 
 struct AcceptedNode {

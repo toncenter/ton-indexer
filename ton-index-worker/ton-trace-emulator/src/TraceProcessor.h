@@ -32,6 +32,9 @@ class ITraceProcessor : public td::actor::Actor {
   // fragments are merged before classification and Redis publication.
   virtual void process_trace_update(TraceUpdate update, td::Promise<td::Unit> promise) = 0;
   virtual void process_confirmed_trace_update(TraceUpdate update, td::Promise<ConfirmedTraceSnapshot> promise) = 0;
+  // Only promotes matching nodes already present when their queued operation
+  // runs. An unavailable promotion requests ordinary finalized emulation;
+  // the promise completes after all attempted Redis writes have finished.
   virtual void promote_confirmed(std::vector<ConfirmedTraceSnapshot> snapshots, ton::BlockSeqno mc_seqno,
                                  td::Promise<td::Unit> promise) = 0;
   virtual void invalidate(std::vector<td::Bits256> trace_hashes) = 0;

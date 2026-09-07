@@ -57,8 +57,6 @@ struct FinalizedBlockResult {
     std::vector<ton::BlockIdExt> finalized_blocks;
     std::vector<TraceUpdate> trace_updates;
     std::size_t trace_fragments_count{0};
-    std::vector<ConfirmedTraceSnapshot> confirmed_snapshots;
-    bool reused_confirmed_state{false};
     // Committed transaction cells lazily read from these blocks. Keep their
     // backing StaticBagOfCellsDb alive until every trace has been prepared.
     std::vector<td::Ref<ton::validator::BlockData>> block_data_owners;
@@ -84,7 +82,7 @@ private:
 
     int traces_cnt_{0};
     bool finished_{false};
-    bool reuse_confirmed_state_{false};
+    std::function<void(td::Promise<td::Unit>)> promote_confirmed_;
 
     td::Timestamp start_time_;
     MeasurementPtr measurement_;
@@ -92,6 +90,7 @@ private:
     void parse_error(ton::BlockId blkid, td::Status error, MeasurementPtr);
     void block_parsed(ton::BlockId, std::vector<TransactionInfo> txs);
     void resolve_trace_ids();
+    void promotion_finished(td::Result<td::Unit> result);
     void emulate_traces(MeasurementPtr measurement);
     std::unique_ptr<TraceNode> construct_commited_trace(const TransactionInfo& tx, std::vector<EmuRequest>& reqs, MeasurementPtr, size_t depth = 1);
     void children_emulated(TraceUpdate update, std::vector<std::unique_ptr<TraceNode>> child_nodes,
@@ -99,12 +98,12 @@ private:
     void trace_update_error(TraceUpdate update, td::Status error);
     void trace_interfaces_error(td::Bits256 trace_root_tx_hash, td::Status error, MeasurementPtr measurement);
     void trace_emulated(TraceUpdate update);
-    void finish_block_if_done();
+    void finish_block_if_done(bool promoted = false);
 
 public:
     McBlockEmulator(schema::MasterchainBlockDataState mc_data_state,
                     std::function<void(ton::BlockSeqno)> trace_ids_resolved,
-                    bool reuse_confirmed_state,
+                    std::function<void(td::Promise<td::Unit>)> promote_confirmed,
                     td::Promise<FinalizedBlockResult> promise);
 
     virtual void start_up() override;

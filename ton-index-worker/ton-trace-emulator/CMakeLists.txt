@@ -115,7 +115,10 @@ target_compile_features(test-ton-trace-state PRIVATE cxx_std_20)
 # White-box coverage for TraceProcessor's translation-unit-local prepare helpers.
 add_executable(test-ton-trace-processor
     test/TraceProcessorTest.cpp
+    test/ConfirmedPromotionTest.cpp
     test/RedisTransportTest.cpp
+    src/TraceScheduler.cpp
+    src/RedisListener.cpp
     src/RedisMaterializer.cpp
     src/RedisConnectionActor.cpp
 )
