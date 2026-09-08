@@ -16,6 +16,9 @@ func (db *DbClient) QueryActionsV2(
 	req models.ActionRequest,
 	settings models.RequestSettings,
 ) ([]models.Action, models.AddressBook, models.Metadata, error) {
+	if req.InitiatedByAccount && (req.AccountAddress == nil || len(*req.AccountAddress) == 0) {
+		return nil, nil, nil, models.IndexError{Code: 422, Message: "account is required when initiated_by_account is true"}
+	}
 	if len(req.SupportedActionTypes) == 0 {
 		req.SupportedActionTypes = []string{"latest"}
 	}
@@ -533,6 +536,9 @@ func actionsQueryPartsV2(req models.ActionRequest, sort_order string) actionsQue
 	if v := req.AccountAddress; join_accounts && v != nil {
 		filter_str := fmt.Sprintf("AA.account = '%s'::tonaddr", v.FilterString())
 		filter_list = append(filter_list, filter_str)
+		if req.InitiatedByAccount {
+			filter_list = append(filter_list, `exists (select 1 from transactions as root where root.hash = AA.trace_id and root.account = AA.account)`)
+		}
 
 		action_accounts_from := `action_accounts as AA`
 		if trace_filter := filterByArray("trace_id", req.TraceId); len(trace_filter) > 0 {
