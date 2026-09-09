@@ -87,7 +87,7 @@ td::Result<double> parse_actor_stats_interval(td::Slice value) {
   } catch (...) {
   }
   return td::Status::Error(
-      "--actor-stats-interval must be 0 (actor stats disabled) or a finite interval of at least 1 second");
+      "--actor-stats-interval must be 0 (all stats disabled) or a finite interval of at least 1 second");
 }
 
 StatsSnapshotStore::StatsSnapshotStore(const std::string& working_dir)

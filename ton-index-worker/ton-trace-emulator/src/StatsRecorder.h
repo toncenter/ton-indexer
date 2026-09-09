@@ -13,7 +13,7 @@
 #include "td/actor/actor.h"
 #include "td/utils/Status.h"
 
-// Zero disables actor stats (application stats keep their 60-second interval).
+// Zero disables recording of both application stats and actor stats.
 // Values of at least one second select the shared recording interval.
 td::Result<double> parse_actor_stats_interval(td::Slice value);
 
