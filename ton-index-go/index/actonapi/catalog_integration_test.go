@@ -72,20 +72,14 @@ func TestRealCatalogPluginLists(t *testing.T) {
 	_, method := catalogMethod(t, "wallets/w4r2.WalletV4r2", "get_plugin_list")
 	for _, tc := range []struct {
 		name, raw string
-		legacy    bool
 		length    int
 	}{
-		{"standard_empty", `[{"@type":"tvm.stackEntryList","list":{"@type":"tvm.list","elements":[]}}]`, false, 0},
-		{"standard_one", `[{"@type":"tvm.stackEntryList","list":{"@type":"tvm.list","elements":[{"@type":"tvm.stackEntryTuple","tuple":{"@type":"tvm.tuple","elements":[{"@type":"tvm.stackEntryNumber","number":{"@type":"tvm.numberDecimal","number":"0"}},{"@type":"tvm.stackEntryNumber","number":{"@type":"tvm.numberDecimal","number":"1"}}]}}]}}]`, false, 1},
-		{"legacy_empty", `[["null",null]]`, true, 0},
-		{"legacy_pair_tail", `[["tuple",{"elements":[["tuple",{"elements":[["num","0x0"],["num","0x1"]]}],["null",null]]}]]`, true, 1},
+		{"standard_empty", `[{"@type":"tvm.stackEntryList","list":{"@type":"tvm.list","elements":[]}}]`, 0},
+		{"standard_one", `[{"@type":"tvm.stackEntryList","list":{"@type":"tvm.list","elements":[{"@type":"tvm.stackEntryTuple","tuple":{"@type":"tvm.tuple","elements":[{"@type":"tvm.stackEntryNumber","number":{"@type":"tvm.numberDecimal","number":"0"}},{"@type":"tvm.stackEntryNumber","number":{"@type":"tvm.numberDecimal","number":"1"}}]}}]}}]`, 1},
+		{"standard_pair_tail", `[{"@type":"tvm.stackEntryTuple","tuple":{"@type":"tvm.tuple","elements":[{"@type":"tvm.stackEntryTuple","tuple":{"@type":"tvm.tuple","elements":[{"@type":"tvm.stackEntryNumber","number":{"@type":"tvm.numberDecimal","number":"0"}},{"@type":"tvm.stackEntryNumber","number":{"@type":"tvm.numberDecimal","number":"1"}}]}},{"@type":"tvm.stackEntryList","list":{"@type":"tvm.list","elements":[]}}]}}]`, 1},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			decode := DecodeStandardStack
-			if tc.legacy {
-				decode = DecodeLegacyStack
-			}
-			stack, err := decode(json.RawMessage(tc.raw))
+			stack, err := DecodeStandardStack(json.RawMessage(tc.raw))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -142,7 +136,7 @@ func TestMetadataCapabilitiesAndAmplificationBudget(t *testing.T) {
 	call(t, app, "GET", "/abi?code_hash="+url.QueryEscape(contract.CodeHashes[0]+" "), "", 422, nil)
 	var methods GetMethodsResponse
 	call(t, app, "GET", "/getMethods?contract_type=counter", "", 200, &methods)
-	if len(methods.TransportCapabilities) != 2 || len(methods.TransportCapabilities[0].Warnings) == 0 {
+	if len(methods.TransportCapabilities) != 1 || methods.TransportCapabilities[0].Endpoint != "runGetMethodStd" || len(methods.TransportCapabilities[0].Warnings) == 0 {
 		t.Fatal("transport limitations missing from getter metadata")
 	}
 	// A single oversized catalog ABI must fail before JSON marshaling as well.

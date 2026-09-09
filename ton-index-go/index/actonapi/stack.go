@@ -81,6 +81,9 @@ func stackChildren(value any) ([]acton.StackValue, error) {
 	if !ok {
 		return nil, fmt.Errorf("tuple/list value must be an array of typed stack entries")
 	}
+	if len(children) > maxStackEntries {
+		return nil, fmt.Errorf("stack exceeds entry limit")
+	}
 	result := make([]acton.StackValue, 0, len(children))
 	for _, child := range children {
 		entry, ok := child.(map[string]any)
@@ -127,7 +130,9 @@ func NormalizeStack(stack []acton.StackValue) ([]acton.StackValue, error) {
 					return nil, err
 				}
 				entry.Type, entry.Value = "int", value
-			case "cell", "slice", "builder":
+			case "builder":
+				return nil, fmt.Errorf("runGetMethodStd cannot represent builder inputs")
+			case "cell", "slice":
 				boc, ok := entry.Value.(string)
 				if !ok || boc == "" {
 					return nil, fmt.Errorf("%s requires a BOC string", entry.Type)
@@ -171,7 +176,30 @@ func NormalizeStack(stack []acton.StackValue) ([]acton.StackValue, error) {
 		}
 		return result, nil
 	}
-	return walk(stack, 0)
+	normalized, err := walk(stack, 0)
+	if err != nil {
+		return nil, err
+	}
+	// Flattened nested lists can gain depth when expanded to cons pairs. Check
+	// the resulting native shape, not just the original JSON nesting depth.
+	var checkDepth func([]acton.StackValue, int) error
+	checkDepth = func(entries []acton.StackValue, depth int) error {
+		if depth > maxStackDepth {
+			return fmt.Errorf("expanded Lisp list exceeds stack depth limit")
+		}
+		for _, entry := range entries {
+			if entry.Type == "tuple" {
+				if err := checkDepth(entry.Value.([]acton.StackValue), depth+1); err != nil {
+					return err
+				}
+			}
+		}
+		return nil
+	}
+	if err := checkDepth(normalized, 0); err != nil {
+		return nil, err
+	}
+	return normalized, nil
 }
 
 func lispList(items []acton.StackValue) acton.StackValue {
@@ -195,11 +223,8 @@ func EncodeStandardStack(stack []acton.StackValue) ([]any, error) {
 			switch entry.Type {
 			case "int":
 				wire = map[string]any{"@type": "tvm.stackEntryNumber", "number": map[string]any{"@type": "tvm.numberDecimal", "number": entry.Value}}
-			case "cell", "slice", "builder":
-				if entry.Type == "builder" {
-					return nil, fmt.Errorf("runGetMethodStd cannot represent builder inputs")
-				}
-				marker := map[string]string{"cell": "Cell", "slice": "Slice", "builder": "Builder"}[entry.Type]
+			case "cell", "slice":
+				marker := map[string]string{"cell": "Cell", "slice": "Slice"}[entry.Type]
 				wire = map[string]any{"@type": "tvm.stackEntry" + marker, entry.Type: map[string]any{"@type": "tvm." + entry.Type, "bytes": entry.Value}}
 			case "tuple":
 				values, err := walk(entry.Value.([]acton.StackValue))

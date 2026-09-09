@@ -14,7 +14,7 @@ in `main.go`; the handler package has no database, models, or CGO dependency.
 | POST | `/accounts` | `{addresses: string[], include_storage?: boolean}` | Same as GET |
 | GET | `/getMethods` | Exactly one `address`, `code_hash`, or `contract_type` | `{contracts: ContractMethods[], account?: Account, revision, transport_capabilities}` |
 | POST | `/decode` | `{contract_type?: string, code_hash?: string, direction: string, body: string}` | `{catalog_id, direction, type, decoded, revision}` |
-| POST | `/runGetMethod` | `{address, method, args?: object, stack?: StackValue[], seqno?: int32, contract_type?: string, code_hash?: string, transport?: "standard" \| "legacy"}` | `RunResponse`, described below |
+| POST | `/runGetMethod` | `{address, method, args?: object, stack?: StackValue[], seqno?: int32, contract_type?: string, code_hash?: string}` | `RunResponse`, described below |
 
 `contract_type` means a catalog ID, not an interface name. Decode requires exactly
 one of `contract_type` and `code_hash`. Getters can infer it from pinned account
@@ -42,6 +42,9 @@ description?, unsupported?}]` to `ExtendedContractABI`. Each parameter contains
 `name`, `type`, and optional `default`. Type references are
 `{ty_idx, name}`; their definitions are in the included compiler ABI type table.
 Listing contracts, accounts, ABIs, or getters never executes getters.
+Address-selected getter listings currently require exact catalog code matches.
+Public-interface hints alone do not select a generic TEP ABI for execution or
+storage decoding; explicit getter selection must still match pinned code.
 
 ## Account Snapshots
 
@@ -92,6 +95,19 @@ untyped `DecodeStorage` fallback is intentionally not used because it can select
 deployment storage without reporting which type matched. Deployment storage
 remains explicitly available through `/decode`.
 
+Storage-enabled batches allow **at most 8 canonical addresses** (validated
+before the one database query) and at most 8 native decode operations. Combined
+code/data BOC bytes returned by the store plus conservatively estimated decoded
+JSON and metadata share an **8 MiB aggregate budget**. Oversized BOC batches fail
+before native decoding; decoded values are budgeted before retention and JSON
+serialization, counting repeated references repeatedly and bounding traversal.
+The native runtime's per-call Context, cell and item limits still apply while
+constructing each value. Budget violations return HTTP 413; overlarge storage
+address batches return 422. Use smaller storage batches. Ordinary hover batches
+retain the 1000-address limit and avoid BOCs entirely. The database abstraction
+materializes its bounded row batch before the adapter checks BOC lengths; this
+is not a pre-read limit on the database connection or a strict process-RSS cap.
+
 ## Native Decoding
 
 `body` is a base64 BOC. Directions are `storage`, `deployment_storage`,
@@ -127,8 +143,8 @@ code at that height is HTTP 409, even if it matches today's code. Failed block
 selection or unsupported standard transport does not silently retry at latest
 or downgrade to the legacy endpoint. Only the configured server-side
 `V2Endpoint`/`V2ApiKey` are used; clients cannot supply upstream URLs.
-`transport: "legacy"` explicitly selects `runGetMethod` at that same seqno.
-No errors or unsupported results trigger automatic endpoint switching.
+Only `runGetMethodStd` is used. There is no legacy transport option and no errors
+or unsupported results trigger automatic endpoint switching.
 
 Snapshot code/data and opaque stack cells use the bounded `DecodeOpaqueBOC`
 parser, which accepts validated exotic cells. For a library-reference code root,
@@ -158,8 +174,8 @@ independent result fields:
 | --- | --- |
 | `exit_code` | Raw signed VM exit code |
 | `gas_used` | Exact decimal string |
-| `transport` | Selected `standard` or `legacy` mode |
-| `raw_stack` | Untouched upstream stack JSON for the selected mode |
+| `transport` | Always `standard` |
+| `raw_stack` | Untouched standard upstream stack JSON |
 | `stack` | Native `[{type, value}]` stack using `int`, not `num`; null if conversion failed |
 | `stack_error` | Optional wire conversion error |
 | `success` | True for TVM exits 0 or 1 |
@@ -171,13 +187,13 @@ decode failure also remains HTTP 200 without losing gas, stack, or exit code.
 
 ## Transport Limits
 
-`/contracts` and `/getMethods` expose `transport_capabilities` with each mode's
+`/contracts` and `/getMethods` expose `transport_capabilities` with the standard
 endpoint, supported input/output types, accepted aliases, and concrete warnings.
 Native codec availability is **not** a promise that an upstream can execute every
 getter. Capabilities describe the adapter's wire format, not a live backend probe.
 
-Native stack types are `int`, `cell`, `slice`, `tuple`, `null`, and (legacy only)
-`builder`. Public `num` is accepted as an alias and normalized to `int` on every
+Supported native stack types are `int`, `cell`, `slice`, `tuple`, and `null`.
+Public `num` is accepted as an alias and normalized to `int` on every
 ingress/egress boundary. `list` is an alias for a flattened Lisp list, normalized
 to tuple pairs ending in null. Empty list is null, not an empty tuple. Tuples
 remain tuples. Tuple/list values are arrays of typed entries; numbers can be exact JSON
@@ -189,18 +205,16 @@ Standard mode follows native Tonlib: `tvm.stackEntryList` represents a flattened
 Lisp list, and an empty `tvm.list` losslessly represents null, including nullable
 arguments and list terminators. Some Rust/localnet adapters deviate from that
 protocol and interpret lists as tuples; those backends cannot execute standard
-null arguments correctly. They must be fixed upstream or used through an
-explicit compatible legacy mode. No `tvm.stackEntryUnsupported` is ever guessed
+null arguments correctly and must be fixed upstream. Public TONcenter's standard
+null and flattened-list behavior has been verified. No `tvm.stackEntryUnsupported` is ever guessed
 to be null: raw output is retained with a decoding error. This matters for
 `get_plugin_list` on upstreams that erase null list tails as Unsupported.
 
-Legacy mode understands explicit `["null", null]`, builder BOCs and recursive
-tuple/list results. Its extended inputs are supported by the inspected Acton
-localnet parser; older Toncenter/pytonlib adapters may reject null, builder or
-recursive inputs. These failures remain explicit, without retrying another
-mode. Standard mode rejects builder inputs; neither mode accepts NaN or
-continuation values. Full compiler ABIs are still served even when a transport
-or backend cannot execute a binding.
+Builder inputs are explicitly rejected with HTTP 422; NaN and continuation
+values are also unsupported. Public legacy `runGetMethod` is not a lossless
+substitute: it rejects null/builder inputs and can lose slice type information.
+Full compiler ABIs are still served even when the transport or backend cannot
+execute a binding. No generic supported-getter count is advertised.
 
 Requests are limited to 1 MiB. Recursive stacks allow at most 1024 total entries,
 32 nesting levels (including expanded Lisp pairs), 255 tuple members, and 1 MiB
@@ -220,7 +234,7 @@ Wire contracts were checked against:
 - `acton/crates/tvm-ffi/src/json_stack.rs`
 - `acton/crates/ton-localnet/src/server/handlers/toncenter_v2.rs`
 - `acton/crates/ton-localnet/src/api/toncenter_v2.rs`
-- `ton-index-worker/external/ton/tonlib/tonlib/TonlibClient.cpp`,
+- [TonlibClient.cpp at 9a42919dce98971a6653d326347efcce40bad026](https://github.com/ton-blockchain/ton/blob/9a42919dce98971a6653d326347efcce40bad026/tonlib/tonlib/TonlibClient.cpp#L4896-L5026),
   `to_tonlib_api` / `from_tonlib_api` for actual Lisp-list wire semantics
 - `acton/packages/transaction-ui/src/lib/codeCell.ts`
 - [TON address formats](https://docs.ton.org/llms/foundations/addresses/formats/content.md)
@@ -236,6 +250,8 @@ CGO_ENABLED=0 go test ./index/actonapi -count=1
 go test ./index/actonapi ./index . -count=1
 go test -race ./index/actonapi ./index . -count=1
 go vet ./index/actonapi ./index .
+# Optional public read-only smoke, with a 3s deadline per state/execution chain:
+ACTON_LIVE_SMOKE=1 go test ./index -run TestActonLiveReadOnlySmoke -v -count=1
 ```
 
 Handler tests inject state queries and executors. Integration tests use actual
