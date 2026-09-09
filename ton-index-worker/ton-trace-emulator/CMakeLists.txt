@@ -1,5 +1,14 @@
 cmake_minimum_required(VERSION 3.16)
 
+add_library(ton-stats-recorder STATIC src/StatsRecorder.cpp)
+target_include_directories(ton-stats-recorder PUBLIC src)
+target_link_libraries(ton-stats-recorder PUBLIC tdactor tdutils)
+target_compile_features(ton-stats-recorder PUBLIC cxx_std_20)
+
+add_executable(test-ton-stats test/StatsRecorderTest.cpp)
+target_link_libraries(test-ton-stats PRIVATE ton-stats-recorder td-test-main)
+target_compile_features(test-ton-stats PRIVATE cxx_std_20)
+
 add_library(ton-trace-state STATIC
     src/TraceState.cpp
     src/TraceLifecycle.cpp
@@ -78,6 +87,7 @@ target_compile_features(ton-trace-emulator PRIVATE cxx_std_20)
 target_compile_definitions(ton-trace-emulator PRIVATE -DMSGPACK_USE_DEFINE_MAP)
 target_link_libraries(
     ton-trace-emulator
+    ton-stats-recorder
     ton-trace-emulator-core
     ton-trace-state
     ton-trace-assembler

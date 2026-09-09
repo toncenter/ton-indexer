@@ -34,7 +34,6 @@ class TraceEmulatorScheduler : public td::actor::Actor {
     std::string inet_addr_;
     std::string redis_dsn_;
     std::string input_redis_channel_;
-    std::string working_dir_;
     std::string db_event_fifo_path_;
     std::function<void(Trace, td::Promise<td::Unit>, MeasurementPtr)> process_trace_update_;
     td::actor::ActorOwn<DbEventListener> db_event_listener_;
@@ -42,8 +41,6 @@ class TraceEmulatorScheduler : public td::actor::Actor {
     ton::BlockSeqno last_known_seqno_{0};
     ton::BlockSeqno last_fetched_seqno_{0};
     ton::BlockSeqno last_started_finalized_seqno_{0};
-
-    td::Timestamp next_statistics_flush_;
 
     std::unordered_set<ton::BlockSeqno> seqnos_to_fetch_;
     std::map<ton::BlockSeqno, schema::MasterchainBlockDataState> blocks_to_emulate_;
@@ -154,11 +151,11 @@ class TraceEmulatorScheduler : public td::actor::Actor {
   public:
     TraceEmulatorScheduler(td::actor::ActorId<DbScanner> db_scanner, td::actor::ActorId<ITraceProcessor> trace_processor,
                            std::string global_config_path, std::string inet_addr, 
-                           std::string redis_dsn, std::string input_redis_channel, std::string working_dir,
+                           std::string redis_dsn, std::string input_redis_channel,
                            std::string db_event_fifo_path) :
         db_scanner_(db_scanner), trace_processor_(trace_processor), global_config_path_(global_config_path),
         inet_addr_(inet_addr), redis_dsn_(redis_dsn), input_redis_channel_(input_redis_channel),
-        working_dir_(std::move(working_dir)), db_event_fifo_path_(std::move(db_event_fifo_path)) {
+        db_event_fifo_path_(std::move(db_event_fifo_path)) {
       health_redis_ = std::make_unique<sw::redis::Redis>(redis_dsn_);
       process_trace_update_ = [trace_processor = trace_processor_.get()](Trace trace, td::Promise<td::Unit> promise,
                                                                          MeasurementPtr measurement) {
