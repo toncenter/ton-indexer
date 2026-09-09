@@ -251,6 +251,7 @@ Wire contracts were checked against:
 Run from `ton-index-go`:
 
 ```sh
+CGO_ENABLED=0 go generate ./index/acton/catalog
 CGO_ENABLED=0 go test ./index/actonapi -count=1
 go test ./index/actonapi ./index . -count=1
 go test -race ./index/actonapi ./index . -count=1

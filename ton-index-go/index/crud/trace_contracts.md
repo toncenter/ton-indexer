@@ -80,7 +80,8 @@ historical transaction states do not provide method data.
 
 ## Tests
 
-Run the unit tests with `go test -race ./index/crud ./index/detect ./index/models`.
+From `ton-index-go`, first run `CGO_ENABLED=0 go generate ./index/acton/catalog`,
+then run the unit tests with `go test -race ./index/crud ./index/detect ./index/models`.
 To also exercise public CRUD calls and their serialized route response models:
 
 ```sh

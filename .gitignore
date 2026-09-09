@@ -349,3 +349,6 @@ tmp/
 
 **/ton-mch-engine/generated/
 **/ton-abi/generated/
+
+# Native Acton catalog bindings are generated before builds and tests.
+/ton-index-go/index/acton/catalog/*_gen.go

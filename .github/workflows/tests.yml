@@ -51,6 +51,7 @@ jobs:
         working-directory: ton-index-go
     env:
       CGO_ENABLED: '0'
+      GOWORK: 'off'
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -61,7 +62,10 @@ jobs:
           go-version-file: ton-index-go/go.mod
           cache-dependency-path: ton-index-go/go.sum
 
-      - name: Check generated Acton bindings
+      - name: Generate Acton bindings
+        run: go generate ./index/acton/catalog
+
+      - name: Verify generated Acton bindings are reproducible
         run: >-
           go run github.com/ton-blockchain/acton/packages/abi-go/cmd/tolk-abi-to-go
           --catalog ./index/acton/catalog/catalog.json

@@ -1,11 +1,12 @@
 # Pinned Acton Catalog
 
-Complete 288-contract compiler-ABI catalog, exact input snapshot, and generated
-native Go bindings. Production code never reads or parses `catalog.json`.
+Complete 288-contract compiler-ABI catalog and exact input snapshot. Native Go
+bindings are generated before compilation as ignored `*_gen.go` build artifacts.
+Production code never reads or parses `catalog.json`.
 This package is a consumer of the generator and runtime maintained in
 [Acton's `packages/abi-go`](https://github.com/ton-blockchain/acton/tree/HEAD/packages/abi-go).
-The snapshot, generated bindings, and catalog-specific tests and TypeScript
-goldens remain in TON Indexer.
+The snapshot, static `generate.go`, and catalog-specific tests and TypeScript
+goldens remain checked in with TON Indexer. No generated Go files are tracked.
 
 ## Provenance
 
@@ -24,21 +25,30 @@ To refresh the snapshot from an explicitly selected Acton checkout, run from
 `ton-index-go`:
 
 ```sh
+# Record the current snapshot revision locally before replacing it.
+CGO_ENABLED=0 go generate ./index/acton/catalog
 CGO_ENABLED=0 go run github.com/ton-blockchain/acton/packages/abi-go/cmd/tolk-abi-to-go \
   --catalog /path/to/acton/crates/acton-abi-catalog/data/data-abis.json \
   --output-dir index/acton/catalog --package catalog --snapshot
 ```
 
-Reproduce from the local snapshot without the Acton checkout, Rust, JS, or a
-Tolk compiler (offline once Go dependencies are cached):
+Every fresh checkout needs generation before Go compilation or tests. Reproduce
+from the local snapshot without the Acton checkout, Rust, JS, or a Tolk compiler
+(offline once Go dependencies are cached):
 
 ```sh
 CGO_ENABLED=0 go generate ./index/acton/catalog
+# Check reproducibility of these local outputs, not tracked-file freshness.
 CGO_ENABLED=0 go run github.com/ton-blockchain/acton/packages/abi-go/cmd/tolk-abi-to-go \
   --catalog index/acton/catalog/catalog.json \
   --output-dir index/acton/catalog --package catalog --check
 CGO_ENABLED=0 go test ./index/acton/catalog ./index/actonapi -count=1
 ```
+
+Run the same `go generate` step before direct `go build ./...` or `go test ./...`
+from `ton-index-go`; Go does not invoke it automatically. CMake and Docker invoke
+generation as a prerequisite, and CI generates before running tests. The generator
+repairs missing outputs and preserves unchanged file contents and modification times.
 
 Use the refresh command with `--snapshot --check` to verify both the snapshot and
 generated files against an external upstream input. `--snapshot` writes the
@@ -49,8 +59,10 @@ Reproduction without `--snapshot` does not write the JSON input. Writes are atom
 per file, not per directory. Updating the pinned catalog requires updating the
 provenance, digest and capability expectations in tests.
 
-Output: 288 contract files, one registry file, all `gofmt` formatted, and the
-snapshot. Handwritten `generate.go`, tests, documentation and licenses are preserved.
+Output: 288 contract files and one registry file, all `gofmt` formatted and ignored
+by Git. Only `--snapshot` writes the snapshot. Handwritten `generate.go`, tests,
+documentation and licenses are preserved. Commit snapshot/provenance/test updates,
+not generated Go files.
 
 ## Integration
 
@@ -66,6 +78,18 @@ The versionless `go run` commands select the Acton Go module version from
 `ton-index-go/go.mod`, with checksums recorded in `go.sum`. Generator and runtime
 updates are dependency updates to that canonical module. Ordinary Go builds do
 not require an installed Acton Rust CLI or a separately installed generator.
+
+An installed Acton build with Go wrapper support (currently the updated PR branch)
+can also generate these artifacts:
+
+```sh
+acton wrapper --catalog index/acton/catalog/catalog.json --go \
+  --output-dir index/acton/catalog --go-package catalog
+```
+
+That command uses Acton's bundled generator. Repository builds use the pinned
+Acton Go module instead, keeping generator and runtime versions aligned without
+depending on a public Acton release containing `--go`.
 
 Other consumers can invoke the same Go command with `--abi FILE` for a raw
 compiler ABI or `--catalog FILE` for a bundle, followed by `--output-dir DIR`
@@ -136,7 +160,8 @@ compiler. This does not enable bare slices in arbitrary struct fields.
 
 ## Tests And Licenses
 
-Tests regenerate the full catalog in memory, verify output and snapshot without
+After the generation prerequisite, tests regenerate the full catalog in memory,
+verify the local output and snapshot without
 writing, assert the pinned digest, and verify formatting and capabilities.
 Wallet V4 R1/R2 storage/plugin-key vectors and Wallet V5 extension-message values
 come from the pinned Acton files below. Reference cells use independent native
