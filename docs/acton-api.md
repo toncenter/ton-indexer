@@ -7,7 +7,7 @@ The generator and shared Go runtime are owned by
 module `github.com/ton-blockchain/acton/packages/abi-go` (root package `acton`).
 TON Indexer consumes that module at the version selected by `ton-index-go/go.mod`.
 
-The current pin is `v0.0.0-20260909213431-d6e28585b6f9`. While
+The current pin is `v0.0.0-20260909215956-93cc404a4a95`. While
 [Acton PR #1272](https://github.com/ton-blockchain/acton/pull/1272) is unmerged,
 Go cannot resolve its commit through the upstream repository. The Go manifests
 therefore use a version-pinned remote replacement from `1IxI1/acton`; all source
