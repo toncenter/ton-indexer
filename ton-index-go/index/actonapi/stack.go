@@ -111,7 +111,10 @@ func ValidateStack(stack []acton.StackValue) error {
 
 // NormalizeStack is the boundary between public/wire aliases and native codecs.
 // Tonlib lists are flattened Lisp lists, not TVM arrays: [] is null, and [a,b]
-// is the tuple pair (a, (b, null)). See TonlibClient.cpp from_tonlib_api.
+// is the tuple pair (a, (b, null)). "num" is accepted as an alias for "int", and
+// stackEntryUnsupported is never coerced to null. See to_tonlib_api /
+// from_tonlib_api in TonlibClient.cpp:
+// https://github.com/ton-blockchain/ton/blob/9a42919dce98971a6653d326347efcce40bad026/tonlib/tonlib/TonlibClient.cpp#L4896-L5026
 func NormalizeStack(stack []acton.StackValue) ([]acton.StackValue, error) {
 	remaining := maxStackEntries
 	bytesRemaining := MaxBodyBytes

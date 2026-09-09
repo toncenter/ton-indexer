@@ -12,7 +12,8 @@ import (
 
 // EnrichTraceContracts must run after account states have been populated. It uses
 // only each transaction's before/after code hashes, with no I/O or getter calls.
-// Pending or incomplete states without a code hash receive no metadata.
+// Pending writers currently supply no per-state code hashes, so pending traces
+// get no contract_info.
 func EnrichTraceContracts(traces []models.Trace) {
 	enrichTraceContracts(traces, catalog.ByCodeHash)
 }

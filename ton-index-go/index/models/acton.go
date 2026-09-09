@@ -22,8 +22,10 @@ type ContractTypeSummary struct {
 } // @name ContractTypeSummary
 
 // TraceContractInfo describes only states present in this trace, never the latest
-// account state. Keys and account hash lists use padded standard base64. Lists are
-// sorted and deduplicated, not chronological. Missing state/code hashes are omitted.
+// account state. Keys and account hash lists use padded standard base64; the
+// original code_hash field is left as the caller spelled it. Index ByCodeHash with
+// a state's contract_info_key. Lists are sorted and deduplicated, not
+// chronological. Missing state/code hashes are omitted.
 type TraceContractInfo struct {
 	CatalogRevision string                            `json:"catalog_revision"`
 	ByCodeHash      map[HashType]*ContractTypeSummary `json:"by_code_hash"`
