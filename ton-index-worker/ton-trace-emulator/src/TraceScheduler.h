@@ -33,6 +33,7 @@ class TraceEmulatorScheduler : public td::actor::Actor {
     std::string global_config_path_;
     std::string inet_addr_;
     std::string redis_dsn_;
+    RedisConnectionOptions redis_options_;
     std::string input_redis_channel_;
     std::string db_event_fifo_path_;
     std::function<void(Trace, td::Promise<td::Unit>, MeasurementPtr)> process_trace_update_;
@@ -151,10 +152,10 @@ class TraceEmulatorScheduler : public td::actor::Actor {
   public:
     TraceEmulatorScheduler(td::actor::ActorId<DbScanner> db_scanner, td::actor::ActorId<ITraceProcessor> trace_processor,
                            std::string global_config_path, std::string inet_addr, 
-                           std::string redis_dsn, std::string input_redis_channel,
+                           std::string redis_dsn, RedisConnectionOptions redis_options, std::string input_redis_channel,
                            std::string db_event_fifo_path) :
         db_scanner_(db_scanner), trace_processor_(trace_processor), global_config_path_(global_config_path),
-        inet_addr_(inet_addr), redis_dsn_(redis_dsn), input_redis_channel_(input_redis_channel),
+        inet_addr_(inet_addr), redis_dsn_(redis_dsn), redis_options_(std::move(redis_options)), input_redis_channel_(input_redis_channel),
         db_event_fifo_path_(std::move(db_event_fifo_path)) {
       health_redis_ = std::make_unique<sw::redis::Redis>(redis_dsn_);
       process_trace_update_ = [trace_processor = trace_processor_.get()](Trace trace, td::Promise<td::Unit> promise,

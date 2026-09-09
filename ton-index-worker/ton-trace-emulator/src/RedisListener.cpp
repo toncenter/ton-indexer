@@ -5,69 +5,41 @@
 
 #include <cstdint>
 
-void ChannelListener::setup_subscriber() {
-  sw::redis::ConnectionOptions connection_options = sw::redis::Uri(redis_dsn_).connection_options();
-  connection_options.socket_timeout = std::chrono::milliseconds(100);
-  auto redis = sw::redis::Redis(connection_options);
-  subscriber_ = redis.subscriber();
-  subscriber_->subscribe(channel_name_);
-  subscriber_->on_message([this](const std::string &channel, const std::string &value) {
-    auto boc_decoded = td::base64_decode(td::Slice(value));
-    if (boc_decoded.is_error()) {
-      LOG(ERROR) << "Can't decode base64 boc: " << boc_decoded.move_as_error();
-      return;
-    }
-    auto msg_cell_r = vm::std_boc_deserialize(boc_decoded.move_as_ok());
-    if (msg_cell_r.is_error()) {
-      LOG(ERROR) << "Can't deserialize message boc: " << msg_cell_r.move_as_error();
-      return;
-    }
-    auto msg_cell = msg_cell_r.move_as_ok();
-
-    on_new_message_(msg_cell);
-  });
-}
-
-void ChannelListener::start_up() {
-  setup_subscriber();
-  alarm_timestamp() = td::Timestamp::now();
-}
-
-void ChannelListener::alarm() {
-  while (true) {
-    try {
-      subscriber_->consume();
-    } catch (const sw::redis::TimeoutError &e) {
-      break;
-    } catch (const sw::redis::ReplyError &e) {
-      LOG(ERROR) << "Redis error: " << e.what();
-      break;
-    } catch (const std::exception &e) {
-      LOG(ERROR) << "Redis error: " << e.what();
-      LOG(ERROR) << "Reconnecting to Redis...";
-      setup_subscriber();
-      break;
-    }
-  }
-  alarm_timestamp() = td::Timestamp::now();
-}
-
-RedisListener::RedisListener(std::string redis_dsn, std::string channel_name,
+RedisListener::RedisListener(RedisConnectionOptions redis_options, std::string channel_name,
                              std::function<void(Trace, td::Promise<td::Unit>, MeasurementPtr)> trace_processor,
                              std::shared_ptr<ExternalMessageAdmission> external_message_admission)
-        : redis_dsn_(redis_dsn), channel_name_(channel_name), trace_processor_(std::move(trace_processor)),
-          external_message_admission_(std::move(external_message_admission)) {
+    : redis_options_(std::move(redis_options))
+    , channel_name_(channel_name)
+    , trace_processor_(std::move(trace_processor))
+    , external_message_admission_(std::move(external_message_admission)) {
   if (!external_message_admission_) {
     external_message_admission_ = std::make_shared<ExternalMessageAdmission>();
   }
 }
 
 void RedisListener::start_up() {
-  channel_listener_ = td::actor::create_actor<ChannelListener>("RedisChannelListener", redis_dsn_, channel_name_,
-    [SelfId = actor_id(this)](td::Ref<vm::Cell> msg_cell) {
-      return td::actor::send_closure(SelfId, &RedisListener::on_new_message, msg_cell);
+  channel_listener_ = td::actor::create_actor<ChannelListener>(
+      td::actor::ActorOptions().with_name("RedisChannelListener").with_poll(), redis_options_, channel_name_,
+      [self = actor_id(this)](std::vector<std::string> messages, td::Promise<td::Unit> done) {
+        td::actor::send_closure(self, &RedisListener::on_messages, std::move(messages), std::move(done));
+      });
+}
+
+void RedisListener::on_messages(std::vector<std::string> messages, td::Promise<td::Unit> done) {
+  for (const auto& value : messages) {
+    auto decoded = td::base64_decode(value);
+    if (decoded.is_error()) {
+      LOG(ERROR) << "Can't decode base64 boc: " << decoded.move_as_error();
+      continue;
     }
-  );
+    auto cell = vm::std_boc_deserialize(decoded.move_as_ok());
+    if (cell.is_error()) {
+      LOG(ERROR) << "Can't deserialize message boc: " << cell.move_as_error();
+      continue;
+    }
+    on_new_message(cell.move_as_ok());
+  }
+  done.set_value(td::Unit());
 }
 
 void RedisListener::on_new_message(td::Ref<vm::Cell> msg_cell) {

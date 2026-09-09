@@ -16,6 +16,7 @@
 #include "td/utils/tests.h"
 
 #include "RedisMaterializer.h"
+#include "ChannelListener.h"
 
 #if TD_PORT_POSIX
 #include <arpa/inet.h>
@@ -190,6 +191,292 @@ void stop_scheduler() {
   td::actor::SchedulerContext::get().stop();
 }
 }  // namespace
+
+namespace {
+class SubscriptionConsumer : public td::actor::Actor {
+ public:
+  explicit SubscriptionConsumer(ChannelListener::Handler handler) : handler_(std::move(handler)) {
+  }
+  void receive(std::vector<std::string> messages, td::Promise<td::Unit> done) {
+    handler_(std::move(messages), std::move(done));
+  }
+
+ private:
+  ChannelListener::Handler handler_;
+};
+
+void cpu_alarm_in(double seconds, std::function<void()> callback) {
+  td::actor::create_actor<AlarmActor>("SubscriberCpuAlarm", seconds, std::move(callback)).release();
+}
+
+void with_subscriber(RedisConnectionOptions options, ChannelListener::Handler handler,
+                     std::function<void(td::actor::ActorOwn<ChannelListener>&)> start = {}) {
+  td::actor::Scheduler scheduler({1});
+  td::actor::ActorOwn<SubscriptionConsumer> consumer;
+  td::actor::ActorOwn<ChannelListener> listener;
+  scheduler.run_in_context([&] {
+    consumer = td::actor::create_actor<SubscriptionConsumer>("SubscriptionConsumer", std::move(handler));
+    listener = td::actor::create_actor<ChannelListener>(
+        td::actor::ActorOptions().with_name("ChannelListener").with_poll(), std::move(options), "input",
+        [self = consumer.get()](std::vector<std::string> messages, td::Promise<td::Unit> done) {
+          td::actor::send_closure(self, &SubscriptionConsumer::receive, std::move(messages), std::move(done));
+        });
+    alarm_in(5, [] { LOG(FATAL) << "Redis subscriber test timed out"; });
+    if (start)
+      start(listener);
+  });
+  scheduler.run();
+}
+
+std::string subscription_ack() {
+  return "*3\r\n$9\r\nsubscribe\r\n$5\r\ninput\r\n:1\r\n";
+}
+
+std::string publication(const std::string& value) {
+  RedisPipeline encoded;
+  encoded.append({"message", "input", value}, kEncodeLimit).ensure();
+  return encoded.bytes();
+}
+
+void accept_subscription(Peer& peer) {
+  ASSERT_EQ(std::vector<std::string>({"SUBSCRIBE", "input"}), peer.command());
+  peer.reply(subscription_ack());
+}
+}  // namespace
+
+TEST(RedisSubscriber, idle_keeps_cpu_and_poll_workers_responsive) {
+  td::actor::set_debug(true);
+  FakeRedis server;
+  server.run([&] {
+    auto peer = server.accept();
+    accept_subscription(peer);
+    // A quiet established subscription must outlive the setup timeout.
+    std::this_thread::sleep_for(250ms);
+    peer.expect_no_command();
+    peer.reply(publication("after-idle"));
+    peer.expect_closed();
+  });
+  std::atomic<bool> cpu_tick{false}, poll_tick{false};
+  auto options = server.options();
+  options.batch_timeout = 0.15;
+  int received = 0;
+  double idle_executions = 0;
+  std::atomic<bool> idle_checked{false};
+  with_subscriber(
+      options,
+      [&](auto messages, auto done) {
+        ASSERT_TRUE(cpu_tick && poll_tick && idle_checked);
+        ASSERT_EQ(std::vector<std::string>({"after-idle"}), messages);
+        ++received;
+        done.set_value(td::Unit());
+        stop_scheduler();
+      },
+      [&](auto&) {
+        cpu_alarm_in(0.03, [&] { cpu_tick = true; });
+        alarm_in(0.03, [&] { poll_tick = true; });
+        alarm_in(0.05, [&] {
+          auto stats = td::actor::ActorTypeStatManager::get_stats(1);
+          const auto& stat = stats.stats.at(typeid(ChannelListener));
+          ASSERT_EQ(1, stat.alive);
+          idle_executions = stat.executions;
+        });
+        alarm_in(0.20, [&] {
+          auto stats = td::actor::ActorTypeStatManager::get_stats(1);
+          // A quiet socket must not continuously reschedule itself.
+          ASSERT_TRUE(stats.stats.at(typeid(ChannelListener)).executions - idle_executions <= 2);
+          idle_checked = true;
+        });
+      });
+  td::actor::set_debug(false);
+  server.join();
+  ASSERT_EQ(1, received);
+  ASSERT_EQ(1, server.accepted_.load());
+}
+
+TEST(RedisSubscriber, partial_auth_select_and_subscription_with_messages) {
+  FakeRedis server;
+  std::vector<std::string> expected{"first", std::string("a\0b\r\n", 5), std::string(192 * 1024, 'x'), "last"};
+  server.run([&] {
+    auto peer = server.accept();
+    ASSERT_EQ(std::vector<std::string>({"AUTH", "user", "secret"}), peer.command());
+    ASSERT_EQ(std::vector<std::string>({"SELECT", "2"}), peer.command());
+    peer.reply("+OK\r\n+O");
+    peer.expect_no_command();
+    peer.reply("K\r\n");
+    ASSERT_EQ(std::vector<std::string>({"SUBSCRIBE", "input"}), peer.command());
+    auto bytes = subscription_ack();
+    for (const auto& value : expected)
+      bytes += publication(value);
+    peer.reply(bytes.substr(0, 12));
+    peer.expect_no_command();
+    peer.reply(bytes.substr(12));
+    peer.expect_closed();
+  });
+  std::vector<std::string> received;
+  with_subscriber(server.options("user:secret@", 2), [&](auto messages, auto done) {
+    received.insert(received.end(), messages.begin(), messages.end());
+    done.set_value(td::Unit());
+    if (received.size() == expected.size())
+      stop_scheduler();
+  });
+  server.join();
+  ASSERT_EQ(expected, received);
+  ASSERT_EQ(1, server.accepted_.load());
+}
+
+TEST(RedisSubscriber, burst_is_ordered_and_waits_for_consumer_before_next_batch) {
+  FakeRedis server;
+  constexpr int count = 1200;
+  server.run([&] {
+    auto peer = server.accept();
+    accept_subscription(peer);
+    std::string bytes;
+    for (int i = 0; i < count; ++i)
+      bytes += publication(std::to_string(i));
+    peer.reply(bytes);
+    // EOF with more than a turn's worth of replies must still drain in order.
+  });
+  int received = 0, deliveries = 0;
+  std::atomic<bool> poll_tick{false};
+  with_subscriber(
+      server.options(),
+      [&](auto messages, auto done) {
+        ++deliveries;
+        ASSERT_TRUE(messages.size() <= 256);
+        for (const auto& message : messages)
+          ASSERT_EQ(std::to_string(received++), message);
+        if (deliveries == 1) {
+          auto held = std::make_shared<td::Promise<td::Unit>>(std::move(done));
+          cpu_alarm_in(0.08, [&, held] {
+            ASSERT_EQ(1, deliveries);
+            ASSERT_TRUE(poll_tick);
+            held->set_value(td::Unit());
+          });
+        } else {
+          done.set_value(td::Unit());
+        }
+        if (received == count)
+          stop_scheduler();
+      },
+      [&](auto&) { alarm_in(0.02, [&] { poll_tick = true; }); });
+  server.join();
+  ASSERT_EQ(count, received);
+  ASSERT_TRUE(deliveries >= 5);
+}
+
+TEST(RedisSubscriber, retries_auth_failure_and_subscription_timeout) {
+  FakeRedis server;
+  server.run([&] {
+    {
+      auto peer = server.accept();
+      ASSERT_EQ(std::vector<std::string>({"AUTH", "secret"}), peer.command());
+      peer.reply("-ERR invalid password\r\n");
+      peer.expect_closed();
+    }
+    {
+      auto peer = server.accept();
+      ASSERT_EQ(std::vector<std::string>({"AUTH", "secret"}), peer.command());
+      peer.reply("+OK\r\n");
+      ASSERT_EQ(std::vector<std::string>({"SUBSCRIBE", "input"}), peer.command());
+      // No acknowledgement: the setup deadline must reconnect this socket.
+      peer.expect_closed();
+    }
+    auto peer = server.accept();
+    ASSERT_EQ(std::vector<std::string>({"AUTH", "secret"}), peer.command());
+    peer.reply("+OK\r\n");
+    accept_subscription(peer);
+    peer.reply(publication("recovered"));
+    peer.expect_closed();
+  });
+  auto options = server.options("secret@");
+  options.batch_timeout = 0.15;
+  int received = 0;
+  with_subscriber(options, [&](auto messages, auto done) {
+    ASSERT_EQ(std::vector<std::string>({"recovered"}), messages);
+    ++received;
+    done.set_value(td::Unit());
+    stop_scheduler();
+  });
+  server.join();
+  ASSERT_EQ(1, received);
+  ASSERT_EQ(3, server.accepted_.load());
+}
+
+TEST(RedisSubscriber, malformed_and_oversized_frames_reconnect_and_resubscribe) {
+  FakeRedis server;
+  std::vector<std::string> bad_frames{"?bad\r\n", "*1000000000\r\n", "*3\r\n*3\r\n",
+                                      "*3\r\n$7\r\nmessage\r\n$5\r\ninput\r\n$2000000\r\n"};
+  bad_frames.back().resize(1024 * 1024, 'x');
+  server.run([&] {
+    for (const auto& frame : bad_frames) {
+      auto peer = server.accept();
+      accept_subscription(peer);
+      peer.reply(frame);
+      peer.expect_closed();
+    }
+    auto peer = server.accept();
+    accept_subscription(peer);
+    peer.reply(publication("healthy"));
+    peer.expect_closed();
+  });
+  int received = 0;
+  with_subscriber(server.options(), [&](auto messages, auto done) {
+    ASSERT_EQ(std::vector<std::string>({"healthy"}), messages);
+    ++received;
+    done.set_value(td::Unit());
+    stop_scheduler();
+  });
+  server.join();
+  ASSERT_EQ(1, received);
+  ASSERT_EQ(bad_frames.size() + 1, static_cast<std::size_t>(server.accepted_.load()));
+}
+
+TEST(RedisSubscriber, shutdown_with_unacknowledged_delivery_closes_socket) {
+  FakeRedis server;
+  server.run([&] {
+    auto peer = server.accept();
+    accept_subscription(peer);
+    peer.reply(publication("pending"));
+    peer.expect_closed();
+  });
+  td::actor::ActorOwn<ChannelListener>* listener_ptr = nullptr;
+  with_subscriber(
+      server.options(),
+      [&](auto messages, auto done) {
+        ASSERT_EQ(std::vector<std::string>({"pending"}), messages);
+        auto held = std::make_shared<td::Promise<td::Unit>>(std::move(done));
+        listener_ptr->reset();
+        cpu_alarm_in(0.03, [held] {
+          // A completion after actor destruction, still in scheduler context.
+          held->set_value(td::Unit());
+          stop_scheduler();
+        });
+      },
+      [&](auto& listener) { listener_ptr = &listener; });
+  server.join();
+}
+
+TEST(RedisSubscriber, shutdown_during_setup_closes_socket) {
+  FakeRedis server;
+  std::atomic<bool> subscribed{false};
+  server.run([&] {
+    auto peer = server.accept();
+    ASSERT_EQ(std::vector<std::string>({"SUBSCRIBE", "input"}), peer.command());
+    subscribed = true;
+    peer.expect_closed();
+  });
+  with_subscriber(
+      server.options(), [](auto, auto) { CHECK(false); },
+      [&](auto& listener) {
+        alarm_in(0.1, [&] {
+          ASSERT_TRUE(subscribed);
+          listener.reset();
+          alarm_in(0.02, [] { stop_scheduler(); });
+        });
+      });
+  server.join();
+  ASSERT_EQ(1, server.accepted_.load());
+}
 
 TEST(RedisTransport, binary_safe_encoding_and_limit) {
   RedisPipeline pipeline;

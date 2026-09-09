@@ -76,6 +76,8 @@ add_executable(ton-trace-emulator
     src/TraceProcessor.cpp
     src/RedisMaterializer.cpp
     src/RedisConnectionActor.cpp
+    src/RedisTransport.cpp
+    src/ChannelListener.cpp
     src/RedisListener.cpp
     src/Measurement.h
 )
@@ -131,6 +133,8 @@ add_executable(test-ton-trace-processor
     src/RedisListener.cpp
     src/RedisMaterializer.cpp
     src/RedisConnectionActor.cpp
+    src/RedisTransport.cpp
+    src/ChannelListener.cpp
 )
 target_include_directories(test-ton-trace-processor
     PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/../external/redis-plus-plus/src

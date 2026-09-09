@@ -260,10 +260,10 @@ int main(int argc, char *argv[]) {
     }
     db_scanner = td::actor::create_actor<DbScanner>("scanner", db_root, dbs_secondary, working_dir, 0.05f);
     trace_processor = td::actor::create_actor<TraceProcessor>(
-        "TraceProcessor", redis_options.move_as_ok(), trace_retention,
+        "TraceProcessor", redis_options.ok(), trace_retention,
         mch_classifier_config);
     td::actor::create_actor<TraceEmulatorScheduler>("integritychecker", db_scanner.get(), trace_processor.get(),
-      global_config_path, inet_addr, redis_dsn, redis_channel,
+      global_config_path, inet_addr, redis_dsn, redis_options.move_as_ok(), redis_channel,
       db_event_fifo_path).release();
   });
   

@@ -150,7 +150,7 @@ void TraceEmulatorScheduler::start_up() {
     if (input_redis_channel_.empty()) {
         LOG(WARNING) << "Input redis queue name is empty. RedisListener was not started.";
     } else {
-      redis_listener_ = td::actor::create_actor<RedisListener>("RedisListener", redis_dsn_, input_redis_channel_,
+      redis_listener_ = td::actor::create_actor<RedisListener>("RedisListener", redis_options_, input_redis_channel_,
                                                                process_trace_update_, external_message_admission_);
     }
 
