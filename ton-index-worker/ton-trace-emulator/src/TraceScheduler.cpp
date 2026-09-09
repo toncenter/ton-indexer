@@ -1,10 +1,8 @@
 #include "TraceScheduler.h"
 #include "BlockEmulator.h"
-#include "Statistics.h"
 #include "TraceProcessor.h"
 #include "common/delay.h"
 #include "td/utils/Status.h"
-#include "td/utils/filesystem.h"
 #include "td/utils/overloaded.h"
 #include "tl-utils/common-utils.hpp"
 #include "ton/ton-tl.hpp"
@@ -826,19 +824,6 @@ void TraceEmulatorScheduler::alarm() {
         request_db_catch_up();
         fetch_signed_blocks();
         process_signed_blocks();
-    }
-
-    if (next_statistics_flush_.is_in_past()) {
-        ton::delay_action([working_dir = this->working_dir_]() {
-            auto stats = g_statistics.generate_report_and_reset();
-            auto path = working_dir + "/" + "stats.txt";
-            auto status = td::atomic_write_file(path, std::move(stats));
-            if (status.is_error()) {
-                LOG(ERROR) << "Failed to write statistics to " << path << ": " << status.error();
-            }
-        }, td::Timestamp::now());
-        
-        next_statistics_flush_ = td::Timestamp::in(60.0);
     }
 
     if (health_redis_ && next_health_update_.is_in_past()) {

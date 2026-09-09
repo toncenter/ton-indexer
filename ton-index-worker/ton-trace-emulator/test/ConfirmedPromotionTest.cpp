@@ -75,7 +75,7 @@ struct TraceSchedulerTest : TraceEmulatorScheduler {
   unsigned ordinary_writes{0};
 
   explicit TraceSchedulerTest(int error = 0)
-      : TraceEmulatorScheduler({}, {}, "", "", "redis://127.0.0.1:1", "", "", ""), promotion_error(error) {
+      : TraceEmulatorScheduler({}, {}, "", "", "redis://127.0.0.1:1", "", ""), promotion_error(error) {
   }
 
   void check_observed_versions() {

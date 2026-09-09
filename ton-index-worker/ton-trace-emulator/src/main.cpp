@@ -10,7 +10,8 @@
 #include "TraceScheduler.h"
 #include "TraceProcessor.h"
 #include "RedisMaterializer.h"
-#include "ActorStatsRecorder.h"
+#include "StatsRecorder.h"
+#include "Statistics.h"
 #include "GenMatchers.h"
 #include "emu/EmuClassifierBridge.h"
 
@@ -80,7 +81,8 @@ int main(int argc, char *argv[]) {
   });
 
   p.add_checked_option('\0', "actor-stats-interval",
-                       "Save actor stats every N seconds in working-dir/actor-stats; keep 500 snapshots (default: 0, disabled)",
+                       "Save stats and actor stats together every N seconds (N >= 1) in working-dir/stats; keep 500 snapshots "
+                       "(default: 0, only application stats every 60 seconds)",
                        [&](td::Slice value) {
     TRY_RESULT(interval, parse_actor_stats_interval(value));
     actor_stats_interval = interval;
@@ -223,19 +225,19 @@ int main(int argc, char *argv[]) {
   }
   // Keep the writer alive until after scheduler destruction, so its file I/O
   // and final drain never block an actor worker during shutdown.
-  std::shared_ptr<ActorStatsFileWriter> actor_stats_writer;
-  if (actor_stats_interval > 0) {
-    auto writer = ActorStatsFileWriter::create(working_dir);
-    if (writer.is_error()) {
-      LOG(ERROR) << writer.move_as_error();
-      return 1;
-    }
-    actor_stats_writer = writer.move_as_ok();
-    td::actor::set_debug(true);
-    LOG(INFO) << "Actor stats enabled: interval=" << actor_stats_interval
-              << "s, directory=" << working_dir << "/actor-stats, max_snapshots="
-              << ActorStatsSnapshotStore::kMaxSnapshots;
+  auto writer = StatsFileWriter::create(working_dir);
+  if (writer.is_error()) {
+    LOG(ERROR) << writer.move_as_error();
+    return 1;
   }
+  auto stats_writer = writer.move_as_ok();
+  const bool actor_stats_enabled = actor_stats_interval > 0;
+  const double stats_interval = actor_stats_enabled ? actor_stats_interval : 60.0;
+  if (actor_stats_enabled) {
+    td::actor::set_debug(true);
+  }
+  LOG(INFO) << "Stats enabled: interval=" << stats_interval << "s, actor_stats=" << actor_stats_enabled
+            << ", directory=" << working_dir << "/stats, max_snapshots=" << StatsSnapshotStore::kMaxSnapshots;
 
   // This must happen before any actor can subscribe to events or write a trace.
   LOG(WARNING) << "Clearing pending Redis database before startup";
@@ -251,15 +253,14 @@ int main(int argc, char *argv[]) {
   td::actor::ActorOwn<ITraceProcessor> trace_processor;
 
   scheduler.run_in_context([&] { 
-    if (actor_stats_writer) {
-      td::actor::create_actor<ActorStatsRecorder>("ActorStatsRecorder", actor_stats_interval, actor_stats_writer).release();
-    }
+    td::actor::create_actor<StatsRecorder>("StatsRecorder", stats_interval, actor_stats_enabled, stats_writer,
+                                          [] { return g_statistics.generate_report_and_reset(); }).release();
     db_scanner = td::actor::create_actor<DbScanner>("scanner", db_root, dbs_secondary, working_dir, 0.05f);
     trace_processor = td::actor::create_actor<TraceProcessor>(
         "TraceProcessor", redis_options.move_as_ok(), trace_retention,
         mch_classifier_config);
     td::actor::create_actor<TraceEmulatorScheduler>("integritychecker", db_scanner.get(), trace_processor.get(),
-      global_config_path, inet_addr, redis_dsn, redis_channel, working_dir,
+      global_config_path, inet_addr, redis_dsn, redis_channel,
       db_event_fifo_path).release();
   });
   
