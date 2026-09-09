@@ -21,6 +21,8 @@ type AccountState struct {
 	CodeHash               *HashType         `json:"code_hash"`
 	DataBoc                *BytesType        `json:"data_boc,omitempty"`
 	CodeBoc                *BytesType        `json:"code_boc,omitempty"`
+	// ContractInfoKey links this state's code to Trace.ContractInfo.ByCodeHash.
+	ContractInfoKey *HashType `json:"contract_info_key,omitempty"`
 } // @name AccountState
 
 type AccountBalance struct {

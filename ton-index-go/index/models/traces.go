@@ -32,6 +32,7 @@ type Trace struct {
 	Trace             *TraceNode                `json:"trace,omitempty"`
 	TransactionsOrder []HashType                `json:"transactions_order,omitempty"`
 	Transactions      map[HashType]*Transaction `json:"transactions,omitempty"`
+	ContractInfo      *TraceContractInfo        `json:"contract_info,omitempty"`
 } // @name Trace
 
 type BalanceChangesResult struct {

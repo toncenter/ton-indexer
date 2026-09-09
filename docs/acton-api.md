@@ -1,0 +1,180 @@
+# Acton API And Builds
+
+## Architecture
+
+`ton-index-go/index/acton/catalog/catalog.json` is the pinned, checked-in catalog
+snapshot. It contains compiler ABIs and catalog metadata. The pure-Go
+`index/acton/cmd/tolk-abi-to-go` tool turns it into checked-in Go types, native
+codec bindings, and a registry in `index/acton/catalog/*.go`.
+
+The API uses these compiled bindings and the shared `index/acton` codecs backed
+by `tonutils-go`. It does not interpret compiler ABI JSON on each request, invoke
+Acton, or fetch a catalog at startup. The generated `catalog.Revision` is the
+SHA-256 of the exact snapshot bytes, also exposed in API responses.
+
+The generator and Acton handlers are pure Go. The full `ton-index-go` executable
+still uses the existing `ton-marker` CGO library for legacy functionality; this
+integration does not remove that native build dependency or change the old
+`/api/v3/runGetMethod` endpoint.
+
+## Endpoints
+
+All routes use the existing `/api/v3/acton` prefix and inherit `/api/v3/`
+middleware and routing. No separate root `/acton` reverse-proxy route is needed.
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| GET | `/api/v3/acton/contracts` | Paginated catalog metadata. |
+| GET | `/api/v3/acton/abi` | Full compiler ABIs for repeated `code_hash` parameters. |
+| GET, POST | `/api/v3/acton/accounts` | Batch identification, optionally decoding storage. |
+| GET | `/api/v3/acton/getMethods` | Getter metadata by address, code hash, or catalog ID. |
+| POST | `/api/v3/acton/decode` | Native decoding of a supplied storage or message BOC. |
+| POST | `/api/v3/acton/runGetMethod` | Typed getter execution pinned to an upstream seqno. |
+
+See the [handler reference](../ton-index-go/index/actonapi/README.md) for request
+and response schemas, limits, errors, and pinning guarantees. Swagger annotations
+live on the [handlers](../ton-index-go/index/actonapi/api.go). Catalog links are
+assertions, not source verification; getter pinning trusts the configured v2
+upstream and does not verify blockchain proofs.
+
+## Generation
+
+Use the Go version declared in `ton-index-go/go.mod`. Run these commands from
+`ton-index-go`:
+
+```sh
+CGO_ENABLED=0 go run ./index/acton/cmd/tolk-abi-to-go \
+  --catalog ./index/acton/catalog/catalog.json \
+  --output-dir ./index/acton/catalog --package catalog
+
+# Read-only CI gate: missing, changed, or obsolete generated files fail.
+CGO_ENABLED=0 go run ./index/acton/cmd/tolk-abi-to-go \
+  --catalog ./index/acton/catalog/catalog.json \
+  --output-dir ./index/acton/catalog --package catalog --check
+
+CGO_ENABLED=0 go test ./index/acton/... ./index/actonapi -count=1
+```
+
+`CGO_ENABLED=0 go generate ./index/acton/catalog` is the package-local generation
+shortcut. To install the wrapper generator from this checkout, use
+`CGO_ENABLED=0 go install ./index/acton/cmd/tolk-abi-to-go`; the installed
+`tolk-abi-to-go` accepts the same flags. Prefer `go run` for repository builds so
+the generator always matches the checkout, rather than an older installed tool.
+The [binding reference](../ton-index-go/index/acton/README.md) documents single-ABI
+generation, the catalog envelope, value formats, and supported layouts.
+
+When updating the catalog, pin and record the upstream revision used to produce
+the snapshot, regenerate, and review the JSON and generated Go diff together.
+Commit the snapshot and bindings together. Review unsupported-root diagnostics:
+they explicitly disable individual bindings, but do not by themselves fail
+generation or mean that every catalog contract is fully supported. Malformed
+catalogs fail generation. Do not edit generated Go files by hand or run competing
+generators against the same directory.
+
+## Builds
+
+From the repository root, with CMake already configured in `build`:
+
+```sh
+# Bindings only, without building the native marker library or Swagger.
+cmake --build build --target ton-index-go-abi
+
+# Generates bindings before Swagger and Go compilation.
+cmake --build build --target ton-index-go
+
+# Equivalent for a CMake Unix Makefiles build directory.
+make -C build ton-index-go
+
+docker build --target index-api -t ton-indexer-api .
+```
+
+The CMake ABI rule tracks the snapshot, generator, shared runtime, generated Go
+files, and module files. It creates its build-directory stamp only after a
+successful run and tracks added or removed Go inputs. Unchanged bindings retain
+their contents and modification times; cleaning the build does not delete the
+checked-in generated sources. Ordinary builds regenerate stale bindings; the
+separate pull-request check runs `--check` without first regenerating them.
+
+The Docker API builder already copies the snapshot and generator through
+`ton-index-go/index/`. It runs the same generation command before `swag init`
+and `go build`, using normal Go module/build caches and disabling CGO only for
+generation. Neither build path downloads a latest catalog or needs a local
+`acton/` checkout, Rust, or Tolk compilation. Catalog data is entirely local;
+ordinary Go dependencies and build tools may still require network access on a
+cold cache. This pins ABI generation, not unrelated Docker base images or tools.
+
+## Explorer Integration
+
+### Account Pages And Batch Preloading
+
+TonScan and other clients can collect visible account addresses and issue one
+request instead of fetching metadata for each hover:
+
+```http
+POST /api/v3/acton/accounts
+Content-Type: application/json
+
+{"addresses":["<account address>","<another account address>"],"include_storage":false}
+```
+
+The response's `accounts` array preserves first-occurrence input order after
+canonical address deduplication. Key UI state by the returned `address`, not the
+original friendly-address spelling. Each item has an independent status, state
+identifiers, and a `types` array. Catalog matches contain display names and source
+links; public-interface hints are explicitly distinguished from exact code-hash
+matches. Unknown accounts remain in the response. Fetch `include_storage=true`
+when opening the storage panel rather than for every hover.
+
+For the getter panel, call `/api/v3/acton/getMethods?address=...`. Its compiler ABI
+contains the field/type descriptions required to render forms; the native getter
+metadata contains the matching parameter and result type references. The getter
+execution endpoint accepts named arguments and retains the raw stack alongside
+the decoded result. Render unnamed tuple results positionally: an ABI cannot
+supply semantic names that were never declared.
+
+### Trace Hovers And Code Changes
+
+Confirmed trace responses include a lightweight `trace.contract_info` object:
+
+```text
+contract_info.accounts[transaction.account]
+    -> encountered code hashes
+contract_info.by_code_hash[hash]
+    -> interfaces and catalog candidates
+```
+
+For a particular transaction, prefer the state's `contract_info_key`:
+
+```ts
+const key = transaction.account_state_before?.contract_info_key
+const info = key ? trace.contract_info?.by_code_hash[key] : undefined
+```
+
+Use `account_state_after` for the resulting implementation after an upgrade.
+The account-level list contains all encountered versions, not just the latest
+one. Hash keys use standard padded base64. Multiple candidate labels indicate
+ambiguity; an empty summary means an unknown hash. No ABI documents or decoded
+storage are repeated on every trace node, and this enrichment adds no database
+queries or getter calls.
+
+Do not replace missing historical metadata with the latest `/acton/accounts`
+result and display it as historical fact. Pending payloads currently lack
+per-state code hashes, so those placeholders have no contract metadata. See the
+[trace reference](../ton-index-go/index/crud/trace_contracts.md) for the complete
+shape, pending limitations, and integration tests.
+
+### ActonScan ABI Registry
+
+`GET /api/v3/acton/abi?code_hash=...&code_hash=...` returns the existing ActonScan
+`ExtendedContractABI` shape: `compiler_abi`, `code_hashes`, `catalog_id`,
+`display_name`, `known_addresses`, and `links`. The result is keyed by the
+requested hash spelling, with null for unknown hashes. An ActonScan metadata
+registry adapter can consume it directly; the existing frontend does not switch
+to this endpoint automatically. The original ABI remains available for browser
+forms and local decoding even though the Go server uses compiled bindings.
+
+Use the returned catalog revision (or `X-Acton-Catalog-Revision` for ABI lookup)
+to invalidate metadata caches. Latest account metadata additionally depends on
+the account state/code hash; historical trace metadata depends on the state
+inside that trace. Avoid caching a decoded body solely by its BOC when the chosen
+contract ABI can differ.
