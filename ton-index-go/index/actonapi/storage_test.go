@@ -76,17 +76,3 @@ func TestStorageAggregateBudgetStopsBeforeAmplification(t *testing.T) {
 		})
 	}
 }
-
-func TestValueBudgetRejectsRepeatedAndCyclicValues(t *testing.T) {
-	shared := map[string]any{"large": strings.Repeat("x", 1000000)}
-	remaining, nodes := MaxStorageBatchBytes, acton.MaxItems*MaxStorageAccounts
-	if err := consumeValueBudget([]any{shared, shared}, &remaining, &nodes); err == nil {
-		t.Fatal("repeated reference not counted as repeated JSON output")
-	}
-	cycle := map[string]any{}
-	cycle["self"] = cycle
-	remaining, nodes = MaxStorageBatchBytes, acton.MaxItems*MaxStorageAccounts
-	if err := consumeValueBudget(cycle, &remaining, &nodes); err == nil {
-		t.Fatal("cyclic decoder output not bounded")
-	}
-}

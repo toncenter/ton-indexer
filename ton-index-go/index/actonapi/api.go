@@ -164,14 +164,10 @@ func (a *API) Contracts(c *fiber.Ctx) error {
 	start := min(offset, len(a.contracts))
 	end := start + min(limit, len(a.contracts)-start)
 	response := ContractsResponse{Contracts: []ContractSummary{}, Total: len(a.contracts), Limit: limit, Offset: offset, Revision: a.revision, TransportCapabilities: TransportCapabilities()}
-	budget := MaxMetadataBytes - 8192
 	for _, contract := range a.contracts[start:end] {
-		if err := metadataBudget(&budget, contract, false, false); err != nil {
-			return err
-		}
 		response.Contracts = append(response.Contracts, summary(contract))
 	}
-	return c.JSON(response)
+	return sendBounded(c, response)
 }
 
 // ABI preserves the caller's hash keys. Conflicting catalog hashes fail the
@@ -193,12 +189,10 @@ func (a *API) ABI(c *fiber.Ctx) error {
 		return Fail(422, "provide 1 to 1000 code_hash values")
 	}
 	result := make(map[string]*ExtendedContractABI, len(hashes))
-	budget := MaxMetadataBytes - 8192
 	for _, hash := range hashes {
 		if _, exists := result[hash]; exists {
 			continue
 		}
-		budget -= len(hash)*6 + 16
 		contracts, err := a.selectContracts("", hash)
 		if err != nil {
 			return err
@@ -211,14 +205,11 @@ func (a *API) ABI(c *fiber.Ctx) error {
 		if err != nil {
 			return err
 		}
-		if err := metadataBudget(&budget, contract, true, false); err != nil {
-			return err
-		}
 		abi := extended(contract)
 		result[hash] = &abi
 	}
 	c.Set("X-Acton-Catalog-Revision", a.revision)
-	return c.JSON(result)
+	return sendBounded(c, result)
 }
 
 func (a *API) accounts(c *fiber.Ctx, addresses []string, storage bool) ([]Account, error) {
@@ -264,7 +255,6 @@ func (a *API) accounts(c *fiber.Ctx, addresses []string, storage bool) ([]Accoun
 		}
 	}
 	storageDecodes := 0
-	valueNodes := acton.MaxItems * MaxStorageAccounts
 	byAddress := map[string]AccountState{}
 	for _, row := range rows {
 		addr, err := CanonicalAddress(row.Address)
@@ -309,9 +299,6 @@ func (a *API) accounts(c *fiber.Ctx, addresses []string, storage bool) ([]Accoun
 			}
 		}
 		for _, contract := range contracts {
-			if err := metadataBudget(&responseBudget, contract, false, false); err != nil {
-				return nil, err
-			}
 			info := summary(contract)
 			account.Types = append(account.Types, Identification{Type: contract.ID, Provenance: "exact_code_hash", Contract: &info})
 			if storage && contract.Storage != nil {
@@ -336,10 +323,15 @@ func (a *API) accounts(c *fiber.Ctx, addresses []string, storage bool) ([]Accoun
 					if err != nil {
 						decoded.Error = err.Error()
 					} else {
-						if err := consumeValueBudget(value, &responseBudget, &valueNodes); err != nil {
-							return nil, err
+						encoded, err := json.Marshal(value)
+						if err != nil {
+							return nil, Fail(502, "native storage decoder returned a non-JSON value")
 						}
-						decoded.Decoded = value
+						responseBudget -= len(encoded)
+						if responseBudget < 0 {
+							return nil, Fail(413, "decoded storage exceeds aggregate 8 MiB budget")
+						}
+						decoded.Decoded = json.RawMessage(encoded)
 					}
 				}
 				account.Storage[contract.ID] = decoded
@@ -396,7 +388,7 @@ func (a *API) Accounts(c *fiber.Ctx) error {
 	if err != nil {
 		return err
 	}
-	return c.JSON(AccountsResponse{Accounts: accounts, Revision: a.revision})
+	return sendBounded(c, AccountsResponse{Accounts: accounts, Revision: a.revision})
 }
 
 // PostAccounts is the JSON batch variant of Accounts.
@@ -421,7 +413,7 @@ func (a *API) PostAccounts(c *fiber.Ctx) error {
 	if err != nil {
 		return err
 	}
-	return c.JSON(AccountsResponse{Accounts: accounts, Revision: a.revision})
+	return sendBounded(c, AccountsResponse{Accounts: accounts, Revision: a.revision})
 }
 
 // GetMethods enumerates metadata only. Each compiler_abi includes its type table.
@@ -473,23 +465,14 @@ func (a *API) GetMethods(c *fiber.Ctx) error {
 			return err
 		}
 	}
-	budget := MaxMetadataBytes - 8192
 	for _, contract := range contracts {
-		if response.Account != nil {
-			if err := metadataBudget(&budget, contract, false, false); err != nil {
-				return err
-			}
-		}
-		if err := metadataBudget(&budget, contract, true, true); err != nil {
-			return err
-		}
 		info := ContractMethods{ExtendedContractABI: extended(contract), GetMethods: []GetMethod{}}
 		for _, method := range contract.GetMethods {
 			info.GetMethods = append(info.GetMethods, methodInfo(method))
 		}
 		response.Contracts = append(response.Contracts, info)
 	}
-	return c.JSON(response)
+	return sendBounded(c, response)
 }
 
 // Decode uses native generated bindings for an explicitly selected ABI.
@@ -799,34 +782,16 @@ func (a *API) RunGetMethod(c *fiber.Ctx) error {
 	return c.JSON(response)
 }
 
-// Account for every alias before response serialization. Six bytes per source
-// byte bounds JSON escaping, including RawMessage HTML escaping; constants cover
-// field names and punctuation. This deliberately conservative budget avoids
-// allocating an amplified response just to discover that it is too large.
-func metadataBudget(remaining *int, c *acton.Contract, abi, methods bool) error {
-	*remaining -= 1024 + 6*(len(c.ID)+len(c.DisplayName))
-	for _, s := range c.CodeHashes {
-		*remaining -= 16 + 6*len(s)
+// sendBounded serializes once and rejects the exact encoded size, so a caller
+// that batches too much gets 413 instead of a multi-megabyte body.
+func sendBounded(c *fiber.Ctx, response any) error {
+	body, err := json.Marshal(response)
+	if err != nil {
+		return Fail(502, "response cannot be serialized")
 	}
-	for _, s := range c.KnownAddresses {
-		*remaining -= 16 + 6*len(s)
+	if len(body) > MaxMetadataBytes {
+		return Fail(413, "response exceeds 8 MiB; reduce the batch or page size")
 	}
-	for _, link := range c.Links {
-		*remaining -= 128 + 6*(len(link.Kind)+len(link.Title)+len(link.URL))
-	}
-	if abi {
-		*remaining -= 6 * len(c.ABI)
-	}
-	if methods {
-		for _, m := range c.GetMethods {
-			*remaining -= 512 + 6*(len(m.Name)+len(m.Return.Name)+len(m.Description)+len(m.Unsupported))
-			for _, p := range m.Parameters {
-				*remaining -= 256 + 6*(len(p.Name)+len(p.Type.Name)+len(p.Default))
-			}
-		}
-	}
-	if *remaining < 0 {
-		return Fail(413, "metadata response exceeds 8 MiB budget; reduce the batch or page size")
-	}
-	return nil
+	c.Type("json")
+	return c.Send(body)
 }
