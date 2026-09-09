@@ -18,9 +18,10 @@ same replacement because Go does not inherit dependency modules' replacements.
 
 `ton-index-go/index/acton/catalog/catalog.json` is the pinned, checked-in catalog
 snapshot. It contains compiler ABIs and catalog metadata. Acton's pure-Go
-`cmd/tolk-abi-to-go` tool turns it into checked-in Go types, native codec bindings,
-and a registry in `index/acton/catalog/*.go`. The snapshot, generated catalog,
-and catalog-specific tests and TypeScript goldens belong to this consumer.
+`cmd/tolk-abi-to-go` tool generates Go types, native codec bindings, and a registry
+in `index/acton/catalog/*_gen.go` before compilation. These files are ignored build
+artifacts, absent from a fresh checkout. The snapshot, static `generate.go`, and
+catalog-specific tests and TypeScript goldens remain checked in with this consumer.
 
 The API uses these compiled bindings and Acton's shared codecs backed by
 `tonutils-go`. It does not interpret compiler ABI JSON on each request, invoke
@@ -62,7 +63,7 @@ CGO_ENABLED=0 go run github.com/ton-blockchain/acton/packages/abi-go/cmd/tolk-ab
   --catalog ./index/acton/catalog/catalog.json \
   --output-dir ./index/acton/catalog --package catalog
 
-# Read-only CI gate: missing, changed, or obsolete generated files fail.
+# Verify the just-generated output against another generation in memory.
 CGO_ENABLED=0 go run github.com/ton-blockchain/acton/packages/abi-go/cmd/tolk-abi-to-go \
   --catalog ./index/acton/catalog/catalog.json \
   --output-dir ./index/acton/catalog --package catalog --check
@@ -78,9 +79,33 @@ Acton Rust CLI or separately installed generator. The
 documents single-ABI generation, the catalog envelope, value formats, and
 supported layouts.
 
+Direct Go commands do not run generators automatically. From a fresh checkout,
+or after changing the catalog or generator dependency, generate before building
+or running the full test suite (the full API still requires the marker library):
+
+```sh
+CGO_ENABLED=0 go generate ./index/acton/catalog
+go build ./...
+go test ./... -count=1
+```
+
+With an installed Acton build that includes Go wrapper support (currently the
+[PR branch](https://github.com/ton-blockchain/acton/pull/1272)), the CLI alternative
+uses Acton's bundled generator:
+
+```sh
+acton wrapper --catalog ./index/acton/catalog/catalog.json --go \
+  --output-dir ./index/acton/catalog --go-package catalog
+```
+
+CMake, Docker, CI, and `go generate` use the pinned Acton Go module command so
+their generator matches the runtime dependency without waiting for a public
+Acton release containing `--go`. Both entry points are maintained in Acton.
+
 When updating the catalog, pin and record the upstream revision used to produce
-the snapshot, regenerate, and review the JSON and generated Go diff together.
-Commit the snapshot and bindings together. Review unsupported-root diagnostics:
+the snapshot, regenerate, and review the snapshot and capability test results.
+Commit the snapshot, provenance, and any changed test expectations or module pin;
+do not commit generated Go files. Review unsupported-root diagnostics:
 they explicitly disable individual bindings, but do not by themselves fail
 generation or mean that every catalog contract is fully supported. Malformed
 catalogs fail generation. Do not edit generated Go files by hand or run competing
@@ -103,18 +128,24 @@ make -C build ton-index-go
 docker build --target index-api -t ton-indexer-api .
 ```
 
-The CMake ABI rule tracks the local snapshot and catalog Go files, plus `go.mod`
-and `go.sum`, which select the generator and shared runtime dependency. It creates
-its build-directory stamp only after a successful run and tracks added or removed
-catalog Go inputs. Unchanged bindings retain their contents and modification
-times; cleaning the build does not delete the checked-in generated sources.
-Ordinary builds regenerate stale bindings; the separate pull-request check runs
-`--check` without first regenerating them.
+The CMake `ton-index-go-abi` target invokes the pinned generator on every dependent
+build, repairing any missing output without globbing generated files or relying on
+a stale stamp. Unchanged bindings retain their contents and modification times.
+The ignored source-tree artifacts survive `cmake --build build --target clean`;
+if removed, the next build recreates them. Generation finishes before Swagger and
+Go compilation. The emulate and streaming targets also depend on this step because
+they import the catalog indirectly through `index/crud`.
 
-The Docker API builder copies the local catalog through `ton-index-go/index/`
-and resolves the generator through the copied `go.mod` and `go.sum`. It runs the
-same generation command before `swag init` and `go build`, using normal Go
-module/build caches and disabling CGO only for generation. Neither build path
+CI starts without generated Go files, generates them, then runs `--check` and the
+catalog/API tests. This checks reproducibility and behavior, not freshness of
+tracked generated files.
+
+The Docker context excludes `*_gen.go` catalog artifacts. The API builder copies
+the local snapshot and resolves the generator through the copied `go.mod` and
+`go.sum`. It runs the same generation command before `swag init` and `go build`;
+the emulate builder generates the catalog in its copied `ton-index-go` dependency
+too. These commands use normal Go module/build caches and disable CGO only for
+generation. Neither build path
 downloads a latest catalog or needs a local `acton/` checkout, Rust, or Tolk
 compilation. Catalog data is entirely local; ordinary Go dependencies and build
 tools may still require network access on a cold cache. This pins ABI generation,

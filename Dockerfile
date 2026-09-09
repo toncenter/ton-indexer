@@ -51,6 +51,7 @@ ADD ton-index-go/main.go /go/app/main.go
 ADD ton-index-go/go.mod /go/app/go.mod
 ADD ton-index-go/go.sum /go/app/go.sum
 WORKDIR /go/app
+# Bindings are build artifacts, absent from the Docker context.
 RUN CGO_ENABLED=0 go run github.com/ton-blockchain/acton/packages/abi-go/cmd/tolk-abi-to-go \
       --catalog ./index/acton/catalog/catalog.json \
       --output-dir ./index/acton/catalog --package catalog
@@ -73,6 +74,8 @@ ADD ton-emulate-go/models/ /go/app/models/
 ADD ton-emulate-go/main.go /go/app/main.go
 ADD ton-emulate-go/go.mod /go/app/go.mod
 ADD ton-emulate-go/go.sum /go/app/go.sum
+# crud imports the generated catalog from the local ton-index-go dependency.
+RUN CGO_ENABLED=0 go -C /go/ton-index-go generate ./index/acton/catalog
 COPY --from=core-builder /app/build/ton-marker/libton-marker* /usr/lib/
 COPY --from=core-builder /app/ton-marker/src/wrapper.h /usr/local/include/wrapper.h
 RUN cd /go/app && swag init && go build -o ton-emulate-go ./main.go
