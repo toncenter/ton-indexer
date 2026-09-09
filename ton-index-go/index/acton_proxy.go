@@ -6,10 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"io"
 	"math"
-	"net"
-	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
@@ -18,24 +15,19 @@ import (
 	"github.com/ton-blockchain/acton/packages/abi-go"
 	"github.com/toncenter/ton-indexer/ton-index-go/index/actonapi"
 	"github.com/toncenter/ton-indexer/ton-index-go/index/models"
+	"github.com/valyala/fasthttp"
 	"github.com/xssnick/tonutils-go/tvm/cell"
 )
 
 const actonMaxUpstreamBytes = 4 << 20
 
-var actonHTTPClient = newActonHTTPClient()
-
-func newActonHTTPClient() *http.Client {
-	return &http.Client{
-		Transport: &http.Transport{
-			DialContext:     (&net.Dialer{Timeout: 3 * time.Second, KeepAlive: 30 * time.Second}).DialContext,
-			MaxConnsPerHost: 256, MaxIdleConns: 256, MaxIdleConnsPerHost: 256,
-			IdleConnTimeout: 30 * time.Second, TLSHandshakeTimeout: 3 * time.Second,
-			ResponseHeaderTimeout: 3 * time.Second, MaxResponseHeaderBytes: 64 << 10,
-			DisableCompression: true,
-		},
-		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
-	}
+// Acton getters use their own pool so a slow upstream cannot starve the legacy
+// v2 routes, but the same tuning and a hard response-body cap.
+var actonV2HTTPClient = &fasthttp.Client{
+	MaxConnsPerHost:     v2MaxConnections,
+	MaxConnWaitTimeout:  v2ConnectionWaitLimit,
+	MaxIdleConnDuration: v2IdleConnectionLimit,
+	MaxResponseBodySize: actonMaxUpstreamBytes,
 }
 
 type actonExecutor struct {
@@ -43,8 +35,8 @@ type actonExecutor struct {
 	deadline time.Time
 }
 
-// NewActonExecutor uses an isolated reusable connection pool. One deadline
-// covers discovery, state loading, response bodies and execution.
+// NewActonExecutor pins one deadline across discovery, state loading and
+// execution, so a chain of upstream calls cannot outlive the client's request.
 func NewActonExecutor(settings models.RequestSettings) actonapi.GetterExecutor {
 	timeout := settings.Timeout
 	if timeout <= 0 || timeout > 3*time.Second {
@@ -54,22 +46,13 @@ func NewActonExecutor(settings models.RequestSettings) actonapi.GetterExecutor {
 }
 
 func (e *actonExecutor) request(ctx context.Context, method, endpoint string, query url.Values, payload any, result any) error {
-	base, err := url.Parse(e.settings.V2Endpoint)
-	if err != nil || base == nil || base.Host == "" || base.Scheme != "http" && base.Scheme != "https" {
+	requestURL, err := v2RequestURL(e.settings, endpoint, query)
+	if err != nil {
 		return actonapi.Fail(503, "configured v2 endpoint is unavailable")
 	}
-	base.Path = strings.TrimRight(base.Path, "/") + "/" + endpoint
-	if query == nil {
-		query = url.Values{}
-	}
-	if e.settings.V2ApiKey != "" {
-		query.Set("api_key", e.settings.V2ApiKey)
-	}
-	base.RawQuery, base.Fragment = query.Encode(), ""
 	var data []byte
 	if payload != nil {
-		data, err = json.Marshal(payload)
-		if err != nil || len(data) > actonapi.MaxBodyBytes {
+		if data, err = json.Marshal(payload); err != nil || len(data) > actonapi.MaxBodyBytes {
 			return actonapi.Fail(422, "invalid or oversized v2 request")
 		}
 	}
@@ -80,45 +63,32 @@ func (e *actonExecutor) request(ctx context.Context, method, endpoint string, qu
 	if ctx.Err() != nil || time.Until(deadline) <= 0 {
 		return actonapi.Fail(504, "Acton execution deadline exceeded")
 	}
-	ctx, cancel := context.WithDeadline(ctx, deadline)
-	defer cancel()
-	req, err := http.NewRequestWithContext(ctx, method, base.String(), bytes.NewReader(data))
-	if err != nil {
-		return actonapi.Fail(503, "configured v2 endpoint is invalid")
-	}
+
+	req, resp := fasthttp.AcquireRequest(), fasthttp.AcquireResponse()
+	defer fasthttp.ReleaseRequest(req)
+	defer fasthttp.ReleaseResponse(resp)
+	req.Header.SetMethod(method)
+	req.SetRequestURI(requestURL)
 	if payload != nil {
-		req.Header.Set("Content-Type", "application/json")
+		req.Header.SetContentType("application/json")
+		req.SetBody(data)
 	}
-	resp, err := actonHTTPClient.Do(req)
-	if err != nil {
-		if ctx.Err() != nil {
+	// Do (unlike DoRedirects) never follows redirects, and the client's
+	// MaxResponseBodySize bounds the body for chunked responses too.
+	if err := actonV2HTTPClient.DoDeadline(req, resp, deadline); err != nil {
+		if ctx.Err() != nil || time.Until(deadline) <= 0 {
 			return actonapi.Fail(504, "Acton upstream timeout")
 		}
 		return actonapi.Fail(502, "Acton v2 upstream request failed")
 	}
-	defer resp.Body.Close()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return actonapi.Fail(502, fmt.Sprintf("Acton v2 %s returned HTTP %d; no transport fallback", endpoint, resp.StatusCode))
-	}
-	if resp.ContentLength > actonMaxUpstreamBytes {
-		return actonapi.Fail(502, "Acton upstream response exceeds size limit")
-	}
-	// Read at most the limit plus one sentinel byte, even for chunked responses.
-	body, err := io.ReadAll(io.LimitReader(resp.Body, actonMaxUpstreamBytes+1))
-	if err != nil {
-		if ctx.Err() != nil {
-			return actonapi.Fail(504, "Acton upstream timeout")
-		}
-		return actonapi.Fail(502, "Acton upstream body read failed")
-	}
-	if len(body) > actonMaxUpstreamBytes {
-		return actonapi.Fail(502, "Acton upstream response exceeds size limit")
+	if status := resp.StatusCode(); status < 200 || status >= 300 {
+		return actonapi.Fail(502, fmt.Sprintf("Acton v2 %s returned HTTP %d; no transport fallback", endpoint, status))
 	}
 	var envelope struct {
 		OK     bool            `json:"ok"`
 		Result json.RawMessage `json:"result"`
 	}
-	if err := json.Unmarshal(body, &envelope); err != nil || !envelope.OK || len(envelope.Result) == 0 || bytes.Equal(envelope.Result, []byte("null")) {
+	if err := json.Unmarshal(resp.Body(), &envelope); err != nil || !envelope.OK || len(envelope.Result) == 0 || bytes.Equal(envelope.Result, []byte("null")) {
 		// Do not relay upstream error text, which can contain credentials or URLs.
 		return actonapi.Fail(502, "v2 "+endpoint+" failed or returned an incompatible response; no legacy fallback")
 	}
@@ -126,9 +96,6 @@ func (e *actonExecutor) request(ctx context.Context, method, endpoint string, qu
 	d.UseNumber()
 	if err := d.Decode(result); err != nil {
 		return actonapi.Fail(502, "invalid v2 "+endpoint+" result")
-	}
-	if err := d.Decode(new(any)); err != io.EOF {
-		return actonapi.Fail(502, "invalid v2 result JSON")
 	}
 	return nil
 }
