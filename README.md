@@ -70,7 +70,7 @@ Once the stack is running, the REST API and interactive Swagger are available at
 See [Acton API and builds](docs/acton-api.md) for the native ABI endpoints,
 pinned catalog, binding generation, and CI checks. The Go ABI generator and
 runtime are maintained in
-[Acton's `packages/abi-go`](https://github.com/ton-blockchain/acton/tree/HEAD/packages/abi-go).
+[Acton's `packages/abi-go`](https://github.com/ton-blockchain/acton/tree/d6e28585b6f9e2a37c241de4d514f77210a99da2/packages/abi-go).
 TON Indexer consumes the canonical `github.com/ton-blockchain/acton/packages/abi-go`
 module through `ton-index-go/go.mod` and owns its pinned catalog and generated
 bindings. Ordinary Go builds run that module's generator without an installed
