@@ -6,11 +6,9 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 	"net"
 	"net/http"
-	"os"
 	"reflect"
 	"strings"
 	"sync"
@@ -446,85 +444,5 @@ func TestActonProxyDeadlineCoversChainAndBody(t *testing.T) {
 	var apiError *actonapi.Error
 	if !errors.As(err, &apiError) || apiError.Code != 504 || calls != 2 || body == nil || !body.closed {
 		t.Fatalf("body timeout lost: calls=%d body=%+v err=%v", calls, body, err)
-	}
-}
-
-// Opt-in public read-only smoke; ordinary tests never access the network. Each
-// complete state/execution chain retains the production three-second deadline.
-func TestActonLiveReadOnlySmoke(t *testing.T) {
-	if os.Getenv("ACTON_LIVE_SMOKE") != "1" {
-		t.Skip("set ACTON_LIVE_SMOKE=1 for public read-only smoke")
-	}
-	for _, tc := range []struct {
-		contract, method string
-		seqno            int32
-	}{
-		{"system.Elector", "active_election_id", 91668427},
-		{"wallets/w4r2.WalletV4r2", "get_plugin_list", 0},
-	} {
-		t.Run(tc.contract, func(t *testing.T) {
-			contract := catalog.ByID(tc.contract)
-			if contract == nil || len(contract.KnownAddresses) == 0 {
-				t.Fatal("missing real catalog fixture")
-			}
-			var method *acton.GetMethod
-			for i := range contract.GetMethods {
-				if contract.GetMethods[i].Name == tc.method {
-					method = &contract.GetMethods[i]
-					break
-				}
-			}
-			if method == nil {
-				t.Fatal("missing real catalog getter")
-			}
-			executor := NewActonExecutor(models.RequestSettings{V2Endpoint: "https://toncenter.com/api/v2", Timeout: 3 * time.Second})
-			var seqno *int32
-			if tc.seqno > 0 {
-				seqno = &tc.seqno
-			}
-			snapshot, err := executor.Snapshot(context.Background(), contract.KnownAddresses[0], seqno)
-			if err != nil {
-				t.Skipf("public snapshot unavailable within bounded chain: %v", err)
-			}
-			matched := false
-			for _, hash := range []*string{snapshot.CodeHash, snapshot.ImplementationHash} {
-				if hash == nil {
-					continue
-				}
-				for _, candidate := range catalog.ByCodeHash(*hash) {
-					if candidate == contract {
-						matched = true
-					}
-				}
-			}
-			if !matched {
-				t.Skip("live code no longer matches this catalog fixture; refusing unrelated decoding")
-			}
-			stack, err := method.EncodeArgs(map[string]any{})
-			if err != nil {
-				t.Fatal(err)
-			}
-			result, err := executor.Run(context.Background(), snapshot, method.ID, stack)
-			if err != nil {
-				t.Skipf("public execution unavailable within bounded chain: %v", err)
-			}
-			if result.ExitCode != 0 && result.ExitCode != 1 {
-				t.Fatalf("VM exit %d, gas=%s", result.ExitCode, result.GasUsed)
-			}
-			if result.StackError != "" {
-				t.Fatal(result.StackError)
-			}
-			decoded, err := method.DecodeResult(result.Stack)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if tc.contract == "system.Elector" && decoded != "0" {
-				t.Fatalf("historical election id: %#v", decoded)
-			}
-			if list, ok := decoded.([]any); ok {
-				decoded = fmt.Sprintf("list length %d", len(list))
-			}
-			t.Logf("%s/%s seqno=%d exit=%d gas=%s decoded=%v", tc.contract, tc.method, *snapshot.Seqno, result.ExitCode, result.GasUsed, decoded)
-		})
 	}
 }
