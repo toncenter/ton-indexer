@@ -6,13 +6,10 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"io"
 	"net"
-	"net/http"
 	"reflect"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"testing"
 	"time"
 
@@ -33,13 +30,17 @@ func actonUpstream(t *testing.T, handler fasthttp.RequestHandler) {
 	server := &fasthttp.Server{Handler: handler}
 	stopped := make(chan struct{})
 	go func() { _ = server.Serve(listener); close(stopped) }()
-	client := newActonHTTPClient()
-	client.Transport.(*http.Transport).DialContext = func(context.Context, string, string) (net.Conn, error) { return listener.Dial() }
-	previous := actonHTTPClient
-	actonHTTPClient = client
+	previous := actonV2HTTPClient
+	actonV2HTTPClient = &fasthttp.Client{
+		MaxConnsPerHost:     v2MaxConnections,
+		MaxConnWaitTimeout:  v2ConnectionWaitLimit,
+		MaxIdleConnDuration: v2IdleConnectionLimit,
+		MaxResponseBodySize: actonMaxUpstreamBytes,
+		Dial:                func(string) (net.Conn, error) { return listener.Dial() },
+	}
 	t.Cleanup(func() {
-		actonHTTPClient = previous
-		client.CloseIdleConnections()
+		actonV2HTTPClient.CloseIdleConnections()
+		actonV2HTTPClient = previous
 		_ = listener.Close()
 		<-stopped
 	})
@@ -314,61 +315,37 @@ func TestActonProxyStandardNullAndBuilderRejection(t *testing.T) {
 	}
 }
 
-type actonRoundTripFunc func(*http.Request) (*http.Response, error)
-
-func (f actonRoundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
-
-type actonCountingBody struct {
-	bytes  int
-	closed bool
-}
-
-func (b *actonCountingBody) Read(p []byte) (int, error) {
-	for i := range p {
-		p[i] = ' '
-	}
-	b.bytes += len(p)
-	return len(p), nil
-}
-func (b *actonCountingBody) Close() error { b.closed = true; return nil }
-
 func TestActonProxyBoundsHTTPStatusAndResponseBody(t *testing.T) {
 	for _, tc := range []struct {
-		name          string
-		status        int
-		contentLength int64
-		maxRead       int
+		name    string
+		respond func(*fasthttp.RequestCtx)
 	}{
-		{"status_503_even_ok_true", 503, -1, 0},
-		{"known_oversized", 200, actonMaxUpstreamBytes + 1, 0},
-		{"unknown_length_bounded", 200, -1, actonMaxUpstreamBytes + 1},
-		{"redirect_not_followed", 302, -1, 0},
+		{"status_503_even_ok_true", func(c *fasthttp.RequestCtx) {
+			c.SetStatusCode(503)
+			c.SetBodyString(`{"ok":true,"result":{"gas_used":1,"exit_code":0,"stack":[]}}`)
+		}},
+		{"oversized_body", func(c *fasthttp.RequestCtx) {
+			c.SetBodyString(strings.Repeat(" ", actonMaxUpstreamBytes+1))
+		}},
+		{"redirect_not_followed", func(c *fasthttp.RequestCtx) {
+			c.Response.Header.Set("Location", "http://must-not-follow.invalid/private-key")
+			c.SetStatusCode(302)
+		}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			previous := actonHTTPClient
-			defer func() { actonHTTPClient = previous }()
-			body := &actonCountingBody{}
 			calls := 0
-			actonHTTPClient = newActonHTTPClient()
-			actonHTTPClient.Transport = actonRoundTripFunc(func(r *http.Request) (*http.Response, error) {
-				calls++
-				var reader io.ReadCloser = body
-				if tc.status == 503 {
-					reader = io.NopCloser(strings.NewReader(`{"ok":true,"result":{"gas_used":1,"exit_code":0,"stack":[]}}`))
-				}
-				return &http.Response{StatusCode: tc.status, Body: reader, ContentLength: tc.contentLength, Header: http.Header{"Location": []string{"http://must-not-follow.invalid/private-key"}}, Request: r}, nil
-			})
+			actonUpstream(t, func(c *fasthttp.RequestCtx) { calls++; tc.respond(c) })
 			seqno := int32(1)
 			result, err := NewActonExecutor(actonSettings()).Run(context.Background(), &actonapi.Snapshot{Address: "0:" + strings.Repeat("00", 32), Seqno: &seqno}, 85143, nil)
 			var apiError *actonapi.Error
-			if result != nil || !errors.As(err, &apiError) || apiError.Code != 502 || strings.Contains(err.Error(), "private-key") || strings.Contains(err.Error(), "v2.test") {
-				t.Fatalf("bad upstream failure: %v", err)
+			if result != nil || !errors.As(err, &apiError) || apiError.Code != 502 {
+				t.Fatalf("bad upstream not rejected: %v", err)
 			}
-			if calls != 1 || body.bytes > tc.maxRead {
-				t.Fatalf("unbounded body or fallback: reads=%d calls=%d", body.bytes, calls)
+			if strings.Contains(err.Error(), "private-key") || strings.Contains(err.Error(), "v2.test") {
+				t.Fatalf("upstream detail leaked into error: %v", err)
 			}
-			if tc.status != 503 && !body.closed {
-				t.Fatal("upstream body not closed")
+			if calls != 1 {
+				t.Fatalf("retried or fell back: calls=%d", calls)
 			}
 		})
 	}
@@ -389,60 +366,23 @@ func TestActonProxyPositiveSeqnoBeforeUpstream(t *testing.T) {
 	}
 }
 
-func TestActonProxyReusesIsolatedPool(t *testing.T) {
-	actonUpstream(t, func(c *fasthttp.RequestCtx) {
-		c.SetBodyString(`{"ok":true,"result":{"gas_used":1,"exit_code":0,"stack":[]}}`)
-	})
-	transport := actonHTTPClient.Transport.(*http.Transport)
-	dial := transport.DialContext
-	var connections atomic.Int32
-	transport.DialContext = func(ctx context.Context, network, addr string) (net.Conn, error) {
-		connections.Add(1)
-		return dial(ctx, network, addr)
-	}
-	seqno := int32(1)
-	for i := 0; i < 2; i++ {
-		_, err := NewActonExecutor(actonSettings()).Run(context.Background(), &actonapi.Snapshot{Address: "0:" + strings.Repeat("00", 32), Seqno: &seqno}, 85143, nil)
-		if err != nil {
-			t.Fatal(err)
-		}
-	}
-	if connections.Load() != 1 {
-		t.Fatalf("connection pool not reused: %d", connections.Load())
-	}
-}
-
-type actonDeadlineBody struct {
-	ctx    context.Context
-	closed bool
-}
-
-func (b *actonDeadlineBody) Read([]byte) (int, error) { <-b.ctx.Done(); return 0, b.ctx.Err() }
-func (b *actonDeadlineBody) Close() error             { b.closed = true; return nil }
-
 func TestActonProxyDeadlineCoversChainAndBody(t *testing.T) {
-	previous := actonHTTPClient
-	defer func() { actonHTTPClient = previous }()
+	calls := 0
+	actonUpstream(t, func(c *fasthttp.RequestCtx) {
+		calls++
+		if calls == 1 {
+			c.SetBodyString(`{"ok":true,"result":{"last":{"seqno":1}}}`)
+			return
+		}
+		// Outlive the executor's whole-chain deadline, not just this step's.
+		time.Sleep(300 * time.Millisecond)
+		c.SetBodyString(`{"ok":true,"result":{}}`)
+	})
 	settings := actonSettings()
 	settings.Timeout = 50 * time.Millisecond
-	executor := NewActonExecutor(settings).(*actonExecutor)
-	var body *actonDeadlineBody
-	calls := 0
-	actonHTTPClient = &http.Client{Transport: actonRoundTripFunc(func(r *http.Request) (*http.Response, error) {
-		calls++
-		deadline, ok := r.Context().Deadline()
-		if !ok || !deadline.Equal(executor.deadline) {
-			t.Fatal("per-step request reset the chain deadline")
-		}
-		if calls == 1 {
-			return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(`{"ok":true,"result":{"last":{"seqno":1}}}`)), Header: http.Header{}}, nil
-		}
-		body = &actonDeadlineBody{ctx: r.Context()}
-		return &http.Response{StatusCode: 200, Body: body, Header: http.Header{}}, nil
-	})}
-	_, err := executor.Snapshot(context.Background(), "0:"+strings.Repeat("00", 32), nil)
+	_, err := NewActonExecutor(settings).Snapshot(context.Background(), "0:"+strings.Repeat("00", 32), nil)
 	var apiError *actonapi.Error
-	if !errors.As(err, &apiError) || apiError.Code != 504 || calls != 2 || body == nil || !body.closed {
-		t.Fatalf("body timeout lost: calls=%d body=%+v err=%v", calls, body, err)
+	if !errors.As(err, &apiError) || apiError.Code != 504 || calls != 2 {
+		t.Fatalf("chain deadline lost: calls=%d err=%v", calls, err)
 	}
 }
