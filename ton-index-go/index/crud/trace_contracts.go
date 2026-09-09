@@ -47,7 +47,7 @@ func enrichTraceContracts(traces []models.Trace, lookup func(string) []*acton.Co
 				}
 				summary, ok := cache[*hash]
 				if !ok {
-					summary = &models.ContractTypeSummary{Interfaces: detect.InterfacesByCodeHash(string(*hash))}
+					summary = &models.ContractTypeSummary{Interfaces: detect.DetectInterface(string(*hash), nil)}
 					for _, contract := range lookup(string(*hash)) {
 						candidate := models.ContractCandidate{ID: contract.ID, DisplayName: contract.DisplayName}
 						for _, link := range contract.Links {
