@@ -3,7 +3,7 @@ package catalog
 
 import (
 	"encoding/json"
-	acton "github.com/toncenter/ton-indexer/ton-index-go/index/acton"
+	acton "github.com/ton-blockchain/acton/packages/abi-go"
 )
 
 type CJettonsStablecoinMaster_f0b5b5c55ee395efStablecoinMasterMintT12 struct {

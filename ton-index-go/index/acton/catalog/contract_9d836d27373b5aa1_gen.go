@@ -3,7 +3,7 @@ package catalog
 
 import (
 	"encoding/json"
-	acton "github.com/toncenter/ton-indexer/ton-index-go/index/acton"
+	acton "github.com/ton-blockchain/acton/packages/abi-go"
 )
 
 type CBidaskBidaskLpMultitoken_9d836d27373b5aa1BidaskMultitokenMintT12 struct {

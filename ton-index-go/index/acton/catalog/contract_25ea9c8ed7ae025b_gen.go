@@ -3,7 +3,7 @@ package catalog
 
 import (
 	"encoding/json"
-	acton "github.com/toncenter/ton-indexer/ton-index-go/index/acton"
+	acton "github.com/ton-blockchain/acton/packages/abi-go"
 )
 
 type CHipoHipoLibrarian_25ea9c8ed7ae025bHipoLibrarianAddLibraryT12 struct {

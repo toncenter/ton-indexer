@@ -3,7 +3,7 @@ package catalog
 
 import (
 	"encoding/json"
-	acton "github.com/toncenter/ton-indexer/ton-index-go/index/acton"
+	acton "github.com/ton-blockchain/acton/packages/abi-go"
 )
 
 type CStonkspumpStonksPumpVirtualFactory_cade9c8ecaa5a6b7StonksPumpCreateVirtualLiquidityJettonT12 struct {

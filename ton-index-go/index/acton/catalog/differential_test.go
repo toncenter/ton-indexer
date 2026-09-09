@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/toncenter/ton-indexer/ton-index-go/index/acton"
+	"github.com/ton-blockchain/acton/packages/abi-go"
 )
 
 // The committed subset runs without Node. ACTON_REFERENCE_CORPUS can point at

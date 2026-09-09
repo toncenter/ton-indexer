@@ -41,6 +41,7 @@ require (
 	github.com/rivo/uniseg v0.4.7 // indirect
 	github.com/rogpeppe/go-internal v1.13.1 // indirect
 	github.com/swaggo/files/v2 v2.0.1 // indirect
+	github.com/ton-blockchain/acton/packages/abi-go v0.0.0-20260909213431-d6e28585b6f9 // indirect
 	github.com/valyala/bytebufferpool v1.0.0 // indirect
 	github.com/valyala/fasthttp v1.58.0 // indirect
 	github.com/valyala/tcplisten v1.0.0 // indirect
@@ -53,3 +54,6 @@ require (
 	golang.org/x/tools v0.36.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
+
+// Acton PR #1272: replacements are not inherited from the indexer module.
+replace github.com/ton-blockchain/acton/packages/abi-go => github.com/1IxI1/acton/packages/abi-go v0.0.0-20260909213431-d6e28585b6f9

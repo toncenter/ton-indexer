@@ -3,7 +3,7 @@ package catalog
 
 import (
 	"encoding/json"
-	acton "github.com/toncenter/ton-indexer/ton-index-go/index/acton"
+	acton "github.com/ton-blockchain/acton/packages/abi-go"
 )
 
 type CFragmentFragmentNumbersItem_8e3ed49d2c3627b5FragmentNumbersItemDeployT12 struct {

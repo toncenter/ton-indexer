@@ -3,7 +3,7 @@ package catalog
 
 import (
 	"encoding/json"
-	acton "github.com/toncenter/ton-indexer/ton-index-go/index/acton"
+	acton "github.com/ton-blockchain/acton/packages/abi-go"
 )
 
 type CCronCron_1771d4a2e353cf45CronIncomingExternalMessageT12 = *CCronCron_1771d4a2e353cf45CronTriggerT13

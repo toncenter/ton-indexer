@@ -3,7 +3,7 @@ package catalog
 
 import (
 	"encoding/json"
-	acton "github.com/toncenter/ton-indexer/ton-index-go/index/acton"
+	acton "github.com/ton-blockchain/acton/packages/abi-go"
 )
 
 type CJettonsScaledUiJettonMaster_aafedd3e994954d2ScaledUiJettonMasterOutgoingMessageT12 = *CJettonsScaledUiJettonMaster_aafedd3e994954d2ScaledUiDisplayMultiplierChangedT13

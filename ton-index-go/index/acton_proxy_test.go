@@ -18,7 +18,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/toncenter/ton-indexer/ton-index-go/index/acton"
+	"github.com/ton-blockchain/acton/packages/abi-go"
 	"github.com/toncenter/ton-indexer/ton-index-go/index/acton/catalog"
 	"github.com/toncenter/ton-indexer/ton-index-go/index/actonapi"
 	"github.com/toncenter/ton-indexer/ton-index-go/index/models"

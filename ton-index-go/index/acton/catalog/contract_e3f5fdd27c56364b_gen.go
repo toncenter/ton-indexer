@@ -3,7 +3,7 @@ package catalog
 
 import (
 	"encoding/json"
-	acton "github.com/toncenter/ton-indexer/ton-index-go/index/acton"
+	acton "github.com/ton-blockchain/acton/packages/abi-go"
 )
 
 type CFragmentFragmentCheckoutPaymentProxy_e3f5fdd27c56364bFragmentCheckoutPaymentProxyIncomingMessageT12 = *CFragmentFragmentCheckoutPaymentProxy_e3f5fdd27c56364bFragmentCheckoutPaymentBatchT13

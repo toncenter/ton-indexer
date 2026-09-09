@@ -2,6 +2,10 @@
 
 Complete 288-contract compiler-ABI catalog, exact input snapshot, and generated
 native Go bindings. Production code never reads or parses `catalog.json`.
+This package is a consumer of the generator and runtime maintained in
+[Acton's `packages/abi-go`](https://github.com/ton-blockchain/acton/tree/HEAD/packages/abi-go).
+The snapshot, generated bindings, and catalog-specific tests and TypeScript
+goldens remain in TON Indexer.
 
 ## Provenance
 
@@ -16,25 +20,27 @@ native Go bindings. Production code never reads or parses `catalog.json`.
 
 ## Generation
 
-Initial command, run from `ton-index-go`:
+To refresh the snapshot from an explicitly selected Acton checkout, run from
+`ton-index-go`:
 
 ```sh
-CGO_ENABLED=0 go run ./index/acton/cmd/tolk-abi-to-go \
-  --catalog /Users/victor/Projects/ton-indexer/acton/crates/acton-abi-catalog/data/data-abis.json \
+CGO_ENABLED=0 go run github.com/ton-blockchain/acton/packages/abi-go/cmd/tolk-abi-to-go \
+  --catalog /path/to/acton/crates/acton-abi-catalog/data/data-abis.json \
   --output-dir index/acton/catalog --package catalog --snapshot
 ```
 
-Reproduce offline without the Acton checkout, Rust, JS, or a Tolk compiler:
+Reproduce from the local snapshot without the Acton checkout, Rust, JS, or a
+Tolk compiler (offline once Go dependencies are cached):
 
 ```sh
 CGO_ENABLED=0 go generate ./index/acton/catalog
-CGO_ENABLED=0 go run ./index/acton/cmd/tolk-abi-to-go \
+CGO_ENABLED=0 go run github.com/ton-blockchain/acton/packages/abi-go/cmd/tolk-abi-to-go \
   --catalog index/acton/catalog/catalog.json \
   --output-dir index/acton/catalog --package catalog --check
-CGO_ENABLED=0 go test ./index/acton/...
+CGO_ENABLED=0 go test ./index/acton/catalog ./index/actonapi -count=1
 ```
 
-Use the initial command with `--snapshot --check` to verify both the snapshot and
+Use the refresh command with `--snapshot --check` to verify both the snapshot and
 generated files against an external upstream input. `--snapshot` writes the
 deliberately named `catalog.json`. An existing JSON file is replaceable only when
 its digest matches the input digest recorded in the previously generated
@@ -49,19 +55,26 @@ snapshot. Handwritten `generate.go`, tests, documentation and licenses are prese
 ## Integration
 
 ```text
-module: github.com/toncenter/ton-indexer/ton-index-go
-facade: github.com/toncenter/ton-indexer/ton-index-go/index/acton
+consumer module: github.com/toncenter/ton-indexer/ton-index-go
+runtime (package acton): github.com/ton-blockchain/acton/packages/abi-go
 catalog: github.com/toncenter/ton-indexer/ton-index-go/index/acton/catalog
-generator: github.com/toncenter/ton-indexer/ton-index-go/index/acton/codegen
-command: github.com/toncenter/ton-indexer/ton-index-go/index/acton/cmd/tolk-abi-to-go
+generator: github.com/ton-blockchain/acton/packages/abi-go/codegen
+command: github.com/ton-blockchain/acton/packages/abi-go/cmd/tolk-abi-to-go
 ```
 
-Acton CLI integrations can invoke the Go command with `--abi FILE` for a raw
+The versionless `go run` commands select the Acton Go module version from
+`ton-index-go/go.mod`, with checksums recorded in `go.sum`. Generator and runtime
+updates are dependency updates to that canonical module. Ordinary Go builds do
+not require an installed Acton Rust CLI or a separately installed generator.
+
+Other consumers can invoke the same Go command with `--abi FILE` for a raw
 compiler ABI or `--catalog FILE` for a bundle, followed by `--output-dir DIR`
-and `--package NAME`. Emitted code imports the facade above and uses the existing
-`github.com/xssnick/tonutils-go v1.15.5` dependency. External consumers must depend
-on a published or locally replaced revision of `ton-index-go`; generation does
-not publish a module version.
+and `--package NAME`. Emitted code imports Acton's runtime above and uses the
+`github.com/xssnick/tonutils-go v1.15.5` dependency. Consumers depend directly on
+the published Acton Go module; they do not need TON Indexer to generate or use
+their own bindings. See the
+[Acton binding reference](https://github.com/ton-blockchain/acton/blob/HEAD/packages/abi-go/README.md)
+for the generator and runtime API.
 
 Exports: `Contracts`, `Revision`, `ByID`, `ByCodeHash`. Both lookups use maps
 initialized once, not scans. Code hashes accept hex/base64 and preserve all

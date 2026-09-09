@@ -3,7 +3,7 @@ package catalog
 
 import (
 	"encoding/json"
-	acton "github.com/toncenter/ton-indexer/ton-index-go/index/acton"
+	acton "github.com/ton-blockchain/acton/packages/abi-go"
 )
 
 type CEvaaEvaaMasterClassic_1a44ef7b1ce81dc2EvaaMasterClassicSupplyMasterT12 struct {

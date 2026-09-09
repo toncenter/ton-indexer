@@ -3,7 +3,7 @@ package catalog
 
 import (
 	"encoding/json"
-	acton "github.com/toncenter/ton-indexer/ton-index-go/index/acton"
+	acton "github.com/ton-blockchain/acton/packages/abi-go"
 )
 
 type CBidaskBidaskPoolFactory_c95168b5b0440744BidaskPoolFactoryDeployPoolMsgT12 struct {

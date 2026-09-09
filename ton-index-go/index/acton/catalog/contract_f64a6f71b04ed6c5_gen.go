@@ -3,7 +3,7 @@ package catalog
 
 import (
 	"encoding/json"
-	acton "github.com/toncenter/ton-indexer/ton-index-go/index/acton"
+	acton "github.com/ton-blockchain/acton/packages/abi-go"
 )
 
 type CFragmentFragmentNumbersCollection_f64a6f71b04ed6c5FragmentNumbersCollectionIncomingMessageT12 = *CFragmentFragmentNumbersCollection_f64a6f71b04ed6c5FragmentNumbersCollectionDeployT13

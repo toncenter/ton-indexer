@@ -3,7 +3,7 @@ package catalog
 
 import (
 	"encoding/json"
-	acton "github.com/toncenter/ton-indexer/ton-index-go/index/acton"
+	acton "github.com/ton-blockchain/acton/packages/abi-go"
 )
 
 type CCoffeeCoffeeVaultJetton_98fdb44e3852ab37CoffeeTransferNotificationT12 struct {

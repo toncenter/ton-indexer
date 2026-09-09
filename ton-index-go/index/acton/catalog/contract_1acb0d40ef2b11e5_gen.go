@@ -3,7 +3,7 @@ package catalog
 
 import (
 	"encoding/json"
-	acton "github.com/toncenter/ton-indexer/ton-index-go/index/acton"
+	acton "github.com/ton-blockchain/acton/packages/abi-go"
 )
 
 type CCoffeeCoffeeFactory_1acb0d40ef2b11e5CoffeeFactoryCreatePoolCreatorRequestT12 struct {

@@ -3,7 +3,7 @@ package catalog
 
 import (
 	"encoding/json"
-	acton "github.com/toncenter/ton-indexer/ton-index-go/index/acton"
+	acton "github.com/ton-blockchain/acton/packages/abi-go"
 )
 
 type CInvoicesInvoicesPayloadInterface_a27ff5d92d5b5373InvoicesIncomingMessageT12 = *CInvoicesInvoicesPayloadInterface_a27ff5d92d5b5373InvoicePayloadT13

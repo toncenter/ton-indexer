@@ -3,7 +3,7 @@ package catalog
 
 import (
 	"encoding/json"
-	acton "github.com/toncenter/ton-indexer/ton-index-go/index/acton"
+	acton "github.com/ton-blockchain/acton/packages/abi-go"
 )
 
 type CSignedCrossDexSignedCrossDexExecutor_1b03ac88ba83ff1aSignedCrossDexJettonTransferNotificationT12 struct {

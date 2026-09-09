@@ -3,7 +3,7 @@ package catalog
 
 import (
 	"encoding/json"
-	acton "github.com/toncenter/ton-indexer/ton-index-go/index/acton"
+	acton "github.com/ton-blockchain/acton/packages/abi-go"
 )
 
 type CStonfiStonfiLpAccountV1_4d10046c0d40a522StonfiLpAccountV1AddLiquidityT12 struct {

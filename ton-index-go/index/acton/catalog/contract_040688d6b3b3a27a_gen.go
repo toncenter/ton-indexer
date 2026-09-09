@@ -3,7 +3,7 @@ package catalog
 
 import (
 	"encoding/json"
-	acton "github.com/toncenter/ton-indexer/ton-index-go/index/acton"
+	acton "github.com/ton-blockchain/acton/packages/abi-go"
 )
 
 type CStonfiStonfiPoolV2WeightedConstProduct_040688d6b3b3a27aStonfiPoolV2WeightedConstProductSwapT12 struct {

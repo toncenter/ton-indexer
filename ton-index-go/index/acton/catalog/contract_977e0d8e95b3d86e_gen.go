@@ -3,7 +3,7 @@ package catalog
 
 import (
 	"encoding/json"
-	acton "github.com/toncenter/ton-indexer/ton-index-go/index/acton"
+	acton "github.com/ton-blockchain/acton/packages/abi-go"
 )
 
 type CGramboGramboJettonWallet_977e0d8e95b3d86eGramboJettonWalletInternalTransferT12 struct {

@@ -3,7 +3,7 @@ package catalog
 
 import (
 	"encoding/json"
-	acton "github.com/toncenter/ton-indexer/ton-index-go/index/acton"
+	acton "github.com/ton-blockchain/acton/packages/abi-go"
 )
 
 type CFrtGramAdapterFrtGramSwapRelay_bb68559e44b6c25eFrtGramSwapRelayIncomingMessageT12 = *CFrtGramAdapterFrtGramSwapRelay_bb68559e44b6c25eForTonFrtSwapRequestT13

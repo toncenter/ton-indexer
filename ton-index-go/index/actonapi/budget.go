@@ -3,7 +3,7 @@ package actonapi
 import (
 	"reflect"
 
-	"github.com/toncenter/ton-indexer/ton-index-go/index/acton"
+	"github.com/ton-blockchain/acton/packages/abi-go"
 )
 
 // Walk the native JSON-safe value before marshaling or retaining it in a batch.

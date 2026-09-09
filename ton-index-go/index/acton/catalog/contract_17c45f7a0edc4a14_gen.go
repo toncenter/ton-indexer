@@ -3,7 +3,7 @@ package catalog
 
 import (
 	"encoding/json"
-	acton "github.com/toncenter/ton-indexer/ton-index-go/index/acton"
+	acton "github.com/ton-blockchain/acton/packages/abi-go"
 )
 
 type CDedustDedustFactoryV2_17c45f7a0edc4a14DedustFactoryV2TransferOwnershipT12 struct {
