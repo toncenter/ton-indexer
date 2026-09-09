@@ -3,7 +3,7 @@ package catalog
 
 import (
 	"encoding/json"
-	acton "github.com/toncenter/ton-indexer/ton-index-go/index/acton"
+	acton "github.com/ton-blockchain/acton/packages/abi-go"
 )
 
 type CFrtGramAdapterFrtGramAdapterExecutor_8f9a558809168b39FrtGramExecutorRefreshPoolDataT12 struct {

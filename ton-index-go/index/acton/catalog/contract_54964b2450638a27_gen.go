@@ -3,7 +3,7 @@ package catalog
 
 import (
 	"encoding/json"
-	acton "github.com/toncenter/ton-indexer/ton-index-go/index/acton"
+	acton "github.com/ton-blockchain/acton/packages/abi-go"
 )
 
 type CTonVerifierVerifierSourcesRegistry_54964b2450638a27VerifierSourcesRegistryDeploySourceItemPayloadT12 struct {

@@ -3,7 +3,7 @@ package catalog
 
 import (
 	"encoding/json"
-	acton "github.com/toncenter/ton-indexer/ton-index-go/index/acton"
+	acton "github.com/ton-blockchain/acton/packages/abi-go"
 )
 
 type CStormStormPrelaunch_4335ee5d3c8b2ab8StormPrelaunchTakeWalletAddressT12 struct {

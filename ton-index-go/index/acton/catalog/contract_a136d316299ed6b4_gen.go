@@ -3,7 +3,7 @@ package catalog
 
 import (
 	"encoding/json"
-	acton "github.com/toncenter/ton-indexer/ton-index-go/index/acton"
+	acton "github.com/ton-blockchain/acton/packages/abi-go"
 )
 
 type CSubscriptionsSubscriptionV1_a136d316299ed6b4SubscriptionV1PaymentConfirmedT12 struct {

@@ -3,7 +3,7 @@ package catalog
 
 import (
 	"encoding/json"
-	acton "github.com/toncenter/ton-indexer/ton-index-go/index/acton"
+	acton "github.com/ton-blockchain/acton/packages/abi-go"
 )
 
 type CTep74JettonMaster_9be34a6a65523dc7JettonMasterIncomingMessageT12 = *CTep74JettonMaster_9be34a6a65523dc7JettonBurnNotificationT13

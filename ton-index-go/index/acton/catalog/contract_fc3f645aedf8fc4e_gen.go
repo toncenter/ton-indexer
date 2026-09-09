@@ -3,7 +3,7 @@ package catalog
 
 import (
 	"encoding/json"
-	acton "github.com/toncenter/ton-indexer/ton-index-go/index/acton"
+	acton "github.com/ton-blockchain/acton/packages/abi-go"
 )
 
 type CTonstakersTonstakersPayoutItem_fc3f645aedf8fc4eTonstakersPayoutItemInitT12 struct {

@@ -10,7 +10,7 @@ import (
 	"strings"
 
 	"github.com/gofiber/fiber/v2"
-	"github.com/toncenter/ton-indexer/ton-index-go/index/acton"
+	"github.com/ton-blockchain/acton/packages/abi-go"
 	"github.com/xssnick/tonutils-go/address"
 )
 

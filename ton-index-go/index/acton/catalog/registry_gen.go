@@ -2,7 +2,7 @@
 // Input SHA256: b442556faa253aba85e59cf7372aa90d9701fab684b4ec565480fa74a6efde38
 package catalog
 
-import acton "github.com/toncenter/ton-indexer/ton-index-go/index/acton"
+import acton "github.com/ton-blockchain/acton/packages/abi-go"
 
 const Revision = "b442556faa253aba85e59cf7372aa90d9701fab684b4ec565480fa74a6efde38"
 

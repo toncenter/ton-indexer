@@ -3,7 +3,7 @@ package catalog
 
 import (
 	"encoding/json"
-	acton "github.com/toncenter/ton-indexer/ton-index-go/index/acton"
+	acton "github.com/ton-blockchain/acton/packages/abi-go"
 )
 
 type CWalletsLockupVestingLockupVesting_068e0d29f7b0633dLockupVestingIncomingExternalMessageT12 = *CWalletsLockupVestingLockupVesting_068e0d29f7b0633dLockupVestingSignedExternalT13

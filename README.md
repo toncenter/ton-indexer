@@ -68,7 +68,13 @@ docker compose --profile emulate up -d
 Once the stack is running, the REST API and interactive Swagger are available at `localhost:8081/`.
 
 See [Acton API and builds](docs/acton-api.md) for the native ABI endpoints,
-pinned catalog, binding generation, and CI checks.
+pinned catalog, binding generation, and CI checks. The Go ABI generator and
+runtime are maintained in
+[Acton's `packages/abi-go`](https://github.com/ton-blockchain/acton/tree/HEAD/packages/abi-go).
+TON Indexer consumes the canonical `github.com/ton-blockchain/acton/packages/abi-go`
+module through `ton-index-go/go.mod` and owns its pinned catalog and generated
+bindings. Ordinary Go builds run that module's generator without an installed
+Acton Rust CLI.
 
 > **Production Tip:** PostgreSQL, Kvrocks, the API, and other indexer services
 > may run on separate machines. The index worker itself must run on the same

@@ -3,7 +3,7 @@ package catalog
 
 import (
 	"encoding/json"
-	acton "github.com/toncenter/ton-indexer/ton-index-go/index/acton"
+	acton "github.com/ton-blockchain/acton/packages/abi-go"
 )
 
 type CAirdropAirdropInterlockerV2_071203019268ec84AirdropInterlockerV2IncomingMessageT12 = *CAirdropAirdropInterlockerV2_071203019268ec84AirdropInterlockerV2LockAndClaimT13

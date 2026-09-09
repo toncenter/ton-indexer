@@ -3,7 +3,7 @@ package catalog
 
 import (
 	"encoding/json"
-	acton "github.com/toncenter/ton-indexer/ton-index-go/index/acton"
+	acton "github.com/ton-blockchain/acton/packages/abi-go"
 )
 
 type CGetgemsGetgemsNftFixpriceSaleV3R2_f73007db096ffa45GetgemsNftFixpriceSaleV3R2ZeroOpcodeBodyT12 struct {

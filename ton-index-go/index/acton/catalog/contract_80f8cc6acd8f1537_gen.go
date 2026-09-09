@@ -3,7 +3,7 @@ package catalog
 
 import (
 	"encoding/json"
-	acton "github.com/toncenter/ton-indexer/ton-index-go/index/acton"
+	acton "github.com/ton-blockchain/acton/packages/abi-go"
 )
 
 type CEvaaEvaaUser_80f8cc6acd8f1537EvaaUserIncomingMessageT12 = *CEvaaEvaaUser_80f8cc6acd8f1537EvaaUserPackedCommandT13

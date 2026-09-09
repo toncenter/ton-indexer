@@ -3,7 +3,7 @@ package catalog
 
 import (
 	"encoding/json"
-	acton "github.com/toncenter/ton-indexer/ton-index-go/index/acton"
+	acton "github.com/ton-blockchain/acton/packages/abi-go"
 )
 
 type CWalletsWalletHighloadV3r1_e10e6f3a031a8a5eWalletHighloadV3r1IncomingMessageT12 = *CWalletsWalletHighloadV3r1_e10e6f3a031a8a5eHighloadV3InternalTransferT13

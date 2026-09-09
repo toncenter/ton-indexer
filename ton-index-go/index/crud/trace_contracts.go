@@ -4,7 +4,7 @@ import (
 	"cmp"
 	"slices"
 
-	"github.com/toncenter/ton-indexer/ton-index-go/index/acton"
+	"github.com/ton-blockchain/acton/packages/abi-go"
 	"github.com/toncenter/ton-indexer/ton-index-go/index/acton/catalog"
 	"github.com/toncenter/ton-indexer/ton-index-go/index/detect"
 	"github.com/toncenter/ton-indexer/ton-index-go/index/models"

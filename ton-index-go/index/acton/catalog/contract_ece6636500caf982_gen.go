@@ -3,7 +3,7 @@ package catalog
 
 import (
 	"encoding/json"
-	acton "github.com/toncenter/ton-indexer/ton-index-go/index/acton"
+	acton "github.com/ton-blockchain/acton/packages/abi-go"
 )
 
 type CMarketAppMarketAppNftRentalV2R2Revision1_ece6636500caf982MarketAppNftRentalV2R2Revision1DeployMarkerT12 struct {

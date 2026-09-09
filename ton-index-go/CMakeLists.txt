@@ -1,14 +1,14 @@
 set(ACTON_CATALOG_DIR "${CMAKE_CURRENT_SOURCE_DIR}/index/acton/catalog")
 set(ACTON_ABI_STAMP "${CMAKE_CURRENT_BINARY_DIR}/ton-index-go-abi.timestamp")
-file(GLOB_RECURSE ACTON_ABI_SOURCES CONFIGURE_DEPENDS
-  "${CMAKE_CURRENT_SOURCE_DIR}/index/acton/*.go")
+file(GLOB ACTON_ABI_SOURCES CONFIGURE_DEPENDS
+  "${ACTON_CATALOG_DIR}/*.go")
 
 # Track additions/removals too, without making checked-in Go files cleanable outputs.
 file(GENERATE OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/ton-index-go-abi.inputs"
   CONTENT "${ACTON_ABI_SOURCES}\n")
 add_custom_command(OUTPUT "${ACTON_ABI_STAMP}"
   COMMAND "${CMAKE_COMMAND}" -E env CGO_ENABLED=0 "${CMAKE_Go_COMPILER}" run
-    ./index/acton/cmd/tolk-abi-to-go
+    github.com/ton-blockchain/acton/packages/abi-go/cmd/tolk-abi-to-go
     --catalog "${ACTON_CATALOG_DIR}/catalog.json"
     --output-dir "${ACTON_CATALOG_DIR}" --package catalog
   COMMAND "${CMAKE_COMMAND}" -E touch "${ACTON_ABI_STAMP}"

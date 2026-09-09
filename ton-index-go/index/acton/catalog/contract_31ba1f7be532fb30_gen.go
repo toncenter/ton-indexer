@@ -3,7 +3,7 @@ package catalog
 
 import (
 	"encoding/json"
-	acton "github.com/toncenter/ton-indexer/ton-index-go/index/acton"
+	acton "github.com/ton-blockchain/acton/packages/abi-go"
 )
 
 type CStonfiStonfiPoolV2Stableswap_31ba1f7be532fb30StonfiPoolV2StableswapBurnNotificationExtT12 struct {

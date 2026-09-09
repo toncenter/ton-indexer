@@ -6,7 +6,7 @@ import (
 	"math/big"
 	"strings"
 
-	"github.com/toncenter/ton-indexer/ton-index-go/index/acton"
+	"github.com/ton-blockchain/acton/packages/abi-go"
 )
 
 const maxStackDepth = 32

@@ -63,12 +63,12 @@ jobs:
 
       - name: Check generated Acton bindings
         run: >-
-          go run ./index/acton/cmd/tolk-abi-to-go
+          go run github.com/ton-blockchain/acton/packages/abi-go/cmd/tolk-abi-to-go
           --catalog ./index/acton/catalog/catalog.json
           --output-dir ./index/acton/catalog --package catalog --check
 
       - name: Test native Acton bindings and handlers
-        run: go test ./index/acton/... ./index/actonapi -count=1
+        run: go test ./index/acton/catalog ./index/actonapi -count=1
 
   build:
     runs-on: ubuntu-24.04

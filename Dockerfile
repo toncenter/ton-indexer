@@ -51,7 +51,7 @@ ADD ton-index-go/main.go /go/app/main.go
 ADD ton-index-go/go.mod /go/app/go.mod
 ADD ton-index-go/go.sum /go/app/go.sum
 WORKDIR /go/app
-RUN CGO_ENABLED=0 go run ./index/acton/cmd/tolk-abi-to-go \
+RUN CGO_ENABLED=0 go run github.com/ton-blockchain/acton/packages/abi-go/cmd/tolk-abi-to-go \
       --catalog ./index/acton/catalog/catalog.json \
       --output-dir ./index/acton/catalog --package catalog
 COPY --from=core-builder /app/build/ton-marker/libton-marker* /usr/lib/

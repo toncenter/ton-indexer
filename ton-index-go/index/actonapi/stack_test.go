@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/toncenter/ton-indexer/ton-index-go/index/acton"
+	"github.com/ton-blockchain/acton/packages/abi-go"
 	"github.com/xssnick/tonutils-go/tvm/cell"
 )
 

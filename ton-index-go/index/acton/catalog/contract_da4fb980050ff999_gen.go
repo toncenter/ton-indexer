@@ -3,7 +3,7 @@ package catalog
 
 import (
 	"encoding/json"
-	acton "github.com/toncenter/ton-indexer/ton-index-go/index/acton"
+	acton "github.com/ton-blockchain/acton/packages/abi-go"
 )
 
 type CFragmentFragmentMarketappProxyJetton_da4fb980050ff999FragmentMarketappProxyJettonBuyT12 struct {

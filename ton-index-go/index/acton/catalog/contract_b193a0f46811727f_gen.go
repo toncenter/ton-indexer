@@ -3,7 +3,7 @@ package catalog
 
 import (
 	"encoding/json"
-	acton "github.com/toncenter/ton-indexer/ton-index-go/index/acton"
+	acton "github.com/ton-blockchain/acton/packages/abi-go"
 )
 
 type CGetgemsGetgemsNftMarketplaceV1_b193a0f46811727fGetgemsNftMarketplaceV1IncomingMessageT12 = *CGetgemsGetgemsNftMarketplaceV1_b193a0f46811727fGetgemsNftMarketplaceV1DeployContractT13
