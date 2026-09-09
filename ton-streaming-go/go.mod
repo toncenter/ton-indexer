@@ -40,7 +40,7 @@ require (
 	github.com/mattn/go-runewidth v0.0.16 // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
 	github.com/savsgio/gotils v0.0.0-20230208104028-c358bd845dee // indirect
-	github.com/ton-blockchain/acton/packages/abi-go v0.0.0-20260909213431-d6e28585b6f9 // indirect
+	github.com/ton-blockchain/acton/packages/abi-go v0.0.0-20260909215956-93cc404a4a95 // indirect
 	github.com/valyala/bytebufferpool v1.0.0 // indirect
 	github.com/valyala/tcplisten v1.0.0 // indirect
 	github.com/vmihailenco/tagparser/v2 v2.0.0 // indirect
@@ -65,4 +65,4 @@ replace github.com/toncenter/ton-indexer/ton-index-go => ../ton-index-go
 replace github.com/toncenter/ton-indexer/ton-emulate-go => ../ton-emulate-go
 
 // Acton PR #1272: replacements are not inherited from the indexer module.
-replace github.com/ton-blockchain/acton/packages/abi-go => github.com/1IxI1/acton/packages/abi-go v0.0.0-20260909213431-d6e28585b6f9
+replace github.com/ton-blockchain/acton/packages/abi-go => github.com/1IxI1/acton/packages/abi-go v0.0.0-20260909215956-93cc404a4a95
