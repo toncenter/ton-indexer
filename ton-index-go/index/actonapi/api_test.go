@@ -255,13 +255,13 @@ func (e *fakeExecutor) Snapshot(_ context.Context, addr string, seqno *int32) (*
 	return &e.snapshot, nil
 }
 
-func (e *fakeExecutor) Run(_ context.Context, snapshot *Snapshot, method int64, stack []acton.StackValue, transport string) (*Execution, error) {
+func (e *fakeExecutor) Run(_ context.Context, snapshot *Snapshot, method int64, stack []acton.StackValue) (*Execution, error) {
 	e.runs++
 	if snapshot != &e.snapshot {
 		e.t.Fatal("snapshot not passed through")
 	}
 	e.method, e.stack = method, stack
-	e.execution.Transport = transport
+	e.execution.Transport = "standard"
 	return &e.execution, nil
 }
 
@@ -328,7 +328,7 @@ func TestRunValidationAndCodeMismatch(t *testing.T) {
 	for _, fields := range []string{
 		`"args":{},"stack":[]`, `"args":null`, `"args":[]`, `"stack":null`,
 		`"stack":[{"type":"num","value":1.5}]`, `"stack":[{"type":"tuple","value":[{}]}]`,
-		`"seqno":-1`, `"seqno":0`, `"transport":"unknown"`, `"unknown":true`, `"contract_type":"counter","code_hash":"` + testHash + `"`,
+		`"seqno":-1`, `"seqno":0`, `"transport":"legacy"`, `"unknown":true`, `"contract_type":"counter","code_hash":"` + testHash + `"`,
 	} {
 		call(t, app, "POST", "/runGetMethod", `{"address":"`+testAddress+`","method":"get_counter",`+fields+`}`, 422, nil)
 	}

@@ -2933,6 +2933,12 @@ func main() {
 				if row.AccountStatus != nil {
 					state.Status = *row.AccountStatus
 				}
+				if row.CodeBoc != nil {
+					state.BOCBytes += len(*row.CodeBoc)
+				}
+				if row.DataBoc != nil {
+					state.BOCBytes += len(*row.DataBoc)
+				}
 				if row.LastTransactionLt != nil {
 					state.LastTransactionLT = new(strconv.FormatInt(*row.LastTransactionLt, 10))
 				}

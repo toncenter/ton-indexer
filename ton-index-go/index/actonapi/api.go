@@ -237,6 +237,9 @@ func (a *API) accounts(c *fiber.Ctx, addresses []string, storage bool) ([]Accoun
 			seen[addr] = true
 		}
 	}
+	if storage && len(canonical) > MaxStorageAccounts {
+		return nil, Fail(422, "include_storage supports at most 8 unique addresses; use smaller storage batches")
+	}
 	if a.deps.QueryAccounts == nil {
 		return nil, Fail(503, "account state query is unavailable")
 	}
@@ -244,6 +247,24 @@ func (a *API) accounts(c *fiber.Ctx, addresses []string, storage bool) ([]Accoun
 	if err != nil {
 		return nil, err
 	}
+	if len(rows) > len(canonical) {
+		return nil, Fail(502, "account store returned more rows than requested")
+	}
+	responseBudget := MaxStorageBatchBytes - 8192
+	if storage {
+		for _, row := range rows {
+			size := row.BOCBytes
+			if row.DataBOC != nil && size < len(*row.DataBOC) {
+				size = len(*row.DataBOC)
+			}
+			if size < 0 || size > responseBudget {
+				return nil, Fail(413, "storage batch BOCs exceed aggregate 8 MiB budget")
+			}
+			responseBudget -= size
+		}
+	}
+	storageDecodes := 0
+	valueNodes := acton.MaxItems * MaxStorageAccounts
 	byAddress := map[string]AccountState{}
 	for _, row := range rows {
 		addr, err := CanonicalAddress(row.Address)
@@ -257,6 +278,10 @@ func (a *API) accounts(c *fiber.Ctx, addresses []string, storage bool) ([]Accoun
 	}
 	result := make([]Account, 0, len(canonical))
 	for _, addr := range canonical {
+		responseBudget -= 1024
+		if responseBudget < 0 {
+			return nil, Fail(413, "account response exceeds aggregate 8 MiB budget")
+		}
 		account := Account{Snapshot: Snapshot{Address: addr, Pinning: "indexed_account_state"}, Status: "not_found", Types: []Identification{}}
 		row, found := byAddress[addr]
 		if !found {
@@ -284,6 +309,9 @@ func (a *API) accounts(c *fiber.Ctx, addresses []string, storage bool) ([]Accoun
 			}
 		}
 		for _, contract := range contracts {
+			if err := metadataBudget(&responseBudget, contract, false, false); err != nil {
+				return nil, err
+			}
 			info := summary(contract)
 			account.Types = append(account.Types, Identification{Type: contract.ID, Provenance: "exact_code_hash", Contract: &info})
 			if storage && contract.Storage != nil {
@@ -297,6 +325,10 @@ func (a *API) accounts(c *fiber.Ctx, addresses []string, storage bool) ([]Accoun
 				case len(*row.DataBOC) > MaxBodyBytes:
 					decoded.Error = "account data BOC exceeds size limit"
 				default:
+					if storageDecodes >= MaxStorageAccounts {
+						return nil, Fail(413, "storage batch exceeds 8 native decode operations")
+					}
+					storageDecodes++
 					// Decode the advertised current-storage binding explicitly;
 					// DecodeStorage may fall back to deployment storage without
 					// returning which type matched.
@@ -304,6 +336,9 @@ func (a *API) accounts(c *fiber.Ctx, addresses []string, storage bool) ([]Accoun
 					if err != nil {
 						decoded.Error = err.Error()
 					} else {
+						if err := consumeValueBudget(value, &responseBudget, &valueNodes); err != nil {
+							return nil, err
+						}
 						decoded.Decoded = value
 					}
 				}
@@ -341,12 +376,13 @@ func decodeAccountStorage(binding *acton.Binding, boc string) (any, error) {
 
 // Accounts returns one indexed snapshot per canonical address, in input order.
 // @Summary Identify Acton accounts in a batch
-// @Description One database batch. include_storage defaults to false. Public interfaces are hints, not exact ABI or storage matches. Links are catalog assertions, not source verification.
+// @Description One database batch. include_storage defaults to false; when true, at most 8 unique addresses and an aggregate 8 MiB BOC/decoded-output budget are allowed. Public interfaces are hints, not exact ABI or storage matches. Links are catalog assertions, not source verification.
 // @Tags acton
 // @Produce json
 // @Param address query []string true "Up to 1000 addresses, canonically deduplicated" collectionFormat(multi)
 // @Param include_storage query bool false "Decode storage for exact code matches" default(false)
 // @Success 200 {object} AccountsResponse
+// @Failure 413 {object} Error
 // @Failure 422 {object} Error
 // @Router /api/v3/acton/accounts [get]
 // @Security APIKeyHeader
@@ -365,12 +401,13 @@ func (a *API) Accounts(c *fiber.Ctx) error {
 
 // PostAccounts is the JSON batch variant of Accounts.
 // @Summary Identify Acton accounts in a JSON batch
-// @Description include_storage defaults to false; the response contains canonical deduplicated addresses.
+// @Description include_storage defaults to false; the response contains canonical deduplicated addresses. Storage batches allow at most 8 unique addresses with an aggregate 8 MiB BOC/decoded-output budget.
 // @Tags acton
 // @Accept json
 // @Produce json
 // @Param request body AccountsRequest true "Account batch"
 // @Success 200 {object} AccountsResponse
+// @Failure 413 {object} Error
 // @Failure 422 {object} Error
 // @Router /api/v3/acton/accounts [post]
 // @Security APIKeyHeader

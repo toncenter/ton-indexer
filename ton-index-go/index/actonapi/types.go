@@ -63,6 +63,7 @@ type AccountState struct {
 	StateHash, CodeHash, DataHash          *string
 	LastTransactionHash, LastTransactionLT *string
 	DataBOC                                *string
+	BOCBytes                               int // Combined code/data BOC bytes fetched by the store.
 	Interfaces                             []string
 	Error                                  string
 }
