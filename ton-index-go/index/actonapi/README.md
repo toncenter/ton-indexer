@@ -1,5 +1,10 @@
 # Acton API
 
+Native values follow the [Acton Go value format](https://github.com/ton-blockchain/acton/blob/d6e28585b6f9e2a37c241de4d514f77210a99da2/packages/abi-go/README.md#value-format).
+Reusing an existing TypeScript ABI form or getter provider requires the explicit
+[client adaptations](../../../docs/acton-api.md#adapting-an-existing-actonscan-client),
+including wrapped unions, direct typed-cell payloads, and typed dictionary entries.
+
 All routes live under `/api/v3/acton`. They do not change the old marker or
 `/api/v3/runGetMethod`. Existing request settings and error handling are injected
 in `main.go`; the handler package has no database, models, or CGO dependency.

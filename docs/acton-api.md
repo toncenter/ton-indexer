@@ -3,7 +3,7 @@
 ## Architecture
 
 The generator and shared Go runtime are owned by
-[Acton](https://github.com/ton-blockchain/acton/tree/HEAD/packages/abi-go), in the
+[Acton](https://github.com/ton-blockchain/acton/tree/d6e28585b6f9e2a37c241de4d514f77210a99da2/packages/abi-go), in the
 module `github.com/ton-blockchain/acton/packages/abi-go` (root package `acton`).
 TON Indexer consumes that module at the version selected by `ton-index-go/go.mod`.
 
@@ -74,7 +74,7 @@ CGO_ENABLED=0 go test ./index/acton/catalog ./index/actonapi -count=1
 shortcut. The versionless `go run` command uses the Acton Go module version
 selected by `go.mod`, with dependency checksums in `go.sum`; it needs no installed
 Acton Rust CLI or separately installed generator. The
-[Acton binding reference](https://github.com/ton-blockchain/acton/blob/HEAD/packages/abi-go/README.md)
+[Acton binding reference](https://github.com/ton-blockchain/acton/blob/d6e28585b6f9e2a37c241de4d514f77210a99da2/packages/abi-go/README.md)
 documents single-ABI generation, the catalog envelope, value formats, and
 supported layouts.
 
@@ -195,3 +195,42 @@ to invalidate metadata caches. Latest account metadata additionally depends on
 the account state/code hash; historical trace metadata depends on the state
 inside that trace. Avoid caching a decoded body solely by its BOC when the chosen
 contract ABI can differ.
+
+### Adapting An Existing ActonScan Client
+
+ABI metadata is shared, but the typed execution endpoint is not a drop-in URL
+replacement for the existing `/runGetMethod` provider. A client adapter should:
+
+- Send the displayed implementation's `code_hash` with a getter request. A code
+  upgrade between opening the form and execution then produces a conflict instead
+  of combining the browser's old ABI with a new implementation.
+- Treat `success` as the execution outcome (TVM exits 0 and 1 are successful).
+  Native stack numbers have type `int`; older providers expect `num`. Normalize
+  this recursively at the boundary. If `stack` is null or `stack_error` is set,
+  retain and show `raw_stack` and the error rather than calling `.map` on null.
+- Adapt native values explicitly before passing them to TypeScript ABI editors
+  or serializers. Native `Cell<T>` values are direct decoded payloads, dictionaries
+  are typed key/value entry arrays, and unions use `{"$":"Type","value":...}`.
+  Existing TS forms use referenced-value wrappers, dictionary objects, and
+  flattened struct-union fields. Use the ABI type graph for conversion; do not
+  flatten every object or invent names for tuple positions. Integer values travel
+  as decimal strings, including values beyond JavaScript's safe integer range.
+- Preserve conflict and size errors separately from unknown hashes. `/abi` can
+  return 409 for an ambiguous hash or 413 for an oversized batch; neither means
+  that the hash is unknown. Split batches as needed, retain ambiguity, and use
+  `/getMethods?code_hash=...` to inspect candidates. Do not silently fall back to
+  the first bundled ABI for a conflicting hash.
+- Capture `X-Acton-Catalog-Revision` and HTTP error status before unwrapping the
+  response. Cross-origin clients need the gateway to expose this header and
+  support JSON POST preflight. Gateway/browser behavior is deployment-specific
+  and has not been verified by the in-memory handler tests.
+
+For traces, join transactions by hash or canonical account plus LT, never LT
+alone. Use per-state `contract_info_key` links and preserve missing historical
+hashes. The current explorer's latest-account/per-address fallbacks must not
+override the historical state identity provided by the trace.
+
+Catalog revision identifies the input catalog, not the codec implementation.
+Caches of decoded results should additionally be namespaced by the deployed API
+or adapter version, selected ABI/type/direction, and state/body identity. Keep
+intentional user ABI overrides distinct from remotely cached catalog metadata.
