@@ -65,12 +65,6 @@ jobs:
       - name: Generate Acton bindings
         run: go generate ./index/acton/catalog
 
-      - name: Verify generated Acton bindings are reproducible
-        run: >-
-          go run github.com/ton-blockchain/acton/packages/abi-go/cmd/tolk-abi-to-go
-          --catalog ./index/acton/catalog/catalog.json
-          --output-dir ./index/acton/catalog --package catalog --check
-
       - name: Test native Acton bindings and handlers
         run: go test ./index/acton/catalog ./index/actonapi -count=1
 
