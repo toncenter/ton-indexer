@@ -167,7 +167,7 @@ func (a *API) Contracts(c *fiber.Ctx) error {
 	}
 	start := min(offset, len(a.contracts))
 	end := start + min(limit, len(a.contracts)-start)
-	response := ContractsResponse{Contracts: []ContractSummary{}, Total: len(a.contracts), Limit: limit, Offset: offset, Revision: a.revision, TransportCapabilities: TransportCapabilities()}
+	response := ContractsResponse{Contracts: []ContractSummary{}, Total: len(a.contracts), Limit: limit, Offset: offset, Revision: a.revision}
 	for _, contract := range a.contracts[start:end] {
 		response.Contracts = append(response.Contracts, summary(contract))
 	}
@@ -420,7 +420,6 @@ func (a *API) PostAccounts(c *fiber.Ctx) error {
 
 // GetMethods enumerates metadata only. Each compiler_abi includes its type table.
 // @Summary List typed Acton getters
-// @Description Includes transport_capabilities and concrete backend limitations; native codec availability does not guarantee execution support.
 // @Tags acton
 // @Produce json
 // @Param address query string false "Indexed account address; exactly one selector required"
@@ -445,7 +444,7 @@ func (a *API) GetMethods(c *fiber.Ctx) error {
 	if count != 1 {
 		return Fail(422, "provide exactly one of address, code_hash, contract_type")
 	}
-	response := GetMethodsResponse{Contracts: []ContractMethods{}, Revision: a.revision, TransportCapabilities: TransportCapabilities()}
+	response := GetMethodsResponse{Contracts: []ContractMethods{}, Revision: a.revision}
 	var contracts []*acton.Contract
 	if addr != "" {
 		accounts, err := a.accounts(c, []string{addr}, false)
@@ -539,7 +538,7 @@ func (a *API) Decode(c *fiber.Ctx) error {
 // RunGetMethod selects an ABI using code read at the execution seqno, never from
 // the latest indexed state. An explicit contract must also match that code hash.
 // @Summary Run and decode a pinned Acton getter
-// @Description Requires positive seqno or resolves it once. Reads account code and executes runGetMethodStd at the same seqno; library code and implementation hashes stay distinct. Standard Tonlib null and Lisp lists are supported; builders are not. See getMethods transport_capabilities for backend limitations. Pinning trusts the configured upstream, not a proof. Args and raw stack are mutually exclusive. VM and decoding failures retain raw stack, gas and exit code.
+// @Description Requires positive seqno or resolves it once. Reads account code and executes runGetMethodStd at the same seqno; library code and implementation hashes stay distinct. Standard Tonlib null and Lisp lists are supported; builder, NaN and continuation values are not. Pinning trusts the configured upstream, not a proof. Args and raw stack are mutually exclusive. VM and decoding failures retain raw stack, gas and exit code.
 // @Tags acton
 // @Accept json
 // @Produce json

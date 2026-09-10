@@ -136,9 +136,6 @@ func TestMetadataCapabilitiesAndAmplificationBudget(t *testing.T) {
 	call(t, app, "GET", "/abi?code_hash="+url.QueryEscape(contract.CodeHashes[0]+" "), "", 422, nil)
 	var methods GetMethodsResponse
 	call(t, app, "GET", "/getMethods?contract_type=counter", "", 200, &methods)
-	if len(methods.TransportCapabilities) != 1 || methods.TransportCapabilities[0].Endpoint != "runGetMethodStd" || len(methods.TransportCapabilities[0].Warnings) == 0 {
-		t.Fatal("transport limitations missing from getter metadata")
-	}
 	// A single oversized catalog ABI must fail before JSON marshaling as well.
 	contract.ABI = json.RawMessage(`{"description":"` + strings.Repeat("a", MaxMetadataBytes) + `"}`)
 	call(t, app, "GET", "/getMethods?contract_type=counter", "", 413, nil)

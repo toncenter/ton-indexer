@@ -224,7 +224,7 @@ func (e *actonExecutor) Run(ctx context.Context, snapshot *actonapi.Snapshot, me
 	if err != nil || strings.HasPrefix(gas, "-") {
 		return nil, actonapi.Fail(502, "invalid "+endpoint+" gas_used")
 	}
-	result := &actonapi.Execution{GasUsed: gas, ExitCode: *response.ExitCode, RawStack: response.Stack, Transport: "standard"}
+	result := &actonapi.Execution{GasUsed: gas, ExitCode: *response.ExitCode, RawStack: response.Stack}
 	result.Stack, err = actonapi.DecodeStandardStack(response.Stack)
 	if err != nil {
 		result.StackError = err.Error()

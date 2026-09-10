@@ -101,7 +101,7 @@ func TestActonProxyPinsDiscoveryStateAndExecution(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if snapshot.Seqno == nil || *snapshot.Seqno != 54321 || snapshot.Pinning != "upstream_seqno" || snapshot.ProofVerified {
+	if snapshot.Seqno == nil || *snapshot.Seqno != 54321 || snapshot.Pinning != "upstream_seqno" {
 		t.Fatalf("bad pinning: %+v", snapshot)
 	}
 	if snapshot.AccountStateHash != nil {
@@ -296,7 +296,7 @@ func TestActonProxyStandardNullAndBuilderRejection(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.StackError != "" || result.Transport != "standard" || result.Stack[0].Type != "null" {
+	if result.StackError != "" || result.Stack[0].Type != "null" {
 		t.Fatalf("standard null result lost: %+v", result)
 	}
 	_, err = NewActonExecutor(actonSettings()).Run(context.Background(), snapshot, 123, []acton.StackValue{{Type: "builder", Value: boc}})

@@ -68,6 +68,12 @@ replacement for the v2 provider:
   recursively at the boundary.
 - `success` is the execution outcome — TVM exits 0 and 1 are both successful.
   When `stack` is null or `stack_error` is set, show `raw_stack` and the error.
+- The standard wire schema carries `int`, `cell`, `slice`, `tuple` and `null`.
+  Builder, NaN and continuation values cannot be sent as arguments, and an
+  upstream that returns one serializes it as `tvm.stackEntryUnsupported`, which
+  cannot be decoded losslessly — those results arrive as `raw_stack` plus
+  `stack_error`. A getter having a native codec does not mean the transport can
+  carry its arguments or results.
 - Native values are not the TypeScript ABI shapes: `Cell<T>` is the decoded
   payload directly, dictionaries are typed key/value entry arrays, and unions are
   `{"$":"Type","value":...}`. Convert via the ABI type graph rather than

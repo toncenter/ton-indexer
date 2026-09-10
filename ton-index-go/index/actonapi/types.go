@@ -50,12 +50,11 @@ type ExtendedContractABI struct {
 }
 
 type ContractsResponse struct {
-	Contracts             []ContractSummary     `json:"contracts"`
-	Revision              string                `json:"revision"`
-	Total                 int                   `json:"total"`
-	Limit                 int                   `json:"limit"`
-	Offset                int                   `json:"offset"`
-	TransportCapabilities []TransportCapability `json:"transport_capabilities"`
+	Contracts []ContractSummary `json:"contracts"`
+	Revision  string            `json:"revision"`
+	Total     int               `json:"total"`
+	Limit     int               `json:"limit"`
+	Offset    int               `json:"offset"`
 }
 
 // AccountState is the narrow database adapter DTO. Missing rows are not_found;
@@ -83,7 +82,6 @@ type Snapshot struct {
 	Seqno               *int32          `json:"seqno,omitempty"`
 	BlockID             json.RawMessage `json:"block_id,omitempty" swaggertype:"object"`
 	Pinning             string          `json:"pinning"`
-	ProofVerified       bool            `json:"proof_verified"`
 }
 
 type Identification struct {
@@ -137,10 +135,9 @@ type ContractMethods struct {
 }
 
 type GetMethodsResponse struct {
-	Contracts             []ContractMethods     `json:"contracts"`
-	Account               *Account              `json:"account,omitempty"`
-	Revision              string                `json:"revision"`
-	TransportCapabilities []TransportCapability `json:"transport_capabilities"`
+	Contracts []ContractMethods `json:"contracts"`
+	Account   *Account          `json:"account,omitempty"`
+	Revision  string            `json:"revision"`
 }
 
 type DecodeRequest struct {
@@ -176,7 +173,6 @@ type Execution struct {
 	GasUsed    string             `json:"gas_used"`
 	ExitCode   int32              `json:"exit_code"`
 	StackError string             `json:"stack_error,omitempty"`
-	Transport  string             `json:"transport"`
 }
 
 type RunResponse struct {
@@ -194,32 +190,6 @@ type RunResponse struct {
 type GetterExecutor interface {
 	Snapshot(context.Context, string, *int32) (*Snapshot, error)
 	Run(context.Context, *Snapshot, int64, []acton.StackValue) (*Execution, error)
-}
-
-type TransportCapability struct {
-	Name         string            `json:"name"`
-	Endpoint     string            `json:"endpoint"`
-	Default      bool              `json:"default"`
-	InputTypes   []string          `json:"input_types"`
-	InputAliases map[string]string `json:"input_aliases"`
-	OutputTypes  []string          `json:"output_types"`
-	Warnings     []string          `json:"warnings"`
-}
-
-// These are wire capabilities, not promises that every generated getter is
-// executable on every upstream. In particular, Unsupported is never null.
-func TransportCapabilities() []TransportCapability {
-	return []TransportCapability{
-		{Name: "standard", Endpoint: "runGetMethodStd", Default: true,
-			InputTypes:   []string{"int", "cell", "slice", "tuple", "null"},
-			InputAliases: map[string]string{"num": "int", "list": "Lisp list encoded as tuple pairs and null"},
-			OutputTypes:  []string{"int", "cell", "slice", "tuple", "null"},
-			Warnings: []string{
-				"Requires Tonlib tvm.list semantics: a flattened Lisp list, including empty list as null. Some Rust/localnet adapters instead interpret lists as tuples and cannot execute null arguments correctly.",
-				"Some upstreams serialize null, builder, NaN or continuation results as tvm.stackEntryUnsupported. Such results cannot be decoded losslessly; raw_stack and stack_error are returned.",
-				"Builder, NaN and continuation inputs are not supported by the standard wire schema. Native codec availability does not guarantee transport support.",
-			}},
-	}
 }
 
 type Dependencies struct {
