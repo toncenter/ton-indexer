@@ -198,52 +198,33 @@
         - trace_emulator
         - streaming_api
     
+    # Keep the emulator down until Redis configuration and every notified
+    # handler have finished. Its startup FLUSHDB must run last.
+    - name: Stop pendings services before configuring Redis
+      ansible.builtin.systemd:
+        name: "{{ stack_name }}__{{ item }}"
+        state: stopped
+        daemon_reload: true
+      throttle: 1
+      loop:
+        - trace_emulator
+        - streaming_api
+
     - name: Install and configure Redis
       ansible.builtin.include_role:
         name: geerlingguy.redis
       vars:
         redis_bind_interface: '0.0.0.0'
         redis_requirepass: "{{ pendings_redis_password }}"
+        # Render an explicit save "": omitting save directives can leave
+        # Redis's built-in snapshot schedule enabled.
+        redis_save: ['""']
+        redis_appendonly: "no"
+        redis_extra_config: |
+          maxclients 100000
 
-    - name: Configure Redis max clients
-      ansible.builtin.lineinfile:
-        path: /etc/redis/redis.conf
-        regexp: '^\s*#?\s*maxclients\s+'
-        line: "maxclients 100000"
-      register: redis_maxclients_config
-
-    - name: Comment Redis RDB save rules
-      ansible.builtin.replace:
-        path: /etc/redis/redis.conf
-        regexp: '^(?!\s*#)(\s*save\s+(?!""\s*(?:#.*)?$).*)$'
-        replace: '# \1'
-      register: redis_save_rules_commented
-
-    - name: Disable Redis RDB snapshots
-      ansible.builtin.lineinfile:
-        path: /etc/redis/redis.conf
-        regexp: '^\s*#?\s*save\s+""\s*(?:#.*)?$'
-        line: 'save ""'
-        insertafter: '^#?\s*save\s+'
-      register: redis_save_disabled
-
-    - name: Restart Redis after config change
-      ansible.builtin.systemd:
-        name: redis-server
-        state: restarted
-      when: redis_maxclients_config.changed or redis_save_rules_commented.changed or redis_save_disabled.changed
-
-    - name: Stop pendings services before restart
-      ansible.builtin.systemd:
-        name: "{{ service_name }}"
-        state: stopped
-        daemon_reload: true
-      vars:
-        service_name: "{{ stack_name }}__{{ item }}"
-      throttle: 1
-      with_items:
-        - trace_emulator
-        - streaming_api
+    - name: Finish Redis handlers before starting pendings services
+      ansible.builtin.meta: flush_handlers
 
     - name: Restart and enable pendings services
       ansible.builtin.systemd:
