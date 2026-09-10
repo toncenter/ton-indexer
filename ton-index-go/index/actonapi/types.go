@@ -14,7 +14,15 @@ import (
 const MaxBatch = 1000
 const MaxBodyBytes = 1 << 20
 const MaxMetadataBytes = 8 << 20
-const MaxStorageAccounts = 8
+const MaxStorageAccounts = MaxBatch
+
+// A storage batch shares one decode budget, so its total work is bounded no
+// matter how many accounts it names. 1000 ordinary accounts consume about 6,600
+// codec steps between them; a single adversarial cell can consume 8,000 on its
+// own, so this ceiling separates the two by orders of magnitude while still
+// allowing a handful of expensive accounts through.
+const MaxStorageItems = 4 * acton.MaxItems
+const MaxStorageDecodedBytes = 8 * acton.MaxBOCBytes
 const MaxStorageBatchBytes = 8 << 20
 
 func Fail(code int, message string) error { return models.IndexError{Code: code, Message: message} }

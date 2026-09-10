@@ -149,7 +149,7 @@ func TestAccountsBatchSnapshotAndStorage(t *testing.T) {
 	contract := testContract()
 	boc := base64.StdEncoding.EncodeToString(cell.BeginCell().MustStoreUInt(7, 8).EndCell().ToBOC())
 	decodeCalls, queries := 0, 0
-	contract.Storage = &acton.Binding{Type: acton.TypeInfo{Index: 1, Name: "Storage"}, Decode: func(c *cell.Cell) (any, error) {
+	contract.Storage = &acton.Binding{Type: acton.TypeInfo{Index: 1, Name: "Storage"}, DecodeWith: func(_ *acton.Context, c *cell.Cell) (any, error) {
 		decodeCalls++
 		v, err := c.BeginParse().LoadUInt(8)
 		return fmt.Sprint(v), err
@@ -225,7 +225,8 @@ func TestAccountsValidationAndNoExecution(t *testing.T) {
 func TestNativeDecode(t *testing.T) {
 	contract := testContract()
 	decode := func(c *cell.Cell) (any, error) { return c.BeginParse().LoadUInt(8) }
-	binding := acton.Binding{Type: acton.TypeInfo{Index: 1, Name: "Message"}, Decode: decode}
+	binding := acton.Binding{Type: acton.TypeInfo{Index: 1, Name: "Message"}, Decode: decode,
+		DecodeWith: func(_ *acton.Context, c *cell.Cell) (any, error) { return decode(c) }}
 	contract.Messages = map[string][]acton.Binding{"incoming_messages": {binding}}
 	contract.Storage = &binding
 	app := testApp(New([]*acton.Contract{contract}, "revision", Dependencies{}))
