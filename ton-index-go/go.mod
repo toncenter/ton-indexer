@@ -10,6 +10,7 @@ require (
 	github.com/lib/pq v1.10.9
 	github.com/redis/go-redis/v9 v9.7.0
 	github.com/swaggo/swag v1.16.3
+	github.com/ton-blockchain/acton/packages/abi-go v0.0.0-20260909215956-93cc404a4a95
 	github.com/valyala/fasthttp v1.55.0
 	github.com/vmihailenco/msgpack/v5 v5.4.1
 	github.com/xssnick/tonutils-go v1.15.5
@@ -47,3 +48,6 @@ require (
 	golang.org/x/tools v0.36.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
+
+// Acton PR #1272: remove the fork replacement after the module lands upstream.
+replace github.com/ton-blockchain/acton/packages/abi-go => github.com/1IxI1/acton/packages/abi-go v0.0.0-20260910140525-89fad8a6f7cc

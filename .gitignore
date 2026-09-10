@@ -318,3 +318,6 @@ indexer/dedust_pools.json
 .DS_Store
 ton-index-worker/tondb-scanner/src/tokens-tlb.cpp
 ton-index-worker/tondb-scanner/src/tokens-tlb.h
+
+# Native Acton catalog bindings are generated before builds and tests.
+/ton-index-go/index/acton/catalog/*_gen.go

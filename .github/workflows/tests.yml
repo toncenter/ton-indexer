@@ -44,6 +44,30 @@ jobs:
         run: |
           pytest tests
 
+  acton-test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ton-index-go
+    env:
+      CGO_ENABLED: '0'
+      GOWORK: 'off'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: ton-index-go/go.mod
+          cache-dependency-path: ton-index-go/go.sum
+
+      - name: Generate Acton bindings
+        run: go generate ./index/acton/catalog
+
+      - name: Test native Acton bindings and handlers
+        run: go test ./index/acton/catalog ./index/actonapi -count=1
+
   build:
     runs-on: ubuntu-24.04
     env:

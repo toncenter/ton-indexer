@@ -7,6 +7,7 @@ import (
 	"math/big"
 	"net/url"
 	"reflect"
+	"strings"
 	"time"
 
 	"github.com/toncenter/ton-indexer/ton-index-go/index/models"
@@ -31,6 +32,26 @@ func newV2HTTPClient() *fasthttp.Client {
 
 func doV2Request(method string, requestURL string, requestBody []byte, timeout time.Duration) ([]byte, error) {
 	return executeV2Request(v2HTTPClient, method, requestURL, requestBody, timeout)
+}
+
+// v2RequestURL builds an upstream v2 URL, appending the configured API key.
+func v2RequestURL(settings models.RequestSettings, endpoint string, params url.Values) (string, error) {
+	if len(settings.V2Endpoint) == 0 {
+		return "", models.IndexError{Code: 500, Message: "ton-http-api endpoint is not specified"}
+	}
+	baseUrl, err := url.Parse(settings.V2Endpoint)
+	if err != nil {
+		return "", models.IndexError{Code: 500, Message: err.Error()}
+	}
+	baseUrl.Path = strings.TrimRight(baseUrl.Path, "/") + "/" + endpoint
+	if params == nil {
+		params = url.Values{}
+	}
+	if len(settings.V2ApiKey) > 0 {
+		params.Set("api_key", settings.V2ApiKey)
+	}
+	baseUrl.RawQuery, baseUrl.Fragment = params.Encode(), ""
+	return baseUrl.String(), nil
 }
 
 func executeV2Request(client *fasthttp.Client, method string, requestURL string, requestBody []byte, timeout time.Duration) ([]byte, error) {

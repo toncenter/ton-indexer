@@ -414,6 +414,7 @@ func queryPendingTracesImpl(emulatedContext *EmulatedTracesContext, conn *pgxpoo
 		addr_list = append(addr_list, k)
 	}
 	//
+	EnrichTraceContracts(traces)
 	return traces, addr_list, nil
 }
 

@@ -15,6 +15,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/toncenter/ton-indexer/ton-index-go/index/acton/catalog"
+	"github.com/toncenter/ton-indexer/ton-index-go/index/actonapi"
 	"github.com/toncenter/ton-indexer/ton-index-go/index/crud"
 	"github.com/toncenter/ton-indexer/ton-index-go/index/detect"
 	"github.com/toncenter/ton-indexer/ton-index-go/index/models"
@@ -1972,6 +1974,8 @@ func ErrorHandlerFunc(ctx *fiber.Ctx, err error) error {
 	}
 
 	switch e := err.(type) {
+	case *fiber.Error:
+		return ctx.Status(e.Code).JSON(models.IndexError{Code: e.Code, Message: e.Message})
 	case models.IndexError:
 		if e.Code != 404 && e.Code != 409 {
 			err_msg := err.Error()
@@ -2899,6 +2903,63 @@ func main() {
 	app.Get("/api/v3/metadata", GetMetadata)
 	app.Get("/api/v3/accountStates", GetAccountStates)
 	app.Get("/api/v3/walletStates", GetWalletStates)
+
+	// Acton is separate from the legacy marker and uses one account-store batch.
+	actonAPI := actonapi.New(catalog.Contracts, catalog.Revision, actonapi.Dependencies{
+		QueryAccounts: func(c *fiber.Ctx, addresses []string, includeStorage bool) ([]actonapi.AccountState, error) {
+			requestSettings := GetRequestSettings(c, &settings)
+			requestSettings.NoAddressBook, requestSettings.NoMetadata = true, true
+			if requestSettings.Timeout <= 0 || requestSettings.Timeout > 3*time.Second {
+				requestSettings.Timeout = 3 * time.Second
+			}
+			accounts := make([]models.AccountAddress, len(addresses))
+			for i, address := range addresses {
+				accounts[i] = models.AccountAddress(address)
+			}
+			rows, _, _, err := pool.QueryAccountStates(models.AccountRequest{AccountAddress: accounts, IncludeBOC: &includeStorage}, requestSettings)
+			if err != nil {
+				return nil, err
+			}
+			result := make([]actonapi.AccountState, 0, len(rows))
+			for _, row := range rows {
+				if row.AccountAddress == nil {
+					return nil, models.IndexError{Code: 500, Message: "account store returned a missing address"}
+				}
+				state := actonapi.AccountState{
+					Address: string(*row.AccountAddress), StateHash: new(string(row.Hash)),
+					CodeHash: (*string)(row.CodeHash), DataHash: (*string)(row.DataHash),
+					LastTransactionHash: (*string)(row.LastTransactionHash), DataBOC: (*string)(row.DataBoc),
+				}
+				if row.AccountStatus != nil {
+					state.Status = *row.AccountStatus
+				}
+				if row.CodeBoc != nil {
+					state.BOCBytes += len(*row.CodeBoc)
+				}
+				if row.DataBoc != nil {
+					state.BOCBytes += len(*row.DataBoc)
+				}
+				if row.LastTransactionLt != nil {
+					state.LastTransactionLT = new(strconv.FormatInt(*row.LastTransactionLt, 10))
+				}
+				if row.Interfaces != nil {
+					state.Interfaces = *row.Interfaces
+				}
+				result = append(result, state)
+			}
+			return result, nil
+		},
+		Executor: func(c *fiber.Ctx) actonapi.GetterExecutor {
+			return index.NewActonExecutor(GetRequestSettings(c, &settings))
+		},
+	})
+	app.Get("/api/v3/acton/contracts", actonAPI.Contracts)
+	app.Get("/api/v3/acton/abi", actonAPI.ABI)
+	app.Get("/api/v3/acton/accounts", actonAPI.Accounts)
+	app.Post("/api/v3/acton/accounts", actonAPI.PostAccounts)
+	app.Get("/api/v3/acton/getMethods", actonAPI.GetMethods)
+	app.Post("/api/v3/acton/decode", actonAPI.Decode)
+	app.Post("/api/v3/acton/runGetMethod", actonAPI.RunGetMethod)
 
 	app.Get("/api/v3/dns/records", GetDNSRecords)
 	app.Get("/api/v3/dns/activeAuctions", GetDNSAuctions)
