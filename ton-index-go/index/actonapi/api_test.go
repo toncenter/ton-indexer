@@ -108,19 +108,26 @@ func TestCatalogAndABI(t *testing.T) {
 	}
 	b64 := base64.StdEncoding.EncodeToString(bytesOf(0x12, 32))
 	unknown := strings.Repeat("00", 32)
-	var abis map[string]*ExtendedContractABI
+	var abis map[string][]ExtendedContractABI
 	call(t, app, "GET", "/abi?code_hash="+testHash+"&code_hash="+url.QueryEscape(b64)+"&code_hash="+unknown, "", 200, &abis)
-	if len(abis) != 3 || abis[testHash] == nil || abis[b64] == nil || abis[unknown] != nil {
-		t.Fatalf("input keys or null missing: %+v", abis)
+	if len(abis) != 3 || len(abis[testHash]) != 1 || len(abis[b64]) != 1 || len(abis[unknown]) != 0 {
+		t.Fatalf("input keys or empty miss missing: %+v", abis)
 	}
-	if len(abis[b64].CompilerABI) == 0 {
+	if len(abis[b64][0].CompilerABI) == 0 {
 		t.Fatal("missing compiler ABI")
 	}
 	call(t, app, "GET", "/abi?code_hash=bad", "", 422, nil)
 	other := testContract()
 	other.ID = "conflict"
 	app = testApp(New([]*acton.Contract{contract, other}, "revision", Dependencies{}))
-	call(t, app, "GET", "/abi?code_hash="+testHash, "", 409, nil)
+	// An ambiguous hash returns both candidates and must not fail its neighbours.
+	call(t, app, "GET", "/abi?code_hash="+testHash+"&code_hash="+unknown, "", 200, &abis)
+	if len(abis[testHash]) != 2 || len(abis[unknown]) != 0 {
+		t.Fatalf("ambiguous hash poisoned the batch: %+v", abis)
+	}
+	if abis[testHash][0].CatalogID == abis[testHash][1].CatalogID {
+		t.Fatal("candidates collapsed to one entry")
+	}
 	var methods GetMethodsResponse
 	call(t, app, "GET", "/getMethods?code_hash="+testHash, "", 200, &methods)
 	if len(methods.Contracts) != 2 {
