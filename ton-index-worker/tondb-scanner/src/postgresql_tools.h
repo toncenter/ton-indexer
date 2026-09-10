@@ -1,6 +1,7 @@
 #pragma once
 #include <pqxx/pqxx>
 #include <map>
+#include <utility>
 #include <vector>
 #include "IndexData.h"
 
@@ -24,7 +25,7 @@ template<> struct string_traits<schema::BlockReference>
     std::ostringstream stream;
     stream << "(" << value.workchain << ", " << value.shard << ", " << value.seqno << ")";
     auto text = stream.str();
-    if (pqxx::internal::cmp_greater_equal(std::size(text), end - begin))
+    if (std::cmp_greater_equal(std::size(text), end - begin))
       throw conversion_overrun{"Not enough buffer for schema::BlockReference."};
     std::memcpy(begin, text.c_str(), std::size(text) + 1);
     return begin + std::size(text) + 1;
@@ -56,7 +57,7 @@ template<> struct string_traits<td::RefInt256>
 
   static char *into_buf(char *begin, char *end, td::RefInt256 const &value) {
     auto text = value->to_dec_string();
-    if (pqxx::internal::cmp_greater_equal(std::size(text), end - begin))
+    if (std::cmp_greater_equal(std::size(text), end - begin))
       throw conversion_overrun{"Not enough buffer for td::RefInt256."};
     std::memcpy(begin, text.c_str(), std::size(text) + 1);
     return begin + std::size(text) + 1;
@@ -81,7 +82,7 @@ template<> struct string_traits<block::StdAddress>
     std::ostringstream stream;
     stream << value.workchain << ":" << value.addr;
     auto text = stream.str();
-    if (pqxx::internal::cmp_greater_equal(std::size(text), end - begin))
+    if (std::cmp_greater_equal(std::size(text), end - begin))
       throw conversion_overrun{"Not enough buffer for block::StdAddress."};
     std::memcpy(begin, text.c_str(), std::size(text) + 1);
     return begin + std::size(text) + 1;
@@ -104,7 +105,7 @@ template<> struct string_traits<td::Bits256>
 
   static char *into_buf(char *begin, char *end, td::Bits256 const &value) {
     auto text = td::base64_encode(value.as_slice());
-    if (pqxx::internal::cmp_greater_equal(std::size(text), end - begin))
+    if (std::cmp_greater_equal(std::size(text), end - begin))
       throw conversion_overrun{"Not enough buffer for td::Bits256."};
     std::memcpy(begin, text.c_str(), std::size(text) + 1);
     return begin + std::size(text) + 1;
@@ -127,7 +128,7 @@ template<> struct string_traits<vm::CellHash>
 
   static char *into_buf(char *begin, char *end, vm::CellHash const &value) {
     auto text = td::base64_encode(value.as_slice());
-    if (pqxx::internal::cmp_greater_equal(std::size(text), end - begin))
+    if (std::cmp_greater_equal(std::size(text), end - begin))
       throw conversion_overrun{"Not enough buffer for vm::CellHash."};
     std::memcpy(begin, text.c_str(), std::size(text) + 1);
     return begin + std::size(text) + 1;
