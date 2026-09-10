@@ -73,7 +73,7 @@ int main(int argc, char *argv[]) {
   p.add_option('D', "db", "Path to TON DB folder", [&](td::Slice fname) { 
     db_root = fname.str();
   });
-  p.add_option('W', "working-dir", "Path to index working dir for secondary rocksdb logs", [&](td::Slice fname) { 
+  p.add_option('W', "working-dir", "Path to working dir for runtime statistics", [&](td::Slice fname) {
     working_dir = fname.str();
   });
   p.add_option('\0', "testnet", "Use for testnet. It is used for correct detecting of .ton DNS entries (in testnet .ton collection has a different address)", [&]() {
