@@ -4,6 +4,8 @@ github.com/1IxI1/acton/packages/abi-go v0.0.0-20260909213431-d6e28585b6f9 h1:BJL
 github.com/1IxI1/acton/packages/abi-go v0.0.0-20260909213431-d6e28585b6f9/go.mod h1:Hy1sbKpFdO9NLkPTP8Dw8lXEE6mTFPXHrTLH+7O/fHQ=
 github.com/1IxI1/acton/packages/abi-go v0.0.0-20260909215956-93cc404a4a95 h1:BHMN5jmJ/WQFy14v4E8Idc27VGlvSuURFT/sejj22L8=
 github.com/1IxI1/acton/packages/abi-go v0.0.0-20260909215956-93cc404a4a95/go.mod h1:Hy1sbKpFdO9NLkPTP8Dw8lXEE6mTFPXHrTLH+7O/fHQ=
+github.com/1IxI1/acton/packages/abi-go v0.0.0-20260910140525-89fad8a6f7cc h1:BZKSHQHlJnle8PZAySgOTcCOlqbB4OaDHX38dHwknSw=
+github.com/1IxI1/acton/packages/abi-go v0.0.0-20260910140525-89fad8a6f7cc/go.mod h1:Hy1sbKpFdO9NLkPTP8Dw8lXEE6mTFPXHrTLH+7O/fHQ=
 github.com/KyleBanks/depth v1.2.1 h1:5h8fQADFrWtarTdtDudMmGsC7GPbOAu6RVB3ffsVFHc=
 github.com/KyleBanks/depth v1.2.1/go.mod h1:jzSb9d0L43HxTQfT+oSA1EEp2q+ne2uh6XgeJcm8brE=
 github.com/andybalholm/brotli v1.1.1 h1:PR2pgnyFznKEugtsUo0xLdDop5SKXd5Qf5ysW+7XdTA=

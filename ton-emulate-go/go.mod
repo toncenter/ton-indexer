@@ -56,4 +56,4 @@ require (
 )
 
 // Acton PR #1272: replacements are not inherited from the indexer module.
-replace github.com/ton-blockchain/acton/packages/abi-go => github.com/1IxI1/acton/packages/abi-go v0.0.0-20260909215956-93cc404a4a95
+replace github.com/ton-blockchain/acton/packages/abi-go => github.com/1IxI1/acton/packages/abi-go v0.0.0-20260910140525-89fad8a6f7cc
