@@ -5,6 +5,7 @@ package actonapi
 import (
 	"context"
 	"encoding/json"
+	"github.com/toncenter/ton-indexer/ton-index-go/index/models"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/ton-blockchain/acton/packages/abi-go"
@@ -16,17 +17,7 @@ const MaxMetadataBytes = 8 << 20
 const MaxStorageAccounts = 8
 const MaxStorageBatchBytes = 8 << 20
 
-type Error struct {
-	Code    int    `json:"code"`
-	Message string `json:"error"`
-	// Candidates lists the catalog IDs a client can retry with as contract_type
-	// when one code hash is claimed by several catalog entries.
-	Candidates []string `json:"candidates,omitempty"`
-}
-
-func (e *Error) Error() string { return e.Message }
-
-func Fail(code int, message string) error { return &Error{Code: code, Message: message} }
+func Fail(code int, message string) error { return models.IndexError{Code: code, Message: message} }
 
 type Link struct {
 	Kind  string `json:"kind"`
