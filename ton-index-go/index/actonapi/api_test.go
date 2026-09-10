@@ -14,6 +14,7 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/ton-blockchain/acton/packages/abi-go"
+	"github.com/toncenter/ton-indexer/ton-index-go/index/models"
 	"github.com/xssnick/tonutils-go/address"
 	"github.com/xssnick/tonutils-go/tvm/cell"
 )
@@ -46,7 +47,8 @@ func testContract() *acton.Contract {
 
 func testApp(api *API) *fiber.App {
 	app := fiber.New(fiber.Config{ReadBufferSize: MaxBodyBytes, ErrorHandler: func(c *fiber.Ctx, err error) error {
-		var apiError *Error
+		// Mirror main.go: the shared handler renders models.IndexError.
+		var apiError models.IndexError
 		if errors.As(err, &apiError) {
 			return c.Status(apiError.Code).JSON(apiError)
 		}

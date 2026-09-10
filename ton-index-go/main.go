@@ -2953,22 +2953,13 @@ func main() {
 			return index.NewActonExecutor(GetRequestSettings(c, &settings))
 		},
 	})
-	actonRoute := func(handler fiber.Handler) fiber.Handler {
-		return func(c *fiber.Ctx) error {
-			err := handler(c)
-			if apiError, ok := err.(*actonapi.Error); ok {
-				return models.IndexError{Code: apiError.Code, Message: apiError.Message}
-			}
-			return err
-		}
-	}
-	app.Get("/api/v3/acton/contracts", actonRoute(actonAPI.Contracts))
-	app.Get("/api/v3/acton/abi", actonRoute(actonAPI.ABI))
-	app.Get("/api/v3/acton/accounts", actonRoute(actonAPI.Accounts))
-	app.Post("/api/v3/acton/accounts", actonRoute(actonAPI.PostAccounts))
-	app.Get("/api/v3/acton/getMethods", actonRoute(actonAPI.GetMethods))
-	app.Post("/api/v3/acton/decode", actonRoute(actonAPI.Decode))
-	app.Post("/api/v3/acton/runGetMethod", actonRoute(actonAPI.RunGetMethod))
+	app.Get("/api/v3/acton/contracts", actonAPI.Contracts)
+	app.Get("/api/v3/acton/abi", actonAPI.ABI)
+	app.Get("/api/v3/acton/accounts", actonAPI.Accounts)
+	app.Post("/api/v3/acton/accounts", actonAPI.PostAccounts)
+	app.Get("/api/v3/acton/getMethods", actonAPI.GetMethods)
+	app.Post("/api/v3/acton/decode", actonAPI.Decode)
+	app.Post("/api/v3/acton/runGetMethod", actonAPI.RunGetMethod)
 
 	app.Get("/api/v3/dns/records", GetDNSRecords)
 	app.Get("/api/v3/dns/activeAuctions", GetDNSAuctions)

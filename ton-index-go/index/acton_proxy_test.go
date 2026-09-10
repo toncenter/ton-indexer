@@ -192,7 +192,7 @@ func TestActonProxyRejectsIncompatibleUpstreamWithoutFallback(t *testing.T) {
 			})
 			seqno := int32(1)
 			_, err := NewActonExecutor(actonSettings()).Run(context.Background(), &actonapi.Snapshot{Address: "0:" + strings.Repeat("00", 32), Seqno: &seqno}, 76543, nil)
-			var apiError *actonapi.Error
+			var apiError models.IndexError
 			if !errors.As(err, &apiError) || apiError.Code != 502 || strings.Contains(err.Error(), "private-key") {
 				t.Fatalf("unexpected upstream error: %v", err)
 			}
@@ -211,7 +211,7 @@ func TestActonProxyRejectsInvalidStackBeforeRequest(t *testing.T) {
 	executor := NewActonExecutor(models.RequestSettings{})
 	for _, stack := range [][]acton.StackValue{{{Type: "null", Value: "invalid"}}, {{Type: "num", Value: "1.5"}}, {{Type: "cell", Value: "bad"}}} {
 		_, err := executor.Run(context.Background(), snapshot, 76543, stack)
-		var apiError *actonapi.Error
+		var apiError models.IndexError
 		if !errors.As(err, &apiError) || apiError.Code != 422 {
 			t.Fatalf("bad input reached transport: %v", err)
 		}
@@ -231,7 +231,7 @@ func TestActonProxyDeadlineIsBoundedAndShared(t *testing.T) {
 	executor.deadline = time.Now().Add(-time.Millisecond)
 	seqno := int32(1)
 	_, err := executor.Snapshot(context.Background(), "0:"+strings.Repeat("00", 32), &seqno)
-	var apiError *actonapi.Error
+	var apiError models.IndexError
 	if !errors.As(err, &apiError) || apiError.Code != 504 {
 		t.Fatalf("expired deadline allowed request: %v", err)
 	}
@@ -300,7 +300,7 @@ func TestActonProxyStandardNullAndBuilderRejection(t *testing.T) {
 		t.Fatalf("standard null result lost: %+v", result)
 	}
 	_, err = NewActonExecutor(actonSettings()).Run(context.Background(), snapshot, 123, []acton.StackValue{{Type: "builder", Value: boc}})
-	var apiError *actonapi.Error
+	var apiError models.IndexError
 	if !errors.As(err, &apiError) || apiError.Code != 422 {
 		t.Fatalf("builder input not rejected: %v", err)
 	}
@@ -337,7 +337,7 @@ func TestActonProxyBoundsHTTPStatusAndResponseBody(t *testing.T) {
 			actonUpstream(t, func(c *fasthttp.RequestCtx) { calls++; tc.respond(c) })
 			seqno := int32(1)
 			result, err := NewActonExecutor(actonSettings()).Run(context.Background(), &actonapi.Snapshot{Address: "0:" + strings.Repeat("00", 32), Seqno: &seqno}, 85143, nil)
-			var apiError *actonapi.Error
+			var apiError models.IndexError
 			if result != nil || !errors.As(err, &apiError) || apiError.Code != 502 {
 				t.Fatalf("bad upstream not rejected: %v", err)
 			}
@@ -358,7 +358,7 @@ func TestActonProxyPositiveSeqnoBeforeUpstream(t *testing.T) {
 		_, snapshotErr := executor.Snapshot(context.Background(), addr, &seqno)
 		_, runErr := executor.Run(context.Background(), &actonapi.Snapshot{Address: addr, Seqno: &seqno}, 85143, nil)
 		for _, err := range []error{snapshotErr, runErr} {
-			var apiError *actonapi.Error
+			var apiError models.IndexError
 			if !errors.As(err, &apiError) || apiError.Code != 422 {
 				t.Fatalf("seqno=%d yielded %v, not client validation", seqno, err)
 			}
@@ -381,7 +381,7 @@ func TestActonProxyDeadlineCoversChainAndBody(t *testing.T) {
 	settings := actonSettings()
 	settings.Timeout = 50 * time.Millisecond
 	_, err := NewActonExecutor(settings).Snapshot(context.Background(), "0:"+strings.Repeat("00", 32), nil)
-	var apiError *actonapi.Error
+	var apiError models.IndexError
 	if !errors.As(err, &apiError) || apiError.Code != 504 || calls != 2 {
 		t.Fatalf("chain deadline lost: calls=%d err=%v", calls, err)
 	}

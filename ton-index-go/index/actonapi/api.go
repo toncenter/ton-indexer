@@ -11,6 +11,7 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/ton-blockchain/acton/packages/abi-go"
+	"github.com/toncenter/ton-indexer/ton-index-go/index/models"
 	"github.com/xssnick/tonutils-go/address"
 )
 
@@ -139,7 +140,7 @@ func unique(contracts []*acton.Contract) (*acton.Contract, error) {
 		for _, c := range contracts {
 			ids = append(ids, c.ID)
 		}
-		return nil, &Error{Code: 409, Message: "ambiguous catalog selection: " + strings.Join(ids, ", "), Candidates: ids}
+		return nil, models.IndexError{Code: 409, Message: "ambiguous catalog selection: " + strings.Join(ids, ", "), Candidates: ids}
 	}
 	return contracts[0], nil
 }
@@ -151,8 +152,8 @@ func unique(contracts []*acton.Contract) (*acton.Contract, error) {
 // @Param limit query int false "Page size (1-1000)" default(100) minimum(1) maximum(1000)
 // @Param offset query int false "Rows to skip" default(0) minimum(0)
 // @Success 200 {object} ContractsResponse
-// @Failure 413 {object} Error
-// @Failure 422 {object} Error
+// @Failure 413 {object} models.IndexError
+// @Failure 422 {object} models.IndexError
 // @Router /api/v3/acton/contracts [get]
 // @Security APIKeyHeader
 // @Security APIKeyQuery
@@ -182,8 +183,8 @@ func (a *API) Contracts(c *fiber.Ctx) error {
 // @Produce json
 // @Param code_hash query []string true "Up to 1000 code hashes; unknown values map to an empty list" collectionFormat(multi)
 // @Success 200 {object} map[string][]ExtendedContractABI
-// @Failure 413 {object} Error
-// @Failure 422 {object} Error
+// @Failure 413 {object} models.IndexError
+// @Failure 422 {object} models.IndexError
 // @Router /api/v3/acton/abi [get]
 // @Security APIKeyHeader
 // @Security APIKeyQuery
@@ -376,8 +377,8 @@ func decodeAccountStorage(binding *acton.Binding, boc string) (any, error) {
 // @Param address query []string true "Up to 1000 addresses, canonically deduplicated" collectionFormat(multi)
 // @Param include_storage query bool false "Decode storage for exact code matches" default(false)
 // @Success 200 {object} AccountsResponse
-// @Failure 413 {object} Error
-// @Failure 422 {object} Error
+// @Failure 413 {object} models.IndexError
+// @Failure 422 {object} models.IndexError
 // @Router /api/v3/acton/accounts [get]
 // @Security APIKeyHeader
 // @Security APIKeyQuery
@@ -401,8 +402,8 @@ func (a *API) Accounts(c *fiber.Ctx) error {
 // @Produce json
 // @Param request body AccountsRequest true "Account batch"
 // @Success 200 {object} AccountsResponse
-// @Failure 413 {object} Error
-// @Failure 422 {object} Error
+// @Failure 413 {object} models.IndexError
+// @Failure 422 {object} models.IndexError
 // @Router /api/v3/acton/accounts [post]
 // @Security APIKeyHeader
 // @Security APIKeyQuery
@@ -426,8 +427,8 @@ func (a *API) PostAccounts(c *fiber.Ctx) error {
 // @Param code_hash query string false "Contract code hash"
 // @Param contract_type query string false "Catalog ID"
 // @Success 200 {object} GetMethodsResponse
-// @Failure 413 {object} Error
-// @Failure 422 {object} Error
+// @Failure 413 {object} models.IndexError
+// @Failure 422 {object} models.IndexError
 // @Router /api/v3/acton/getMethods [get]
 // @Security APIKeyHeader
 // @Security APIKeyQuery
@@ -484,8 +485,8 @@ func (a *API) GetMethods(c *fiber.Ctx) error {
 // @Produce json
 // @Param request body DecodeRequest true "Explicit ABI selector and BOC"
 // @Success 200 {object} DecodeResponse
-// @Failure 409 {object} Error
-// @Failure 422 {object} Error
+// @Failure 409 {object} models.IndexError
+// @Failure 422 {object} models.IndexError
 // @Router /api/v3/acton/decode [post]
 // @Security APIKeyHeader
 // @Security APIKeyQuery
@@ -544,9 +545,9 @@ func (a *API) Decode(c *fiber.Ctx) error {
 // @Produce json
 // @Param request body RunRequest true "Address, method name or numeric TVM ID, named args or typed stack, optional seqno"
 // @Success 200 {object} RunResponse
-// @Failure 409 {object} Error
-// @Failure 422 {object} Error
-// @Failure 502 {object} Error
+// @Failure 409 {object} models.IndexError
+// @Failure 422 {object} models.IndexError
+// @Failure 502 {object} models.IndexError
 // @Router /api/v3/acton/runGetMethod [post]
 // @Security APIKeyHeader
 // @Security APIKeyQuery
