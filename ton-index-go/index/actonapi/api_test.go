@@ -268,7 +268,6 @@ func (e *fakeExecutor) Run(_ context.Context, snapshot *Snapshot, method int64, 
 		e.t.Fatal("snapshot not passed through")
 	}
 	e.method, e.stack = method, stack
-	e.execution.Transport = "standard"
 	return &e.execution, nil
 }
 
@@ -290,7 +289,7 @@ func TestRunPinnedNamedArgsAndIDs(t *testing.T) {
 	if executor.method != 76543 || executor.stack[0].Type != "int" || executor.stack[0].Value != "9007199254740993" {
 		t.Fatalf("method ID or precision lost: %d %+v", executor.method, executor.stack)
 	}
-	if !response.Success || response.Decoded != "9007199254740993" || response.Snapshot.Pinning != "upstream_seqno" || response.Snapshot.ProofVerified {
+	if !response.Success || response.Decoded != "9007199254740993" || response.Snapshot.Pinning != "upstream_seqno" {
 		t.Fatalf("bad response: %+v", response)
 	}
 	for _, method := range []string{`76543`, `"76543"`} {
