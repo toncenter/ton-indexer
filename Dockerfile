@@ -52,9 +52,7 @@ ADD ton-index-go/go.mod /go/app/go.mod
 ADD ton-index-go/go.sum /go/app/go.sum
 WORKDIR /go/app
 # Bindings are build artifacts, absent from the Docker context.
-RUN CGO_ENABLED=0 go run github.com/ton-blockchain/acton/packages/abi-go/cmd/tolk-abi-to-go \
-      --catalog ./index/acton/catalog/catalog.json \
-      --output-dir ./index/acton/catalog --package catalog
+RUN CGO_ENABLED=0 go generate ./index/acton/catalog
 COPY --from=core-builder /app/build/ton-marker/libton-marker* /usr/lib/
 COPY --from=core-builder /app/ton-marker/src/wrapper.h /usr/local/include/wrapper.h
 RUN swag init && go build -o ton-index-go ./main.go
