@@ -19,6 +19,9 @@ const MaxStorageBatchBytes = 8 << 20
 type Error struct {
 	Code    int    `json:"code"`
 	Message string `json:"error"`
+	// Candidates lists the catalog IDs a client can retry with as contract_type
+	// when one code hash is claimed by several catalog entries.
+	Candidates []string `json:"candidates,omitempty"`
 }
 
 func (e *Error) Error() string { return e.Message }

@@ -131,11 +131,15 @@ func unique(contracts []*acton.Contract) (*acton.Contract, error) {
 		return nil, Fail(404, "contract is not in the catalog")
 	}
 	if len(contracts) != 1 {
+		// Identical bytecode does not make two catalog entries interchangeable:
+		// they can declare different getters and different storage meanings for
+		// the same bits. Report the candidates so the caller can pick one with
+		// contract_type instead of guessing.
 		ids := make([]string, 0, len(contracts))
 		for _, c := range contracts {
 			ids = append(ids, c.ID)
 		}
-		return nil, Fail(409, "ambiguous catalog selection: "+strings.Join(ids, ", "))
+		return nil, &Error{Code: 409, Message: "ambiguous catalog selection: " + strings.Join(ids, ", "), Candidates: ids}
 	}
 	return contracts[0], nil
 }
@@ -170,14 +174,14 @@ func (a *API) Contracts(c *fiber.Ctx) error {
 	return sendBounded(c, response)
 }
 
-// ABI preserves the caller's hash keys. Conflicting catalog hashes fail the
-// entire request with 409 rather than choosing an ABI silently.
+// ABI preserves the caller's hash keys. Each maps to every catalog entry
+// claiming that code hash: empty for unknown, more than one when the catalog is
+// ambiguous. It never picks one silently.
 // @Summary Get Acton compiler ABIs by code hash
 // @Tags acton
 // @Produce json
-// @Param code_hash query []string true "Up to 1000 code hashes; unknown values map to null" collectionFormat(multi)
-// @Success 200 {object} map[string]ExtendedContractABI
-// @Failure 409 {object} Error
+// @Param code_hash query []string true "Up to 1000 code hashes; unknown values map to an empty list" collectionFormat(multi)
+// @Success 200 {object} map[string][]ExtendedContractABI
 // @Failure 413 {object} Error
 // @Failure 422 {object} Error
 // @Router /api/v3/acton/abi [get]
@@ -188,7 +192,7 @@ func (a *API) ABI(c *fiber.Ctx) error {
 	if len(hashes) == 0 || len(hashes) > MaxBatch {
 		return Fail(422, "provide 1 to 1000 code_hash values")
 	}
-	result := make(map[string]*ExtendedContractABI, len(hashes))
+	result := make(map[string][]ExtendedContractABI, len(hashes))
 	for _, hash := range hashes {
 		if _, exists := result[hash]; exists {
 			continue
@@ -197,16 +201,14 @@ func (a *API) ABI(c *fiber.Ctx) error {
 		if err != nil {
 			return err
 		}
-		result[hash] = nil
-		if len(contracts) == 0 {
-			continue
+		// 22 of the catalog's 333 code hashes are claimed by two entries, jetton
+		// wallets among them. Return every candidate for that key rather than
+		// failing the whole batch over one of its members.
+		abis := make([]ExtendedContractABI, 0, len(contracts))
+		for _, contract := range contracts {
+			abis = append(abis, extended(contract))
 		}
-		contract, err := unique(contracts)
-		if err != nil {
-			return err
-		}
-		abi := extended(contract)
-		result[hash] = &abi
+		result[hash] = abis
 	}
 	c.Set("X-Acton-Catalog-Revision", a.revision)
 	return sendBounded(c, result)

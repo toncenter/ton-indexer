@@ -13,7 +13,7 @@ Request and response schemas, limits and error codes are in the Swagger UI at
 | Method | Path | Purpose |
 | --- | --- | --- |
 | GET | `/contracts` | Paginated catalog metadata. |
-| GET | `/abi` | Compiler ABIs for repeated `code_hash` parameters. |
+| GET | `/abi` | Compiler ABIs per `code_hash`; a key maps to every catalog candidate. |
 | GET, POST | `/accounts` | Batch identification, optionally decoding storage. |
 | GET | `/getMethods` | Getter metadata by address, code hash, or catalog ID. |
 | POST | `/decode` | Decode a supplied storage or message BOC. |
@@ -59,7 +59,11 @@ replacement for the v2 provider:
 
 - Send the displayed `code_hash` with the request. An upgrade between opening the
   form and executing then fails with a conflict instead of decoding new output
-  against the browser's old ABI.
+  against the browser's old ABI. `code_hash` alone does not always identify one
+  ABI: 22 of the catalog's 333 hashes are claimed by two entries, jetton wallets
+  and NFT items among them. For those, add `contract_type` — a 409 lists the
+  catalog IDs to choose from in its `candidates` field, and
+  `/getMethods?code_hash=...` enumerates the same candidates with their getters.
 - Native stack numbers have type `int`; older providers emit `num`. Normalize
   recursively at the boundary.
 - `success` is the execution outcome — TVM exits 0 and 1 are both successful.
@@ -68,8 +72,12 @@ replacement for the v2 provider:
   payload directly, dictionaries are typed key/value entry arrays, and unions are
   `{"$":"Type","value":...}`. Convert via the ABI type graph rather than
   flattening. Integers travel as decimal strings, including beyond 2^53.
-- `/abi` returns 409 for an ambiguous hash and 413 for an oversized batch.
-  Neither means the hash is unknown — do not fall back to the first bundled ABI.
+- `/abi` maps each requested hash to a list: empty when the hash is unknown,
+  more than one when the catalog is ambiguous. One ambiguous hash never fails its
+  neighbours in the batch. Do not fall back to the first entry — identical
+  bytecode does not make two catalog entries interchangeable; they can declare
+  different getters and different meanings for the same storage bits. 413 still
+  means the batch was too large, not that anything was unknown.
 
 **Caching.** `X-Acton-Catalog-Revision` identifies the input catalog, not the
 codec implementation. Namespace decoded-result caches by that revision plus the
