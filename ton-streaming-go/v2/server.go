@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -18,7 +19,6 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/websocket/v2"
 	"github.com/redis/go-redis/v9"
-	"github.com/valyala/fasthttp"
 
 	"github.com/toncenter/ton-indexer/ton-emulate-go/models"
 	"github.com/toncenter/ton-indexer/ton-streaming-go/observability"
@@ -337,25 +337,46 @@ type Client struct {
 	TracesForPotentialInvalidation map[indexModels.HashType]bool // traceExternalHashNorm -> true
 	SendEvent                      func([]byte) error
 	sendChan                       chan []byte
+	done                           chan struct{}
+	closeTransport                 func() error
 	mu                             sync.Mutex
 	writeMu                        sync.Mutex
 }
 
 func disconnectClient(manager *ClientManager, client *Client) {
+	// Quota release must not wait for subscription cleanup in the manager loop.
+	manager.rateLimiter.UnregisterConnection(client.LimitingKey, client.ID)
+
 	client.mu.Lock()
 	if !client.Connected {
 		client.mu.Unlock()
 		return
 	}
 	client.Connected = false
+	if client.done != nil {
+		close(client.done)
+	}
 	client.mu.Unlock()
 
+	if client.closeTransport != nil {
+		_ = client.closeTransport()
+	}
 	manager.unregister <- client
 }
 
 func (c *Client) startSender(manager *ClientManager) {
 	go func() {
-		for msg := range c.sendChan {
+		for {
+			var msg []byte
+			select {
+			case <-c.done:
+				return
+			case data, ok := <-c.sendChan:
+				if !ok {
+					return
+				}
+				msg = data
+			}
 			c.writeMu.Lock()
 			c.mu.Lock()
 			if !c.Connected {
@@ -437,7 +458,6 @@ func (manager *ClientManager) Run() {
 			if !client.Connected {
 				manager.removeSubscriptionFromIndexesLocked(client.ID, &client.Subscription)
 				client.mu.Unlock()
-				manager.rateLimiter.UnregisterConnection(client.LimitingKey, client.ID)
 				manager.mu.Unlock()
 				continue
 			}
@@ -459,7 +479,6 @@ func (manager *ClientManager) Run() {
 				}
 				client.mu.Unlock()
 				delete(manager.clients, client.ID)
-				manager.rateLimiter.UnregisterConnection(client.LimitingKey, client.ID)
 				log.Printf("[v2] Client %s disconnected", client.ID)
 			}
 			manager.mu.Unlock()
@@ -910,7 +929,9 @@ func ParseRateLimitHeaders(headers map[string][]string) (string, RateLimitConfig
 	config := RateLimitConfig{}
 
 	if values, ok := headers["X-Limiting-Key"]; ok && len(values) > 0 {
-		limitingKey = values[0]
+		// Fiber header strings refer to request buffers that can be reused before
+		// the asynchronous stream and client cleanup have finished.
+		limitingKey = strings.Clone(values[0])
 	}
 	if values, ok := headers["X-Max-Parallel-Connections"]; ok && len(values) > 0 {
 		if maxConn, err := strconv.Atoi(values[0]); err == nil {
@@ -1172,7 +1193,10 @@ func SSEHandler(manager *ClientManager) fiber.Handler {
 
 		if len(req.SupportedActionTypes) == 0 {
 			if val, ok := c.GetReqHeaders()["X-Actions-Version"]; ok && len(val) > 0 {
-				req.SupportedActionTypes = val
+				req.SupportedActionTypes = make([]string, len(val))
+				for i, actionType := range val {
+					req.SupportedActionTypes[i] = strings.Clone(actionType)
+				}
 			} else {
 				req.SupportedActionTypes = []string{"latest"}
 			}
@@ -1204,6 +1228,7 @@ func SSEHandler(manager *ClientManager) fiber.Handler {
 			ID:          clientID,
 			LimitingKey: limitingKey,
 			Connected:   true,
+			done:        make(chan struct{}),
 			Subscription: Subscription{
 				IncludeAddressBook:   req.IncludeAddressBook != nil && *req.IncludeAddressBook,
 				IncludeMetadata:      req.IncludeMetadata != nil && *req.IncludeMetadata,
@@ -1223,27 +1248,21 @@ func SSEHandler(manager *ClientManager) fiber.Handler {
 		}
 		client.Subscription.Replace(addresses, req.Types)
 		client.Subscription.ReplaceTraces(traceExternalHashNorms)
-		manager.register <- client
 
-		c.Set("Content-Type", "text/event-stream")
-		c.Set("Cache-Control", "no-cache")
-		c.Set("Connection", "keep-alive")
-		c.Set("Transfer-Encoding", "chunked")
-
-		c.Status(fiber.StatusOK).Context().SetBodyStreamWriter(fasthttp.StreamWriter(func(w *bufio.Writer) {
-			defer disconnectClient(manager, client)
-
+		stream := newSSEStream(manager, client, func(w *bufio.Writer) {
 			if err := writeSSE(w, "connected", StatusResponse{Id: req.Id, Status: "subscribed"}); err != nil {
 				log.Printf("[v2] write connected frame: %v", err)
 				return
 			}
 			log.Printf("[v2] Client %s connected via SSE", clientID)
 
-			keepAlive := time.NewTicker(15 * time.Second)
+			keepAlive := time.NewTicker(5 * time.Second)
 			defer keepAlive.Stop()
 
 			for {
 				select {
+				case <-client.done:
+					return
 				case data := <-eventCh:
 					if err := writeSSEBytes(w, "event", data); err != nil {
 						log.Printf("[v2] SSE event write failed for client %s: %v", clientID, err)
@@ -1256,7 +1275,14 @@ func SSEHandler(manager *ClientManager) fiber.Handler {
 					}
 				}
 			}
-		}))
+		})
+		manager.register <- client
+
+		c.Set("Content-Type", "text/event-stream")
+		c.Set("Cache-Control", "no-cache")
+		c.Set("Connection", "keep-alive")
+		c.Set("Transfer-Encoding", "chunked")
+		c.Status(fiber.StatusOK).Response().SetBodyStream(stream, -1)
 		return nil
 	}
 }
@@ -1296,6 +1322,9 @@ type UnsubscribeRequest struct {
 
 func WebSocketHandler(manager *ClientManager) func(*websocket.Conn) {
 	return func(c *websocket.Conn) {
+		// The Fiber wrapper is pooled after the handler returns. Background
+		// senders must retain the underlying connection instead of the wrapper.
+		conn := c.Conn
 		// headers from upgrade
 		headers := make(map[string][]string)
 		headers["X-Limiting-Key"] = []string{c.Headers("X-Limiting-Key")}
@@ -1315,9 +1344,11 @@ func WebSocketHandler(manager *ClientManager) func(*websocket.Conn) {
 		}
 
 		client := &Client{
-			ID:          clientID,
-			LimitingKey: limitingKey,
-			Connected:   true,
+			ID:             clientID,
+			LimitingKey:    limitingKey,
+			Connected:      true,
+			done:           make(chan struct{}),
+			closeTransport: conn.Close,
 			Subscription: Subscription{
 				SubscribedAddresses:  make(AddressSet),
 				SubscribedTraces:     make(TraceSet),
@@ -1328,13 +1359,19 @@ func WebSocketHandler(manager *ClientManager) func(*websocket.Conn) {
 				MinFinality:          defaultMinFinality(),
 			},
 			TracesForPotentialInvalidation: make(map[indexModels.HashType]bool),
-			SendEvent:                      func(b []byte) error { return c.WriteMessage(websocket.TextMessage, b) },
+			SendEvent:                      func(b []byte) error { return conn.WriteMessage(websocket.TextMessage, b) },
 		}
+		closeHandler := conn.CloseHandler()
+		conn.SetCloseHandler(func(code int, text string) error {
+			// The peer may reconnect as soon as it receives our Close reply.
+			manager.rateLimiter.UnregisterConnection(client.LimitingKey, client.ID)
+			return closeHandler(code, text)
+		})
 		manager.register <- client
 		defer disconnectClient(manager, client)
 
 		for {
-			_, msg, err := c.ReadMessage()
+			_, msg, err := conn.ReadMessage()
 			if err != nil {
 				log.Printf("[v2] ws read: %v", err)
 				return
