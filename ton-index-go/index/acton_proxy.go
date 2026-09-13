@@ -153,7 +153,7 @@ func (e *actonExecutor) Snapshot(ctx context.Context, address string, seqno *int
 		return nil, actonapi.Fail(502, "invalid upstream account code BOC")
 	}
 	hash := base64.StdEncoding.EncodeToString(code.Hash())
-	snapshot := &actonapi.Snapshot{Address: canonical, AccountStatus: state.State, CodeHash: &hash, Seqno: &pinned, BlockID: state.BlockID, LastTransactionHash: state.LastTransactionID.Hash, Pinning: "upstream_seqno"}
+	snapshot := &actonapi.Snapshot{Address: canonical, AccountStatus: state.State, CodeHash: &hash, Seqno: &pinned, BlockID: state.BlockID, LastTransactionHash: state.LastTransactionID.Hash}
 	if code.GetType() == cell.LibraryCellType {
 		// ActonScan codeCell.ts uses the embedded hash for catalog lookup, but
 		// it is not the account's code-cell hash. Preserve both identities.

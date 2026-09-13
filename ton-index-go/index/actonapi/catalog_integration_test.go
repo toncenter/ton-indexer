@@ -166,22 +166,20 @@ func TestLibraryImplementationCatalogSelection(t *testing.T) {
 	actual := strings.Repeat("ff", 32)
 	executor.snapshot.CodeHash = &actual
 	executor.snapshot.ImplementationHash = &contract.CodeHashes[0]
-	for _, selector := range []string{"", `,"contract_type":"counter"`, `,"code_hash":"` + testHash + `"`, `,"code_hash":"` + actual + `"`} {
-		var result RunResponse
-		call(t, app, "POST", "/runGetMethod", `{"address":"`+testAddress+`","method":"get_counter"`+selector+`}`, 200, &result)
-		if *result.Snapshot.CodeHash != actual || *result.Snapshot.ImplementationHash != testHash || result.Identification != "library_reference" {
-			t.Fatalf("confused code and implementation identity: %+v", result)
-		}
+	var result RunResponse
+	call(t, app, "POST", "/runGetMethod", `{"address":"`+testAddress+`","method":"get_counter"}`, 200, &result)
+	if *result.Snapshot.CodeHash != actual || *result.Snapshot.ImplementationHash != testHash || result.Identification != "library_reference" {
+		t.Fatalf("confused code and implementation identity: %+v", result)
 	}
+	// The code cell's own entry wins over the library implementation's, which is a
+	// different contract rather than another name for the same one.
 	other := testContract()
-	other.ID = "different"
-	other.CodeHashes = []string{strings.Repeat("cd", 32)}
+	other.ID, other.CodeHashes = "different", []string{actual}
 	api := New([]*acton.Contract{contract, other}, "revision", Dependencies{Executor: func(*fiber.Ctx) GetterExecutor { return executor }})
-	call(t, testApp(api), "POST", "/runGetMethod", `{"address":"`+testAddress+`","method":"get_counter","contract_type":"different"}`, 409, nil)
-	// Both code-cell and implementation matches must be retained, not first-win.
-	other.CodeHashes = []string{actual}
-	api = New([]*acton.Contract{contract, other}, "revision", Dependencies{Executor: func(*fiber.Ctx) GetterExecutor { return executor }})
-	call(t, testApp(api), "POST", "/runGetMethod", `{"address":"`+testAddress+`","method":"get_counter"}`, 409, nil)
+	call(t, testApp(api), "POST", "/runGetMethod", `{"address":"`+testAddress+`","method":"get_counter"}`, 200, &result)
+	if result.CatalogID != "different" || result.Identification != "exact_code_hash" {
+		t.Fatalf("library implementation displaced the code cell's own entry: %+v", result)
+	}
 }
 
 // The index is served whole, without paging, so its size is a design assumption

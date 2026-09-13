@@ -101,7 +101,7 @@ func TestActonProxyPinsDiscoveryStateAndExecution(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if snapshot.Seqno == nil || *snapshot.Seqno != 54321 || snapshot.Pinning != "upstream_seqno" {
+	if snapshot.Seqno == nil || *snapshot.Seqno != 54321 {
 		t.Fatalf("bad pinning: %+v", snapshot)
 	}
 	if snapshot.AccountStateHash != nil {

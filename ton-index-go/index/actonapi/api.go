@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -294,11 +295,11 @@ func (a *API) Decode(c *fiber.Ctx) error {
 // RunGetMethod selects an ABI using code read at the execution seqno, never from
 // the latest indexed state. An explicit contract must also match that code hash.
 // @Summary Run and decode a pinned Acton getter
-// @Description Requires positive seqno or resolves it once. Reads account code and executes runGetMethodStd at the same seqno; library code and implementation hashes stay distinct. Standard Tonlib null and Lisp lists are supported; builder, NaN and continuation values are not. Pinning trusts the configured upstream, not a proof. Args and raw stack are mutually exclusive. VM and decoding failures retain raw stack, gas and exit code.
+// @Description Requires a positive seqno or resolves it once. Reads account code and executes runGetMethodStd at the same seqno; library code and implementation hashes stay distinct. The ABI is the catalog entry declaring the named getter for that code, so the request selects no ABI of its own. Pinning trusts the configured upstream, not a proof. VM and decoding failures retain raw stack, gas and exit code.
 // @Tags acton
 // @Accept json
 // @Produce json
-// @Param request body RunRequest true "Address, method name or numeric TVM ID, named args or typed stack, optional seqno"
+// @Param request body RunRequest true "Address, getter name or numeric TVM ID, named args, optional seqno"
 // @Success 200 {object} RunResponse
 // @Failure 409 {object} models.IndexError
 // @Failure 422 {object} models.IndexError
@@ -318,71 +319,23 @@ func (a *API) RunGetMethod(c *fiber.Ctx) error {
 	if req.Seqno != nil && *req.Seqno <= 0 {
 		return Fail(422, "seqno must be positive")
 	}
-	if req.ContractType != "" && req.CodeHash != "" {
-		return Fail(422, "contract_type and code_hash are mutually exclusive")
+	if req.Method == "" || len(req.Method) > 256 {
+		return Fail(422, "invalid method")
 	}
-	if len(req.Args) != 0 && len(req.Stack) != 0 {
-		return Fail(422, "args and stack are mutually exclusive")
+	// A decimal method is a TVM ID and anything else is a getter name, so a
+	// number too large to be an ID must not quietly become a name.
+	methodID, parseError := strconv.ParseInt(req.Method, 10, 32)
+	if errors.Is(parseError, strconv.ErrRange) {
+		return Fail(422, "method ID must be an int32")
 	}
-	var explicitContract *acton.Contract
-	requestHash := ""
-	if req.ContractType != "" {
-		selected, err := a.selectContracts(req.ContractType, req.CodeHash)
-		if err != nil {
-			return err
-		}
-		explicitContract, err = unique(selected)
-		if err != nil {
-			return err
-		}
-	} else if req.CodeHash != "" {
-		if len(req.CodeHash) > 66 || strings.TrimSpace(req.CodeHash) != req.CodeHash || strings.ContainsAny(req.CodeHash, " \t\r\n\v\f") {
-			return Fail(422, "invalid code_hash")
-		}
-		requestHash, err = acton.NormalizeCodeHash(req.CodeHash)
-		if err != nil {
-			return Fail(422, "invalid code_hash")
-		}
-	}
-	var methodName string
-	var methodID int64
-	byName := false
-	switch method := req.Method.(type) {
-	case string:
-		if method == "" || len(method) > 256 {
-			return Fail(422, "invalid method")
-		}
-		methodID, err = strconv.ParseInt(method, 10, 32)
-		if err != nil {
-			methodName, byName = method, true
-		}
-	case json.Number:
-		methodID, err = strconv.ParseInt(string(method), 10, 32)
-		if err != nil {
-			return Fail(422, "method ID must be an int32")
-		}
-	default:
-		return Fail(422, "method must be a name or int32 ID")
-	}
+	byName := parseError != nil
 	args := map[string]any{}
-	var stack []acton.StackValue
 	if len(req.Args) != 0 {
 		if err := decodeJSON(req.Args, &args); err != nil {
 			return err
 		}
 		if args == nil {
 			return Fail(422, "args must be an object")
-		}
-	}
-	if len(req.Stack) != 0 {
-		if err := decodeJSON(req.Stack, &stack); err != nil {
-			return err
-		}
-		if stack == nil {
-			return Fail(422, "stack must be an array")
-		}
-		if err := ValidateStack(stack); err != nil {
-			return Fail(422, err.Error())
 		}
 	}
 	if a.deps.Executor == nil {
@@ -406,49 +359,23 @@ func (a *API) RunGetMethod(c *fiber.Ctx) error {
 	if err != nil {
 		return Fail(502, "invalid upstream code hash")
 	}
-	contracts := a.byHash[key]
+	contracts := OrderCandidates(a.byHash[key])
 	implementationKey := ""
 	if snapshot.ImplementationHash != nil {
 		implementationKey, err = acton.NormalizeCodeHash(*snapshot.ImplementationHash)
 		if err != nil {
 			return Fail(502, "invalid upstream library implementation hash")
 		}
-		// Do not let two different catalog matches silently override each other.
-		contracts = append([]*acton.Contract{}, contracts...)
-		for _, candidate := range a.byHash[implementationKey] {
-			found := false
-			for _, existing := range contracts {
-				if candidate == existing {
-					found = true
-					break
-				}
-			}
-			if !found {
+		// The implementation of a library reference is a different contract, so it
+		// is a fallback for a getter the code cell's own entries do not declare,
+		// never a competing description of the same code.
+		for _, candidate := range OrderCandidates(a.byHash[implementationKey]) {
+			if !slices.Contains(contracts, candidate) {
 				contracts = append(contracts, candidate)
 			}
 		}
 	}
-	if requestHash != "" {
-		if requestHash != key && requestHash != implementationKey {
-			return Fail(409, "selected code_hash does not match account code or library implementation at execution seqno")
-		}
-		if selected := a.byHash[requestHash]; len(selected) > 0 {
-			contracts = selected
-		}
-	}
-	if explicitContract != nil {
-		matched := false
-		for _, candidate := range contracts {
-			if candidate == explicitContract {
-				matched = true
-			}
-		}
-		if !matched {
-			return Fail(409, "selected ABI does not match account code at execution seqno")
-		}
-		contracts = []*acton.Contract{explicitContract}
-	}
-	contract, err := unique(contracts)
+	contract, method, err := selectMethod(contracts, req.Method, methodID, byName)
 	if err != nil {
 		return err
 	}
@@ -462,45 +389,24 @@ func (a *API) RunGetMethod(c *fiber.Ctx) error {
 	if !matchedCode && implementationKey != "" {
 		identification = "library_reference"
 	}
-	var method *acton.GetMethod
-	for i := range contract.GetMethods {
-		m := &contract.GetMethods[i]
-		if byName && m.Name == methodName || !byName && m.ID == methodID {
-			if method != nil {
-				return Fail(409, "ambiguous getter in catalog")
-			}
-			method = m
+	if method.Unsupported != "" {
+		return Fail(422, method.Unsupported)
+	}
+	if method.EncodeArgs == nil {
+		return Fail(422, "native argument encoder unavailable")
+	}
+	allowed := map[string]bool{}
+	for _, parameter := range method.Parameters {
+		allowed[parameter.Name] = true
+	}
+	for name := range args {
+		if !allowed[name] {
+			return Fail(422, "unknown argument: "+name)
 		}
 	}
-	if method == nil {
-		return Fail(422, "method is not in selected catalog contract")
-	}
-	for i := range contract.GetMethods {
-		other := &contract.GetMethods[i]
-		if other != method && other.ID == method.ID {
-			return Fail(409, "ambiguous TVM method ID in catalog")
-		}
-	}
-	if len(req.Stack) == 0 {
-		if method.Unsupported != "" {
-			return Fail(422, method.Unsupported)
-		}
-		if method.EncodeArgs == nil {
-			return Fail(422, "native argument encoder unavailable; use raw stack")
-		}
-		allowed := map[string]bool{}
-		for _, p := range method.Parameters {
-			allowed[p.Name] = true
-		}
-		for name := range args {
-			if !allowed[name] {
-				return Fail(422, "unknown argument: "+name)
-			}
-		}
-		stack, err = method.EncodeArgs(args)
-		if err != nil {
-			return Fail(422, err.Error())
-		}
+	stack, err := method.EncodeArgs(args)
+	if err != nil {
+		return Fail(422, err.Error())
 	}
 	stack, err = NormalizeStack(stack)
 	if err != nil {
