@@ -605,6 +605,7 @@ func GetMetadata(c *fiber.Ctx) error {
 // @failure 400 {object} models.RequestError
 // @param address query []string true "List of addresses in any form. Maximum 1000 addresses allowed." collectionFormat(multi)
 // @param include_boc query bool false "Include code and data BOCs. Default: true" default(true)
+// @param include_storage query bool false "Decode each account's data cell with its catalog ABI. Default: false" default(false)
 // @router /api/v3/accountStates [get]
 // @security		APIKeyHeader
 // @security		APIKeyQuery
@@ -618,14 +619,29 @@ func GetAccountStates(c *fiber.Ctx) error {
 	if len(req.AccountAddress) == 0 {
 		return models.IndexError{Code: 422, Message: "address of account is required"}
 	}
-	if req.IncludeBOC == nil {
-		req.IncludeBOC = new(bool)
-		*req.IncludeBOC = true
+	include_storage, err := strconv.ParseBool(c.Query("include_storage", "false"))
+	if err != nil {
+		return models.IndexError{Code: 422, Message: "include_storage must be a boolean"}
+	}
+	keep_boc := req.IncludeBOC == nil || *req.IncludeBOC
+	if req.IncludeBOC == nil || include_storage {
+		// Decoding needs the data cell even when the caller does not want it back.
+		req.IncludeBOC = new(true)
 	}
 
 	res, book, metadata, err := pool.QueryAccountStates(req, request_settings)
 	if err != nil {
 		return models.IndexError{Code: 422, Message: err.Error()}
+	}
+	if include_storage {
+		if err := crud.DecodeAccountStorage(res); err != nil {
+			return models.IndexError{Code: 413, Message: err.Error()}
+		}
+	}
+	if !keep_boc {
+		for i := range res {
+			res[i].DataBoc, res[i].CodeBoc = nil, nil
+		}
 	}
 	// if len(res) == 0 {
 	// 	return index.IndexError{Code: 404, Message: "account states not found"}
@@ -638,7 +654,7 @@ func GetAccountStates(c *fiber.Ctx) error {
 		}
 	}
 
-	resp := models.AccountStatesResponse{Accounts: res, AddressBook: book, Metadata: metadata}
+	resp := models.AccountStatesResponse{Accounts: res, AddressBook: book, Metadata: metadata, CodeBook: crud.AccountCodeBook(res)}
 	return c.JSON(resp)
 }
 
@@ -2904,59 +2920,13 @@ func main() {
 	app.Get("/api/v3/accountStates", GetAccountStates)
 	app.Get("/api/v3/walletStates", GetWalletStates)
 
-	// Acton is separate from the legacy marker and uses one account-store batch.
 	actonAPI := actonapi.New(catalog.Contracts, catalog.Revision, actonapi.Dependencies{
-		QueryAccounts: func(c *fiber.Ctx, addresses []string, includeStorage bool) ([]actonapi.AccountState, error) {
-			requestSettings := GetRequestSettings(c, &settings)
-			requestSettings.NoAddressBook, requestSettings.NoMetadata = true, true
-			if requestSettings.Timeout <= 0 || requestSettings.Timeout > 3*time.Second {
-				requestSettings.Timeout = 3 * time.Second
-			}
-			accounts := make([]models.AccountAddress, len(addresses))
-			for i, address := range addresses {
-				accounts[i] = models.AccountAddress(address)
-			}
-			rows, _, _, err := pool.QueryAccountStates(models.AccountRequest{AccountAddress: accounts, IncludeBOC: &includeStorage}, requestSettings)
-			if err != nil {
-				return nil, err
-			}
-			result := make([]actonapi.AccountState, 0, len(rows))
-			for _, row := range rows {
-				if row.AccountAddress == nil {
-					return nil, models.IndexError{Code: 500, Message: "account store returned a missing address"}
-				}
-				state := actonapi.AccountState{
-					Address: string(*row.AccountAddress), StateHash: new(string(row.Hash)),
-					CodeHash: (*string)(row.CodeHash), DataHash: (*string)(row.DataHash),
-					LastTransactionHash: (*string)(row.LastTransactionHash), DataBOC: (*string)(row.DataBoc),
-				}
-				if row.AccountStatus != nil {
-					state.Status = *row.AccountStatus
-				}
-				if row.CodeBoc != nil {
-					state.BOCBytes += len(*row.CodeBoc)
-				}
-				if row.DataBoc != nil {
-					state.BOCBytes += len(*row.DataBoc)
-				}
-				if row.LastTransactionLt != nil {
-					state.LastTransactionLT = new(strconv.FormatInt(*row.LastTransactionLt, 10))
-				}
-				if row.Interfaces != nil {
-					state.Interfaces = *row.Interfaces
-				}
-				result = append(result, state)
-			}
-			return result, nil
-		},
 		Executor: func(c *fiber.Ctx) actonapi.GetterExecutor {
 			return index.NewActonExecutor(GetRequestSettings(c, &settings))
 		},
 	})
 	app.Get("/api/v3/acton/contracts", actonAPI.Contracts)
 	app.Get("/api/v3/acton/abi", actonAPI.ABI)
-	app.Get("/api/v3/acton/accounts", actonAPI.Accounts)
-	app.Post("/api/v3/acton/accounts", actonAPI.PostAccounts)
 	app.Get("/api/v3/acton/getMethods", actonAPI.GetMethods)
 	app.Post("/api/v3/acton/decode", actonAPI.Decode)
 	app.Post("/api/v3/acton/runGetMethod", actonAPI.RunGetMethod)

@@ -27,6 +27,7 @@ type AccountStatesResponse struct {
 	Accounts    []AccountStateFull `json:"accounts"`
 	AddressBook AddressBook        `json:"address_book"`
 	Metadata    Metadata           `json:"metadata"`
+	CodeBook    CodeBook           `json:"code_book,omitempty"`
 } // @name AccountStatesResponse
 
 type WalletStatesResponse struct {

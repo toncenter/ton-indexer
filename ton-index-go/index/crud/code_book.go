@@ -93,3 +93,14 @@ func codeBook(hashes []models.HashType, lookup func(string) []*acton.Contract) m
 	}
 	return book
 }
+
+// AccountCodeBook describes the code of each of the given account states.
+func AccountCodeBook(states []models.AccountStateFull) models.CodeBook {
+	var hashes []models.HashType
+	for i := range states {
+		if states[i].CodeHash != nil {
+			hashes = append(hashes, *states[i].CodeHash)
+		}
+	}
+	return CodeBook(hashes)
+}

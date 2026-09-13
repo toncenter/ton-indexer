@@ -14,16 +14,6 @@ import (
 const MaxBatch = 1000
 const MaxBodyBytes = 1 << 20
 const MaxMetadataBytes = 8 << 20
-const MaxStorageAccounts = MaxBatch
-
-// A storage batch shares one decode budget, so its total work is bounded no
-// matter how many accounts it names. 1000 ordinary accounts consume about 6,600
-// codec steps between them; a single adversarial cell can consume 8,000 on its
-// own, so this ceiling separates the two by orders of magnitude while still
-// allowing a handful of expensive accounts through.
-const MaxStorageItems = 4 * acton.MaxItems
-const MaxStorageDecodedBytes = 8 * acton.MaxBOCBytes
-const MaxStorageBatchBytes = 8 << 20
 
 func Fail(code int, message string) error { return models.IndexError{Code: code, Message: message} }
 
@@ -56,19 +46,6 @@ type ContractsResponse struct {
 	Offset    int               `json:"offset"`
 }
 
-// AccountState is the narrow database adapter DTO. Missing rows are not_found;
-// Error represents a row-specific failure. DataBOC is only requested for storage.
-type AccountState struct {
-	Address                                string
-	Status                                 string
-	StateHash, CodeHash, DataHash          *string
-	LastTransactionHash, LastTransactionLT *string
-	DataBOC                                *string
-	BOCBytes                               int // Combined code/data BOC bytes fetched by the store.
-	Interfaces                             []string
-	Error                                  string
-}
-
 type Snapshot struct {
 	Address             string          `json:"address"`
 	AccountStatus       string          `json:"account_status"`
@@ -81,36 +58,6 @@ type Snapshot struct {
 	Seqno               *int32          `json:"seqno,omitempty"`
 	BlockID             json.RawMessage `json:"block_id,omitempty" swaggertype:"object"`
 	Pinning             string          `json:"pinning"`
-}
-
-type Identification struct {
-	Type       string           `json:"type"`
-	Provenance string           `json:"provenance"`
-	Contract   *ContractSummary `json:"contract,omitempty"`
-}
-
-type StorageResult struct {
-	Type    acton.TypeInfo `json:"type"`
-	Decoded any            `json:"decoded"`
-	Error   string         `json:"error,omitempty"`
-}
-
-type Account struct {
-	Snapshot
-	Status  string                   `json:"status"`
-	Types   []Identification         `json:"types"`
-	Storage map[string]StorageResult `json:"storage,omitempty"`
-	Error   string                   `json:"error,omitempty"`
-}
-
-type AccountsRequest struct {
-	Addresses      []string `json:"addresses"`
-	IncludeStorage bool     `json:"include_storage"`
-}
-
-type AccountsResponse struct {
-	Accounts []Account `json:"accounts"`
-	Revision string    `json:"revision"`
 }
 
 type Parameter struct {
@@ -135,7 +82,6 @@ type ContractMethods struct {
 
 type GetMethodsResponse struct {
 	Contracts []ContractMethods `json:"contracts"`
-	Account   *Account          `json:"account,omitempty"`
 	Revision  string            `json:"revision"`
 }
 
@@ -192,6 +138,5 @@ type GetterExecutor interface {
 }
 
 type Dependencies struct {
-	QueryAccounts func(*fiber.Ctx, []string, bool) ([]AccountState, error)
-	Executor      func(*fiber.Ctx) GetterExecutor
+	Executor func(*fiber.Ctx) GetterExecutor
 }

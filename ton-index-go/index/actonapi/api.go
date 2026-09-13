@@ -216,214 +216,11 @@ func (a *API) ABI(c *fiber.Ctx) error {
 	return sendBounded(c, result)
 }
 
-func (a *API) accounts(c *fiber.Ctx, addresses []string, storage bool) ([]Account, error) {
-	if len(addresses) == 0 || len(addresses) > MaxBatch {
-		return nil, Fail(422, "provide 1 to 1000 addresses")
-	}
-	canonical := make([]string, 0, len(addresses))
-	seen := map[string]bool{}
-	for _, value := range addresses {
-		addr, err := CanonicalAddress(value)
-		if err != nil {
-			return nil, err
-		}
-		if !seen[addr] {
-			canonical = append(canonical, addr)
-			seen[addr] = true
-		}
-	}
-	if a.deps.QueryAccounts == nil {
-		return nil, Fail(503, "account state query is unavailable")
-	}
-	rows, err := a.deps.QueryAccounts(c, canonical, storage)
-	if err != nil {
-		return nil, err
-	}
-	if len(rows) > len(canonical) {
-		return nil, Fail(502, "account store returned more rows than requested")
-	}
-	responseBudget := MaxStorageBatchBytes - 8192
-	if storage {
-		for _, row := range rows {
-			size := row.BOCBytes
-			if row.DataBOC != nil && size < len(*row.DataBOC) {
-				size = len(*row.DataBOC)
-			}
-			if size < 0 || size > responseBudget {
-				return nil, Fail(413, "storage batch BOCs exceed aggregate 8 MiB budget")
-			}
-			responseBudget -= size
-		}
-	}
-	// One budget for the whole batch: a request's decode work is bounded in
-	// total rather than per account, so the batch size does not multiply it.
-	budget := acton.NewBudget(MaxStorageItems, MaxStorageDecodedBytes)
-	byAddress := map[string]AccountState{}
-	for _, row := range rows {
-		addr, err := CanonicalAddress(row.Address)
-		if err != nil {
-			return nil, Fail(502, "invalid address returned by account store")
-		}
-		if _, exists := byAddress[addr]; exists {
-			return nil, Fail(502, "duplicate account state returned by account store")
-		}
-		byAddress[addr] = row
-	}
-	result := make([]Account, 0, len(canonical))
-	for _, addr := range canonical {
-		responseBudget -= 1024
-		if responseBudget < 0 {
-			return nil, Fail(413, "account response exceeds aggregate 8 MiB budget")
-		}
-		account := Account{Snapshot: Snapshot{Address: addr, Pinning: "indexed_account_state"}, Status: "not_found", Types: []Identification{}}
-		row, found := byAddress[addr]
-		if !found {
-			result = append(result, account)
-			continue
-		}
-		account.Snapshot.AccountStatus = row.Status
-		account.AccountStateHash, account.CodeHash, account.DataHash = row.StateHash, row.CodeHash, row.DataHash
-		account.LastTransactionHash, account.LastTransactionLT = row.LastTransactionHash, row.LastTransactionLT
-		account.Status = "unknown"
-		if row.Error != "" {
-			account.Status = "error"
-			account.Error = row.Error
-			result = append(result, account)
-			continue
-		}
-		var contracts []*acton.Contract
-		if row.CodeHash != nil {
-			key, err := acton.NormalizeCodeHash(*row.CodeHash)
-			if err != nil {
-				account.Status = "error"
-				account.Error = "invalid stored code hash"
-			} else {
-				contracts = a.byHash[key]
-			}
-		}
-		for _, contract := range contracts {
-			info := summary(contract)
-			account.Types = append(account.Types, Identification{Type: contract.ID, Provenance: "exact_code_hash", Contract: &info})
-			if storage && contract.Storage != nil {
-				if account.Storage == nil {
-					account.Storage = map[string]StorageResult{}
-				}
-				decoded := StorageResult{Type: contract.Storage.Type}
-				switch {
-				case row.DataBOC == nil:
-					decoded.Error = "account data BOC unavailable"
-				case len(*row.DataBOC) > MaxBodyBytes:
-					decoded.Error = "account data BOC exceeds size limit"
-				default:
-					// Decode the advertised current-storage binding explicitly;
-					// DecodeStorage may fall back to deployment storage without
-					// returning which type matched.
-					value, err := decodeAccountStorage(budget, contract.Storage, *row.DataBOC)
-					if errors.Is(err, acton.ErrBudget) {
-						return nil, Fail(413, "storage batch exceeds the decode work budget; use smaller storage batches")
-					}
-					if err != nil {
-						decoded.Error = err.Error()
-					} else {
-						encoded, err := json.Marshal(value)
-						if err != nil {
-							return nil, Fail(502, "native storage decoder returned a non-JSON value")
-						}
-						responseBudget -= len(encoded)
-						if responseBudget < 0 {
-							return nil, Fail(413, "decoded storage exceeds aggregate 8 MiB budget")
-						}
-						decoded.Decoded = json.RawMessage(encoded)
-					}
-				}
-				account.Storage[contract.ID] = decoded
-			}
-		}
-		interfaces := map[string]bool{}
-		for _, iface := range row.Interfaces {
-			if !interfaces[iface] {
-				account.Types = append(account.Types, Identification{Type: iface, Provenance: "public_interface"})
-				interfaces[iface] = true
-			}
-		}
-		if len(account.Types) > 0 && account.Status != "error" {
-			account.Status = "identified"
-		}
-		result = append(result, account)
-	}
-	return result, nil
-}
-
-func decodeAccountStorage(budget *acton.Context, binding *acton.Binding, boc string) (any, error) {
-	if binding.Unsupported != "" {
-		return nil, fmt.Errorf("unsupported storage: %s", binding.Unsupported)
-	}
-	if binding.DecodeWith == nil {
-		return nil, fmt.Errorf("native storage decoder unavailable")
-	}
-	root, err := acton.DecodeBOC(boc)
-	if err != nil {
-		return nil, err
-	}
-	return binding.DecodeWith(budget, root)
-}
-
-// Accounts returns one indexed snapshot per canonical address, in input order.
-// @Summary Identify Acton accounts in a batch
-// @Description One database batch. include_storage defaults to false; when true, the batch shares one decode work budget and an aggregate 8 MiB BOC/decoded-output budget. Public interfaces are hints, not exact ABI or storage matches. Links are catalog assertions, not source verification.
-// @Tags acton
-// @Produce json
-// @Param address query []string true "Up to 1000 addresses, canonically deduplicated" collectionFormat(multi)
-// @Param include_storage query bool false "Decode storage for exact code matches" default(false)
-// @Success 200 {object} AccountsResponse
-// @Failure 413 {object} models.IndexError
-// @Failure 422 {object} models.IndexError
-// @Router /api/v3/acton/accounts [get]
-// @Security APIKeyHeader
-// @Security APIKeyQuery
-func (a *API) Accounts(c *fiber.Ctx) error {
-	storage, err := strconv.ParseBool(c.Query("include_storage", "false"))
-	if err != nil {
-		return Fail(422, "include_storage must be a boolean")
-	}
-	accounts, err := a.accounts(c, queryValues(c, "address"), storage)
-	if err != nil {
-		return err
-	}
-	return sendBounded(c, AccountsResponse{Accounts: accounts, Revision: a.revision})
-}
-
-// PostAccounts is the JSON batch variant of Accounts.
-// @Summary Identify Acton accounts in a JSON batch
-// @Description include_storage defaults to false; the response contains canonical deduplicated addresses. Storage batches allow at most 8 unique addresses with an aggregate 8 MiB BOC/decoded-output budget.
-// @Tags acton
-// @Accept json
-// @Produce json
-// @Param request body AccountsRequest true "Account batch"
-// @Success 200 {object} AccountsResponse
-// @Failure 413 {object} models.IndexError
-// @Failure 422 {object} models.IndexError
-// @Router /api/v3/acton/accounts [post]
-// @Security APIKeyHeader
-// @Security APIKeyQuery
-func (a *API) PostAccounts(c *fiber.Ctx) error {
-	var req AccountsRequest
-	if err := decodeJSON(c.Body(), &req); err != nil {
-		return err
-	}
-	accounts, err := a.accounts(c, req.Addresses, req.IncludeStorage)
-	if err != nil {
-		return err
-	}
-	return sendBounded(c, AccountsResponse{Accounts: accounts, Revision: a.revision})
-}
-
 // GetMethods enumerates metadata only. Each compiler_abi includes its type table.
 // @Summary List typed Acton getters
 // @Tags acton
 // @Produce json
-// @Param address query string false "Indexed account address; exactly one selector required"
-// @Param code_hash query string false "Contract code hash"
+// @Param code_hash query string false "Contract code hash; exactly one selector required"
 // @Param contract_type query string false "Catalog ID"
 // @Success 200 {object} GetMethodsResponse
 // @Failure 413 {object} models.IndexError
@@ -432,40 +229,16 @@ func (a *API) PostAccounts(c *fiber.Ctx) error {
 // @Security APIKeyHeader
 // @Security APIKeyQuery
 func (a *API) GetMethods(c *fiber.Ctx) error {
-	addr, hash, id := c.Query("address"), c.Query("code_hash"), c.Query("contract_type")
-	count := 0
-	for _, name := range []string{"address", "code_hash", "contract_type"} {
-		values := queryValues(c, name)
-		if len(values) > 1 || len(values) == 1 && values[0] == "" {
+	for _, name := range []string{"code_hash", "contract_type"} {
+		if values := queryValues(c, name); len(values) > 1 || len(values) == 1 && values[0] == "" {
 			return Fail(422, "provide exactly one nonempty selector")
 		}
-		count += len(values)
 	}
-	if count != 1 {
-		return Fail(422, "provide exactly one of address, code_hash, contract_type")
+	contracts, err := a.selectContracts(c.Query("contract_type"), c.Query("code_hash"))
+	if err != nil {
+		return err
 	}
 	response := GetMethodsResponse{Contracts: []ContractMethods{}, Revision: a.revision}
-	var contracts []*acton.Contract
-	if addr != "" {
-		accounts, err := a.accounts(c, []string{addr}, false)
-		if err != nil {
-			return err
-		}
-		response.Account = &accounts[0]
-		if accounts[0].CodeHash != nil && accounts[0].Status != "error" {
-			key, err := acton.NormalizeCodeHash(*accounts[0].CodeHash)
-			if err != nil {
-				return Fail(502, "invalid stored code hash")
-			}
-			contracts = a.byHash[key]
-		}
-	} else {
-		var err error
-		contracts, err = a.selectContracts(id, hash)
-		if err != nil {
-			return err
-		}
-	}
 	for _, contract := range contracts {
 		info := ContractMethods{ExtendedContractABI: extended(contract), GetMethods: []GetMethod{}}
 		for _, method := range contract.GetMethods {
@@ -515,8 +288,8 @@ func (a *API) Decode(c *fiber.Ctx) error {
 			return Fail(422, "storage binding unavailable")
 		}
 		response.Type = binding.Type
-		// One caller-supplied BOC: a per-call budget, not a shared batch one.
-		response.Decoded, err = decodeAccountStorage(nil, binding, req.Body)
+		// One caller-supplied BOC, so a per-call budget rather than a shared one.
+		response.Decoded, err = decodeBinding(binding, req.Body)
 		if err != nil {
 			return Fail(422, err.Error())
 		}
@@ -782,6 +555,20 @@ func (a *API) RunGetMethod(c *fiber.Ctx) error {
 		}
 	}
 	return c.JSON(response)
+}
+
+func decodeBinding(binding *acton.Binding, boc string) (any, error) {
+	if binding.Unsupported != "" {
+		return nil, fmt.Errorf("unsupported storage: %s", binding.Unsupported)
+	}
+	if binding.Decode == nil {
+		return nil, errors.New("native storage decoder unavailable")
+	}
+	root, err := acton.DecodeBOC(boc)
+	if err != nil {
+		return nil, err
+	}
+	return binding.Decode(root)
 }
 
 // sendBounded serializes once and rejects the exact encoded size, so a caller
