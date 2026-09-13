@@ -104,11 +104,6 @@ func stackChildren(value any) ([]acton.StackValue, error) {
 	return result, nil
 }
 
-func ValidateStack(stack []acton.StackValue) error {
-	_, err := NormalizeStack(stack)
-	return err
-}
-
 // NormalizeStack is the boundary between public/wire aliases and native codecs.
 // Tonlib lists are flattened Lisp lists, not TVM arrays: [] is null, and [a,b]
 // is the tuple pair (a, (b, null)). "num" is accepted as an alias for "int", and

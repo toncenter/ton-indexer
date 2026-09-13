@@ -71,7 +71,6 @@ type Snapshot struct {
 	LastTransactionLT   *string         `json:"last_transaction_lt"`
 	Seqno               *int32          `json:"seqno,omitempty"`
 	BlockID             json.RawMessage `json:"block_id,omitempty" swaggertype:"object"`
-	Pinning             string          `json:"pinning"`
 }
 
 type DecodeRequest struct {
@@ -88,15 +87,14 @@ type DecodeResponse struct {
 	Decoded   any            `json:"decoded"`
 } // @name ActonDecodeResponse
 
+// RunRequest names the getter and nothing about its ABI: the catalog entry is the
+// one declaring that getter for the code running at the execution seqno.
 type RunRequest struct {
-	Address      string          `json:"address"`
-	ContractType string          `json:"contract_type,omitempty"`
-	CodeHash     string          `json:"code_hash,omitempty"`
-	Method       any             `json:"method" swaggertype:"string"`
-	Args         json.RawMessage `json:"args,omitempty" swaggertype:"object"`
-	Stack        json.RawMessage `json:"stack,omitempty" swaggertype:"array,object"`
-	Seqno        *int32          `json:"seqno,omitempty"`
-}
+	Address string          `json:"address"`
+	Method  string          `json:"method"`
+	Args    json.RawMessage `json:"args,omitempty" swaggertype:"object"`
+	Seqno   *int32          `json:"seqno,omitempty"`
+} // @name ActonRunRequest
 
 // Execution retains the untouched standard stack even if conversion or ABI
 // decoding fails. StackError must prevent typed decoding, not hide VM results.

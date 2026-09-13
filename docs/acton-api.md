@@ -58,13 +58,15 @@ neither the catalog nor the interface table recognizes.
 **Adapting an existing getter client.** `/runGetMethod` here is not a drop-in
 replacement for the v2 provider:
 
-- Send the displayed `code_hash` with the request. An upgrade between opening the
-  form and executing then fails with a conflict instead of decoding new output
-  against the browser's old ABI. `code_hash` alone does not always identify one
-  ABI: 22 of the catalog's 333 hashes are claimed by two entries, jetton wallets
-  and NFT items among them. For those, add `contract_type` — a 409 lists the
-  catalog IDs to choose from in its `candidates` field, and
-  `/getMethods?code_hash=...` enumerates the same candidates with their getters.
+- The request names an address, a getter and its arguments, and selects no ABI.
+  The entry used is the one declaring that getter for the code running at the
+  execution seqno, and it comes back as `catalog_id`. Nothing is guessed by doing
+  so: 22 of the catalog's 333 hashes are claimed by two entries, jetton wallets
+  and NFT items among them, but 21 of those pairs are one contract entered under
+  two vendor names, and the remaining pair agrees on every getter it shares. Pin
+  `seqno` when the result must match the state the form was rendered against.
+- A raw TVM stack is not accepted here; `POST /api/v3/runGetMethod` already takes
+  one and is unchanged.
 - Native stack numbers have type `int`; older providers emit `num`. Normalize
   recursively at the boundary.
 - `success` is the execution outcome — TVM exits 0 and 1 are both successful.

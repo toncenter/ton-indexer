@@ -63,11 +63,11 @@ func TestStandardStackLimitsAndUnsupported(t *testing.T) {
 	for i := 0; i < 34; i++ {
 		stack = []acton.StackValue{{Type: "tuple", Value: stack}}
 	}
-	if err := ValidateStack(stack); err == nil {
+	if _, err := NormalizeStack(stack); err == nil {
 		t.Fatal("accepted excessive depth")
 	}
 	stack = make([]acton.StackValue, maxStackEntries+1)
-	if err := ValidateStack(stack); err == nil {
+	if _, err := NormalizeStack(stack); err == nil {
 		t.Fatal("accepted excessive entries")
 	}
 	for _, raw := range []string{`null`, `[null]`, `[["num","0x1"]]`, `[{}]`, `[{"@type":"tvm.stackEntryUnsupported"}]`, `[{"@type":"tvm.stackEntryNumber","number":{"@type":"wrong","number":"1"}}]`, `[{"@type":"tvm.stackEntryTuple","tuple":{"@type":"tvm.tuple","elements":null}}]`} {

@@ -220,7 +220,7 @@ func (e *fakeExecutor) Run(_ context.Context, snapshot *Snapshot, method int64, 
 func runFixture(t *testing.T) (*fiber.App, *fakeExecutor, *acton.Contract) {
 	contract := testContract()
 	seqno := int32(123)
-	executor := &fakeExecutor{t: t, snapshot: Snapshot{Address: testAddress, CodeHash: &testHash, Seqno: &seqno, Pinning: "upstream_seqno"}, execution: Execution{Stack: []acton.StackValue{{Type: "num", Value: "9007199254740993"}}, RawStack: json.RawMessage(`[{"@type":"tvm.stackEntryNumber","number":{"@type":"tvm.numberDecimal","number":"9007199254740993"}}]`), GasUsed: "9007199254740993", ExitCode: 0}}
+	executor := &fakeExecutor{t: t, snapshot: Snapshot{Address: testAddress, CodeHash: &testHash, Seqno: &seqno}, execution: Execution{Stack: []acton.StackValue{{Type: "num", Value: "9007199254740993"}}, RawStack: json.RawMessage(`[{"@type":"tvm.stackEntryNumber","number":{"@type":"tvm.numberDecimal","number":"9007199254740993"}}]`), GasUsed: "9007199254740993", ExitCode: 0}}
 	app := testApp(New([]*acton.Contract{contract}, "revision", Dependencies{Executor: func(*fiber.Ctx) GetterExecutor { return executor }}))
 	return app, executor, contract
 }
@@ -232,11 +232,12 @@ func TestRunPinnedNamedArgsAndIDs(t *testing.T) {
 	if executor.method != 76543 || executor.stack[0].Type != "int" || executor.stack[0].Value != "9007199254740993" {
 		t.Fatalf("method ID or precision lost: %d %+v", executor.method, executor.stack)
 	}
-	if !response.Success || response.Decoded != "9007199254740993" || response.Snapshot.Pinning != "upstream_seqno" {
+	if !response.Success || response.Decoded != "9007199254740993" {
 		t.Fatalf("bad response: %+v", response)
 	}
-	for _, method := range []string{`76543`, `"76543"`} {
-		call(t, app, "POST", "/runGetMethod", `{"address":"`+testAddress+`","method":`+method+`,"stack":[{"type":"num","value":"-0xabcdef"}]}`, 200, nil)
+	// A getter is named either way: a decimal string is its TVM ID.
+	for _, method := range []string{`"76543"`, `"get_counter"`} {
+		call(t, app, "POST", "/runGetMethod", `{"address":"`+testAddress+`","method":`+method+`}`, 200, nil)
 	}
 	if executor.snapshots != 3 || executor.runs != 3 {
 		t.Fatal("unexpected execution count")
@@ -274,23 +275,24 @@ func TestRunPreservesVMAndDecodeFailures(t *testing.T) {
 
 func TestRunValidationAndCodeMismatch(t *testing.T) {
 	app, executor, _ := runFixture(t)
+	// The request names a getter and nothing about its ABI; anything else is refused.
 	for _, fields := range []string{
-		`"args":{},"stack":[]`, `"args":null`, `"args":[]`, `"stack":null`,
-		`"stack":[{"type":"num","value":1.5}]`, `"stack":[{"type":"tuple","value":[{}]}]`,
-		`"seqno":-1`, `"seqno":0`, `"transport":"legacy"`, `"unknown":true`, `"contract_type":"counter","code_hash":"` + testHash + `"`,
+		`"args":null`, `"args":[]`, `"seqno":-1`, `"seqno":0`, `"transport":"legacy"`, `"unknown":true`,
+		`"stack":[]`, `"contract_type":"counter"`, `"code_hash":"` + testHash + `"`,
 	} {
 		call(t, app, "POST", "/runGetMethod", `{"address":"`+testAddress+`","method":"get_counter",`+fields+`}`, 422, nil)
 	}
-	for _, method := range []string{`1.5`, `2147483648`, `null`, `{}`} {
+	for _, method := range []string{`1.5`, `76543`, `null`, `{}`, `""`, `"2147483648"`} {
 		call(t, app, "POST", "/runGetMethod", `{"address":"`+testAddress+`","method":`+method+`}`, 422, nil)
 	}
 	if executor.snapshots != 0 {
 		t.Fatal("invalid request reached upstream")
 	}
 	call(t, app, "POST", "/runGetMethod", `{"address":"`+testAddress+`","method":"get_counter","args":{"unknown":1}}`, 422, nil)
+	// Code the catalog does not know is never executed against a neighbour's ABI.
 	otherHash := strings.Repeat("34", 32)
 	executor.snapshot.CodeHash = &otherHash
-	call(t, app, "POST", "/runGetMethod", `{"address":"`+testAddress+`","method":"get_counter","contract_type":"counter"}`, 409, nil)
+	call(t, app, "POST", "/runGetMethod", `{"address":"`+testAddress+`","method":"get_counter"}`, 404, nil)
 	if executor.runs != 0 {
 		t.Fatal("mismatched code or invalid args were executed")
 	}
