@@ -53,8 +53,6 @@ func testApp(api *API) *fiber.App {
 		return c.Status(500).JSON(map[string]string{"error": err.Error()})
 	}})
 	app.Get("/contracts", api.Contracts)
-	app.Get("/abi", api.ABI)
-	app.Get("/getMethods", api.GetMethods)
 	app.Post("/decode", api.Decode)
 	app.Post("/runGetMethod", api.RunGetMethod)
 	return app
@@ -86,72 +84,85 @@ func call(t *testing.T, app *fiber.App, method, path, body string, status int, d
 	return raw
 }
 
-func TestCatalogAndABI(t *testing.T) {
+func TestCatalogIndexAndSelectors(t *testing.T) {
 	contract := testContract()
-	app := testApp(New([]*acton.Contract{contract}, "revision", Dependencies{}))
-	var page ContractsResponse
-	call(t, app, "GET", "/contracts?limit=1", "", 200, &page)
-	if page.Total != 1 || len(page.Contracts) != 1 || page.Revision != "revision" {
-		t.Fatalf("bad page: %+v", page)
+	app := testApp(New([]*acton.Contract{contract}, "revision", Dependencies{
+		Executor: func(*fiber.Ctx) GetterExecutor { t.Fatal("listing executed a getter"); return nil }}))
+	// Without a selector the whole catalog is returned, getters included and type
+	// tables left out.
+	var page ActonContractsResponse
+	call(t, app, "GET", "/contracts", "", 200, &page)
+	if page.Total != 1 || page.Limit != 1 || len(page.Contracts) != 1 {
+		t.Fatalf("bad index: %+v", page)
 	}
-	if page.Contracts[0].SourceVerified || page.Contracts[0].LinksProvenance != "catalog_asserted" {
-		t.Fatal("misleading source provenance")
+	if len(page.Contracts[0].GetMethods) != 1 || page.Contracts[0].GetMethods[0].Return != "int" || page.Contracts[0].ABI != nil {
+		t.Fatalf("index must carry rendered getters and no ABI: %+v", page.Contracts[0])
 	}
 	call(t, app, "GET", "/contracts?offset=9223372036854775807", "", 200, &page)
-	if len(page.Contracts) != 0 {
-		t.Fatal("expected empty page")
+	if len(page.Contracts) != 0 || page.Total != 1 {
+		t.Fatalf("expected an empty page of a known total: %+v", page)
 	}
-	for _, query := range []string{"limit=0", "limit=1001", "offset=-1", "limit=oops"} {
+	for _, query := range []string{"limit=0", "limit=1001", "offset=-1", "limit=oops", "code_hash=bad"} {
 		call(t, app, "GET", "/contracts?"+query, "", 422, nil)
 	}
+	tooMany := make([]string, MaxSelectors+1)
+	for i := range tooMany {
+		tooMany[i] = "catalog_id=counter"
+	}
+	call(t, app, "GET", "/contracts?"+strings.Join(tooMany, "&"), "", 422, nil)
+
+	// A selector narrows the result and attaches the compiler ABI.
 	b64 := base64.StdEncoding.EncodeToString(bytesOf(0x12, 32))
 	unknown := strings.Repeat("00", 32)
-	var abis map[string][]ExtendedContractABI
-	call(t, app, "GET", "/abi?code_hash="+testHash+"&code_hash="+url.QueryEscape(b64)+"&code_hash="+unknown, "", 200, &abis)
-	if len(abis) != 3 || len(abis[testHash]) != 1 || len(abis[b64]) != 1 || len(abis[unknown]) != 0 {
-		t.Fatalf("input keys or empty miss missing: %+v", abis)
+	call(t, app, "GET", "/contracts?code_hash="+url.QueryEscape(b64)+"&code_hash="+unknown+"&catalog_id=counter", "", 200, &page)
+	if page.Total != 1 || len(page.Contracts) != 1 || len(page.Contracts[0].ABI) == 0 {
+		t.Fatalf("selected entry missing its ABI or duplicated: %+v", page)
 	}
-	if len(abis[b64][0].CompilerABI) == 0 {
-		t.Fatal("missing compiler ABI")
+	call(t, app, "GET", "/contracts?code_hash="+unknown, "", 200, &page)
+	if page.Total != 0 {
+		t.Fatalf("an unknown selector must match nothing, not fail: %+v", page)
 	}
-	call(t, app, "GET", "/abi?code_hash=bad", "", 422, nil)
+
+	// An ambiguous hash returns every candidate, most specific first.
 	other := testContract()
-	other.ID = "conflict"
-	app = testApp(New([]*acton.Contract{contract, other}, "revision", Dependencies{}))
-	// An ambiguous hash returns both candidates and must not fail its neighbours.
-	call(t, app, "GET", "/abi?code_hash="+testHash+"&code_hash="+unknown, "", 200, &abis)
-	if len(abis[testHash]) != 2 || len(abis[unknown]) != 0 {
-		t.Fatalf("ambiguous hash poisoned the batch: %+v", abis)
+	other.ID, other.GetMethods = "conflict", nil
+	app = testApp(New([]*acton.Contract{other, contract}, "revision", Dependencies{}))
+	call(t, app, "GET", "/contracts?code_hash="+testHash, "", 200, &page)
+	if page.Total != 2 || page.Contracts[0].CatalogID != "counter" {
+		t.Fatalf("ambiguous hash collapsed or misordered: %+v", page)
 	}
-	if abis[testHash][0].CatalogID == abis[testHash][1].CatalogID {
-		t.Fatal("candidates collapsed to one entry")
+}
+
+// The index is a pure function of the pinned catalog, so a client that already
+// holds it revalidates without transferring it again.
+func TestCatalogIndexRevalidates(t *testing.T) {
+	app := testApp(New([]*acton.Contract{testContract()}, "revision", Dependencies{}))
+	request := httptest.NewRequest("GET", "/contracts", nil)
+	response, err := app.Test(request)
+	if err != nil {
+		t.Fatal(err)
 	}
-	var methods GetMethodsResponse
-	call(t, app, "GET", "/getMethods?code_hash="+testHash, "", 200, &methods)
-	if len(methods.Contracts) != 2 {
-		t.Fatal("getter catalog hid a conflict")
+	tag := response.Header.Get("ETag")
+	if tag == "" || response.Header.Get("X-Acton-Catalog-Revision") != "revision" {
+		t.Fatalf("missing validator or revision: %+v", response.Header)
+	}
+	request = httptest.NewRequest("GET", "/contracts", nil)
+	request.Header.Set("If-None-Match", tag)
+	response, err = app.Test(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if response.StatusCode != 304 {
+		t.Fatalf("unchanged catalog was sent again: %d", response.StatusCode)
 	}
 }
 
 func bytesOf(value byte, count int) []byte {
-	result := make([]byte, count)
-	for i := range result {
-		result[i] = value
+	out := make([]byte, count)
+	for i := range out {
+		out[i] = value
 	}
-	return result
-}
-
-func TestGetMethodsSelectors(t *testing.T) {
-	app := testApp(New([]*acton.Contract{testContract()}, "revision", Dependencies{
-		Executor: func(*fiber.Ctx) GetterExecutor { t.Fatal("enumeration executed a getter"); return nil }}))
-	for _, selector := range []string{"", "code_hash=" + testHash + "&contract_type=counter", "contract_type=counter&contract_type=other", "code_hash="} {
-		call(t, app, "GET", "/getMethods?"+selector, "", 422, nil)
-	}
-	var response GetMethodsResponse
-	call(t, app, "GET", "/getMethods?contract_type=counter", "", 200, &response)
-	if len(response.Contracts) != 1 || len(response.Contracts[0].GetMethods) != 1 {
-		t.Fatalf("catalog getters not enumerated: %+v", response)
-	}
+	return out
 }
 
 func TestNativeDecode(t *testing.T) {

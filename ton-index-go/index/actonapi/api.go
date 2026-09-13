@@ -2,6 +2,7 @@ package actonapi
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -39,24 +40,32 @@ func New(contracts []*acton.Contract, revision string, deps Dependencies) *API {
 	return a
 }
 
-func summary(c *acton.Contract) ContractSummary {
-	links := make([]Link, 0, len(c.Links))
-	for _, link := range c.Links {
-		links = append(links, Link{Kind: link.Kind, Title: link.Title, URL: link.URL})
+// contractInfo renders one catalog entry. The compiler ABI is attached only for a
+// selected entry: it is ten times the size of everything else about a contract.
+func contractInfo(contract *acton.Contract, withABI bool) ActonContract {
+	info := ActonContract{CatalogID: contract.ID, DisplayName: contract.DisplayName,
+		CodeHashes:     append([]string{}, contract.CodeHashes...),
+		KnownAddresses: append([]string{}, contract.KnownAddresses...),
+		Links:          []models.ContractLink{}, GetMethods: []ActonGetMethod{}}
+	for _, link := range contract.Links {
+		info.Links = append(info.Links, models.ContractLink{Kind: link.Kind, Title: link.Title, URL: link.URL})
 	}
-	return ContractSummary{CatalogID: c.ID, DisplayName: c.DisplayName, CodeHashes: append([]string{}, c.CodeHashes...), KnownAddresses: append([]string{}, c.KnownAddresses...), Links: links, LinksProvenance: "catalog_asserted"}
+	for _, method := range contract.GetMethods {
+		info.GetMethods = append(info.GetMethods, methodInfo(method))
+	}
+	if withABI {
+		info.ABI = contract.ABI
+	}
+	return info
 }
 
-func extended(c *acton.Contract) ExtendedContractABI {
-	return ExtendedContractABI{ContractSummary: summary(c), CompilerABI: c.ABI}
-}
-
-func methodInfo(m acton.GetMethod) GetMethod {
-	params := make([]Parameter, 0, len(m.Parameters))
-	for _, p := range m.Parameters {
-		params = append(params, Parameter{Name: p.Name, Type: p.Type, Default: p.Default})
+func methodInfo(method acton.GetMethod) ActonGetMethod {
+	rendered := ActonGetMethod{Name: method.Name, MethodID: method.ID, Return: method.Return.Name,
+		Description: method.Description, Unsupported: method.Unsupported, Parameters: []ActonParameter{}}
+	for _, parameter := range method.Parameters {
+		rendered.Parameters = append(rendered.Parameters, ActonParameter{Name: parameter.Name, Type: parameter.Type.Name})
 	}
-	return GetMethod{Name: m.Name, ID: m.ID, Parameters: params, Return: m.Return, Description: m.Description, Unsupported: m.Unsupported}
+	return rendered
 }
 
 func CanonicalAddress(value string) (string, error) {
@@ -118,14 +127,24 @@ func (a *API) selectContracts(contractType, hash string) ([]*acton.Contract, err
 	if contractType != "" {
 		return a.byID[contractType], nil
 	}
+	key, err := codeHashKey(hash)
+	if err != nil {
+		return nil, err
+	}
+	return a.byHash[key], nil
+}
+
+// codeHashKey rejects padding the normalizer would otherwise tolerate, so two
+// spellings of one hash cannot arrive as two selectors.
+func codeHashKey(hash string) (string, error) {
 	if len(hash) > 66 || strings.TrimSpace(hash) != hash || strings.ContainsAny(hash, " \t\r\n\v\f") {
-		return nil, Fail(422, "invalid code_hash")
+		return "", Fail(422, "invalid code_hash")
 	}
 	key, err := acton.NormalizeCodeHash(hash)
 	if err != nil {
-		return nil, Fail(422, "invalid code_hash")
+		return "", Fail(422, "invalid code_hash")
 	}
-	return a.byHash[key], nil
+	return key, nil
 }
 
 func unique(contracts []*acton.Contract) (*acton.Contract, error) {
@@ -146,107 +165,70 @@ func unique(contracts []*acton.Contract) (*acton.Contract, error) {
 	return contracts[0], nil
 }
 
-// Contracts lists bounded catalog summaries and never executes getters.
+// Contracts is the whole catalog when no selector is given, and only the named
+// entries, each with its compiler ABI, when one is.
 // @Summary List Acton contracts
+// @Description Without a selector this is the entire pinned catalog without type tables. With code_hash or catalog_id it is the matching entries, each carrying its full compiler ABI. Results are deduplicated and keep selector order; unknown selectors match nothing. Identification is bytecode-hash matching, not source verification.
 // @Tags acton
 // @Produce json
-// @Param limit query int false "Page size (1-1000)" default(100) minimum(1) maximum(1000)
+// @Param code_hash query []string false "Code hashes; at most 50 selectors in total" collectionFormat(multi)
+// @Param catalog_id query []string false "Catalog IDs; at most 50 selectors in total" collectionFormat(multi)
+// @Param limit query int false "Page size; the whole result by default" minimum(1) maximum(1000)
 // @Param offset query int false "Rows to skip" default(0) minimum(0)
-// @Success 200 {object} ContractsResponse
+// @Success 200 {object} ActonContractsResponse
 // @Failure 413 {object} models.IndexError
 // @Failure 422 {object} models.IndexError
 // @Router /api/v3/acton/contracts [get]
 // @Security APIKeyHeader
 // @Security APIKeyQuery
 func (a *API) Contracts(c *fiber.Ctx) error {
-	limit, err := strconv.Atoi(c.Query("limit", "100"))
-	if err != nil || limit < 1 || limit > MaxBatch {
-		return Fail(422, "limit must be between 1 and 1000")
+	hashes, ids := queryValues(c, "code_hash"), queryValues(c, "catalog_id")
+	selected := len(hashes)+len(ids) > 0
+	if len(hashes)+len(ids) > MaxSelectors {
+		return Fail(422, "provide at most 50 code_hash and catalog_id selectors")
+	}
+	contracts := a.contracts
+	if selected {
+		contracts = nil
+		seen := map[*acton.Contract]bool{}
+		add := func(matches []*acton.Contract) {
+			for _, contract := range OrderCandidates(matches) {
+				if !seen[contract] {
+					seen[contract] = true
+					contracts = append(contracts, contract)
+				}
+			}
+		}
+		for _, id := range ids {
+			add(a.byID[id])
+		}
+		for _, hash := range hashes {
+			key, err := codeHashKey(hash)
+			if err != nil {
+				return err
+			}
+			add(a.byHash[key])
+		}
+	}
+	limit := len(contracts)
+	if raw := c.Query("limit"); raw != "" {
+		parsed, err := strconv.Atoi(raw)
+		if err != nil || parsed < 1 || parsed > MaxBatch {
+			return Fail(422, "limit must be between 1 and 1000")
+		}
+		limit = parsed
 	}
 	offset, err := strconv.Atoi(c.Query("offset", "0"))
 	if err != nil || offset < 0 {
 		return Fail(422, "offset must be nonnegative")
 	}
-	start := min(offset, len(a.contracts))
-	end := start + min(limit, len(a.contracts)-start)
-	response := ContractsResponse{Contracts: []ContractSummary{}, Total: len(a.contracts), Limit: limit, Offset: offset, Revision: a.revision}
-	for _, contract := range a.contracts[start:end] {
-		response.Contracts = append(response.Contracts, summary(contract))
+	start := min(offset, len(contracts))
+	end := start + min(limit, len(contracts)-start)
+	response := ActonContractsResponse{Contracts: []ActonContract{}, Total: len(contracts), Limit: limit, Offset: offset}
+	for _, contract := range contracts[start:end] {
+		response.Contracts = append(response.Contracts, contractInfo(contract, selected))
 	}
-	return sendBounded(c, response)
-}
-
-// ABI preserves the caller's hash keys. Each maps to every catalog entry
-// claiming that code hash: empty for unknown, more than one when the catalog is
-// ambiguous. It never picks one silently.
-// @Summary Get Acton compiler ABIs by code hash
-// @Tags acton
-// @Produce json
-// @Param code_hash query []string true "Up to 1000 code hashes; unknown values map to an empty list" collectionFormat(multi)
-// @Success 200 {object} map[string][]ExtendedContractABI
-// @Failure 413 {object} models.IndexError
-// @Failure 422 {object} models.IndexError
-// @Router /api/v3/acton/abi [get]
-// @Security APIKeyHeader
-// @Security APIKeyQuery
-func (a *API) ABI(c *fiber.Ctx) error {
-	hashes := queryValues(c, "code_hash")
-	if len(hashes) == 0 || len(hashes) > MaxBatch {
-		return Fail(422, "provide 1 to 1000 code_hash values")
-	}
-	result := make(map[string][]ExtendedContractABI, len(hashes))
-	for _, hash := range hashes {
-		if _, exists := result[hash]; exists {
-			continue
-		}
-		contracts, err := a.selectContracts("", hash)
-		if err != nil {
-			return err
-		}
-		// 22 of the catalog's 333 code hashes are claimed by two entries, jetton
-		// wallets among them. Return every candidate for that key rather than
-		// failing the whole batch over one of its members.
-		abis := make([]ExtendedContractABI, 0, len(contracts))
-		for _, contract := range contracts {
-			abis = append(abis, extended(contract))
-		}
-		result[hash] = abis
-	}
-	c.Set("X-Acton-Catalog-Revision", a.revision)
-	return sendBounded(c, result)
-}
-
-// GetMethods enumerates metadata only. Each compiler_abi includes its type table.
-// @Summary List typed Acton getters
-// @Tags acton
-// @Produce json
-// @Param code_hash query string false "Contract code hash; exactly one selector required"
-// @Param contract_type query string false "Catalog ID"
-// @Success 200 {object} GetMethodsResponse
-// @Failure 413 {object} models.IndexError
-// @Failure 422 {object} models.IndexError
-// @Router /api/v3/acton/getMethods [get]
-// @Security APIKeyHeader
-// @Security APIKeyQuery
-func (a *API) GetMethods(c *fiber.Ctx) error {
-	for _, name := range []string{"code_hash", "contract_type"} {
-		if values := queryValues(c, name); len(values) > 1 || len(values) == 1 && values[0] == "" {
-			return Fail(422, "provide exactly one nonempty selector")
-		}
-	}
-	contracts, err := a.selectContracts(c.Query("contract_type"), c.Query("code_hash"))
-	if err != nil {
-		return err
-	}
-	response := GetMethodsResponse{Contracts: []ContractMethods{}, Revision: a.revision}
-	for _, contract := range contracts {
-		info := ContractMethods{ExtendedContractABI: extended(contract), GetMethods: []GetMethod{}}
-		for _, method := range contract.GetMethods {
-			info.GetMethods = append(info.GetMethods, methodInfo(method))
-		}
-		response.Contracts = append(response.Contracts, info)
-	}
-	return sendBounded(c, response)
+	return a.sendBounded(c, response)
 }
 
 // Decode uses native generated bindings for an explicitly selected ABI.
@@ -278,7 +260,7 @@ func (a *API) Decode(c *fiber.Ctx) error {
 	if req.Body == "" {
 		return Fail(422, "body BOC is required")
 	}
-	response := DecodeResponse{CatalogID: contract.ID, Direction: req.Direction, Revision: a.revision}
+	response := DecodeResponse{CatalogID: contract.ID, Direction: req.Direction}
 	if req.Direction == "storage" || req.Direction == "deployment_storage" {
 		binding := contract.Storage
 		if req.Direction == "deployment_storage" {
@@ -306,7 +288,7 @@ func (a *API) Decode(c *fiber.Ctx) error {
 		}
 		response.Type, response.Decoded = decoded.Type, decoded.Value
 	}
-	return c.JSON(response)
+	return a.sendBounded(c, response)
 }
 
 // RunGetMethod selects an ABI using code read at the execution seqno, never from
@@ -537,7 +519,7 @@ func (a *API) RunGetMethod(c *fiber.Ctx) error {
 			execution.StackError = err.Error()
 		}
 	}
-	response := RunResponse{Execution: *execution, Snapshot: *snapshot, CatalogID: contract.ID, Method: methodInfo(*method), Identification: identification, Success: execution.ExitCode == 0 || execution.ExitCode == 1, Revision: a.revision}
+	response := RunResponse{Execution: *execution, Snapshot: *snapshot, CatalogID: contract.ID, Method: methodInfo(*method), Identification: identification, Success: execution.ExitCode == 0 || execution.ExitCode == 1}
 	switch {
 	case !response.Success:
 		response.DecodeError = fmt.Sprintf("VM exited with code %d", execution.ExitCode)
@@ -554,7 +536,7 @@ func (a *API) RunGetMethod(c *fiber.Ctx) error {
 			response.DecodeError = err.Error()
 		}
 	}
-	return c.JSON(response)
+	return a.sendBounded(c, response)
 }
 
 func decodeBinding(binding *acton.Binding, boc string) (any, error) {
@@ -572,14 +554,25 @@ func decodeBinding(binding *acton.Binding, boc string) (any, error) {
 }
 
 // sendBounded serializes once and rejects the exact encoded size, so a caller
-// that batches too much gets 413 instead of a multi-megabyte body.
-func sendBounded(c *fiber.Ctx, response any) error {
+// that batches too much gets 413 instead of a multi-megabyte body. A GET response
+// here is a pure function of the pinned catalog and the request, so its digest is
+// a strong validator and a client that already holds the body revalidates for the
+// cost of a header.
+func (a *API) sendBounded(c *fiber.Ctx, response any) error {
 	body, err := json.Marshal(response)
 	if err != nil {
 		return Fail(502, "response cannot be serialized")
 	}
 	if len(body) > MaxMetadataBytes {
 		return Fail(413, "response exceeds 8 MiB; reduce the batch or page size")
+	}
+	c.Set("X-Acton-Catalog-Revision", a.revision)
+	if c.Method() == fiber.MethodGet {
+		tag := fmt.Sprintf("%q", fmt.Sprintf("%x", sha256.Sum256(body)))
+		c.Set(fiber.HeaderETag, tag)
+		if strings.Contains(c.Get(fiber.HeaderIfNoneMatch), tag) {
+			return c.SendStatus(fiber.StatusNotModified)
+		}
 	}
 	c.Type("json")
 	return c.Send(body)

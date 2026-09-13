@@ -2926,8 +2926,6 @@ func main() {
 		},
 	})
 	app.Get("/api/v3/acton/contracts", actonAPI.Contracts)
-	app.Get("/api/v3/acton/abi", actonAPI.ABI)
-	app.Get("/api/v3/acton/getMethods", actonAPI.GetMethods)
 	app.Post("/api/v3/acton/decode", actonAPI.Decode)
 	app.Post("/api/v3/acton/runGetMethod", actonAPI.RunGetMethod)
 

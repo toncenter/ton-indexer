@@ -12,9 +12,7 @@ Request and response schemas, limits and error codes are in the Swagger UI at
 
 | Method | Path | Purpose |
 | --- | --- | --- |
-| GET | `/contracts` | Paginated catalog metadata. |
-| GET | `/abi` | Compiler ABIs per `code_hash`; a key maps to every catalog candidate. |
-| GET | `/getMethods` | Getter metadata by code hash or catalog ID. |
+| GET | `/contracts` | The whole catalog, or selected entries with their compiler ABIs. |
 | POST | `/decode` | Decode a supplied storage or message BOC. |
 | POST | `/runGetMethod` | Typed getter execution pinned to a seqno. |
 
@@ -81,14 +79,17 @@ replacement for the v2 provider:
   payload directly, dictionaries are typed key/value entry arrays, and unions are
   `{"$":"Type","value":...}`. Convert via the ABI type graph rather than
   flattening. Integers travel as decimal strings, including beyond 2^53.
-- `/abi` maps each requested hash to a list: empty when the hash is unknown,
-  more than one when the catalog is ambiguous. One ambiguous hash never fails its
-  neighbours in the batch. Do not fall back to the first entry — identical
-  bytecode does not make two catalog entries interchangeable; they can declare
-  different getters and different meanings for the same storage bits. 413 still
-  means the batch was too large, not that anything was unknown.
+- `/contracts` without a selector is the entire catalog: identity plus getters
+  with types rendered as names, about 400 KB for 288 entries and no type tables.
+  No getter in the catalog takes a structural parameter, so this is enough to
+  build a getter form; fetch it once at start-up and resolve locally. Add
+  `code_hash` or `catalog_id` only to obtain a contract's full `abi`, which is
+  what decoding a message or storage cell by hand needs. An ambiguous hash
+  returns every candidate, most specific first.
 
-**Caching.** `X-Acton-Catalog-Revision` identifies the input catalog, not the
-codec implementation. Namespace decoded-result caches by that revision plus the
+**Caching.** `/contracts` is a pure function of the pinned catalog and the
+request, so its `ETag` is a strong validator: re-fetch with `If-None-Match` and an
+unchanged catalog answers 304. `X-Acton-Catalog-Revision` identifies the input
+catalog, not the codec implementation. Namespace decoded-result caches by that revision plus the
 selected ABI, type, direction and state identity, and keep user ABI overrides
 separate from cached catalog metadata.
