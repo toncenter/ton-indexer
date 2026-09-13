@@ -71,14 +71,14 @@ type Snapshot struct {
 	LastTransactionLT   *string         `json:"last_transaction_lt"`
 	Seqno               *int32          `json:"seqno,omitempty"`
 	BlockID             json.RawMessage `json:"block_id,omitempty" swaggertype:"object"`
-}
+} // @name ActonSnapshot
 
 type DecodeRequest struct {
-	ContractType string `json:"contract_type"`
-	CodeHash     string `json:"code_hash"`
-	Direction    string `json:"direction"`
-	Body         string `json:"body"`
-}
+	CatalogID string `json:"catalog_id"`
+	CodeHash  string `json:"code_hash"`
+	Direction string `json:"direction"`
+	Body      string `json:"body"`
+} // @name ActonDecodeRequest
 
 type DecodeResponse struct {
 	CatalogID string         `json:"catalog_id"`
@@ -104,7 +104,7 @@ type Execution struct {
 	GasUsed    string             `json:"gas_used"`
 	ExitCode   int32              `json:"exit_code"`
 	StackError string             `json:"stack_error,omitempty"`
-}
+} // @name ActonExecution
 
 type RunResponse struct {
 	Execution
