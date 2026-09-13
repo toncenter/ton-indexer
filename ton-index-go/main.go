@@ -303,7 +303,7 @@ func GetTransactions(c *fiber.Ctx) error {
 		return err
 	}
 
-	txs_resp := models.TransactionsResponse{Transactions: txs, AddressBook: book}
+	txs_resp := models.TransactionsResponse{Transactions: txs, AddressBook: book, CodeBook: crud.TransactionCodeBook(txs)}
 	return c.JSON(txs_resp)
 }
 
@@ -355,7 +355,7 @@ func GetPendingTransactions(c *fiber.Ctx) error {
 		return err
 	}
 
-	txs_resp := models.TransactionsResponse{Transactions: txs, AddressBook: book}
+	txs_resp := models.TransactionsResponse{Transactions: txs, AddressBook: book, CodeBook: crud.TransactionCodeBook(txs)}
 	return c.JSON(txs_resp)
 }
 
@@ -387,7 +387,7 @@ func GetAdjacentTransactions(c *fiber.Ctx) error {
 	// 	return models.IndexError{Code: 404, Message: "transactions not found"}
 	// }
 
-	txs_resp := models.TransactionsResponse{Transactions: txs, AddressBook: book}
+	txs_resp := models.TransactionsResponse{Transactions: txs, AddressBook: book, CodeBook: crud.TransactionCodeBook(txs)}
 	return c.JSON(txs_resp)
 }
 
@@ -428,7 +428,7 @@ func GetTransactionsByMasterchainBlock(c *fiber.Ctx) error {
 	// 	return models.IndexError{Code: 404, Message: "transactions not found"}
 	// }
 
-	txs_resp := models.TransactionsResponse{Transactions: txs, AddressBook: book}
+	txs_resp := models.TransactionsResponse{Transactions: txs, AddressBook: book, CodeBook: crud.TransactionCodeBook(txs)}
 	return c.JSON(txs_resp)
 }
 
@@ -475,7 +475,7 @@ func GetTransactionsByMessage(c *fiber.Ctx) error {
 	// 	return models.IndexError{Code: 404, Message: "transactions not found"}
 	// }
 
-	txs_resp := models.TransactionsResponse{Transactions: txs, AddressBook: book}
+	txs_resp := models.TransactionsResponse{Transactions: txs, AddressBook: book, CodeBook: crud.TransactionCodeBook(txs)}
 	return c.JSON(txs_resp)
 }
 
@@ -1256,10 +1256,10 @@ func GetTraces(c *fiber.Ctx) error {
 	crud.SubstituteImgproxyBaseUrl(&metadata, settings.ImgProxyBaseUrl)
 
 	if c.Path() == "/api/v3/events" {
-		txs_resp := models.DeprecatedEventsResponse{Events: res, AddressBook: book, Metadata: metadata}
+		txs_resp := models.DeprecatedEventsResponse{Events: res, AddressBook: book, Metadata: metadata, CodeBook: crud.TraceCodeBook(res)}
 		return c.JSON(txs_resp)
 	}
-	txs_resp := models.TracesResponse{Traces: res, AddressBook: book, Metadata: metadata}
+	txs_resp := models.TracesResponse{Traces: res, AddressBook: book, Metadata: metadata, CodeBook: crud.TraceCodeBook(res)}
 	return c.JSON(txs_resp)
 }
 
@@ -1318,7 +1318,7 @@ func GetPendingTraces(c *fiber.Ctx) error {
 		return err
 	}
 
-	txs_resp := models.TracesResponse{Traces: res, AddressBook: book, Metadata: metadata}
+	txs_resp := models.TracesResponse{Traces: res, AddressBook: book, Metadata: metadata, CodeBook: crud.TraceCodeBook(res)}
 	return c.JSON(txs_resp)
 }
 

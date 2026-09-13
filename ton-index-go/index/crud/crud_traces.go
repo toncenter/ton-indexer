@@ -415,7 +415,6 @@ func queryTracesImpl(query string, includeActions bool, supportedActionTypes []s
 		addr_list = append(addr_list, k)
 	}
 
-	EnrichTraceContracts(traces)
 	return traces, addr_list, nil
 }
 
@@ -1007,7 +1006,6 @@ func (db *DbClient) QueryTraces(
 		}
 	}
 
-	EnrichTraceContracts(traces)
 	return traces, book, metadata, nil
 
 }

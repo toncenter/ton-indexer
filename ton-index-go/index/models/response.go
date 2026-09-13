@@ -14,6 +14,7 @@ type BlocksResponse struct {
 type TransactionsResponse struct {
 	Transactions []Transaction `json:"transactions"`
 	AddressBook  AddressBook   `json:"address_book"`
+	CodeBook     CodeBook      `json:"code_book,omitempty"`
 } // @name TransactionsResponse
 
 type MessagesResponse struct {
@@ -86,12 +87,14 @@ type TracesResponse struct {
 	Traces      []Trace     `json:"traces"`
 	AddressBook AddressBook `json:"address_book"`
 	Metadata    Metadata    `json:"metadata"`
+	CodeBook    CodeBook    `json:"code_book,omitempty"`
 } // @name TracesResponse
 
 type DeprecatedEventsResponse struct {
 	Events      []Trace     `json:"events"`
 	AddressBook AddressBook `json:"address_book"`
 	Metadata    Metadata    `json:"metadata"`
+	CodeBook    CodeBook    `json:"code_book,omitempty"`
 } // @name DeprecatedEventsResponse
 
 type ActionsResponse struct {

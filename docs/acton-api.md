@@ -41,18 +41,20 @@ first-occurrence input order after canonical deduplication — key UI state by t
 returned `address`, not by the friendly-address spelling the client sent. Request
 `include_storage=true` only when the storage panel opens.
 
-**Trace hovers.** Confirmed traces carry `trace.contract_info`. Prefer the
-per-state link over the account-level list, so a code upgrade inside the trace
-resolves to the implementation that was actually running:
+**Trace hovers.** Trace and transaction responses carry a top-level `code_book`,
+keyed by the code hash exactly as the account states in the same response spell
+it. Index it per state rather than per account, so a code upgrade inside the
+trace resolves to the implementation that was actually running:
 
 ```ts
-const key = transaction.account_state_before?.contract_info_key
-const info = key ? trace.contract_info?.by_code_hash[key] : undefined
+const hash = transaction.account_state_before?.code_hash
+const code = hash ? response.code_book?.[hash] : undefined
 ```
 
-`contract_info.accounts[address]` lists every code hash encountered in that
-trace, sorted — not a timeline and not the account's current type. Do not fill a
-missing historical entry from `/accounts` and present it as historical fact.
+`code_book` describes code, never an account: a hash appears because it was seen
+somewhere in this response, which says nothing about which account currently runs
+it. `contracts` is ordered most specific first. A hash absent from the book is one
+neither the catalog nor the interface table recognizes.
 
 **Adapting an existing getter client.** `/runGetMethod` here is not a drop-in
 replacement for the v2 provider:
