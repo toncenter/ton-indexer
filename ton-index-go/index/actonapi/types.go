@@ -15,36 +15,50 @@ const MaxBatch = 1000
 const MaxBodyBytes = 1 << 20
 const MaxMetadataBytes = 8 << 20
 
+// A selected contract carries its compiler ABI, which is 12 KiB for a median
+// catalog entry and 74 KiB for the largest, so the selector count is bounded far
+// below the batch limits that apply to hashes and addresses elsewhere.
+const MaxSelectors = 50
+
 func Fail(code int, message string) error { return models.IndexError{Code: code, Message: message} }
 
-type Link struct {
-	Kind  string `json:"kind"`
-	Title string `json:"title"`
-	URL   string `json:"url"`
-}
+// ActonParameter renders its type as a name rather than as an index into a type
+// table. No getter in the catalog takes a structural parameter, and a caller that
+// needs the type graph reads the contract's abi, whose own get_methods carry the
+// indexes.
+type ActonParameter struct {
+	Name string `json:"name"`
+	Type string `json:"type"`
+} // @name ActonParameter
 
-type ContractSummary struct {
-	CatalogID       string   `json:"catalog_id"`
-	DisplayName     string   `json:"display_name"`
-	CodeHashes      []string `json:"code_hashes"`
-	KnownAddresses  []string `json:"known_addresses"`
-	Links           []Link   `json:"links"`
-	LinksProvenance string   `json:"links_provenance"`
-	SourceVerified  bool     `json:"source_verified"`
-}
+type ActonGetMethod struct {
+	Name        string           `json:"name"`
+	MethodID    int64            `json:"method_id"`
+	Parameters  []ActonParameter `json:"parameters"`
+	Return      string           `json:"return"`
+	Description string           `json:"description,omitempty"`
+	Unsupported string           `json:"unsupported,omitempty"`
+} // @name ActonGetMethod
 
-type ExtendedContractABI struct {
-	ContractSummary
-	CompilerABI json.RawMessage `json:"compiler_abi" swaggertype:"object"`
-}
+// ActonContract carries abi only when the request named a selector: the whole
+// catalog is 450 KiB of identity and getters against 4.5 MiB of type tables.
+// Links are catalog assertions, not evidence of source verification.
+type ActonContract struct {
+	CatalogID      string                `json:"catalog_id"`
+	DisplayName    string                `json:"display_name"`
+	CodeHashes     []string              `json:"code_hashes"`
+	KnownAddresses []string              `json:"known_addresses"`
+	Links          []models.ContractLink `json:"links"`
+	GetMethods     []ActonGetMethod      `json:"get_methods"`
+	ABI            json.RawMessage       `json:"abi,omitempty" swaggertype:"object"`
+} // @name ActonContract
 
-type ContractsResponse struct {
-	Contracts []ContractSummary `json:"contracts"`
-	Revision  string            `json:"revision"`
-	Total     int               `json:"total"`
-	Limit     int               `json:"limit"`
-	Offset    int               `json:"offset"`
-}
+type ActonContractsResponse struct {
+	Contracts []ActonContract `json:"contracts"`
+	Total     int             `json:"total"`
+	Limit     int             `json:"limit"`
+	Offset    int             `json:"offset"`
+} // @name ActonContractsResponse
 
 type Snapshot struct {
 	Address             string          `json:"address"`
@@ -60,31 +74,6 @@ type Snapshot struct {
 	Pinning             string          `json:"pinning"`
 }
 
-type Parameter struct {
-	Name    string          `json:"name"`
-	Type    acton.TypeInfo  `json:"type"`
-	Default json.RawMessage `json:"default,omitempty" swaggertype:"object"`
-}
-
-type GetMethod struct {
-	Name        string         `json:"name"`
-	ID          int64          `json:"id"`
-	Parameters  []Parameter    `json:"parameters"`
-	Return      acton.TypeInfo `json:"return"`
-	Description string         `json:"description,omitempty"`
-	Unsupported string         `json:"unsupported,omitempty"`
-}
-
-type ContractMethods struct {
-	ExtendedContractABI
-	GetMethods []GetMethod `json:"get_methods"`
-}
-
-type GetMethodsResponse struct {
-	Contracts []ContractMethods `json:"contracts"`
-	Revision  string            `json:"revision"`
-}
-
 type DecodeRequest struct {
 	ContractType string `json:"contract_type"`
 	CodeHash     string `json:"code_hash"`
@@ -97,8 +86,7 @@ type DecodeResponse struct {
 	Direction string         `json:"direction"`
 	Type      acton.TypeInfo `json:"type"`
 	Decoded   any            `json:"decoded"`
-	Revision  string         `json:"revision"`
-}
+} // @name ActonDecodeResponse
 
 type RunRequest struct {
 	Address      string          `json:"address"`
@@ -122,15 +110,14 @@ type Execution struct {
 
 type RunResponse struct {
 	Execution
-	Snapshot       Snapshot  `json:"snapshot"`
-	CatalogID      string    `json:"catalog_id"`
-	Method         GetMethod `json:"method"`
-	Identification string    `json:"identification"`
-	Success        bool      `json:"success"`
-	Decoded        any       `json:"decoded"`
-	DecodeError    string    `json:"decode_error,omitempty"`
-	Revision       string    `json:"revision"`
-}
+	Snapshot       Snapshot       `json:"snapshot"`
+	CatalogID      string         `json:"catalog_id"`
+	Method         ActonGetMethod `json:"method"`
+	Identification string         `json:"identification"`
+	Success        bool           `json:"success"`
+	Decoded        any            `json:"decoded"`
+	DecodeError    string         `json:"decode_error,omitempty"`
+} // @name ActonRunResponse
 
 type GetterExecutor interface {
 	Snapshot(context.Context, string, *int32) (*Snapshot, error)

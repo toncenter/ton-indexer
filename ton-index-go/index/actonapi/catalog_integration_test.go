@@ -100,45 +100,39 @@ func TestRealCatalogPluginLists(t *testing.T) {
 	}
 }
 
-func TestMetadataCapabilitiesAndAmplificationBudget(t *testing.T) {
+// Many spellings of one hash are one selector's worth of work: the result is
+// deduplicated by contract, so the ABI is serialized once rather than per spelling.
+func TestCatalogSelectorsResistAmplification(t *testing.T) {
 	contract := testContract()
 	contract.CodeHashes = []string{strings.Repeat("ab", 32)}
 	contract.ABI = json.RawMessage(`{"description":"` + strings.Repeat("a", 77000) + `"}`)
 	app := testApp(New([]*acton.Contract{contract}, "revision", Dependencies{}))
-	for _, count := range []int{10, 1000} {
-		values := url.Values{}
-		for i := 0; i < count; i++ {
-			variant := []byte(contract.CodeHashes[0])
-			for bit := 0; bit < 10; bit++ {
-				if i&(1<<bit) != 0 {
-					variant[bit] -= 'a' - 'A'
-				}
+	values := url.Values{}
+	for i := 0; i < MaxSelectors; i++ {
+		variant := []byte(contract.CodeHashes[0])
+		for bit := 0; bit < 10; bit++ {
+			if i&(1<<bit) != 0 {
+				variant[bit] -= 'a' - 'A'
 			}
-			values.Add("code_hash", string(variant))
 		}
-		status := 200
-		if count == 1000 {
-			status = 413
-		}
-		raw := call(t, app, "GET", "/abi?"+values.Encode(), "", status, nil)
-		if len(raw) > MaxMetadataBytes {
-			t.Fatalf("metadata cap exceeded: %d bytes", len(raw))
-		}
-		if count == 10 {
-			var entries map[string]json.RawMessage
-			if err := json.Unmarshal(raw, &entries); err != nil || len(entries) != 10 {
-				t.Fatal("input spellings were not preserved")
-			}
-		} else if len(raw) > 1024 {
-			t.Fatal("amplified body allocated and returned instead of an error")
-		}
+		values.Add("code_hash", string(variant))
 	}
-	call(t, app, "GET", "/abi?code_hash="+url.QueryEscape(contract.CodeHashes[0]+" "), "", 422, nil)
-	var methods GetMethodsResponse
-	call(t, app, "GET", "/getMethods?contract_type=counter", "", 200, &methods)
-	// A single oversized catalog ABI must fail before JSON marshaling as well.
+	var page ActonContractsResponse
+	raw := call(t, app, "GET", "/contracts?"+values.Encode(), "", 200, &page)
+	if page.Total != 1 || len(raw) > 2*len(contract.ABI) {
+		t.Fatalf("spellings multiplied the response: total=%d bytes=%d", page.Total, len(raw))
+	}
+	values.Add("code_hash", contract.CodeHashes[0])
+	if raw = call(t, app, "GET", "/contracts?"+values.Encode(), "", 422, nil); len(raw) > 1024 {
+		t.Fatalf("oversized selector list was rendered before being refused: %d bytes", len(raw))
+	}
+	call(t, app, "GET", "/contracts?code_hash="+url.QueryEscape(contract.CodeHashes[0]+" "), "", 422, nil)
+
+	// A single oversized catalog ABI must fail before it reaches the wire.
 	contract.ABI = json.RawMessage(`{"description":"` + strings.Repeat("a", MaxMetadataBytes) + `"}`)
-	call(t, app, "GET", "/getMethods?contract_type=counter", "", 413, nil)
+	if raw = call(t, app, "GET", "/contracts?catalog_id=counter", "", 413, nil); len(raw) > 1024 {
+		t.Fatalf("amplified body returned instead of an error: %d bytes", len(raw))
+	}
 }
 
 func TestCanonicalAddressFormsAndTags(t *testing.T) {
@@ -188,4 +182,25 @@ func TestLibraryImplementationCatalogSelection(t *testing.T) {
 	other.CodeHashes = []string{actual}
 	api = New([]*acton.Contract{contract, other}, "revision", Dependencies{Executor: func(*fiber.Ctx) GetterExecutor { return executor }})
 	call(t, testApp(api), "POST", "/runGetMethod", `{"address":"`+testAddress+`","method":"get_counter"}`, 409, nil)
+}
+
+// The index is served whole, without paging, so its size is a design assumption
+// rather than a runtime accident: the catalog is compiled in, which makes this a
+// quantity known at build time. A failure here is not a reason to raise the bound
+// but to introduce paging deliberately, which for a client that never paged is a
+// silent truncation of the catalog.
+func TestCatalogIndexFitsOneResponse(t *testing.T) {
+	const bound = 2 << 20
+	contracts := make([]ActonContract, 0, len(catalog.Contracts))
+	for _, contract := range catalog.Contracts {
+		contracts = append(contracts, contractInfo(contract, false))
+	}
+	body, err := json.Marshal(ActonContractsResponse{Contracts: contracts, Total: len(contracts), Limit: len(contracts)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("index is %d bytes for %d contracts", len(body), len(contracts))
+	if len(body) > bound {
+		t.Fatalf("index is %d bytes, over the %d-byte unpaged bound", len(body), bound)
+	}
 }
