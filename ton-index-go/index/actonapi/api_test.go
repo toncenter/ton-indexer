@@ -175,14 +175,14 @@ func TestNativeDecode(t *testing.T) {
 	app := testApp(New([]*acton.Contract{contract}, "revision", Dependencies{}))
 	boc := base64.StdEncoding.EncodeToString(cell.BeginCell().MustStoreUInt(17, 8).EndCell().ToBOC())
 	for _, direction := range []string{"storage", "incoming_messages"} {
-		body, _ := json.Marshal(DecodeRequest{ContractType: contract.ID, Direction: direction, Body: boc})
+		body, _ := json.Marshal(DecodeRequest{CatalogID: contract.ID, Direction: direction, Body: boc})
 		var response DecodeResponse
 		call(t, app, "POST", "/decode", string(body), 200, &response)
 		if response.Type.Name != "Message" || response.Decoded != json.Number("17") {
 			t.Fatalf("bad decoded message: %+v", response)
 		}
 	}
-	for _, body := range []string{`{}`, `{"contract_type":"counter","direction":"storage","body":"bad"}`, `{"contract_type":"counter","direction":"bad","body":"` + boc + `"}`, `{"contract_type":"counter","code_hash":"` + testHash + `"}`} {
+	for _, body := range []string{`{}`, `{"catalog_id":"counter","direction":"storage","body":"bad"}`, `{"catalog_id":"counter","direction":"bad","body":"` + boc + `"}`, `{"catalog_id":"counter","code_hash":"` + testHash + `"}`} {
 		call(t, app, "POST", "/decode", body, 422, nil)
 	}
 	call(t, app, "POST", "/decode", strings.Repeat(" ", MaxBodyBytes+1), 413, nil)
@@ -278,7 +278,7 @@ func TestRunValidationAndCodeMismatch(t *testing.T) {
 	// The request names a getter and nothing about its ABI; anything else is refused.
 	for _, fields := range []string{
 		`"args":null`, `"args":[]`, `"seqno":-1`, `"seqno":0`, `"transport":"legacy"`, `"unknown":true`,
-		`"stack":[]`, `"contract_type":"counter"`, `"code_hash":"` + testHash + `"`,
+		`"stack":[]`, `"catalog_id":"counter"`, `"code_hash":"` + testHash + `"`,
 	} {
 		call(t, app, "POST", "/runGetMethod", `{"address":"`+testAddress+`","method":"get_counter",`+fields+`}`, 422, nil)
 	}

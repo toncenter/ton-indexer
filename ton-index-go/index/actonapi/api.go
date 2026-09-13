@@ -123,7 +123,7 @@ func queryValues(c *fiber.Ctx, name string) []string {
 
 func (a *API) selectContracts(contractType, hash string) ([]*acton.Contract, error) {
 	if (contractType == "") == (hash == "") {
-		return nil, Fail(422, "provide exactly one of contract_type or code_hash")
+		return nil, Fail(422, "provide exactly one of catalog_id or code_hash")
 	}
 	if contractType != "" {
 		return a.byID[contractType], nil
@@ -156,7 +156,7 @@ func unique(contracts []*acton.Contract) (*acton.Contract, error) {
 		// Identical bytecode does not make two catalog entries interchangeable:
 		// they can declare different getters and different storage meanings for
 		// the same bits. Report the candidates so the caller can pick one with
-		// contract_type instead of guessing.
+		// catalog_id instead of guessing.
 		ids := make([]string, 0, len(contracts))
 		for _, c := range contracts {
 			ids = append(ids, c.ID)
@@ -234,7 +234,7 @@ func (a *API) Contracts(c *fiber.Ctx) error {
 
 // Decode uses native generated bindings for an explicitly selected ABI.
 // @Summary Decode Acton storage or message body
-// @Description Select exactly one catalog type or code hash. Direction is storage, deployment_storage, incoming_messages, incoming_external, outgoing_messages, or emitted_events.
+// @Description Select exactly one catalog_id or code_hash. Direction is storage, deployment_storage, incoming_messages, incoming_external, outgoing_messages, or emitted_events.
 // @Tags acton
 // @Accept json
 // @Produce json
@@ -250,7 +250,7 @@ func (a *API) Decode(c *fiber.Ctx) error {
 	if err := decodeJSON(c.Body(), &req); err != nil {
 		return err
 	}
-	contracts, err := a.selectContracts(req.ContractType, req.CodeHash)
+	contracts, err := a.selectContracts(req.CatalogID, req.CodeHash)
 	if err != nil {
 		return err
 	}
