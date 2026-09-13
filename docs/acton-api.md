@@ -14,8 +14,7 @@ Request and response schemas, limits and error codes are in the Swagger UI at
 | --- | --- | --- |
 | GET | `/contracts` | Paginated catalog metadata. |
 | GET | `/abi` | Compiler ABIs per `code_hash`; a key maps to every catalog candidate. |
-| GET, POST | `/accounts` | Batch identification, optionally decoding storage. |
-| GET | `/getMethods` | Getter metadata by address, code hash, or catalog ID. |
+| GET | `/getMethods` | Getter metadata by code hash or catalog ID. |
 | POST | `/decode` | Decode a supplied storage or message BOC. |
 | POST | `/runGetMethod` | Typed getter execution pinned to a seqno. |
 
@@ -35,11 +34,13 @@ Provenance, licenses and how to re-pin the snapshot:
 
 ## Notes for explorer clients
 
-**Batch account preloading.** Collect the visible addresses and issue one
-`POST /accounts` instead of one request per hover. The response preserves
-first-occurrence input order after canonical deduplication — key UI state by the
-returned `address`, not by the friendly-address spelling the client sent. Request
-`include_storage=true` only when the storage panel opens.
+**Batch account preloading.** Account identification is not a separate endpoint.
+`GET /api/v3/accountStates` returns `code_book` alongside the accounts it already
+served, and `include_storage=true` additionally decodes each data cell with the
+entry that code book names first, reporting `storage` or `storage_error` per
+account. Ask for it only when the storage panel opens: the batch shares one decode
+budget, so one that demands too much work is refused with 413 rather than served
+slowly.
 
 **Trace hovers.** Trace and transaction responses carry a top-level `code_book`,
 keyed by the code hash exactly as the account states in the same response spell

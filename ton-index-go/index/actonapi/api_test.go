@@ -5,7 +5,6 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 	"net/http/httptest"
 	"net/url"
@@ -15,7 +14,6 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/ton-blockchain/acton/packages/abi-go"
 	"github.com/toncenter/ton-indexer/ton-index-go/index/models"
-	"github.com/xssnick/tonutils-go/address"
 	"github.com/xssnick/tonutils-go/tvm/cell"
 )
 
@@ -56,8 +54,6 @@ func testApp(api *API) *fiber.App {
 	}})
 	app.Get("/contracts", api.Contracts)
 	app.Get("/abi", api.ABI)
-	app.Get("/accounts", api.Accounts)
-	app.Post("/accounts", api.PostAccounts)
 	app.Get("/getMethods", api.GetMethods)
 	app.Post("/decode", api.Decode)
 	app.Post("/runGetMethod", api.RunGetMethod)
@@ -145,80 +141,16 @@ func bytesOf(value byte, count int) []byte {
 	return result
 }
 
-func TestAccountsBatchSnapshotAndStorage(t *testing.T) {
-	contract := testContract()
-	boc := base64.StdEncoding.EncodeToString(cell.BeginCell().MustStoreUInt(7, 8).EndCell().ToBOC())
-	decodeCalls, queries := 0, 0
-	contract.Storage = &acton.Binding{Type: acton.TypeInfo{Index: 1, Name: "Storage"}, DecodeWith: func(_ *acton.Context, c *cell.Cell) (any, error) {
-		decodeCalls++
-		v, err := c.BeginParse().LoadUInt(8)
-		return fmt.Sprint(v), err
-	}}
-	unknown := "0:" + strings.Repeat("CD", 32)
-	missing := "0:" + strings.Repeat("EF", 32)
-	failed := "0:" + strings.Repeat("01", 32)
-	stateHash, dataHash, txHash, lt := "state", "data", "transaction", "9007199254740993"
-	storageRequested := false
-	app := testApp(New([]*acton.Contract{contract}, "revision", Dependencies{QueryAccounts: func(c *fiber.Ctx, addresses []string, storage bool) ([]AccountState, error) {
-		queries++
-		if len(addresses) != 4 || addresses[0] != testAddress {
-			t.Fatalf("not canonically deduplicated: %v", addresses)
-		}
-		storageRequested = storage
-		row := AccountState{Address: testAddress, Status: "active", CodeHash: &testHash, StateHash: &stateHash, DataHash: &dataHash, LastTransactionHash: &txHash, LastTransactionLT: &lt, Interfaces: []string{"counter_interface"}}
-		if storage {
-			row.DataBOC = &boc
-		}
-		return []AccountState{{Address: unknown, Status: "uninit"}, row, {Address: failed, Error: "row failed"}}, nil
-	}}))
-	friendly := address.MustParseRawAddr(testAddress).String()
-	values := url.Values{"address": {testAddress, strings.ToLower(testAddress), friendly, unknown, missing, failed}}
-	var response AccountsResponse
-	call(t, app, "GET", "/accounts?"+values.Encode(), "", 200, &response)
-	if queries != 1 || storageRequested || decodeCalls != 0 {
-		t.Fatal("default listing fetched storage or decoded it")
-	}
-	if len(response.Accounts) != 4 {
-		t.Fatalf("wrong batch size: %+v", response)
-	}
-	account := response.Accounts[0]
-	if account.Status != "identified" || account.AccountStateHash == nil || *account.LastTransactionLT != lt || len(account.Types) != 2 || account.Storage != nil {
-		t.Fatalf("bad snapshot: %+v", account)
-	}
-	if account.Types[0].Provenance != "exact_code_hash" || account.Types[1].Provenance != "public_interface" {
-		t.Fatal("bad identification provenance")
-	}
-	if response.Accounts[1].Status != "unknown" || response.Accounts[2].Status != "not_found" || response.Accounts[3].Status != "error" {
-		t.Fatalf("bad per-address statuses: %+v", response)
-	}
-	body, _ := json.Marshal(AccountsRequest{Addresses: []string{friendly, unknown, missing, failed}, IncludeStorage: true})
-	call(t, app, "POST", "/accounts", string(body), 200, &response)
-	if queries != 2 || !storageRequested || decodeCalls != 1 || response.Accounts[0].Storage[contract.ID].Decoded != "7" {
-		t.Fatalf("storage not decoded once: %+v", response)
-	}
-}
-
-func TestAccountsValidationAndNoExecution(t *testing.T) {
-	queries := 0
-	app := testApp(New(nil, "revision", Dependencies{QueryAccounts: func(*fiber.Ctx, []string, bool) ([]AccountState, error) { queries++; return nil, nil }, Executor: func(*fiber.Ctx) GetterExecutor { t.Fatal("listing executed a getter"); return nil }}))
-	call(t, app, "GET", "/accounts", "", 422, nil)
-	call(t, app, "GET", "/accounts?address=invalid", "", 422, nil)
-	call(t, app, "GET", "/accounts?address="+testAddress+"&include_storage=nope", "", 422, nil)
-	tooMany := make([]string, MaxBatch+1)
-	for i := range tooMany {
-		tooMany[i] = testAddress
-	}
-	body, _ := json.Marshal(AccountsRequest{Addresses: tooMany})
-	call(t, app, "POST", "/accounts", string(body), 422, nil)
-	if queries != 0 {
-		t.Fatal("invalid requests queried DB")
-	}
-	for _, selector := range []string{"", "address=" + testAddress + "&contract_type=counter", "contract_type=counter&contract_type=other", "code_hash="} {
+func TestGetMethodsSelectors(t *testing.T) {
+	app := testApp(New([]*acton.Contract{testContract()}, "revision", Dependencies{
+		Executor: func(*fiber.Ctx) GetterExecutor { t.Fatal("enumeration executed a getter"); return nil }}))
+	for _, selector := range []string{"", "code_hash=" + testHash + "&contract_type=counter", "contract_type=counter&contract_type=other", "code_hash="} {
 		call(t, app, "GET", "/getMethods?"+selector, "", 422, nil)
 	}
-	call(t, app, "GET", "/getMethods?address="+testAddress, "", 200, nil)
-	if queries != 1 {
-		t.Fatal("getter enumeration must make one state query")
+	var response GetMethodsResponse
+	call(t, app, "GET", "/getMethods?contract_type=counter", "", 200, &response)
+	if len(response.Contracts) != 1 || len(response.Contracts[0].GetMethods) != 1 {
+		t.Fatalf("catalog getters not enumerated: %+v", response)
 	}
 }
 
@@ -278,10 +210,7 @@ func runFixture(t *testing.T) (*fiber.App, *fakeExecutor, *acton.Contract) {
 	contract := testContract()
 	seqno := int32(123)
 	executor := &fakeExecutor{t: t, snapshot: Snapshot{Address: testAddress, CodeHash: &testHash, Seqno: &seqno, Pinning: "upstream_seqno"}, execution: Execution{Stack: []acton.StackValue{{Type: "num", Value: "9007199254740993"}}, RawStack: json.RawMessage(`[{"@type":"tvm.stackEntryNumber","number":{"@type":"tvm.numberDecimal","number":"9007199254740993"}}]`), GasUsed: "9007199254740993", ExitCode: 0}}
-	app := testApp(New([]*acton.Contract{contract}, "revision", Dependencies{Executor: func(*fiber.Ctx) GetterExecutor { return executor }, QueryAccounts: func(*fiber.Ctx, []string, bool) ([]AccountState, error) {
-		t.Fatal("execution used latest indexed state")
-		return nil, nil
-	}}))
+	app := testApp(New([]*acton.Contract{contract}, "revision", Dependencies{Executor: func(*fiber.Ctx) GetterExecutor { return executor }}))
 	return app, executor, contract
 }
 
@@ -380,19 +309,4 @@ func TestRunCatalogConflictsAndSnapshotMismatch(t *testing.T) {
 			t.Fatal("invalid explicit hash reached upstream")
 		}
 	})
-}
-
-func TestAccountStorageFailureKeepsIdentification(t *testing.T) {
-	contract := testContract()
-	contract.Storage = &acton.Binding{Type: acton.TypeInfo{Index: 1, Name: "Storage"}, Unsupported: "unsupported binding"}
-	boc := base64.StdEncoding.EncodeToString(cell.BeginCell().EndCell().ToBOC())
-	app := testApp(New([]*acton.Contract{contract}, "revision", Dependencies{QueryAccounts: func(*fiber.Ctx, []string, bool) ([]AccountState, error) {
-		return []AccountState{{Address: testAddress, CodeHash: &testHash, DataBOC: &boc}}, nil
-	}}))
-	var response AccountsResponse
-	call(t, app, "GET", "/accounts?address="+testAddress+"&include_storage=true", "", 200, &response)
-	account := response.Accounts[0]
-	if account.Status != "identified" || len(account.Types) != 1 || account.Storage[contract.ID].Error == "" {
-		t.Fatalf("storage failure erased identification: %+v", account)
-	}
 }
