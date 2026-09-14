@@ -24,7 +24,8 @@ generate them. For a direct `go build` or `go test`, run this first from
 `ton-index-go`:
 
 ```sh
-CGO_ENABLED=0 go generate ./index/acton/catalog
+CGO_ENABLED=0 go tool tolk-abi-to-go --catalog index/acton/catalog/catalog.json \
+  --output-dir index/acton/catalog --package catalog
 ```
 
 Provenance, licenses and how to re-pin the snapshot:

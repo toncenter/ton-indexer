@@ -1,9 +1,17 @@
 # Pinned Acton catalog
 
 `catalog.json` is a checked-in snapshot of Acton's 288-contract compiler-ABI
-bundle. The `*_gen.go` bindings beside it are gitignored build artifacts; CMake,
-Docker and CI generate them, and a direct `go build`/`go test` needs
-`CGO_ENABLED=0 go generate ./index/acton/catalog` first.
+bundle. The native Go bindings beside it (`*_gen.go`) are gitignored build
+artifacts; CMake, Docker and CI generate them. A direct `go build` or `go test`
+needs them generated first, from `ton-index-go`:
+
+```sh
+CGO_ENABLED=0 go tool tolk-abi-to-go --catalog index/acton/catalog/catalog.json \
+  --output-dir index/acton/catalog --package catalog
+```
+
+The generator is pinned by the `tool` directive in `go.mod`, at the same version
+as the runtime the bindings import.
 
 The generator and runtime are maintained upstream in
 [`ton-blockchain/tolk-abi-to-go`](https://github.com/ton-blockchain/tolk-abi-to-go).
@@ -21,7 +29,7 @@ The generator and runtime are maintained upstream in
 ## Re-pinning the snapshot
 
 ```sh
-CGO_ENABLED=0 go run github.com/ton-blockchain/tolk-abi-to-go/cmd/tolk-abi-to-go \
+CGO_ENABLED=0 go tool tolk-abi-to-go \
   --catalog /path/to/acton/crates/acton-abi-catalog/data/data-abis.json \
   --output-dir index/acton/catalog --package catalog --snapshot
 ```
