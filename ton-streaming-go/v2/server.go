@@ -2165,7 +2165,7 @@ func WebSocketHandler(manager *ClientManager) func(*websocket.Conn) {
 						}
 						if !cnv.IsAddressStd() {
 							addrsValid = false
-							err := indexModels.IndexError{422, "address is not standard"}
+							err := indexModels.IndexError{Code: 422, Message: "address is not standard"}
 							sendWSJSONErr(c, client, env.Id, err)
 							break
 						}
