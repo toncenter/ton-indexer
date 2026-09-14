@@ -5,7 +5,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/ton-blockchain/acton/packages/abi-go"
+	"github.com/ton-blockchain/tolk-abi-to-go"
 	"github.com/toncenter/ton-indexer/ton-index-go/index/acton/catalog"
 	"github.com/toncenter/ton-indexer/ton-index-go/index/actonapi"
 	"github.com/toncenter/ton-indexer/ton-index-go/index/models"
@@ -16,8 +16,8 @@ import (
 // 6,600 codec steps between them; a single adversarial cell can consume 8,000 on
 // its own, so these ceilings separate the two by orders of magnitude while still
 // letting a handful of expensive accounts through.
-const maxStorageItems = 4 * acton.MaxItems
-const maxStorageDecodedBytes = 8 * acton.MaxBOCBytes
+const maxStorageItems = 4 * tolkabi.MaxItems
+const maxStorageDecodedBytes = 8 * tolkabi.MaxBOCBytes
 const maxStorageBatchBytes = 8 << 20
 
 // DecodeAccountStorage decodes each state's data cell in place with the catalog
@@ -29,7 +29,7 @@ func DecodeAccountStorage(states []models.AccountStateFull) error {
 	return decodeAccountStorage(states, catalog.ByCodeHash)
 }
 
-func decodeAccountStorage(states []models.AccountStateFull, lookup func(string) []*acton.Contract) error {
+func decodeAccountStorage(states []models.AccountStateFull, lookup func(string) []*tolkabi.Contract) error {
 	// Reject on raw input size first, so an oversized batch never reaches the
 	// native decoder at all.
 	remaining := maxStorageBatchBytes
@@ -39,7 +39,7 @@ func decodeAccountStorage(states []models.AccountStateFull, lookup func(string) 
 			return fmt.Errorf("storage batch BOCs exceed the aggregate %d byte budget", maxStorageBatchBytes)
 		}
 	}
-	budget := acton.NewBudget(maxStorageItems, maxStorageDecodedBytes)
+	budget := tolkabi.NewBudget(maxStorageItems, maxStorageDecodedBytes)
 	for i := range states {
 		state := &states[i]
 		if state.CodeHash == nil {
@@ -50,7 +50,7 @@ func decodeAccountStorage(states []models.AccountStateFull, lookup func(string) 
 			continue
 		}
 		decoded, err := decodeStorage(budget, contracts[0].Storage, state.DataBoc)
-		if errors.Is(err, acton.ErrBudget) {
+		if errors.Is(err, tolkabi.ErrBudget) {
 			return errors.New("storage batch exceeds the decode work budget; request fewer accounts")
 		}
 		if err != nil {
@@ -66,7 +66,7 @@ func decodeAccountStorage(states []models.AccountStateFull, lookup func(string) 
 	return nil
 }
 
-func decodeStorage(budget *acton.Context, binding *acton.Binding, boc *models.BytesType) (json.RawMessage, error) {
+func decodeStorage(budget *tolkabi.Context, binding *tolkabi.Binding, boc *models.BytesType) (json.RawMessage, error) {
 	switch {
 	case boc == nil:
 		return nil, errors.New("account data BOC unavailable")
@@ -75,7 +75,7 @@ func decodeStorage(budget *acton.Context, binding *acton.Binding, boc *models.By
 	case binding.DecodeWith == nil:
 		return nil, errors.New("native storage decoder unavailable")
 	}
-	root, err := acton.DecodeBOC(string(*boc))
+	root, err := tolkabi.DecodeBOC(string(*boc))
 	if err != nil {
 		return nil, err
 	}

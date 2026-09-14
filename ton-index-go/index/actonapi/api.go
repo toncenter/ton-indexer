@@ -13,26 +13,26 @@ import (
 	"strings"
 
 	"github.com/gofiber/fiber/v2"
-	"github.com/ton-blockchain/acton/packages/abi-go"
+	"github.com/ton-blockchain/tolk-abi-to-go"
 	"github.com/toncenter/ton-indexer/ton-index-go/index/models"
 	"github.com/xssnick/tonutils-go/address"
 )
 
 type API struct {
-	contracts []*acton.Contract
+	contracts []*tolkabi.Contract
 	revision  string
-	byID      map[string][]*acton.Contract
-	byHash    map[string][]*acton.Contract
+	byID      map[string][]*tolkabi.Contract
+	byHash    map[string][]*tolkabi.Contract
 	deps      Dependencies
 }
 
-func New(contracts []*acton.Contract, revision string, deps Dependencies) *API {
-	a := &API{contracts: contracts, revision: revision, deps: deps, byID: map[string][]*acton.Contract{}, byHash: map[string][]*acton.Contract{}}
+func New(contracts []*tolkabi.Contract, revision string, deps Dependencies) *API {
+	a := &API{contracts: contracts, revision: revision, deps: deps, byID: map[string][]*tolkabi.Contract{}, byHash: map[string][]*tolkabi.Contract{}}
 	for _, contract := range contracts {
 		a.byID[contract.ID] = append(a.byID[contract.ID], contract)
 		seen := map[string]bool{}
 		for _, hash := range contract.CodeHashes {
-			if key, err := acton.NormalizeCodeHash(hash); err == nil && !seen[key] {
+			if key, err := tolkabi.NormalizeCodeHash(hash); err == nil && !seen[key] {
 				a.byHash[key] = append(a.byHash[key], contract)
 				seen[key] = true
 			}
@@ -43,7 +43,7 @@ func New(contracts []*acton.Contract, revision string, deps Dependencies) *API {
 
 // contractInfo renders one catalog entry. The compiler ABI is attached only for a
 // selected entry: it is ten times the size of everything else about a contract.
-func contractInfo(contract *acton.Contract, withABI bool) ActonContract {
+func contractInfo(contract *tolkabi.Contract, withABI bool) ActonContract {
 	info := ActonContract{CatalogID: contract.ID, DisplayName: contract.DisplayName,
 		CodeHashes:     append([]string{}, contract.CodeHashes...),
 		KnownAddresses: append([]string{}, contract.KnownAddresses...),
@@ -60,7 +60,7 @@ func contractInfo(contract *acton.Contract, withABI bool) ActonContract {
 	return info
 }
 
-func methodInfo(method acton.GetMethod) ActonGetMethod {
+func methodInfo(method tolkabi.GetMethod) ActonGetMethod {
 	rendered := ActonGetMethod{Name: method.Name, MethodID: method.ID, Return: method.Return.Name,
 		Description: method.Description, Unsupported: method.Unsupported, Parameters: []ActonParameter{}}
 	for _, parameter := range method.Parameters {
@@ -121,7 +121,7 @@ func queryValues(c *fiber.Ctx, name string) []string {
 	return out
 }
 
-func (a *API) selectContracts(contractType, hash string) ([]*acton.Contract, error) {
+func (a *API) selectContracts(contractType, hash string) ([]*tolkabi.Contract, error) {
 	if (contractType == "") == (hash == "") {
 		return nil, Fail(422, "provide exactly one of catalog_id or code_hash")
 	}
@@ -141,14 +141,14 @@ func codeHashKey(hash string) (string, error) {
 	if len(hash) > 66 || strings.TrimSpace(hash) != hash || strings.ContainsAny(hash, " \t\r\n\v\f") {
 		return "", Fail(422, "invalid code_hash")
 	}
-	key, err := acton.NormalizeCodeHash(hash)
+	key, err := tolkabi.NormalizeCodeHash(hash)
 	if err != nil {
 		return "", Fail(422, "invalid code_hash")
 	}
 	return key, nil
 }
 
-func unique(contracts []*acton.Contract) (*acton.Contract, error) {
+func unique(contracts []*tolkabi.Contract) (*tolkabi.Contract, error) {
 	if len(contracts) == 0 {
 		return nil, Fail(404, "contract is not in the catalog")
 	}
@@ -191,8 +191,8 @@ func (a *API) Contracts(c *fiber.Ctx) error {
 	contracts := a.contracts
 	if selected {
 		contracts = nil
-		seen := map[*acton.Contract]bool{}
-		add := func(matches []*acton.Contract) {
+		seen := map[*tolkabi.Contract]bool{}
+		add := func(matches []*tolkabi.Contract) {
 			for _, contract := range OrderCandidates(matches) {
 				if !seen[contract] {
 					seen[contract] = true
@@ -280,7 +280,7 @@ func (a *API) Decode(c *fiber.Ctx) error {
 		if req.Direction == "" || len(contract.Messages[req.Direction]) == 0 {
 			return Fail(422, "message direction is not in the selected ABI")
 		}
-		decoded, err := acton.DecodeMessage(contract, req.Direction, req.Body)
+		decoded, err := tolkabi.DecodeMessage(contract, req.Direction, req.Body)
 		if err != nil {
 			return Fail(422, err.Error())
 		}
@@ -355,14 +355,14 @@ func (a *API) RunGetMethod(c *fiber.Ctx) error {
 	if snapshot.Address != addr || req.Seqno != nil && *snapshot.Seqno != *req.Seqno {
 		return Fail(502, "upstream snapshot selector mismatch")
 	}
-	key, err := acton.NormalizeCodeHash(*snapshot.CodeHash)
+	key, err := tolkabi.NormalizeCodeHash(*snapshot.CodeHash)
 	if err != nil {
 		return Fail(502, "invalid upstream code hash")
 	}
 	contracts := OrderCandidates(a.byHash[key])
 	implementationKey := ""
 	if snapshot.ImplementationHash != nil {
-		implementationKey, err = acton.NormalizeCodeHash(*snapshot.ImplementationHash)
+		implementationKey, err = tolkabi.NormalizeCodeHash(*snapshot.ImplementationHash)
 		if err != nil {
 			return Fail(502, "invalid upstream library implementation hash")
 		}
@@ -445,14 +445,14 @@ func (a *API) RunGetMethod(c *fiber.Ctx) error {
 	return a.sendBounded(c, response)
 }
 
-func decodeBinding(binding *acton.Binding, boc string) (any, error) {
+func decodeBinding(binding *tolkabi.Binding, boc string) (any, error) {
 	if binding.Unsupported != "" {
 		return nil, fmt.Errorf("unsupported storage: %s", binding.Unsupported)
 	}
 	if binding.Decode == nil {
 		return nil, errors.New("native storage decoder unavailable")
 	}
-	root, err := acton.DecodeBOC(boc)
+	root, err := tolkabi.DecodeBOC(boc)
 	if err != nil {
 		return nil, err
 	}

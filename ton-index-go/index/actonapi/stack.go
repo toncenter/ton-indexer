@@ -6,7 +6,7 @@ import (
 	"math/big"
 	"strings"
 
-	"github.com/ton-blockchain/acton/packages/abi-go"
+	"github.com/ton-blockchain/tolk-abi-to-go"
 )
 
 const maxStackDepth = 32
@@ -73,8 +73,8 @@ func Decimal(value any) (string, error) {
 	return n.String(), nil
 }
 
-func stackChildren(value any) ([]acton.StackValue, error) {
-	if children, ok := value.([]acton.StackValue); ok {
+func stackChildren(value any) ([]tolkabi.StackValue, error) {
+	if children, ok := value.([]tolkabi.StackValue); ok {
 		return children, nil
 	}
 	children, ok := value.([]any)
@@ -84,7 +84,7 @@ func stackChildren(value any) ([]acton.StackValue, error) {
 	if len(children) > maxStackEntries {
 		return nil, fmt.Errorf("stack exceeds entry limit")
 	}
-	result := make([]acton.StackValue, 0, len(children))
+	result := make([]tolkabi.StackValue, 0, len(children))
 	for _, child := range children {
 		entry, ok := child.(map[string]any)
 		if !ok || len(entry) > 2 {
@@ -99,7 +99,7 @@ func stackChildren(value any) ([]acton.StackValue, error) {
 		if !ok {
 			return nil, fmt.Errorf("nested stack entry requires type")
 		}
-		result = append(result, acton.StackValue{Type: kind, Value: entry["value"]})
+		result = append(result, tolkabi.StackValue{Type: kind, Value: entry["value"]})
 	}
 	return result, nil
 }
@@ -110,16 +110,16 @@ func stackChildren(value any) ([]acton.StackValue, error) {
 // stackEntryUnsupported is never coerced to null. See to_tonlib_api /
 // from_tonlib_api in TonlibClient.cpp:
 // https://github.com/ton-blockchain/ton/blob/9a42919dce98971a6653d326347efcce40bad026/tonlib/tonlib/TonlibClient.cpp#L4896-L5026
-func NormalizeStack(stack []acton.StackValue) ([]acton.StackValue, error) {
+func NormalizeStack(stack []tolkabi.StackValue) ([]tolkabi.StackValue, error) {
 	remaining := maxStackEntries
 	bytesRemaining := MaxBodyBytes
-	var walk func([]acton.StackValue, int) ([]acton.StackValue, error)
-	walk = func(entries []acton.StackValue, depth int) ([]acton.StackValue, error) {
+	var walk func([]tolkabi.StackValue, int) ([]tolkabi.StackValue, error)
+	walk = func(entries []tolkabi.StackValue, depth int) ([]tolkabi.StackValue, error) {
 		if depth > maxStackDepth || len(entries) > remaining {
 			return nil, fmt.Errorf("stack exceeds depth or entry limit")
 		}
 		remaining -= len(entries)
-		result := make([]acton.StackValue, 0, len(entries))
+		result := make([]tolkabi.StackValue, 0, len(entries))
 		for _, entry := range entries {
 			switch entry.Type {
 			case "num", "int":
@@ -139,7 +139,7 @@ func NormalizeStack(stack []acton.StackValue) ([]acton.StackValue, error) {
 				if bytesRemaining < 0 {
 					return nil, fmt.Errorf("stack BOCs exceed size limit")
 				}
-				if _, err := acton.DecodeOpaqueBOC(boc); err != nil {
+				if _, err := tolkabi.DecodeOpaqueBOC(boc); err != nil {
 					return nil, fmt.Errorf("invalid %s BOC: %w", entry.Type, err)
 				}
 			case "tuple", "list":
@@ -180,14 +180,14 @@ func NormalizeStack(stack []acton.StackValue) ([]acton.StackValue, error) {
 	}
 	// Flattened nested lists can gain depth when expanded to cons pairs. Check
 	// the resulting native shape, not just the original JSON nesting depth.
-	var checkDepth func([]acton.StackValue, int) error
-	checkDepth = func(entries []acton.StackValue, depth int) error {
+	var checkDepth func([]tolkabi.StackValue, int) error
+	checkDepth = func(entries []tolkabi.StackValue, depth int) error {
 		if depth > maxStackDepth {
 			return fmt.Errorf("expanded Lisp list exceeds stack depth limit")
 		}
 		for _, entry := range entries {
 			if entry.Type == "tuple" {
-				if err := checkDepth(entry.Value.([]acton.StackValue), depth+1); err != nil {
+				if err := checkDepth(entry.Value.([]tolkabi.StackValue), depth+1); err != nil {
 					return err
 				}
 			}
@@ -200,21 +200,21 @@ func NormalizeStack(stack []acton.StackValue) ([]acton.StackValue, error) {
 	return normalized, nil
 }
 
-func lispList(items []acton.StackValue) acton.StackValue {
-	tail := acton.StackValue{Type: "null"}
+func lispList(items []tolkabi.StackValue) tolkabi.StackValue {
+	tail := tolkabi.StackValue{Type: "null"}
 	for i := len(items) - 1; i >= 0; i-- {
-		tail = acton.StackValue{Type: "tuple", Value: []acton.StackValue{items[i], tail}}
+		tail = tolkabi.StackValue{Type: "tuple", Value: []tolkabi.StackValue{items[i], tail}}
 	}
 	return tail
 }
 
-func EncodeStandardStack(stack []acton.StackValue) ([]any, error) {
+func EncodeStandardStack(stack []tolkabi.StackValue) ([]any, error) {
 	normalized, err := NormalizeStack(stack)
 	if err != nil {
 		return nil, err
 	}
-	var walk func([]acton.StackValue) ([]any, error)
-	walk = func(entries []acton.StackValue) ([]any, error) {
+	var walk func([]tolkabi.StackValue) ([]any, error)
+	walk = func(entries []tolkabi.StackValue) ([]any, error) {
 		result := make([]any, 0, len(entries))
 		for _, entry := range entries {
 			var wire any
@@ -225,7 +225,7 @@ func EncodeStandardStack(stack []acton.StackValue) ([]any, error) {
 				marker := map[string]string{"cell": "Cell", "slice": "Slice"}[entry.Type]
 				wire = map[string]any{"@type": "tvm.stackEntry" + marker, entry.Type: map[string]any{"@type": "tvm." + entry.Type, "bytes": entry.Value}}
 			case "tuple":
-				values, err := walk(entry.Value.([]acton.StackValue))
+				values, err := walk(entry.Value.([]tolkabi.StackValue))
 				if err != nil {
 					return nil, err
 				}
@@ -242,7 +242,7 @@ func EncodeStandardStack(stack []acton.StackValue) ([]any, error) {
 
 // DecodeStandardStack refuses lossy unsupported entries. The caller retains the
 // original raw stack independently, including on VM failure or wire limitations.
-func DecodeStandardStack(raw json.RawMessage) ([]acton.StackValue, error) {
+func DecodeStandardStack(raw json.RawMessage) ([]tolkabi.StackValue, error) {
 	var entries []any
 	if err := decodeJSON(raw, &entries); err != nil {
 		return nil, err
@@ -251,13 +251,13 @@ func DecodeStandardStack(raw json.RawMessage) ([]acton.StackValue, error) {
 		return nil, fmt.Errorf("upstream stack must be an array")
 	}
 	remaining := maxStackEntries
-	var walk func([]any, int) ([]acton.StackValue, error)
-	walk = func(entries []any, depth int) ([]acton.StackValue, error) {
+	var walk func([]any, int) ([]tolkabi.StackValue, error)
+	walk = func(entries []any, depth int) ([]tolkabi.StackValue, error) {
 		if depth > maxStackDepth || len(entries) > remaining {
 			return nil, fmt.Errorf("upstream stack exceeds depth or entry limit")
 		}
 		remaining -= len(entries)
-		result := make([]acton.StackValue, 0, len(entries))
+		result := make([]tolkabi.StackValue, 0, len(entries))
 		for _, value := range entries {
 			entry, ok := value.(map[string]any)
 			if !ok {
@@ -286,7 +286,7 @@ func DecodeStandardStack(raw json.RawMessage) ([]acton.StackValue, error) {
 			if !ok || payload["@type"] != payloadMarker {
 				return nil, fmt.Errorf("invalid %s payload marker", kind)
 			}
-			out := acton.StackValue{Type: kind}
+			out := tolkabi.StackValue{Type: kind}
 			switch kind {
 			case "number":
 				decimal, err := Decimal(payload["number"])
@@ -299,7 +299,7 @@ func DecodeStandardStack(raw json.RawMessage) ([]acton.StackValue, error) {
 				if !ok {
 					return nil, fmt.Errorf("invalid %s BOC", kind)
 				}
-				if _, err := acton.DecodeOpaqueBOC(boc); err != nil {
+				if _, err := tolkabi.DecodeOpaqueBOC(boc); err != nil {
 					return nil, err
 				}
 				out.Value = boc

@@ -1,7 +1,7 @@
 package crud
 
 import (
-	"github.com/ton-blockchain/acton/packages/abi-go"
+	"github.com/ton-blockchain/tolk-abi-to-go"
 	"github.com/toncenter/ton-indexer/ton-index-go/index/acton/catalog"
 	"github.com/toncenter/ton-indexer/ton-index-go/index/actonapi"
 	"github.com/toncenter/ton-indexer/ton-index-go/index/detect"
@@ -63,7 +63,7 @@ func appendCodeHashes(hashes []models.HashType, transaction *models.Transaction)
 // codeBook keys each row by the exact spelling it was given, so a client looks a
 // row up with the code_hash it can see, while the catalog is still consulted once
 // per distinct code. Codes that neither source recognizes are left out entirely.
-func codeBook(hashes []models.HashType, lookup func(string) []*acton.Contract) models.CodeBook {
+func codeBook(hashes []models.HashType, lookup func(string) []*tolkabi.Contract) models.CodeBook {
 	var book models.CodeBook
 	resolved := map[models.HashType]models.CodeBookRow{}
 	for _, hash := range hashes {

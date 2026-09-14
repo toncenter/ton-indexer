@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ton-blockchain/acton/packages/abi-go"
+	"github.com/ton-blockchain/tolk-abi-to-go"
 )
 
 // The committed subset runs without Node. ACTON_REFERENCE_CORPUS can point at
@@ -31,7 +31,7 @@ func TestTSDifferential(t *testing.T) {
 	passed, blocked := 0, 0
 	for _, row := range corpus.Rows {
 		c := contract(t, row.ID)
-		var b *acton.Binding
+		var b *tolkabi.Binding
 		switch row.Root {
 		case "storage":
 			b = c.Storage
@@ -57,7 +57,7 @@ func TestTSDifferential(t *testing.T) {
 			continue
 		}
 		t.Run(row.ID+"/"+row.Root+"/deep="+strconv.FormatBool(row.Deep), func(t *testing.T) {
-			root, err := acton.DecodeBOC(row.BOC)
+			root, err := tolkabi.DecodeBOC(row.BOC)
 			check(t, err)
 			got, err := b.Decode(root)
 			check(t, err)

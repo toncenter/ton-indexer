@@ -9,13 +9,13 @@ import (
 	"testing"
 
 	"github.com/gofiber/fiber/v2"
-	"github.com/ton-blockchain/acton/packages/abi-go"
+	"github.com/ton-blockchain/tolk-abi-to-go"
 	"github.com/toncenter/ton-indexer/ton-index-go/index/acton/catalog"
 	"github.com/xssnick/tonutils-go/address"
 	"github.com/xssnick/tonutils-go/tvm/cell"
 )
 
-func catalogMethod(t *testing.T, id, name string) (*acton.Contract, acton.GetMethod) {
+func catalogMethod(t *testing.T, id, name string) (*tolkabi.Contract, tolkabi.GetMethod) {
 	t.Helper()
 	c := catalog.ByID(id)
 	if c == nil {
@@ -27,7 +27,7 @@ func catalogMethod(t *testing.T, id, name string) (*acton.Contract, acton.GetMet
 		}
 	}
 	t.Fatalf("missing real catalog method %s/%s", id, name)
-	return nil, acton.GetMethod{}
+	return nil, tolkabi.GetMethod{}
 }
 
 func TestRealCatalogIntegerGetters(t *testing.T) {
@@ -106,7 +106,7 @@ func TestCatalogSelectorsResistAmplification(t *testing.T) {
 	contract := testContract()
 	contract.CodeHashes = []string{strings.Repeat("ab", 32)}
 	contract.ABI = json.RawMessage(`{"description":"` + strings.Repeat("a", 77000) + `"}`)
-	app := testApp(New([]*acton.Contract{contract}, "revision", Dependencies{}))
+	app := testApp(New([]*tolkabi.Contract{contract}, "revision", Dependencies{}))
 	values := url.Values{}
 	for i := 0; i < MaxSelectors; i++ {
 		variant := []byte(contract.CodeHashes[0])
@@ -175,7 +175,7 @@ func TestLibraryImplementationCatalogSelection(t *testing.T) {
 	// different contract rather than another name for the same one.
 	other := testContract()
 	other.ID, other.CodeHashes = "different", []string{actual}
-	api := New([]*acton.Contract{contract, other}, "revision", Dependencies{Executor: func(*fiber.Ctx) GetterExecutor { return executor }})
+	api := New([]*tolkabi.Contract{contract, other}, "revision", Dependencies{Executor: func(*fiber.Ctx) GetterExecutor { return executor }})
 	call(t, testApp(api), "POST", "/runGetMethod", `{"address":"`+testAddress+`","method":"get_counter"}`, 200, &result)
 	if result.CatalogID != "different" || result.Identification != "exact_code_hash" {
 		t.Fatalf("library implementation displaced the code cell's own entry: %+v", result)

@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ton-blockchain/acton/packages/abi-go"
+	"github.com/ton-blockchain/tolk-abi-to-go"
 	"github.com/toncenter/ton-indexer/ton-index-go/index/acton/catalog"
 	"github.com/toncenter/ton-indexer/ton-index-go/index/actonapi"
 	"github.com/toncenter/ton-indexer/ton-index-go/index/models"
@@ -110,7 +110,7 @@ func TestActonProxyPinsDiscoveryStateAndExecution(t *testing.T) {
 	if *snapshot.CodeHash != base64.StdEncoding.EncodeToString(code.Hash()) || *snapshot.DataHash != base64.StdEncoding.EncodeToString(data.Hash()) || *snapshot.LastTransactionLT != "9007199254740993" {
 		t.Fatal("incorrect snapshot hashes or LT")
 	}
-	stack := []acton.StackValue{{Type: "tuple", Value: []acton.StackValue{{Type: "num", Value: json.Number("9007199254740993")}, {Type: "slice", Value: dataBOC}}}}
+	stack := []tolkabi.StackValue{{Type: "tuple", Value: []tolkabi.StackValue{{Type: "num", Value: json.Number("9007199254740993")}, {Type: "slice", Value: dataBOC}}}}
 	result, err := executor.Run(context.Background(), snapshot, 76543, stack)
 	if err != nil {
 		t.Fatal(err)
@@ -209,7 +209,7 @@ func TestActonProxyRejectsInvalidStackBeforeRequest(t *testing.T) {
 	seqno := int32(1)
 	snapshot := &actonapi.Snapshot{Address: "0:" + strings.Repeat("00", 32), Seqno: &seqno}
 	executor := NewActonExecutor(models.RequestSettings{})
-	for _, stack := range [][]acton.StackValue{{{Type: "null", Value: "invalid"}}, {{Type: "num", Value: "1.5"}}, {{Type: "cell", Value: "bad"}}} {
+	for _, stack := range [][]tolkabi.StackValue{{{Type: "null", Value: "invalid"}}, {{Type: "num", Value: "1.5"}}, {{Type: "cell", Value: "bad"}}} {
 		_, err := executor.Run(context.Background(), snapshot, 76543, stack)
 		var apiError models.IndexError
 		if !errors.As(err, &apiError) || apiError.Code != 422 {
@@ -251,7 +251,7 @@ func TestActonProxyLibraryReferenceSnapshot(t *testing.T) {
 	}
 	raw := append([]byte{0xb5, 0xee, 0x9c, 0x72, 1, 1, 1, 1, 0, 35, 0, 8, 66, 2}, implementation...)
 	boc := base64.StdEncoding.EncodeToString(raw)
-	code, err := acton.DecodeOpaqueBOC(boc)
+	code, err := tolkabi.DecodeOpaqueBOC(boc)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -267,7 +267,7 @@ func TestActonProxyLibraryReferenceSnapshot(t *testing.T) {
 	if snapshot.ImplementationHash == nil || *snapshot.CodeHash != base64.StdEncoding.EncodeToString(code.Hash()) || *snapshot.ImplementationHash != base64.StdEncoding.EncodeToString(implementation) || *snapshot.CodeHash == *snapshot.ImplementationHash {
 		t.Fatalf("library code identity lost: %+v", snapshot)
 	}
-	wire, err := actonapi.EncodeStandardStack([]acton.StackValue{{Type: "cell", Value: boc}})
+	wire, err := actonapi.EncodeStandardStack([]tolkabi.StackValue{{Type: "cell", Value: boc}})
 	if err != nil {
 		t.Fatalf("opaque stack cell rejected: %v", err)
 	}
@@ -291,7 +291,7 @@ func TestActonProxyStandardNullAndBuilderRejection(t *testing.T) {
 	})
 	seqno := int32(42)
 	snapshot := &actonapi.Snapshot{Address: "0:" + strings.Repeat("00", 32), Seqno: &seqno}
-	stack := []acton.StackValue{{Type: "null"}}
+	stack := []tolkabi.StackValue{{Type: "null"}}
 	result, err := NewActonExecutor(actonSettings()).Run(context.Background(), snapshot, 123, stack)
 	if err != nil {
 		t.Fatal(err)
@@ -299,7 +299,7 @@ func TestActonProxyStandardNullAndBuilderRejection(t *testing.T) {
 	if result.StackError != "" || result.Stack[0].Type != "null" {
 		t.Fatalf("standard null result lost: %+v", result)
 	}
-	_, err = NewActonExecutor(actonSettings()).Run(context.Background(), snapshot, 123, []acton.StackValue{{Type: "builder", Value: boc}})
+	_, err = NewActonExecutor(actonSettings()).Run(context.Background(), snapshot, 123, []tolkabi.StackValue{{Type: "builder", Value: boc}})
 	var apiError models.IndexError
 	if !errors.As(err, &apiError) || apiError.Code != 422 {
 		t.Fatalf("builder input not rejected: %v", err)

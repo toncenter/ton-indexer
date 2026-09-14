@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ton-blockchain/acton/packages/abi-go"
+	"github.com/ton-blockchain/tolk-abi-to-go"
 	"github.com/toncenter/ton-indexer/ton-index-go/index/models"
 	"github.com/xssnick/tonutils-go/tvm/cell"
 )
@@ -23,15 +23,15 @@ func storageStates(count int, boc string) []models.AccountStateFull {
 	return states
 }
 
-func storageContract(decode func(*acton.Context, *cell.Cell) (any, error)) func(string) []*acton.Contract {
-	contract := &acton.Contract{ID: "counter", Storage: &acton.Binding{
-		Type: acton.TypeInfo{Name: "Storage"}, DecodeWith: decode}}
-	return func(string) []*acton.Contract { return []*acton.Contract{contract} }
+func storageContract(decode func(*tolkabi.Context, *cell.Cell) (any, error)) func(string) []*tolkabi.Contract {
+	contract := &tolkabi.Contract{ID: "counter", Storage: &tolkabi.Binding{
+		Type: tolkabi.TypeInfo{Name: "Storage"}, DecodeWith: decode}}
+	return func(string) []*tolkabi.Contract { return []*tolkabi.Contract{contract} }
 }
 
 func TestAccountStorageRejectsOversizedBOCsBeforeDecoding(t *testing.T) {
 	decodes := 0
-	lookup := storageContract(func(*acton.Context, *cell.Cell) (any, error) { decodes++; return "value", nil })
+	lookup := storageContract(func(*tolkabi.Context, *cell.Cell) (any, error) { decodes++; return "value", nil })
 	states := storageStates(1000, base64.StdEncoding.EncodeToString(cell.BeginCell().EndCell().ToBOC()))
 	for i := range states {
 		code := models.BytesType(strings.Repeat("x", 16384))
@@ -48,7 +48,7 @@ func TestAccountStorageRejectsOversizedBOCsBeforeDecoding(t *testing.T) {
 func TestAccountStorageStopsBeforeOutputAmplification(t *testing.T) {
 	decodes := 0
 	large := strings.Repeat("<", 700000)
-	lookup := storageContract(func(*acton.Context, *cell.Cell) (any, error) {
+	lookup := storageContract(func(*tolkabi.Context, *cell.Cell) (any, error) {
 		decodes++
 		return map[string]any{"value": large}, nil
 	})
@@ -67,9 +67,9 @@ func TestAccountStorageStopsBeforeOutputAmplification(t *testing.T) {
 // multiplying it by the batch size.
 func TestAccountStorageSharesOneDecodeBudget(t *testing.T) {
 	decodes := 0
-	lookup := storageContract(func(ctx *acton.Context, c *cell.Cell) (any, error) {
+	lookup := storageContract(func(ctx *tolkabi.Context, c *cell.Cell) (any, error) {
 		decodes++
-		expensive := acton.MapCodec(intCodec(), intCodec(), 32)
+		expensive := tolkabi.MapCodec(intCodec(), intCodec(), 32)
 		return expensive.DecodeWith(ctx, c)
 	})
 	states := storageStates(1000, base64.StdEncoding.EncodeToString(bombCell(t).ToBOC()))
@@ -83,10 +83,10 @@ func TestAccountStorageSharesOneDecodeBudget(t *testing.T) {
 }
 
 func TestAccountStorageFailureDoesNotStopTheBatch(t *testing.T) {
-	unsupported := &acton.Contract{ID: "counter", Storage: &acton.Binding{Unsupported: "unsupported binding"}}
+	unsupported := &tolkabi.Contract{ID: "counter", Storage: &tolkabi.Binding{Unsupported: "unsupported binding"}}
 	states := storageStates(2, base64.StdEncoding.EncodeToString(cell.BeginCell().EndCell().ToBOC()))
-	if err := decodeAccountStorage(states, func(string) []*acton.Contract {
-		return []*acton.Contract{unsupported}
+	if err := decodeAccountStorage(states, func(string) []*tolkabi.Contract {
+		return []*tolkabi.Contract{unsupported}
 	}); err != nil {
 		t.Fatalf("a per-account failure aborted the batch: %v", err)
 	}
@@ -97,8 +97,8 @@ func TestAccountStorageFailureDoesNotStopTheBatch(t *testing.T) {
 	}
 }
 
-func intCodec() *acton.Codec {
-	c := acton.IntegerCodec(32, false, false)
+func intCodec() *tolkabi.Codec {
+	c := tolkabi.IntegerCodec(32, false, false)
 	return &c
 }
 
@@ -106,7 +106,7 @@ func intCodec() *acton.Codec {
 // hundred bytes of input that decode into tens of kilobytes.
 func bombCell(t *testing.T) *cell.Cell {
 	t.Helper()
-	dict := acton.MapCodec(intCodec(), intCodec(), 32)
+	dict := tolkabi.MapCodec(intCodec(), intCodec(), 32)
 	entries := make([]any, 2000)
 	for i := range entries {
 		entries[i] = map[string]any{"key": strconv.Itoa(i), "value": "123456789"}

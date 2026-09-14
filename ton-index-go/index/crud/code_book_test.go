@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ton-blockchain/acton/packages/abi-go"
+	"github.com/ton-blockchain/tolk-abi-to-go"
 	"github.com/toncenter/ton-indexer/ton-index-go/index/models"
 )
 
@@ -70,12 +70,12 @@ func TestCodeBookKeysEverySpellingAndResolvesEachCodeOnce(t *testing.T) {
 	for _, spelling := range spellings {
 		hashes = append(hashes, models.HashType(spelling), models.HashType(spelling))
 	}
-	candidates := []*acton.Contract{
-		{ID: "b", DisplayName: "Candidate B", ABI: json.RawMessage(`{"large":"abi"}`), Storage: &acton.Binding{}},
-		{ID: "a", DisplayName: "Candidate A", Links: []acton.Link{{Kind: "source", Title: "Source", URL: "https://example.com/source"}}},
+	candidates := []*tolkabi.Contract{
+		{ID: "b", DisplayName: "Candidate B", ABI: json.RawMessage(`{"large":"abi"}`), Storage: &tolkabi.Binding{}},
+		{ID: "a", DisplayName: "Candidate A", Links: []tolkabi.Link{{Kind: "source", Title: "Source", URL: "https://example.com/source"}}},
 	}
 	calls := 0
-	lookup := func(hash string) []*acton.Contract {
+	lookup := func(hash string) []*tolkabi.Contract {
 		calls++
 		if hash != base64.StdEncoding.EncodeToString(bytes) {
 			t.Fatalf("lookup hash not normalized: %s", hash)
@@ -111,10 +111,10 @@ func TestCodeBookKeysEverySpellingAndResolvesEachCodeOnce(t *testing.T) {
 }
 
 func TestCodeBookOrdersMostSpecificFirst(t *testing.T) {
-	generic := &acton.Contract{ID: "a.Generic", GetMethods: make([]acton.GetMethod, 1)}
-	specific := &acton.Contract{ID: "z.Specific", GetMethods: make([]acton.GetMethod, 2)}
-	book := codeBook([]models.HashType{vestingCodeHash}, func(string) []*acton.Contract {
-		return []*acton.Contract{generic, specific}
+	generic := &tolkabi.Contract{ID: "a.Generic", GetMethods: make([]tolkabi.GetMethod, 1)}
+	specific := &tolkabi.Contract{ID: "z.Specific", GetMethods: make([]tolkabi.GetMethod, 2)}
+	book := codeBook([]models.HashType{vestingCodeHash}, func(string) []*tolkabi.Contract {
+		return []*tolkabi.Contract{generic, specific}
 	})
 	contracts := book[vestingCodeHash].Contracts
 	if len(contracts) != 2 || contracts[0].CatalogID != "z.Specific" {

@@ -8,7 +8,7 @@ import (
 	"github.com/toncenter/ton-indexer/ton-index-go/index/models"
 
 	"github.com/gofiber/fiber/v2"
-	"github.com/ton-blockchain/acton/packages/abi-go"
+	"github.com/ton-blockchain/tolk-abi-to-go"
 )
 
 const MaxBatch = 1000
@@ -81,10 +81,10 @@ type DecodeRequest struct {
 } // @name ActonDecodeRequest
 
 type DecodeResponse struct {
-	CatalogID string         `json:"catalog_id"`
-	Direction string         `json:"direction"`
-	Type      acton.TypeInfo `json:"type"`
-	Decoded   any            `json:"decoded"`
+	CatalogID string           `json:"catalog_id"`
+	Direction string           `json:"direction"`
+	Type      tolkabi.TypeInfo `json:"type"`
+	Decoded   any              `json:"decoded"`
 } // @name ActonDecodeResponse
 
 // RunRequest names the getter and nothing about its ABI: the catalog entry is the
@@ -99,11 +99,11 @@ type RunRequest struct {
 // Execution retains the untouched standard stack even if conversion or ABI
 // decoding fails. StackError must prevent typed decoding, not hide VM results.
 type Execution struct {
-	Stack      []acton.StackValue `json:"stack"`
-	RawStack   json.RawMessage    `json:"raw_stack" swaggertype:"array,object"`
-	GasUsed    string             `json:"gas_used"`
-	ExitCode   int32              `json:"exit_code"`
-	StackError string             `json:"stack_error,omitempty"`
+	Stack      []tolkabi.StackValue `json:"stack"`
+	RawStack   json.RawMessage      `json:"raw_stack" swaggertype:"array,object"`
+	GasUsed    string               `json:"gas_used"`
+	ExitCode   int32                `json:"exit_code"`
+	StackError string               `json:"stack_error,omitempty"`
 } // @name ActonExecution
 
 type RunResponse struct {
@@ -119,7 +119,7 @@ type RunResponse struct {
 
 type GetterExecutor interface {
 	Snapshot(context.Context, string, *int32) (*Snapshot, error)
-	Run(context.Context, *Snapshot, int64, []acton.StackValue) (*Execution, error)
+	Run(context.Context, *Snapshot, int64, []tolkabi.StackValue) (*Execution, error)
 }
 
 type Dependencies struct {

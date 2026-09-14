@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ton-blockchain/acton/packages/abi-go"
+	"github.com/ton-blockchain/tolk-abi-to-go"
 	"github.com/xssnick/tonutils-go/tvm/cell"
 )
 
@@ -30,7 +30,7 @@ func TestDecimalExactAndBounded(t *testing.T) {
 
 func TestStandardStackRoundTrip(t *testing.T) {
 	boc := base64.StdEncoding.EncodeToString(cell.BeginCell().EndCell().ToBOC())
-	stack := []acton.StackValue{{Type: "num", Value: json.Number("9007199254740993")}, {Type: "cell", Value: boc}, {Type: "slice", Value: boc}, {Type: "tuple", Value: []acton.StackValue{{Type: "num", Value: "-0x100"}, {Type: "list", Value: []acton.StackValue{}}}}}
+	stack := []tolkabi.StackValue{{Type: "num", Value: json.Number("9007199254740993")}, {Type: "cell", Value: boc}, {Type: "slice", Value: boc}, {Type: "tuple", Value: []tolkabi.StackValue{{Type: "num", Value: "-0x100"}, {Type: "list", Value: []tolkabi.StackValue{}}}}}
 	wire, err := EncodeStandardStack(stack)
 	if err != nil {
 		t.Fatal(err)
@@ -43,7 +43,7 @@ func TestStandardStackRoundTrip(t *testing.T) {
 	if len(decoded) != 4 || decoded[0].Type != "int" || decoded[0].Value != "9007199254740993" {
 		t.Fatalf("lost precision: %+v", decoded)
 	}
-	tuple := decoded[3].Value.([]acton.StackValue)
+	tuple := decoded[3].Value.([]tolkabi.StackValue)
 	if tuple[0].Type != "int" || tuple[0].Value != "-256" || tuple[1].Type != "null" {
 		t.Fatalf("bad recursive stack: %+v", tuple)
 	}
@@ -54,19 +54,19 @@ func TestStandardStackRoundTrip(t *testing.T) {
 
 func TestStandardStackLimitsAndUnsupported(t *testing.T) {
 	boc := base64.StdEncoding.EncodeToString(cell.BeginCell().EndCell().ToBOC())
-	for _, entry := range []acton.StackValue{{Type: "null", Value: "invalid"}, {Type: "builder", Value: boc}, {Type: "nan"}, {Type: "cont", Value: boc}, {Type: "cell", Value: "garbage"}, {Type: "tuple", Value: "bad"}} {
-		if _, err := EncodeStandardStack([]acton.StackValue{entry}); err == nil {
+	for _, entry := range []tolkabi.StackValue{{Type: "null", Value: "invalid"}, {Type: "builder", Value: boc}, {Type: "nan"}, {Type: "cont", Value: boc}, {Type: "cell", Value: "garbage"}, {Type: "tuple", Value: "bad"}} {
+		if _, err := EncodeStandardStack([]tolkabi.StackValue{entry}); err == nil {
 			t.Fatalf("accepted unsupported/invalid entry: %+v", entry)
 		}
 	}
-	stack := []acton.StackValue{{Type: "num", Value: "1"}}
+	stack := []tolkabi.StackValue{{Type: "num", Value: "1"}}
 	for i := 0; i < 34; i++ {
-		stack = []acton.StackValue{{Type: "tuple", Value: stack}}
+		stack = []tolkabi.StackValue{{Type: "tuple", Value: stack}}
 	}
 	if _, err := NormalizeStack(stack); err == nil {
 		t.Fatal("accepted excessive depth")
 	}
-	stack = make([]acton.StackValue, maxStackEntries+1)
+	stack = make([]tolkabi.StackValue, maxStackEntries+1)
 	if _, err := NormalizeStack(stack); err == nil {
 		t.Fatal("accepted excessive entries")
 	}

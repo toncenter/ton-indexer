@@ -6,7 +6,7 @@ Docker and CI generate them, and a direct `go build`/`go test` needs
 `CGO_ENABLED=0 go generate ./index/acton/catalog` first.
 
 The generator and runtime are maintained upstream in
-[Acton's `packages/abi-go`](https://github.com/ton-blockchain/acton/tree/HEAD/packages/abi-go).
+[`ton-blockchain/tolk-abi-to-go`](https://github.com/ton-blockchain/tolk-abi-to-go).
 
 ## Provenance
 
@@ -21,7 +21,7 @@ The generator and runtime are maintained upstream in
 ## Re-pinning the snapshot
 
 ```sh
-CGO_ENABLED=0 go run github.com/ton-blockchain/acton/packages/abi-go/cmd/tolk-abi-to-go \
+CGO_ENABLED=0 go run github.com/ton-blockchain/tolk-abi-to-go/cmd/tolk-abi-to-go \
   --catalog /path/to/acton/crates/acton-abi-catalog/data/data-abis.json \
   --output-dir index/acton/catalog --package catalog --snapshot
 ```
