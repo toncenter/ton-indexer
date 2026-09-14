@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ton-blockchain/acton/packages/abi-go"
+	"github.com/ton-blockchain/tolk-abi-to-go"
 	"github.com/toncenter/ton-indexer/ton-index-go/index/actonapi"
 	"github.com/toncenter/ton-indexer/ton-index-go/index/models"
 	"github.com/valyala/fasthttp"
@@ -148,7 +148,7 @@ func (e *actonExecutor) Snapshot(ctx context.Context, address string, seqno *int
 	if len(state.Code) > actonapi.MaxBodyBytes || len(state.Data) > actonapi.MaxBodyBytes {
 		return nil, actonapi.Fail(502, "upstream account BOC exceeds size limit")
 	}
-	code, err := acton.DecodeOpaqueBOC(state.Code)
+	code, err := tolkabi.DecodeOpaqueBOC(state.Code)
 	if err != nil {
 		return nil, actonapi.Fail(502, "invalid upstream account code BOC")
 	}
@@ -175,7 +175,7 @@ func (e *actonExecutor) Snapshot(ctx context.Context, address string, seqno *int
 		snapshot.LastTransactionLT = &lt
 	}
 	if state.Data != "" {
-		data, err := acton.DecodeOpaqueBOC(state.Data)
+		data, err := tolkabi.DecodeOpaqueBOC(state.Data)
 		if err != nil {
 			return nil, actonapi.Fail(502, "invalid upstream account data BOC")
 		}
@@ -187,7 +187,7 @@ func (e *actonExecutor) Snapshot(ctx context.Context, address string, seqno *int
 	return snapshot, nil
 }
 
-func (e *actonExecutor) Run(ctx context.Context, snapshot *actonapi.Snapshot, method int64, stack []acton.StackValue) (*actonapi.Execution, error) {
+func (e *actonExecutor) Run(ctx context.Context, snapshot *actonapi.Snapshot, method int64, stack []tolkabi.StackValue) (*actonapi.Execution, error) {
 	if snapshot == nil || snapshot.Seqno == nil || *snapshot.Seqno <= 0 {
 		return nil, actonapi.Fail(422, "pinned snapshot with positive seqno is required")
 	}

@@ -12,7 +12,7 @@ import (
 	"testing"
 
 	"github.com/gofiber/fiber/v2"
-	"github.com/ton-blockchain/acton/packages/abi-go"
+	"github.com/ton-blockchain/tolk-abi-to-go"
 	"github.com/toncenter/ton-indexer/ton-index-go/index/models"
 	"github.com/xssnick/tonutils-go/tvm/cell"
 )
@@ -20,20 +20,20 @@ import (
 var testAddress = "0:" + strings.Repeat("AB", 32)
 var testHash = strings.Repeat("12", 32)
 
-func testContract() *acton.Contract {
-	return &acton.Contract{ID: "counter", DisplayName: "Counter", CodeHashes: []string{testHash},
+func testContract() *tolkabi.Contract {
+	return &tolkabi.Contract{ID: "counter", DisplayName: "Counter", CodeHashes: []string{testHash},
 		ABI:   json.RawMessage(`{"types":[{"name":"int"}]}`),
-		Links: []acton.Link{{Kind: "source", Title: "Source", URL: "https://example.org/source"}},
-		GetMethods: []acton.GetMethod{{Name: "get_counter", ID: 76543, Return: acton.TypeInfo{Index: 0, Name: "int"},
-			Parameters: []acton.Parameter{{Name: "increment", Type: acton.TypeInfo{Index: 0, Name: "int"}}},
-			EncodeArgs: func(args map[string]any) ([]acton.StackValue, error) {
+		Links: []tolkabi.Link{{Kind: "source", Title: "Source", URL: "https://example.org/source"}},
+		GetMethods: []tolkabi.GetMethod{{Name: "get_counter", ID: 76543, Return: tolkabi.TypeInfo{Index: 0, Name: "int"},
+			Parameters: []tolkabi.Parameter{{Name: "increment", Type: tolkabi.TypeInfo{Index: 0, Name: "int"}}},
+			EncodeArgs: func(args map[string]any) ([]tolkabi.StackValue, error) {
 				value, ok := args["increment"]
 				if !ok {
 					value = "0"
 				}
-				return []acton.StackValue{{Type: "int", Value: value}}, nil
+				return []tolkabi.StackValue{{Type: "int", Value: value}}, nil
 			},
-			DecodeResult: func(stack []acton.StackValue) (any, error) {
+			DecodeResult: func(stack []tolkabi.StackValue) (any, error) {
 				if len(stack) != 1 || stack[0].Type != "int" {
 					return nil, errors.New("expected one integer")
 				}
@@ -86,7 +86,7 @@ func call(t *testing.T, app *fiber.App, method, path, body string, status int, d
 
 func TestCatalogIndexAndSelectors(t *testing.T) {
 	contract := testContract()
-	app := testApp(New([]*acton.Contract{contract}, "revision", Dependencies{
+	app := testApp(New([]*tolkabi.Contract{contract}, "revision", Dependencies{
 		Executor: func(*fiber.Ctx) GetterExecutor { t.Fatal("listing executed a getter"); return nil }}))
 	// Without a selector the whole catalog is returned, getters included and type
 	// tables left out.
@@ -126,7 +126,7 @@ func TestCatalogIndexAndSelectors(t *testing.T) {
 	// An ambiguous hash returns every candidate, most specific first.
 	other := testContract()
 	other.ID, other.GetMethods = "conflict", nil
-	app = testApp(New([]*acton.Contract{other, contract}, "revision", Dependencies{}))
+	app = testApp(New([]*tolkabi.Contract{other, contract}, "revision", Dependencies{}))
 	call(t, app, "GET", "/contracts?code_hash="+testHash, "", 200, &page)
 	if page.Total != 2 || page.Contracts[0].CatalogID != "counter" {
 		t.Fatalf("ambiguous hash collapsed or misordered: %+v", page)
@@ -136,7 +136,7 @@ func TestCatalogIndexAndSelectors(t *testing.T) {
 // The index is a pure function of the pinned catalog, so a client that already
 // holds it revalidates without transferring it again.
 func TestCatalogIndexRevalidates(t *testing.T) {
-	app := testApp(New([]*acton.Contract{testContract()}, "revision", Dependencies{}))
+	app := testApp(New([]*tolkabi.Contract{testContract()}, "revision", Dependencies{}))
 	request := httptest.NewRequest("GET", "/contracts", nil)
 	response, err := app.Test(request)
 	if err != nil {
@@ -168,11 +168,11 @@ func bytesOf(value byte, count int) []byte {
 func TestNativeDecode(t *testing.T) {
 	contract := testContract()
 	decode := func(c *cell.Cell) (any, error) { return c.BeginParse().LoadUInt(8) }
-	binding := acton.Binding{Type: acton.TypeInfo{Index: 1, Name: "Message"}, Decode: decode,
-		DecodeWith: func(_ *acton.Context, c *cell.Cell) (any, error) { return decode(c) }}
-	contract.Messages = map[string][]acton.Binding{"incoming_messages": {binding}}
+	binding := tolkabi.Binding{Type: tolkabi.TypeInfo{Index: 1, Name: "Message"}, Decode: decode,
+		DecodeWith: func(_ *tolkabi.Context, c *cell.Cell) (any, error) { return decode(c) }}
+	contract.Messages = map[string][]tolkabi.Binding{"incoming_messages": {binding}}
 	contract.Storage = &binding
-	app := testApp(New([]*acton.Contract{contract}, "revision", Dependencies{}))
+	app := testApp(New([]*tolkabi.Contract{contract}, "revision", Dependencies{}))
 	boc := base64.StdEncoding.EncodeToString(cell.BeginCell().MustStoreUInt(17, 8).EndCell().ToBOC())
 	for _, direction := range []string{"storage", "incoming_messages"} {
 		body, _ := json.Marshal(DecodeRequest{CatalogID: contract.ID, Direction: direction, Body: boc})
@@ -194,7 +194,7 @@ type fakeExecutor struct {
 	execution       Execution
 	snapshots, runs int
 	method          int64
-	stack           []acton.StackValue
+	stack           []tolkabi.StackValue
 }
 
 func (e *fakeExecutor) Snapshot(_ context.Context, addr string, seqno *int32) (*Snapshot, error) {
@@ -208,7 +208,7 @@ func (e *fakeExecutor) Snapshot(_ context.Context, addr string, seqno *int32) (*
 	return &e.snapshot, nil
 }
 
-func (e *fakeExecutor) Run(_ context.Context, snapshot *Snapshot, method int64, stack []acton.StackValue) (*Execution, error) {
+func (e *fakeExecutor) Run(_ context.Context, snapshot *Snapshot, method int64, stack []tolkabi.StackValue) (*Execution, error) {
 	e.runs++
 	if snapshot != &e.snapshot {
 		e.t.Fatal("snapshot not passed through")
@@ -217,11 +217,11 @@ func (e *fakeExecutor) Run(_ context.Context, snapshot *Snapshot, method int64, 
 	return &e.execution, nil
 }
 
-func runFixture(t *testing.T) (*fiber.App, *fakeExecutor, *acton.Contract) {
+func runFixture(t *testing.T) (*fiber.App, *fakeExecutor, *tolkabi.Contract) {
 	contract := testContract()
 	seqno := int32(123)
-	executor := &fakeExecutor{t: t, snapshot: Snapshot{Address: testAddress, CodeHash: &testHash, Seqno: &seqno}, execution: Execution{Stack: []acton.StackValue{{Type: "num", Value: "9007199254740993"}}, RawStack: json.RawMessage(`[{"@type":"tvm.stackEntryNumber","number":{"@type":"tvm.numberDecimal","number":"9007199254740993"}}]`), GasUsed: "9007199254740993", ExitCode: 0}}
-	app := testApp(New([]*acton.Contract{contract}, "revision", Dependencies{Executor: func(*fiber.Ctx) GetterExecutor { return executor }}))
+	executor := &fakeExecutor{t: t, snapshot: Snapshot{Address: testAddress, CodeHash: &testHash, Seqno: &seqno}, execution: Execution{Stack: []tolkabi.StackValue{{Type: "num", Value: "9007199254740993"}}, RawStack: json.RawMessage(`[{"@type":"tvm.stackEntryNumber","number":{"@type":"tvm.numberDecimal","number":"9007199254740993"}}]`), GasUsed: "9007199254740993", ExitCode: 0}}
+	app := testApp(New([]*tolkabi.Contract{contract}, "revision", Dependencies{Executor: func(*fiber.Ctx) GetterExecutor { return executor }}))
 	return app, executor, contract
 }
 
@@ -252,7 +252,7 @@ func TestRunPreservesVMAndDecodeFailures(t *testing.T) {
 			case "vm":
 				executor.execution.ExitCode = 11
 			case "abi":
-				contract.GetMethods[0].DecodeResult = func([]acton.StackValue) (any, error) { return nil, errors.New("wrong result type") }
+				contract.GetMethods[0].DecodeResult = func([]tolkabi.StackValue) (any, error) { return nil, errors.New("wrong result type") }
 			case "wire":
 				executor.execution.StackError = "unsupported wire value"
 			case "alternative_success":
@@ -301,7 +301,7 @@ func TestRunValidationAndCodeMismatch(t *testing.T) {
 func TestRunCatalogConflictsAndSnapshotMismatch(t *testing.T) {
 	t.Run("duplicate_method_id", func(t *testing.T) {
 		app, executor, contract := runFixture(t)
-		contract.GetMethods = append(contract.GetMethods, acton.GetMethod{Name: "different_getter", ID: 76543})
+		contract.GetMethods = append(contract.GetMethods, tolkabi.GetMethod{Name: "different_getter", ID: 76543})
 		call(t, app, "POST", "/runGetMethod", `{"address":"`+testAddress+`","method":"get_counter"}`, 409, nil)
 		if executor.runs != 0 {
 			t.Fatal("ambiguous method ID executed")

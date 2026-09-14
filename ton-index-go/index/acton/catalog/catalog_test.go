@@ -12,8 +12,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ton-blockchain/acton/packages/abi-go"
-	"github.com/ton-blockchain/acton/packages/abi-go/codegen"
+	"github.com/ton-blockchain/tolk-abi-to-go"
+	"github.com/ton-blockchain/tolk-abi-to-go/codegen"
 	"github.com/toncenter/ton-indexer/ton-index-go/index/acton/catalog"
 	"github.com/xssnick/tonutils-go/tvm/cell"
 )
@@ -91,7 +91,7 @@ func TestCatalogCapabilities(t *testing.T) {
 				}
 			}
 		}
-		for i, b := range []*acton.Binding{c.Storage, c.DeploymentStorage} {
+		for i, b := range []*tolkabi.Binding{c.Storage, c.DeploymentStorage} {
 			if b != nil {
 				group := []string{"storage", "deployment_storage"}[i]
 				root(c.ID+"/"+group, b.Unsupported, b.Encode != nil, b.Decode != nil)
@@ -135,7 +135,7 @@ func check(t *testing.T, err error) {
 	}
 }
 func boc(c *cell.Cell) string { return base64.StdEncoding.EncodeToString(c.ToBOC()) }
-func contract(t *testing.T, id string) *acton.Contract {
+func contract(t *testing.T, id string) *tolkabi.Contract {
 	t.Helper()
 	c := catalog.ByID(id)
 	if c == nil {
@@ -143,7 +143,7 @@ func contract(t *testing.T, id string) *acton.Contract {
 	}
 	return c
 }
-func method(t *testing.T, c *acton.Contract, name string) *acton.GetMethod {
+func method(t *testing.T, c *tolkabi.Contract, name string) *tolkabi.GetMethod {
 	t.Helper()
 	for i := range c.GetMethods {
 		if c.GetMethods[i].Name == name {
@@ -162,13 +162,13 @@ func TestWalletV4StorageAndGetterGoldens(t *testing.T) {
 			c := contract(t, id)
 			for _, populated := range []bool{false, true} {
 				dict := cell.NewDict(264)
-				entries := []acton.MapEntry{}
+				entries := []tolkabi.MapEntry{}
 				if populated {
 					key := cell.BeginCell()
 					check(t, key.StoreInt(-1, 8))
 					check(t, key.StoreUInt(42, 256))
 					check(t, dict.Set(key.EndCell(), cell.BeginCell().EndCell()))
-					entries = append(entries, acton.MapEntry{Key: acton.Bits{Bits: 264, Hex: "ff" + strings.Repeat("00", 31) + "2a"}, Value: nil})
+					entries = append(entries, tolkabi.MapEntry{Key: tolkabi.Bits{Bits: 264, Hex: "ff" + strings.Repeat("00", 31) + "2a"}, Value: nil})
 				}
 				b := cell.BeginCell()
 				check(t, b.StoreUInt(41, 32))
@@ -177,7 +177,7 @@ func TestWalletV4StorageAndGetterGoldens(t *testing.T) {
 				check(t, b.StoreDict(dict))
 				root := b.EndCell()
 				want := map[string]any{"seqno": "41", "subwalletId": "698983191", "publicKey": "5", "plugins": entries}
-				got, err := acton.DecodeStorage(c, boc(root))
+				got, err := tolkabi.DecodeStorage(c, boc(root))
 				check(t, err)
 				same(t, got, want)
 				encoded, err := c.Storage.Encode(want)
@@ -187,16 +187,16 @@ func TestWalletV4StorageAndGetterGoldens(t *testing.T) {
 				}
 			}
 			getter := method(t, c, "get_plugin_list")
-			stack := []acton.StackValue{{Type: "tuple", Value: []acton.StackValue{{Type: "tuple", Value: []acton.StackValue{{Type: "int", Value: "-1"}, {Type: "int", Value: "42"}}}, {Type: "null"}}}}
+			stack := []tolkabi.StackValue{{Type: "tuple", Value: []tolkabi.StackValue{{Type: "tuple", Value: []tolkabi.StackValue{{Type: "int", Value: "-1"}, {Type: "int", Value: "42"}}}, {Type: "null"}}}}
 			got, err := getter.DecodeResult(stack)
 			check(t, err)
 			same(t, got, []any{map[string]any{"workchain": "-1", "address": "42"}})
-			if _, err := getter.DecodeResult(append(stack, acton.StackValue{Type: "null"})); err == nil {
+			if _, err := getter.DecodeResult(append(stack, tolkabi.StackValue{Type: "null"})); err == nil {
 				t.Fatal("getter ignored trailing stack")
 			}
 			args, err := method(t, c, "is_plugin_installed").EncodeArgs(map[string]any{"workchain": "-1", "addrHash": "42"})
 			check(t, err)
-			same(t, args, []acton.StackValue{{Type: "int", Value: "-1"}, {Type: "int", Value: "42"}})
+			same(t, args, []tolkabi.StackValue{{Type: "int", Value: "-1"}, {Type: "int", Value: "42"}})
 		})
 	}
 }
@@ -212,13 +212,13 @@ func TestWalletV5MessageGolden(t *testing.T) {
 	check(t, b.StoreMaybeRef(nil))
 	root := b.EndCell()
 	want := map[string]any{"queryId": "427", "outActions": nil, "extendedActions": nil}
-	decoded, err := acton.DecodeMessage(c, "incoming_messages", boc(root))
+	decoded, err := tolkabi.DecodeMessage(c, "incoming_messages", boc(root))
 	check(t, err)
 	if decoded.Type.Name != "WalletExtensionActionV5r1" {
 		t.Fatal(decoded.Type)
 	}
 	same(t, decoded.Value, want)
-	var binding *acton.Binding
+	var binding *tolkabi.Binding
 	for i := range c.Messages["incoming_messages"] {
 		if c.Messages["incoming_messages"][i].Type.Name == decoded.Type.Name {
 			binding = &c.Messages["incoming_messages"][i]
@@ -233,7 +233,7 @@ func TestWalletV5MessageGolden(t *testing.T) {
 		t.Fatal("message differs from golden layout")
 	}
 	check(t, b.StoreBoolBit(true))
-	if _, err := acton.DecodeMessage(c, "incoming_messages", boc(b.EndCell())); err == nil {
+	if _, err := tolkabi.DecodeMessage(c, "incoming_messages", boc(b.EndCell())); err == nil {
 		t.Fatal("message ignored trailing bit")
 	}
 }
@@ -250,10 +250,10 @@ func TestWalletTgGenericBulk(t *testing.T) {
 	for _, mode := range []string{"0", "1", "3", "128"} {
 		items = append(items, map[string]any{"sendMode": mode, "messageCell": boc(messageCell)})
 	}
-	want := map[string]any{"signature": acton.Bits{Bits: 512, Hex: strings.Repeat("00", 64)}, "request": acton.UnionValue{Type: "SendBulkMessagesRequestE", Value: map[string]any{"header": header, "msgArr": items}}}
+	want := map[string]any{"signature": tolkabi.Bits{Bits: 512, Hex: strings.Repeat("00", 64)}, "request": tolkabi.UnionValue{Type: "SendBulkMessagesRequestE", Value: map[string]any{"header": header, "msgArr": items}}}
 	root, err := c.Messages["incoming_external"][0].Encode(want)
 	check(t, err)
-	decoded, err := acton.DecodeMessage(c, "incoming_external", boc(root))
+	decoded, err := tolkabi.DecodeMessage(c, "incoming_external", boc(root))
 	check(t, err)
 	same(t, decoded.Value, want)
 	s := root.BeginParse()

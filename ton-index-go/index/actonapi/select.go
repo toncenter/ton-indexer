@@ -4,7 +4,7 @@ import (
 	"cmp"
 	"slices"
 
-	"github.com/ton-blockchain/acton/packages/abi-go"
+	"github.com/ton-blockchain/tolk-abi-to-go"
 )
 
 // OrderCandidates sorts the catalog entries claiming one code hash so that the
@@ -13,9 +13,9 @@ import (
 // ambiguous hashes are one contract entered twice under two vendor names, where
 // the order is immaterial; the remaining one describes the same bytes at two
 // depths, and the entry that decodes more of them wins.
-func OrderCandidates(contracts []*acton.Contract) []*acton.Contract {
+func OrderCandidates(contracts []*tolkabi.Contract) []*tolkabi.Contract {
 	ordered := slices.Clone(contracts)
-	slices.SortStableFunc(ordered, func(a, b *acton.Contract) int {
+	slices.SortStableFunc(ordered, func(a, b *tolkabi.Contract) int {
 		if n := cmp.Compare(len(b.GetMethods), len(a.GetMethods)); n != 0 {
 			return n
 		}
@@ -27,7 +27,7 @@ func OrderCandidates(contracts []*acton.Contract) []*acton.Contract {
 	return ordered
 }
 
-func messageBindings(contract *acton.Contract) int {
+func messageBindings(contract *tolkabi.Contract) int {
 	total := 0
 	for _, bindings := range contract.Messages {
 		total += len(bindings)
@@ -42,12 +42,12 @@ func messageBindings(contract *acton.Contract) int {
 // the same getter with different signatures. Candidates matched through a library
 // implementation hash are a different contract, not another name for the same
 // one, so the caller places them after the code-hash matches.
-func selectMethod(contracts []*acton.Contract, name string, id int64, byName bool) (*acton.Contract, *acton.GetMethod, error) {
+func selectMethod(contracts []*tolkabi.Contract, name string, id int64, byName bool) (*tolkabi.Contract, *tolkabi.GetMethod, error) {
 	if len(contracts) == 0 {
 		return nil, nil, Fail(404, "contract is not in the catalog")
 	}
 	for _, contract := range contracts {
-		var found *acton.GetMethod
+		var found *tolkabi.GetMethod
 		for i := range contract.GetMethods {
 			method := &contract.GetMethods[i]
 			if byName && method.Name == name || !byName && method.ID == id {
