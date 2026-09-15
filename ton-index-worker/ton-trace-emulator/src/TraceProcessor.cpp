@@ -35,7 +35,12 @@ constexpr std::size_t kMaxConcurrentWrites = 64;
 // Stop admitting nonfinalized updates at this backlog. Finalized admission is
 // bounded upstream by the scheduler's single committing block.
 constexpr std::size_t kNonfinalizedBacklogLimit = 10000;
+#ifdef TON_TRACE_BENCH_MAX_CACHED_NODES
+// Only the standalone benchmark defines this; production keeps its limit.
+constexpr std::size_t kMaxCachedTraceNodes = TON_TRACE_BENCH_MAX_CACHED_NODES;
+#else
 constexpr std::size_t kMaxCachedTraceNodes = 1000;
+#endif
 constexpr double kCleanupRetrySeconds = 1.0;
 constexpr double kExpirySweepSeconds = 1.0;
 constexpr double kQueueFullLogIntervalSeconds = 5.0;

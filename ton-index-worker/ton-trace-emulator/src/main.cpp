@@ -58,7 +58,7 @@ int main(int argc, char *argv[]) {
   std::string db_event_fifo_path;
   bool mch_disable = false;
   bool mch_no_tier2 = false;
-  int mch_workers = 1;
+  int mch_workers = mch::EmuClassifierConfig{}.workers;
   double actor_stats_interval = 30;
   
   td::OptionParser p;
@@ -165,7 +165,7 @@ int main(int argc, char *argv[]) {
     mch_no_tier2 = true;
   });
 
-  p.add_checked_option('\0', "mch-workers", "MCH classifier workers (default: 1)", [&](td::Slice value) {
+  p.add_checked_option('\0', "mch-workers", "MCH classifier workers (default: 8)", [&](td::Slice value) {
     int v;
     try {
       v = std::stoi(value.str());

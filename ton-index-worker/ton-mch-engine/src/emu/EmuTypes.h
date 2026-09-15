@@ -94,7 +94,7 @@ struct EmuClassifyResult {
 
 struct EmuClassifierConfig {
   std::shared_ptr<const MchEnginePrep> prep;  // nullptr = feature off
-  int workers{1};
+  int workers{8};
   int global_version{kEmuGlobalVersion};
   // Cell-db tier-2 lookups. Enabled by default; disabling them uses tier 1 only.
   bool tier2{true};

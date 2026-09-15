@@ -101,6 +101,26 @@ target_link_libraries(
 target_link_options(ton-trace-emulator PUBLIC -rdynamic)
 install(TARGETS ton-trace-emulator RUNTIME DESTINATION bin)
 
+# Explicit opt-in: synthetic input, real classifier and Redis pipeline.
+add_executable(bench-ton-trace-pipeline EXCLUDE_FROM_ALL
+    bench/TracePipelineBenchmark.cpp
+    src/TraceProcessor.cpp
+    src/RedisMaterializer.cpp
+    src/RedisConnectionActor.cpp
+    src/RedisTransport.cpp
+)
+target_include_directories(bench-ton-trace-pipeline
+    PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/../external/redis-plus-plus/src
+)
+target_compile_features(bench-ton-trace-pipeline PRIVATE cxx_std_20)
+target_compile_definitions(bench-ton-trace-pipeline PRIVATE
+    -DMSGPACK_USE_DEFINE_MAP TON_TRACE_BENCH_MAX_CACHED_NODES=5000
+)
+target_link_libraries(bench-ton-trace-pipeline PRIVATE
+    ton-trace-emulator-core ton-trace-state ton-trace-assembler
+    ton-confirmed-root-tracker mch-emu-bridge redis++_static msgpack-cxx
+)
+
 add_executable(test-ton-trace-state
     test/TraceStateTest.cpp
     test/TraceAssemblerTest.cpp
@@ -126,6 +146,7 @@ target_compile_features(test-ton-trace-state PRIVATE cxx_std_20)
 
 # White-box coverage for TraceProcessor's translation-unit-local prepare helpers.
 add_executable(test-ton-trace-processor
+    test/SyntheticTraceTest.cpp
     test/TraceProcessorTest.cpp
     test/ConfirmedPromotionTest.cpp
     test/RedisTransportTest.cpp
