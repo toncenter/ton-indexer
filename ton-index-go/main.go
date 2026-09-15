@@ -15,6 +15,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/toncenter/ton-indexer/ton-index-go/index/acton/catalog"
+	"github.com/toncenter/ton-indexer/ton-index-go/index/actonapi"
 	"github.com/toncenter/ton-indexer/ton-index-go/index/crud"
 	"github.com/toncenter/ton-indexer/ton-index-go/index/detect"
 	"github.com/toncenter/ton-indexer/ton-index-go/index/models"
@@ -301,7 +303,7 @@ func GetTransactions(c *fiber.Ctx) error {
 		return err
 	}
 
-	txs_resp := models.TransactionsResponse{Transactions: txs, AddressBook: book}
+	txs_resp := models.TransactionsResponse{Transactions: txs, AddressBook: book, CodeBook: crud.TransactionCodeBook(txs)}
 	return c.JSON(txs_resp)
 }
 
@@ -353,7 +355,7 @@ func GetPendingTransactions(c *fiber.Ctx) error {
 		return err
 	}
 
-	txs_resp := models.TransactionsResponse{Transactions: txs, AddressBook: book}
+	txs_resp := models.TransactionsResponse{Transactions: txs, AddressBook: book, CodeBook: crud.TransactionCodeBook(txs)}
 	return c.JSON(txs_resp)
 }
 
@@ -385,7 +387,7 @@ func GetAdjacentTransactions(c *fiber.Ctx) error {
 	// 	return models.IndexError{Code: 404, Message: "transactions not found"}
 	// }
 
-	txs_resp := models.TransactionsResponse{Transactions: txs, AddressBook: book}
+	txs_resp := models.TransactionsResponse{Transactions: txs, AddressBook: book, CodeBook: crud.TransactionCodeBook(txs)}
 	return c.JSON(txs_resp)
 }
 
@@ -426,7 +428,7 @@ func GetTransactionsByMasterchainBlock(c *fiber.Ctx) error {
 	// 	return models.IndexError{Code: 404, Message: "transactions not found"}
 	// }
 
-	txs_resp := models.TransactionsResponse{Transactions: txs, AddressBook: book}
+	txs_resp := models.TransactionsResponse{Transactions: txs, AddressBook: book, CodeBook: crud.TransactionCodeBook(txs)}
 	return c.JSON(txs_resp)
 }
 
@@ -473,7 +475,7 @@ func GetTransactionsByMessage(c *fiber.Ctx) error {
 	// 	return models.IndexError{Code: 404, Message: "transactions not found"}
 	// }
 
-	txs_resp := models.TransactionsResponse{Transactions: txs, AddressBook: book}
+	txs_resp := models.TransactionsResponse{Transactions: txs, AddressBook: book, CodeBook: crud.TransactionCodeBook(txs)}
 	return c.JSON(txs_resp)
 }
 
@@ -603,6 +605,7 @@ func GetMetadata(c *fiber.Ctx) error {
 // @failure 400 {object} models.RequestError
 // @param address query []string true "List of addresses in any form. Maximum 1000 addresses allowed." collectionFormat(multi)
 // @param include_boc query bool false "Include code and data BOCs. Default: true" default(true)
+// @param include_storage query bool false "Decode each account's data cell with its catalog ABI. Default: false" default(false)
 // @router /api/v3/accountStates [get]
 // @security		APIKeyHeader
 // @security		APIKeyQuery
@@ -616,14 +619,29 @@ func GetAccountStates(c *fiber.Ctx) error {
 	if len(req.AccountAddress) == 0 {
 		return models.IndexError{Code: 422, Message: "address of account is required"}
 	}
-	if req.IncludeBOC == nil {
-		req.IncludeBOC = new(bool)
-		*req.IncludeBOC = true
+	include_storage, err := strconv.ParseBool(c.Query("include_storage", "false"))
+	if err != nil {
+		return models.IndexError{Code: 422, Message: "include_storage must be a boolean"}
+	}
+	keep_boc := req.IncludeBOC == nil || *req.IncludeBOC
+	if req.IncludeBOC == nil || include_storage {
+		// Decoding needs the data cell even when the caller does not want it back.
+		req.IncludeBOC = new(true)
 	}
 
 	res, book, metadata, err := pool.QueryAccountStates(req, request_settings)
 	if err != nil {
 		return models.IndexError{Code: 422, Message: err.Error()}
+	}
+	if include_storage {
+		if err := crud.DecodeAccountStorage(res); err != nil {
+			return models.IndexError{Code: 413, Message: err.Error()}
+		}
+	}
+	if !keep_boc {
+		for i := range res {
+			res[i].DataBoc, res[i].CodeBoc = nil, nil
+		}
 	}
 	// if len(res) == 0 {
 	// 	return index.IndexError{Code: 404, Message: "account states not found"}
@@ -636,7 +654,7 @@ func GetAccountStates(c *fiber.Ctx) error {
 		}
 	}
 
-	resp := models.AccountStatesResponse{Accounts: res, AddressBook: book, Metadata: metadata}
+	resp := models.AccountStatesResponse{Accounts: res, AddressBook: book, Metadata: metadata, CodeBook: crud.AccountCodeBook(res)}
 	return c.JSON(resp)
 }
 
@@ -1254,10 +1272,10 @@ func GetTraces(c *fiber.Ctx) error {
 	crud.SubstituteImgproxyBaseUrl(&metadata, settings.ImgProxyBaseUrl)
 
 	if c.Path() == "/api/v3/events" {
-		txs_resp := models.DeprecatedEventsResponse{Events: res, AddressBook: book, Metadata: metadata}
+		txs_resp := models.DeprecatedEventsResponse{Events: res, AddressBook: book, Metadata: metadata, CodeBook: crud.TraceCodeBook(res)}
 		return c.JSON(txs_resp)
 	}
-	txs_resp := models.TracesResponse{Traces: res, AddressBook: book, Metadata: metadata}
+	txs_resp := models.TracesResponse{Traces: res, AddressBook: book, Metadata: metadata, CodeBook: crud.TraceCodeBook(res)}
 	return c.JSON(txs_resp)
 }
 
@@ -1316,7 +1334,7 @@ func GetPendingTraces(c *fiber.Ctx) error {
 		return err
 	}
 
-	txs_resp := models.TracesResponse{Traces: res, AddressBook: book, Metadata: metadata}
+	txs_resp := models.TracesResponse{Traces: res, AddressBook: book, Metadata: metadata, CodeBook: crud.TraceCodeBook(res)}
 	return c.JSON(txs_resp)
 }
 
@@ -1972,6 +1990,8 @@ func ErrorHandlerFunc(ctx *fiber.Ctx, err error) error {
 	}
 
 	switch e := err.(type) {
+	case *fiber.Error:
+		return ctx.Status(e.Code).JSON(models.IndexError{Code: e.Code, Message: e.Message})
 	case models.IndexError:
 		if e.Code != 404 && e.Code != 409 {
 			err_msg := err.Error()
@@ -2899,6 +2919,15 @@ func main() {
 	app.Get("/api/v3/metadata", GetMetadata)
 	app.Get("/api/v3/accountStates", GetAccountStates)
 	app.Get("/api/v3/walletStates", GetWalletStates)
+
+	actonAPI := actonapi.New(catalog.Contracts, catalog.Revision, actonapi.Dependencies{
+		Executor: func(c *fiber.Ctx) actonapi.GetterExecutor {
+			return index.NewActonExecutor(GetRequestSettings(c, &settings))
+		},
+	})
+	app.Get("/api/v3/acton/contracts", actonAPI.Contracts)
+	app.Post("/api/v3/acton/decode", actonAPI.Decode)
+	app.Post("/api/v3/acton/runGetMethod", actonAPI.RunGetMethod)
 
 	app.Get("/api/v3/dns/records", GetDNSRecords)
 	app.Get("/api/v3/dns/activeAuctions", GetDNSAuctions)

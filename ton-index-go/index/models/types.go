@@ -54,6 +54,9 @@ var WalletsHashMap = map[string]bool{
 type IndexError struct {
 	Code    int    `json:"-"`
 	Message string `json:"error"`
+	// Candidates names the alternatives a caller can retry with when a request
+	// was ambiguous. Empty for every other error.
+	Candidates []string `json:"candidates,omitempty"`
 }
 
 func (e IndexError) Error() string {

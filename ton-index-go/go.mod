@@ -7,9 +7,9 @@ require (
 	github.com/gofiber/fiber/v2 v2.52.12
 	github.com/gofiber/swagger v1.1.0
 	github.com/jackc/pgx/v5 v5.6.0
-	github.com/lib/pq v1.10.9
 	github.com/redis/go-redis/v9 v9.7.0
 	github.com/swaggo/swag v1.16.3
+	github.com/ton-blockchain/tolk-abi-to-go v0.1.0
 	github.com/valyala/fasthttp v1.55.0
 	github.com/vmihailenco/msgpack/v5 v5.4.1
 	github.com/xssnick/tonutils-go v1.15.5
@@ -47,3 +47,5 @@ require (
 	golang.org/x/tools v0.36.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
+
+tool github.com/ton-blockchain/tolk-abi-to-go/cmd/tolk-abi-to-go
