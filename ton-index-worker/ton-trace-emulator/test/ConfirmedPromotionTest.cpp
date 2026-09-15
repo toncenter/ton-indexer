@@ -54,6 +54,8 @@ class TestProcessor : public ITraceProcessor {
   void process_confirmed_trace_update(TraceUpdate, td::Promise<ConfirmedTraceSnapshot>) override {
     UNREACHABLE();
   }
+  void discard_confirmed_updates(std::vector<ton::BlockId>) override {
+  }
   void promote_confirmed(std::vector<ConfirmedTraceSnapshot>, ton::BlockSeqno seqno,
                          td::Promise<td::Unit> promise) override {
     started_(seqno, std::move(promise));

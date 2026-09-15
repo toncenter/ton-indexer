@@ -7,6 +7,7 @@
 #include <sw/redis++/redis++.h>
 
 #include "../src/TraceProcessor.cpp"
+#include "EnginePrep.h"
 #include "td/utils/tests.h"
 
 #include "TraceTestUtils.h"
@@ -150,6 +151,37 @@ void commit_to_redis(const char* uri, RedisWritePlan plan) {
 }
 
 }  // namespace
+
+struct TraceProcessorTest : TraceProcessor {
+  using Check = std::function<void(TraceProcessorTest&)>;
+  Check check;
+
+  TraceProcessorTest(Check check, mch::EmuClassifierConfig config)
+      : TraceProcessor(RedisConnectionOptions{}, TraceRetentionConfig{}, std::move(config)), check(std::move(check)) {}
+
+  void start_up() override {
+    check(*this);
+    td::actor::SchedulerContext::get().stop();
+  }
+
+  auto& state() { return *impl_; }
+  void resume() { start_next_operations(); }
+  void schedule(const std::string& key) { schedule_trace(key); }
+  void written(std::string key) { write_finished(std::move(key), td::Status::OK(), {}); }
+  void classified(std::string key, td::Result<mch::EmuClassifyResult> result) {
+    classification_finished(std::move(key), std::move(result));
+  }
+
+  static void run(Check check, mch::EmuClassifierConfig config = {}) {
+    td::actor::Scheduler scheduler({1});
+    td::actor::ActorOwn<TraceProcessorTest> processor;
+    scheduler.run_in_context([&] {
+      processor = td::actor::create_actor<TraceProcessorTest>("TraceProcessorTest", std::move(check), std::move(config));
+    });
+    scheduler.run();
+    scheduler.run_in_context([&] { processor.reset(); });
+  }
+};
 
 TEST(TraceProcessor, promotion_declines_a_missing_or_different_root_without_mutation) {
   using namespace trace_test;
@@ -583,15 +615,431 @@ TEST(TraceProcessor, ready_work_is_routed_by_write_capacity_requirement) {
   slot.classification.reset();
   slot.cleanup_requested = true;
   ASSERT_EQ(TraceReadyQueue::Write, next_ready_queue(slot));
+
+  slot.cleanup_requested = false;
+  slot.classification.emplace(ClassificationWork{
+      .update = make_trace_update(trace_fragment('a', FinalityState::Finalized, 10), {}),
+  });
+  slot.classification->payload.emplace();
+  ASSERT_EQ(TraceReadyQueue::FinalizedWrite, next_ready_queue(slot));
+  slot.in_flight.emplace();
+  ASSERT_EQ(TraceReadyQueue::None, next_ready_queue(slot));
+  slot.in_flight.reset();
+  slot.classification.reset();
+  slot.queued.emplace_back(PromoteConfirmedRequest{});
+  ASSERT_EQ(TraceReadyQueue::FinalizedWrite, next_ready_queue(slot));
 }
 
 TEST(TraceProcessor, saturated_writes_do_not_drain_the_write_ready_queue) {
+  TraceReadyQueues queues;
+  queues[TraceReadyQueue::Write].push_back("writing");
   ASSERT_EQ(TraceReadyQueue::Write,
-            next_queue_to_drain(kMaxConcurrentWrites - 1, true, 0, false));
+            next_queue_to_drain(queues, kMaxConcurrentWrites - 1, true));
   ASSERT_EQ(TraceReadyQueue::None,
-            next_queue_to_drain(kMaxConcurrentWrites, true, 0, false));
+            next_queue_to_drain(queues, kMaxConcurrentWrites, true));
+  queues[TraceReadyQueue::General].push_back("classifying");
   ASSERT_EQ(TraceReadyQueue::General,
-            next_queue_to_drain(kMaxConcurrentWrites, true, 1, true));
+            next_queue_to_drain(queues, kMaxConcurrentWrites, true));
+  ASSERT_EQ(TraceReadyQueue::None,
+            next_queue_to_drain(queues, kMaxConcurrentWrites, false));
+}
+
+TEST(TraceProcessor, finalized_priority_respects_capacity_and_resumes_background_work) {
+  TraceReadyQueues queues;
+  for (auto queue : {TraceReadyQueue::General, TraceReadyQueue::Write,
+                     TraceReadyQueue::FinalizedGeneral, TraceReadyQueue::FinalizedWrite}) {
+    queues[queue].push_back("first");
+    queues[queue].push_back("second");
+  }
+  ASSERT_EQ(TraceReadyQueue::FinalizedGeneral, next_queue_to_drain(queues, kMaxConcurrentWrites, true));
+  ASSERT_EQ(TraceReadyQueue::None, next_queue_to_drain(queues, kMaxConcurrentWrites, false));
+  for (auto expected : {TraceReadyQueue::FinalizedWrite, TraceReadyQueue::FinalizedGeneral,
+                        TraceReadyQueue::Write, TraceReadyQueue::General}) {
+    for (const auto* trace : {"first", "second"}) {
+      const auto selected = next_queue_to_drain(queues, 0, true);
+      ASSERT_EQ(expected, selected);
+      ASSERT_EQ(std::string(trace), queues[selected].front());
+      queues[selected].pop_front();
+    }
+  }
+  ASSERT_EQ(TraceReadyQueue::None, next_queue_to_drain(queues, 0, true));
+}
+
+TEST(TraceProcessor, nonfinalized_backlog_limit_accepts_finalized_and_recovers) {
+  TraceProcessorTest::run([](auto& processor) {
+    auto& state = processor.state();
+    state.classifiers.resize(1);  // No idle worker: keep admitted updates queued.
+    state.active_writes = kMaxConcurrentWrites;
+    state.pending_updates = kNonfinalizedBacklogLimit;
+    bool pending_rejected = false, confirmed_rejected = false;
+    processor.process_trace_update(make_trace_update(trace_fragment('a', FinalityState::Emulated, 10), {}),
+        td::PromiseCreator::lambda([&](td::Result<td::Unit> result) { pending_rejected = result.is_error(); }));
+    processor.process_confirmed_trace_update(make_trace_update(trace_fragment('b', FinalityState::Confirmed, 10), {}),
+        td::PromiseCreator::lambda([&](td::Result<ConfirmedTraceSnapshot> result) {
+          confirmed_rejected = result.is_error();
+        }));
+    ASSERT_TRUE(pending_rejected && confirmed_rejected);
+    ASSERT_TRUE(state.traces.empty());
+
+    processor.process_trace_update(make_trace_update(trace_fragment('c', FinalityState::Finalized, 10), {}), {});
+    ASSERT_EQ(kNonfinalizedBacklogLimit + 1, state.pending_updates);
+    ASSERT_EQ(1u, state.ready_queues[TraceReadyQueue::FinalizedGeneral].size());
+
+    state.pending_updates = kNonfinalizedBacklogLimit - 1;  // Backlog drained.
+    processor.process_confirmed_trace_update(make_trace_update(trace_fragment('b', FinalityState::Confirmed, 11), {}), {});
+    ASSERT_EQ(kNonfinalizedBacklogLimit, state.pending_updates);
+    ASSERT_EQ(1u, state.ready_queues[TraceReadyQueue::General].size());
+  });
+}
+
+TEST(TraceProcessor, finalized_overtakes_waiting_nonfinalized_without_duplicate_ready_entries) {
+  TraceProcessorTest::run([](auto& processor) {
+    auto& state = processor.state();
+    state.classifiers.resize(1);
+    state.active_writes = kMaxConcurrentWrites;
+    const auto trace_key = td::base64_encode(trace_hash('a').as_slice());
+    for (auto finality : {FinalityState::Emulated, FinalityState::Confirmed, FinalityState::Finalized}) {
+      processor.process_trace_update(make_trace_update(trace_fragment('a', finality, 10), {}), {});
+    }
+    auto& slot = state.traces.at(trace_key);
+    ASSERT_TRUE(state.ready_queues[TraceReadyQueue::General].empty());
+    ASSERT_EQ(1u, state.ready_queues[TraceReadyQueue::FinalizedGeneral].size());
+    ASSERT_EQ(2u, slot.queued.size());
+    ASSERT_EQ(FinalityState::Finalized, trace_update_finality(std::get<InsertRequest>(slot.queued[0]).update));
+    ASSERT_EQ(FinalityState::Confirmed, trace_update_finality(std::get<InsertRequest>(slot.queued[1]).update));
+
+    slot.classification.emplace(ClassificationWork{
+        .update = std::move(std::get<InsertRequest>(slot.queued.front()).update),
+    });
+    slot.queued.pop_front();
+    processor.schedule(trace_key);
+    ASSERT_TRUE(state.ready_queues[TraceReadyQueue::FinalizedGeneral].empty());
+    slot.classification->payload.emplace();
+    processor.schedule(trace_key);
+    processor.schedule(trace_key);
+    ASSERT_EQ(1u, state.ready_queues[TraceReadyQueue::FinalizedWrite].size());
+
+    slot.classification.reset();  // Finalized finished: resume the nonfinalized queue.
+    processor.schedule(trace_key);
+    ASSERT_TRUE(state.ready_queues[TraceReadyQueue::FinalizedWrite].empty());
+    ASSERT_EQ(1u, state.ready_queues[TraceReadyQueue::General].size());
+    enqueue_trace_request(slot.queued, PromoteConfirmedRequest{});
+    processor.schedule(trace_key);
+    ASSERT_TRUE(state.ready_queues[TraceReadyQueue::General].empty());
+    ASSERT_EQ(1u, state.ready_queues[TraceReadyQueue::FinalizedWrite].size());
+  });
+}
+
+TEST(TraceProcessor, finalized_updates_and_promotions_share_a_stable_fifo_prefix) {
+  TraceProcessorTest::run([](auto& processor) {
+    auto& state = processor.state();
+    state.classifiers.resize(1);
+    state.active_writes = kMaxConcurrentWrites;
+    const auto trace_key = td::base64_encode(trace_hash('a').as_slice());
+    auto enqueue = [&](FinalityState finality, ton::BlockSeqno seqno) {
+      processor.process_trace_update(make_trace_update(trace_fragment('a', finality, seqno), {}), {});
+    };
+    enqueue(FinalityState::Confirmed, 9);
+    enqueue(FinalityState::Finalized, 10);
+    enqueue(FinalityState::Confirmed, 11);
+    auto snapshot = std::make_shared<ConfirmedTraceSnapshotData>();
+    snapshot->trace_key = trace_key;
+    processor.promote_confirmed({snapshot}, 11, {});
+    enqueue(FinalityState::Finalized, 12);
+    enqueue(FinalityState::Confirmed, 12);
+    enqueue(FinalityState::Finalized, 12);  // Same block also must not replace an earlier update.
+
+    const auto& queued = state.traces.at(trace_key).queued;
+    ASSERT_EQ(7u, queued.size());
+    ASSERT_EQ(10u, std::get<InsertRequest>(queued[0]).update.fragments.front().root->mc_block_seqno);
+    ASSERT_EQ(11u, std::get<PromoteConfirmedRequest>(queued[1]).mc_seqno);
+    ASSERT_EQ(12u, std::get<InsertRequest>(queued[2]).update.fragments.front().root->mc_block_seqno);
+    ASSERT_EQ(12u, std::get<InsertRequest>(queued[3]).update.fragments.front().root->mc_block_seqno);
+    for (std::size_t i = 0; i < queued.size(); ++i) {
+      ASSERT_EQ(i < 4, is_finalized_request(queued[i]));
+    }
+    ASSERT_EQ(9u, std::get<InsertRequest>(queued[4]).update.fragments.front().root->mc_block_seqno);
+    ASSERT_EQ(FinalityState::Confirmed, trace_update_finality(std::get<InsertRequest>(queued[5]).update));
+    ASSERT_EQ(12u, std::get<InsertRequest>(queued[6]).update.fragments.front().root->mc_block_seqno);
+  });
+}
+
+TEST(TraceProcessor, finalized_fragments_apply_serially_after_an_already_started_update) {
+  TraceProcessorTest::run([](auto& processor) {
+    using namespace trace_test;
+    auto& state = processor.state();
+    state.classifiers.resize(1);  // Drive classification completions explicitly in this actor turn.
+    state.active_writes = kMaxConcurrentWrites;
+    auto a = message(301, true), b = message(302), c = message(303);
+    auto root = node(a, {b}, FinalityState::Confirmed);
+    const auto root_hash = root->transaction_root->get_hash().bits();
+    auto initial = make_trace_update(trace(std::move(root), a), {});
+    const auto trace_key = td::base64_encode(initial.fragments.front().ext_in_msg_hash_norm.as_slice());
+    auto& slot = state.traces[trace_key];
+    auto transition = TraceAssembler().apply_update(*slot.current, initial, trace_key).move_as_ok();
+    slot.classification.emplace(ClassificationWork{.update = std::move(initial), .transition = std::move(transition)});
+    ++state.pending_updates;
+
+    std::vector<ton::BlockSeqno> completed;
+    auto enqueue_finalized = [&](std::unique_ptr<TraceNode> fragment, ton::BlockSeqno seqno) {
+      fragment->mc_block_seqno = seqno;
+      processor.process_trace_update(make_trace_update(trace(std::move(fragment), a, root_hash), {}),
+          td::PromiseCreator::lambda([&, seqno](td::Result<td::Unit> result) {
+            ASSERT_TRUE(result.is_ok());
+            completed.push_back(seqno);
+          }));
+    };
+    processor.process_trace_update(make_trace_update(trace(node(a, {b}, FinalityState::Emulated), a), {}), {});
+    enqueue_finalized(node(a, {b}, FinalityState::Finalized), 100);
+    processor.discard_confirmed_updates({ton::BlockId{0, ton::shardIdAll, 10}});
+    ASSERT_EQ(TraceReadyQueue::None, slot.scheduled_queue);
+    ASSERT_EQ(FinalityState::Confirmed, trace_update_finality(slot.classification->update));
+
+    mch::EmuClassifyResult result;
+    result.trace_id = trace_key;
+    result.payload.finality = trace_finality(slot.classification->transition.next_trace);
+    result.payload.update_seq = slot.classification->transition.next_trace.update_seq;
+    processor.classified(trace_key, std::move(result));
+    state.idle_classifiers.clear();
+    ASSERT_EQ(TraceReadyQueue::FinalizedWrite, slot.scheduled_queue);
+    ASSERT_EQ(FinalityState::Confirmed, trace_update_finality(slot.classification->update));
+
+    --state.active_writes;
+    processor.resume();
+    ASSERT_TRUE(slot.in_flight.has_value());
+    enqueue_finalized(node(b, {c}, FinalityState::Finalized, 200), 101);
+    enqueue_finalized(node(c, {}, FinalityState::Finalized, 300), 102);
+    processor.discard_confirmed_updates({ton::BlockId{0, ton::shardIdAll, 10}});
+    ASSERT_EQ(TraceReadyQueue::None, slot.scheduled_queue);
+    ASSERT_TRUE(completed.empty());
+    processor.written(trace_key);
+    ASSERT_EQ(TraceStateFinality::Confirmed, slot.current->root()->finality);
+
+    for (ton::BlockSeqno seqno : {100u, 101u, 102u}) {
+      ASSERT_TRUE(!slot.in_flight && !slot.classification);
+      auto request = std::move(std::get<InsertRequest>(slot.queued.front()));
+      slot.queued.pop_front();
+      ASSERT_EQ(seqno, request.update.fragments.front().root->mc_block_seqno);
+      auto next = TraceAssembler().apply_update(*slot.current, request.update, trace_key).move_as_ok();
+      ASSERT_TRUE(next.needs_redis_write);
+      slot.classification.emplace(ClassificationWork{
+          .update = std::move(request.update), .transition = std::move(next),
+          .completion = std::move(request.completion), .contains_real_root = request.contains_real_root,
+      });
+      slot.classification->payload.emplace();
+      slot.classification->payload->finality = trace_finality(slot.classification->transition.next_trace);
+      slot.classification->payload->update_seq = slot.classification->transition.next_trace.update_seq;
+      processor.schedule(trace_key);
+      processor.resume();
+      ASSERT_TRUE(slot.in_flight.has_value());
+      processor.written(trace_key);
+      ASSERT_EQ(seqno - 99, slot.current->nodes.nodes().size());
+    }
+    ASSERT_EQ(std::vector<ton::BlockSeqno>({100, 101, 102}), completed);
+    ASSERT_TRUE(slot.queued.empty());
+    ASSERT_EQ(0u, state.pending_updates);
+    ASSERT_EQ(TraceReadyQueue::None, slot.scheduled_queue);
+    for (const auto& [_, node] : slot.current->nodes.nodes()) {
+      ASSERT_EQ(TraceStateFinality::Finalized, node.finality);
+    }
+  });
+}
+
+TEST(TraceProcessor, finalized_admission_discards_waiting_pending_and_completes_promises) {
+  for (bool promotion : {false, true}) {
+    TraceProcessorTest::run([&](auto& processor) {
+      auto& state = processor.state();
+      state.classifiers.resize(1);
+      state.active_writes = kMaxConcurrentWrites;
+      const auto trace_key = td::base64_encode(trace_hash('a').as_slice());
+      auto& slot = state.traces[trace_key];
+      slot.classification.emplace(ClassificationWork{
+          .update = make_trace_update(trace_fragment('a', FinalityState::Emulated, 8), {}),
+      });
+      ++state.pending_updates;
+      processor.process_trace_update(make_trace_update(trace_fragment('a', FinalityState::Finalized, 11), {}), {});
+      int pending_completions = 0;
+      for (auto seqno : {9u, 10u}) {
+        processor.process_trace_update(make_trace_update(trace_fragment('a', FinalityState::Emulated, seqno), {}),
+            td::PromiseCreator::lambda([&](td::Result<td::Unit> result) {
+              ASSERT_TRUE(result.is_ok());
+              ++pending_completions;
+            }));
+      }
+      processor.process_confirmed_trace_update(make_trace_update(trace_fragment('a', FinalityState::Confirmed, 12), {}), {});
+      processor.process_trace_update(make_trace_update(trace_fragment('b', FinalityState::Emulated, 12), {}), {});
+      bool invalid_rejected = false;
+      processor.process_trace_update({}, td::PromiseCreator::lambda([&](td::Result<td::Unit> result) {
+        invalid_rejected = result.is_error();
+      }));
+      ASSERT_TRUE(invalid_rejected);
+      ASSERT_EQ(0, pending_completions);
+      ASSERT_EQ(6u, state.pending_updates);
+
+      if (promotion) {
+        auto snapshot = std::make_shared<ConfirmedTraceSnapshotData>();
+        snapshot->trace_key = trace_key;
+        processor.promote_confirmed({snapshot}, 12, {});
+      } else {
+        processor.process_trace_update(make_trace_update(trace_fragment('a', FinalityState::Finalized, 12), {}), {});
+      }
+      ASSERT_EQ(2, pending_completions);
+      ASSERT_EQ(promotion ? 4u : 5u, state.pending_updates);
+      ASSERT_EQ(3u, slot.queued.size());
+      ASSERT_EQ(11u, std::get<InsertRequest>(slot.queued[0]).update.fragments.front().root->mc_block_seqno);
+      ASSERT_TRUE(is_finalized_request(slot.queued[1]));
+      ASSERT_EQ(FinalityState::Confirmed, trace_update_finality(std::get<InsertRequest>(slot.queued[2]).update));
+      ASSERT_EQ(FinalityState::Emulated, trace_update_finality(slot.classification->update));
+      ASSERT_EQ(TraceReadyQueue::None, slot.scheduled_queue);
+      ASSERT_EQ(1u, state.traces.at(td::base64_encode(trace_hash('b').as_slice())).queued.size());
+      ASSERT_EQ(kMaxConcurrentWrites, state.active_writes);
+    });
+  }
+}
+
+TEST(TraceProcessor, closed_blocks_discard_all_confirmed_versions_by_logical_block_id) {
+  TraceProcessorTest::run([](auto& processor) {
+    auto& state = processor.state();
+    state.classifiers.resize(1);
+    state.active_writes = kMaxConcurrentWrites;
+    ton::BlockIdExt winner{0, ton::shardIdAll, 10, trace_hash('1'), trace_hash('2')};
+    ton::BlockIdExt loser{0, ton::shardIdAll, 10, trace_hash('3'), trace_hash('4')};
+    ASSERT_TRUE(winner != loser);
+    ASSERT_EQ(winner.id, loser.id);
+    int skipped = 0;
+    auto enqueue = [&](char trace_digit, ton::BlockId block, ton::BlockSeqno mc_seqno, bool expect_skip) {
+      auto fragment = trace_fragment(trace_digit, FinalityState::Confirmed, mc_seqno);
+      fragment.root->block_id = block;
+      td::Promise<ConfirmedTraceSnapshot> promise;
+      if (expect_skip) {
+        promise = td::PromiseCreator::lambda([&](td::Result<ConfirmedTraceSnapshot> result) {
+          ASSERT_TRUE(result.is_ok());
+          ASSERT_TRUE(result.ok() == nullptr);
+          ++skipped;
+        });
+      }
+      processor.process_confirmed_trace_update(make_trace_update(std::move(fragment), {}), std::move(promise));
+    };
+    enqueue('a', winner.id, 90, true);
+    enqueue('b', loser.id, 91, true);  // Different predicted MC seqno and transaction identity.
+    enqueue('c', ton::BlockId{0, ton::shardIdAll / 2, 10}, 90, false);
+    enqueue('d', ton::BlockId{0, ton::shardIdAll, 11}, 90, false);
+    enqueue('e', ton::BlockId{1, ton::shardIdAll, 10}, 90, false);
+    auto finalized = trace_fragment('f', FinalityState::Finalized, 100);
+    finalized.root->block_id = winner.id;
+    processor.process_trace_update(make_trace_update(std::move(finalized), {}), {});
+    auto snapshot = std::make_shared<ConfirmedTraceSnapshotData>();
+    snapshot->trace_key = td::base64_encode(trace_hash('f').as_slice());
+    processor.promote_confirmed({snapshot}, 101, {});
+
+    processor.discard_confirmed_updates({winner.id, loser.id});
+    ASSERT_EQ(2, skipped);
+    ASSERT_EQ(4u, state.pending_updates);
+    ASSERT_EQ(4u, state.traces.size());  // No empty slots for the discarded traces.
+    ASSERT_EQ(0u, state.traces.count(td::base64_encode(trace_hash('a').as_slice())));
+    ASSERT_EQ(0u, state.traces.count(td::base64_encode(trace_hash('b').as_slice())));
+    ASSERT_EQ(3u, state.ready_queues[TraceReadyQueue::General].size());
+    ASSERT_EQ(1u, state.ready_queues[TraceReadyQueue::FinalizedGeneral].size());
+    const auto& queued = state.traces.at(snapshot->trace_key).queued;
+    ASSERT_EQ(2u, queued.size());
+    ASSERT_TRUE(is_finalized_request(queued[0]));
+    ASSERT_TRUE(std::holds_alternative<PromoteConfirmedRequest>(queued[1]));
+    processor.discard_confirmed_updates({winner.id});
+    ASSERT_EQ(2, skipped);
+    ASSERT_EQ(4u, state.pending_updates);
+  });
+}
+
+TEST(TraceProcessor, classification_dispatches_priority_work_only_to_idle_workers) {
+  mch::EmuClassifierConfig config;
+  config.prep = mch::make_engine_prep().move_as_ok();
+  config.workers = 2;
+  TraceProcessorTest::run([](auto& processor) {
+    using namespace trace_test;
+    auto& state = processor.state();
+    state.active_writes = kMaxConcurrentWrites;
+    state.idle_classifiers.clear();
+    for (int i = 0; i < 4; ++i) {
+      auto msg = message(100 + i, true);
+      auto update = trace(node(msg, {}, i == 3 ? FinalityState::Finalized : FinalityState::Confirmed), msg);
+      update.ext_in_msg_hash_norm = hash('a' + i);
+      processor.process_trace_update(make_trace_update(std::move(update), {}), {});
+    }
+    ASSERT_EQ(3u, state.ready_queues[TraceReadyQueue::General].size());
+    state.idle_classifiers.push_back(1);
+    processor.resume();
+    ASSERT_TRUE(state.idle_classifiers.empty());
+    ASSERT_TRUE(state.ready_queues[TraceReadyQueue::FinalizedGeneral].empty());
+    ASSERT_EQ(3u, state.ready_queues[TraceReadyQueue::General].size());
+    const auto& work = state.traces.at(td::base64_encode(hash('d').as_slice())).classification;
+    ASSERT_TRUE(work.has_value());
+    ASSERT_EQ(1u, work->classifier_index);
+    ASSERT_EQ(FinalityState::Finalized, trace_update_finality(work->update));
+  }, std::move(config));
+}
+
+TEST(TraceProcessor, freed_write_slot_serves_finalized_then_resumes_nonfinalized_fifo) {
+  TraceProcessorTest::run([](auto& processor) {
+    using namespace trace_test;
+    auto& state = processor.state();
+    state.active_writes = kMaxConcurrentWrites;
+    std::vector<std::string> keys;
+    for (int i = 0; i < 3; ++i) {
+      auto msg = message(200 + i, true);
+      auto fragment = trace(node(msg, {}, i == 2 ? FinalityState::Finalized : FinalityState::Confirmed), msg);
+      fragment.ext_in_msg_hash_norm = hash('a' + i);
+      keys.push_back(td::base64_encode(fragment.ext_in_msg_hash_norm.as_slice()));
+      auto update = make_trace_update(std::move(fragment), {});
+      auto& slot = state.traces[keys.back()];
+      auto transition = TraceAssembler().apply_update(*slot.current, update, keys.back()).move_as_ok();
+      slot.classification.emplace(ClassificationWork{.update = std::move(update), .transition = std::move(transition)});
+      slot.classification->payload.emplace();
+      slot.classification->payload->finality = trace_finality(slot.classification->transition.next_trace);
+      slot.classification->payload->update_seq = slot.classification->transition.next_trace.update_seq;
+      ++state.pending_updates;
+      processor.schedule(keys.back());
+    }
+
+    --state.active_writes;
+    processor.resume();
+    for (auto index : {2, 0, 1}) {
+      ASSERT_EQ(kMaxConcurrentWrites, state.active_writes);
+      ASSERT_TRUE(state.traces.at(keys[index]).in_flight.has_value());
+      // Complete the submitted write while this actor owns the CPU turn;
+      // the materializer never runs or opens sockets in this test.
+      processor.written(keys[index]);
+    }
+    ASSERT_EQ(0u, state.pending_updates);
+    ASSERT_EQ(kMaxConcurrentWrites - 1, state.active_writes);
+    for (const auto& [_, queue] : state.ready_queues) {
+      ASSERT_TRUE(queue.empty());
+    }
+  });
+}
+
+TEST(TraceProcessor, classifier_completion_returns_its_worker_on_success_and_failure) {
+  for (int outcome : {0, 1, 2}) {
+    TraceProcessorTest::run([&](auto& processor) {
+      auto& state = processor.state();
+      state.classifiers.resize(2);
+      state.active_writes = kMaxConcurrentWrites;
+      state.pending_updates = 1;
+      auto& slot = state.traces["classifying"];
+      slot.classification.emplace(ClassificationWork{.classifier_index = 1});
+      mch::EmuClassifyResult result;
+      result.trace_id = "classifying";
+      result.payload.finality = trace_finality(slot.classification->transition.next_trace);
+      result.payload.update_seq = slot.classification->transition.next_trace.update_seq + (outcome == 2);
+      if (outcome == 1) {
+        processor.classified("classifying", td::Status::Error("Test classifier response lost"));
+      } else {
+        processor.classified("classifying", std::move(result));
+      }
+      ASSERT_EQ(1u, state.idle_classifiers.size());
+      ASSERT_EQ(1u, state.idle_classifiers.front());
+      ASSERT_EQ(outcome != 2, slot.classification.has_value());
+    });
+  }
 }
 
 TEST(TraceProcessor, queue_snapshot_accounts_for_pending_updates) {
@@ -600,14 +1048,14 @@ TEST(TraceProcessor, queue_snapshot_accounts_for_pending_updates) {
   auto& queued = traces["queued"];
   queued.queued.emplace_back(InsertRequest{});
   queued.queued.emplace_back(InsertRequest{});
-  queued.scheduled_queue = TraceReadyQueue::General;
+  queued.scheduled_queue = TraceReadyQueue::FinalizedGeneral;
 
   traces["classifying"].classification.emplace(ClassificationWork{});
 
   auto& classified = traces["classified"];
   classified.classification.emplace(ClassificationWork{});
   classified.classification->payload.emplace();
-  classified.scheduled_queue = TraceReadyQueue::Write;
+  classified.scheduled_queue = TraceReadyQueue::FinalizedWrite;
 
   traces["writing"].in_flight.emplace(InFlightWork{.counted_update = true});
   auto& cleanup = traces["cleanup"];
@@ -625,14 +1073,18 @@ TEST(TraceProcessor, queue_snapshot_accounts_for_pending_updates) {
   ASSERT_EQ(1u, snapshot.promotions_waiting_write);
   ASSERT_EQ(1u, snapshot.scheduled_general);
   ASSERT_EQ(1u, snapshot.scheduled_writes);
+  ASSERT_EQ(1u, snapshot.prioritized_general);
+  ASSERT_EQ(1u, snapshot.prioritized_writes);
   ASSERT_EQ(2u, snapshot.max_slot_queue);
   ASSERT_EQ(std::string("queued"), snapshot.max_slot_trace);
 
-  const auto formatted = format_queue_snapshot(snapshot, 5, traces.size(), 1, 1, 1);
+  const auto formatted = format_queue_snapshot(snapshot, 5, traces.size(), 1);
   ASSERT_TRUE(formatted.find("pending_updates=5") != std::string::npos);
   ASSERT_TRUE(formatted.find("classifying=1") != std::string::npos);
   ASSERT_TRUE(formatted.find("classified_waiting_write=1") != std::string::npos);
   ASSERT_TRUE(formatted.find("active_writes=1") != std::string::npos);
+  ASSERT_TRUE(formatted.find("prioritized_general=1") != std::string::npos);
+  ASSERT_TRUE(formatted.find("prioritized_writes=1") != std::string::npos);
 }
 
 TEST(TraceProcessor, promotion_rewrites_all_action_finalities_and_keeps_content) {

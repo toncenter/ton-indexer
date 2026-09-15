@@ -279,12 +279,14 @@ void TraceEmulatorScheduler::start_next_finalized_block() {
     bool has_shard_blocks = false;
     const char* promotion_skip_reason = "no_shard_blocks";
     std::vector<ConfirmedTraceSnapshot> snapshots;
+    std::vector<ton::BlockId> closed_shard_blocks;
     for (const auto& block : it->second.shard_blocks_diff_) {
         const auto block_id = block.block_data->block_id();
         close_confirmed_block(block_id.id);
         if (block_id.is_masterchain()) {
             continue;
         }
+        closed_shard_blocks.push_back(block_id.id);
         if (!has_shard_blocks) {
             reuse_confirmed_state = true;
             has_shard_blocks = true;
@@ -298,6 +300,13 @@ void TraceEmulatorScheduler::start_next_finalized_block() {
             const auto& block_snapshots = confirmed_block_snapshots_.at(block_id);
             snapshots.insert(snapshots.end(), block_snapshots.begin(), block_snapshots.end());
         }
+    }
+
+    // All confirmed updates forwarded earlier precede this notification in
+    // the processor's mailbox. Later arrivals are rejected by the closed set.
+    if (!closed_shard_blocks.empty()) {
+        td::actor::send_closure(trace_processor_, &ITraceProcessor::discard_confirmed_updates,
+                               std::move(closed_shard_blocks));
     }
 
     std::function<void(td::Promise<td::Unit>)> promote;
@@ -636,7 +645,7 @@ void TraceEmulatorScheduler::signed_block_error(ton::BlockIdExt block_id, td::St
 }
 
 void TraceEmulatorScheduler::process_signed_blocks() {
-    // Do not start more speculative work while finalized work is available.
+    // Do not start more nonfinalized work while finalized work is available.
     // Confirmed emulators that are already running are allowed to finish.
     if (finalized_blocks_in_pipeline_ > 0 || has_ready_finalized_block()) {
         start_next_finalized_block();

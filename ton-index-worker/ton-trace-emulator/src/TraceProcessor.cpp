@@ -3,6 +3,7 @@
 #include <deque>
 #include <functional>
 #include <iterator>
+#include <list>
 #include <limits>
 #include <map>
 #include <optional>
@@ -30,8 +31,10 @@
 
 namespace {
 
-constexpr std::size_t kMaxConcurrentWrites = 16;
-constexpr std::size_t kMaxPendingTraceUpdates = 10000;
+constexpr std::size_t kMaxConcurrentWrites = 64;
+// Stop admitting nonfinalized updates at this backlog. Finalized admission is
+// bounded upstream by the scheduler's single committing block.
+constexpr std::size_t kNonfinalizedBacklogLimit = 10000;
 constexpr std::size_t kMaxCachedTraceNodes = 1000;
 constexpr double kCleanupRetrySeconds = 1.0;
 constexpr double kExpirySweepSeconds = 1.0;
@@ -272,6 +275,7 @@ struct ClassificationWork {
   InsertCompletion completion;
   MeasurementPtr measurement;
   bool contains_real_root{false};
+  std::size_t classifier_index{0};
   std::optional<mch::EmuActionPayload> payload;
   std::optional<td::Timer> classification_timer;
   td::Timer insert_timer{true};
@@ -307,6 +311,51 @@ struct ConfirmedPromotionCompletion {
 struct ConfirmedRootReplacedRequest {};
 
 using TraceRequest = std::variant<InsertRequest, PromoteConfirmedRequest, ConfirmedRootReplacedRequest>;
+
+bool is_finalized_update(const TraceUpdate& update) {
+  return !update.empty() && trace_update_finality(update) == FinalityState::Finalized;
+}
+
+bool is_pending_update(const TraceUpdate& update) {
+  return !update.empty() && trace_update_finality(update) == FinalityState::Emulated;
+}
+
+bool is_finalized_request(const TraceRequest& request) {
+  const auto* insert = std::get_if<InsertRequest>(&request);
+  return insert ? is_finalized_update(insert->update) : std::holds_alternative<PromoteConfirmedRequest>(request);
+}
+
+void enqueue_trace_request(std::deque<TraceRequest>& queued, TraceRequest request) {
+  // Finalized requests form a FIFO prefix. Keep every update: different
+  // finalized updates can supply different fragments of the same trace.
+  auto position = is_finalized_request(request)
+                      ? std::find_if_not(queued.begin(), queued.end(), is_finalized_request)
+                      : queued.end();
+  queued.insert(position, std::move(request));
+}
+
+template <class Predicate>
+bool discard_queued_updates(std::deque<TraceRequest>& queued, std::size_t& pending_updates, Predicate discard) {
+  auto keep = queued.begin();
+  bool discarded = false;
+  for (auto it = queued.begin(); it != queued.end(); ++it) {
+    auto* insert = std::get_if<InsertRequest>(&*it);
+    if (insert && discard(insert->update)) {
+      CHECK(pending_updates > 0);
+      --pending_updates;
+      set_update_attribute(insert->update, "ton.trace_state.superseded", true);
+      insert->completion.set_value();
+      discarded = true;
+    } else {
+      if (keep != it) {
+        *keep = std::move(*it);
+      }
+      ++keep;
+    }
+  }
+  queued.erase(keep, queued.end());
+  return discarded;
+}
 
 std::deque<TraceRequest> resolve_terminal_queue(std::deque<TraceRequest> queued, std::size_t& pending_updates,
                                                 TraceCleanupMode mode) {
@@ -346,9 +395,18 @@ enum class InFlightKind {
 
 enum class TraceReadyQueue {
   None,
-  General,
+  // Declaration order is scheduling priority.
+  FinalizedWrite,
+  FinalizedGeneral,
   Write,
+  General,
 };
+
+using TraceReadyQueues = std::map<TraceReadyQueue, std::list<std::string>>;
+
+bool is_write_queue(TraceReadyQueue queue) {
+  return queue == TraceReadyQueue::Write || queue == TraceReadyQueue::FinalizedWrite;
+}
 
 struct InFlightWork {
   InFlightKind kind{InFlightKind::Update};
@@ -368,6 +426,7 @@ struct TraceSlot {
   std::optional<ClassificationWork> classification;
   std::optional<InFlightWork> in_flight;
   TraceReadyQueue scheduled_queue{TraceReadyQueue::None};
+  std::list<std::string>::iterator ready_position;
   bool cleanup_requested{false};
 
   TraceLifecycle lifecycle{TraceLifecycle::UnknownRoot};
@@ -379,23 +438,27 @@ TraceReadyQueue next_ready_queue(const TraceSlot& slot) {
   if (slot.in_flight || (slot.classification && !slot.classification->payload)) {
     return TraceReadyQueue::None;
   }
-  if (slot.classification || slot.cleanup_requested) {
-    return TraceReadyQueue::Write;
-  }
-  if (slot.queued.empty()) {
+  if (!slot.classification && !slot.cleanup_requested && slot.queued.empty()) {
     return TraceReadyQueue::None;
   }
-  return std::holds_alternative<PromoteConfirmedRequest>(slot.queued.front()) ? TraceReadyQueue::Write
-                                                                              : TraceReadyQueue::General;
+  // A prepared update still has to finish before this trace's finalized
+  // requests. Waiting nonfinalized requests have already been overtaken.
+  const bool priority = (slot.classification && is_finalized_update(slot.classification->update)) ||
+                        (!slot.queued.empty() && is_finalized_request(slot.queued.front()));
+  const bool write = slot.classification || slot.cleanup_requested ||
+                     std::holds_alternative<PromoteConfirmedRequest>(slot.queued.front());
+  if (write) {
+    return priority ? TraceReadyQueue::FinalizedWrite : TraceReadyQueue::Write;
+  }
+  return priority ? TraceReadyQueue::FinalizedGeneral : TraceReadyQueue::General;
 }
 
-TraceReadyQueue next_queue_to_drain(std::size_t active_writes, bool has_ready_writes,
-                                    std::size_t general_ready_count, bool has_ready_traces) {
-  if (active_writes < kMaxConcurrentWrites && has_ready_writes) {
-    return TraceReadyQueue::Write;
-  }
-  if (general_ready_count > 0 && has_ready_traces) {
-    return TraceReadyQueue::General;
+TraceReadyQueue next_queue_to_drain(const TraceReadyQueues& queues, std::size_t active_writes,
+                                    bool can_classify) {
+  for (const auto& [queue, traces] : queues) {
+    if (!traces.empty() && (is_write_queue(queue) ? active_writes < kMaxConcurrentWrites : can_classify)) {
+      return queue;
+    }
   }
   return TraceReadyQueue::None;
 }
@@ -410,6 +473,8 @@ struct TraceProcessorQueueSnapshot {
   std::size_t promotions_waiting_write{0};
   std::size_t scheduled_general{0};
   std::size_t scheduled_writes{0};
+  std::size_t prioritized_general{0};
+  std::size_t prioritized_writes{0};
   std::size_t max_slot_queue{0};
   std::string max_slot_trace;
 };
@@ -450,18 +515,19 @@ TraceProcessorQueueSnapshot collect_queue_snapshot(const std::unordered_map<std:
         std::holds_alternative<PromoteConfirmedRequest>(slot.queued.front())) {
       ++snapshot.promotions_waiting_write;
     }
-    if (slot.scheduled_queue == TraceReadyQueue::General) {
+    if (slot.scheduled_queue == TraceReadyQueue::General || slot.scheduled_queue == TraceReadyQueue::FinalizedGeneral) {
       ++snapshot.scheduled_general;
-    } else if (slot.scheduled_queue == TraceReadyQueue::Write) {
+    } else if (is_write_queue(slot.scheduled_queue)) {
       ++snapshot.scheduled_writes;
     }
+    snapshot.prioritized_general += slot.scheduled_queue == TraceReadyQueue::FinalizedGeneral;
+    snapshot.prioritized_writes += slot.scheduled_queue == TraceReadyQueue::FinalizedWrite;
   }
   return snapshot;
 }
 
 std::string format_queue_snapshot(const TraceProcessorQueueSnapshot& snapshot, std::size_t pending_updates,
-                                  std::size_t trace_slots, std::size_t active_writes,
-                                  std::size_t ready_general_entries, std::size_t ready_write_entries) {
+                                  std::size_t trace_slots, std::size_t active_writes) {
   const auto accounted_updates = snapshot.queued_updates + snapshot.classifying +
                                  snapshot.classified_waiting_write + snapshot.in_flight_updates;
   std::ostringstream result;
@@ -478,8 +544,10 @@ std::string format_queue_snapshot(const TraceProcessorQueueSnapshot& snapshot, s
          << " active_writes=" << active_writes
          << " scheduled_general=" << snapshot.scheduled_general
          << " scheduled_writes=" << snapshot.scheduled_writes
-         << " ready_general_entries=" << ready_general_entries
-         << " ready_write_entries=" << ready_write_entries
+         << " ready_general_entries=" << snapshot.scheduled_general
+         << " ready_write_entries=" << snapshot.scheduled_writes
+         << " prioritized_general=" << snapshot.prioritized_general
+         << " prioritized_writes=" << snapshot.prioritized_writes
          << " max_slot_queue=" << snapshot.max_slot_queue
          << " max_slot_trace=" << snapshot.max_slot_trace;
   return result.str();
@@ -1031,6 +1099,7 @@ struct TraceProcessor::Impl {
       for (int idx = 0; idx < worker_count; ++idx) {
         classifiers.emplace_back(td::actor::create_actor<mch::EmuClassifierActor>(
             "MchEmuClassifier-w" + std::to_string(idx), this->classifier_config, static_cast<std::size_t>(idx)));
+        idle_classifiers.push_back(static_cast<std::size_t>(idx));
       }
     }
   }
@@ -1039,12 +1108,11 @@ struct TraceProcessor::Impl {
   TraceRetentionConfig retention;
   mch::EmuClassifierConfig classifier_config;
   std::vector<td::actor::ActorOwn<mch::EmuClassifierActor>> classifiers;
-  std::size_t next_classifier{0};
+  std::deque<std::size_t> idle_classifiers;
   std::unordered_map<std::string, TraceSlot> traces;
   std::unordered_map<std::string, td::Timestamp> oversized_traces;
   CompetingTraceSet candidates;
-  std::deque<std::string> ready_traces;
-  std::deque<std::string> ready_writes;
+  TraceReadyQueues ready_queues;
   std::size_t pending_updates{0};
   std::size_t active_writes{0};
   td::Timestamp next_queue_full_log;
@@ -1081,11 +1149,14 @@ void TraceProcessor::schedule_trace(const std::string& trace_key) {
   if (slot.scheduled_queue == queue) {
     return;
   }
+  if (slot.scheduled_queue != TraceReadyQueue::None) {
+    impl_->ready_queues[slot.scheduled_queue].erase(slot.ready_position);
+  }
   slot.scheduled_queue = queue;
-  if (queue == TraceReadyQueue::General) {
-    impl_->ready_traces.push_back(trace_key);
-  } else if (queue == TraceReadyQueue::Write) {
-    impl_->ready_writes.push_back(trace_key);
+  if (queue != TraceReadyQueue::None) {
+    auto& ready = impl_->ready_queues[queue];
+    ready.push_back(trace_key);
+    slot.ready_position = std::prev(ready.end());
   }
 }
 
@@ -1175,6 +1246,36 @@ void TraceProcessor::process_confirmed_trace_update(TraceUpdate update, td::Prom
   enqueue_trace_update(std::move(update), true, {}, std::move(promise));
 }
 
+void TraceProcessor::discard_confirmed_updates(std::vector<ton::BlockId> block_ids) {
+  if (block_ids.empty()) {
+    return;
+  }
+  const std::set<ton::BlockId> closed(block_ids.begin(), block_ids.end());
+  auto discard = [&](const TraceUpdate& update) {
+    return trace_update_finality(update) == FinalityState::Confirmed &&
+           std::all_of(update.fragments.begin(), update.fragments.end(), [&](const Trace& fragment) {
+             return closed.count(fragment.root->block_id) != 0;
+           });
+  };
+  for (auto it = impl_->traces.begin(); it != impl_->traces.end();) {
+    auto& slot = it->second;
+    if (!discard_queued_updates(slot.queued, impl_->pending_updates, discard)) {
+      ++it;
+      continue;
+    }
+    schedule_trace(it->first);
+    // A trace whose first update was skipped must not leave an empty slot
+    // without a retention deadline. Prepared work and existing state stay alive.
+    if (slot.queued.empty() && !slot.classification && !slot.in_flight && !slot.cleanup_requested &&
+        slot.current->nodes.nodes().empty() && slot.dirty.plans.empty()) {
+      it = impl_->traces.erase(it);
+    } else {
+      ++it;
+    }
+  }
+  start_next_operations();
+}
+
 void TraceProcessor::enqueue_trace_update(TraceUpdate update, bool confirmed, td::Promise<td::Unit> regular_promise,
                                           td::Promise<ConfirmedTraceSnapshot> confirmed_promise) {
   InsertCompletion completion{
@@ -1187,6 +1288,7 @@ void TraceProcessor::enqueue_trace_update(TraceUpdate update, bool confirmed, td
     completion.set_error(std::move(validation_status));
     return;
   }
+  const bool finalized = is_finalized_update(update);
 
   auto trace_key = td::base64_encode(update.fragments.front().ext_in_msg_hash_norm.as_slice());
   completion.root_key = td::base64_encode(update.fragments.front().ext_in_msg_hash.as_slice());
@@ -1207,18 +1309,19 @@ void TraceProcessor::enqueue_trace_update(TraceUpdate update, bool confirmed, td
     }
     return;
   }
-  if (impl_->pending_updates >= kMaxPendingTraceUpdates) {
+  if (trace_update_finality(update) != FinalityState::Finalized &&
+      impl_->pending_updates >= kNonfinalizedBacklogLimit) {
     g_statistics.record_count(TRACE_PROCESSOR_QUEUE_FULL);
     if (!impl_->next_queue_full_log || impl_->next_queue_full_log.is_in_past()) {
       impl_->next_queue_full_log = td::Timestamp::in(kQueueFullLogIntervalSeconds);
       const auto snapshot = collect_queue_snapshot(impl_->traces);
-      LOG(ERROR) << "Trace processor queue is full: "
+      LOG(WARNING) << "Trace processor backlog rejects nonfinalized update: "
                  << format_queue_snapshot(snapshot, impl_->pending_updates, impl_->traces.size(),
-                                          impl_->active_writes, impl_->ready_traces.size(),
-                                          impl_->ready_writes.size());
+                                          impl_->active_writes);
     }
     completion.set_error(
-        td::Status::Error("Trace processor queue is full (" + std::to_string(kMaxPendingTraceUpdates) + ")"));
+        td::Status::Error("Trace processor nonfinalized backlog limit reached (" +
+                          std::to_string(kNonfinalizedBacklogLimit) + ")"));
     return;
   }
 
@@ -1229,44 +1332,36 @@ void TraceProcessor::enqueue_trace_update(TraceUpdate update, bool confirmed, td
     // periodic sweep.
     slot.cleanup_requested = false;
   }
-  slot.queued.push_back(InsertRequest{
+  enqueue_trace_request(slot.queued, InsertRequest{
       .update = std::move(update),
       .completion = std::move(completion),
       .contains_real_root = real_root,
   });
   ++impl_->pending_updates;
+  if (finalized) {
+    discard_queued_updates(slot.queued, impl_->pending_updates, is_pending_update);
+  }
   schedule_trace(trace_key);
   start_next_operations();
 }
 
 void TraceProcessor::start_next_operations() {
-  // Redis-ready traces stay in their own queue while all write slots are
-  // occupied. General work can still assemble and enter classification
-  // without repeatedly rotating the entire Redis backlog.
-  auto general_ready_count = impl_->ready_traces.size();
+  // Keep waiting work here so finalized priority also applies before
+  // classification. Each classifier has at most one outstanding request.
   while (true) {
-    const auto source_queue = next_queue_to_drain(impl_->active_writes, !impl_->ready_writes.empty(),
-                                                  general_ready_count, !impl_->ready_traces.empty());
-    std::string trace_key;
-    if (source_queue == TraceReadyQueue::Write) {
-      trace_key = std::move(impl_->ready_writes.front());
-      impl_->ready_writes.pop_front();
-    } else if (source_queue == TraceReadyQueue::General) {
-      --general_ready_count;
-      trace_key = std::move(impl_->ready_traces.front());
-      impl_->ready_traces.pop_front();
-    } else {
+    const auto source_queue = next_queue_to_drain(impl_->ready_queues, impl_->active_writes,
+                                                  impl_->classifiers.empty() || !impl_->idle_classifiers.empty());
+    if (source_queue == TraceReadyQueue::None) {
       break;
     }
+    auto& ready = impl_->ready_queues[source_queue];
+    auto trace_key = std::move(ready.front());
+    ready.pop_front();
 
     auto slot_it = impl_->traces.find(trace_key);
-    if (slot_it == impl_->traces.end()) {
-      continue;
-    }
+    CHECK(slot_it != impl_->traces.end());
     auto& slot = slot_it->second;
-    if (slot.scheduled_queue != source_queue) {
-      continue;
-    }
+    CHECK(slot.scheduled_queue == source_queue);
     slot.scheduled_queue = TraceReadyQueue::None;
     if ((slot.classification && !slot.classification->payload) || slot.in_flight ||
         (!slot.classification && slot.queued.empty() && !slot.cleanup_requested)) {
@@ -1409,7 +1504,10 @@ void TraceProcessor::start_next_operations() {
             td::actor::send_closure(self, &TraceProcessor::classification_finished, std::move(trace_key),
                                     std::move(result));
           });
-      auto& classifier = impl_->classifiers[impl_->next_classifier++ % impl_->classifiers.size()];
+      auto classifier_index = impl_->idle_classifiers.front();
+      impl_->idle_classifiers.pop_front();
+      slot.classification->classifier_index = classifier_index;
+      auto& classifier = impl_->classifiers[classifier_index];
       td::actor::send_closure(classifier, &mch::EmuClassifierActor::classify, std::move(full_trace),
                               enqueued_us, std::move(classification_promise));
       continue;
@@ -1456,6 +1554,7 @@ void TraceProcessor::classification_finished(std::string trace_key, td::Result<m
   }
 
   auto& work = *slot_it->second.classification;
+  impl_->idle_classifiers.push_back(work.classifier_index);
   if (result.is_error()) {
     if (work.measurement) {
       work.measurement->set_otel_attribute("ton.trace.classification.outcome", "response_lost");
@@ -1738,13 +1837,14 @@ void TraceProcessor::promote_confirmed(std::vector<ConfirmedTraceSnapshot> snaps
     // ordinary finalized emulation instead of rebuilding it from a snapshot.
     slot.cleanup_requested = false;
     slot.cleanup_mode = TraceCleanupMode::Retention;
-    slot.queued.push_back(PromoteConfirmedRequest{
+    enqueue_trace_request(slot.queued, PromoteConfirmedRequest{
         .snapshot = std::move(promotion.snapshot),
         .trace = std::move(promotion.confirmed),
         .mc_seqno = mc_seqno,
         .promise = td::PromiseCreator::lambda(
             [completion](td::Result<td::Unit> result) mutable { completion->one_finished(std::move(result)); }),
     });
+    discard_queued_updates(slot.queued, impl_->pending_updates, is_pending_update);
     schedule_trace(trace_key);
   }
   start_next_operations();
@@ -1756,8 +1856,7 @@ void TraceProcessor::alarm() {
     impl_->next_queue_stats_log = td::Timestamp::in(kQueueStatsLogIntervalSeconds);
     const auto snapshot = collect_queue_snapshot(impl_->traces);
     LOG(INFO) << "Trace processor queues: "
-              << format_queue_snapshot(snapshot, impl_->pending_updates, impl_->traces.size(), impl_->active_writes,
-                                       impl_->ready_traces.size(), impl_->ready_writes.size());
+              << format_queue_snapshot(snapshot, impl_->pending_updates, impl_->traces.size(), impl_->active_writes);
   }
 
   std::vector<std::pair<std::string, TraceCleanupMode>> expired;
@@ -1829,8 +1928,8 @@ void TraceProcessor::mark_confirmed_roots_replaced(std::vector<td::Bits256> trac
     if (cleanup_is_terminal(slot.cleanup_mode)) {
       continue;
     }
-    // The marker is ordered with trace updates. Old confirmed patches run
-    // first; a later real root runs after it and cancels the grace period.
+    // Keep this marker ordered with nonfinalized updates. Finalized requests
+    // may overtake it; check the current root when the marker is processed.
     slot.queued.emplace_back(ConfirmedRootReplacedRequest{});
     schedule_trace(trace_key);
   }
@@ -1856,7 +1955,6 @@ void TraceProcessor::tear_down() {
   }
   impl_->traces.clear();
   impl_->oversized_traces.clear();
-  impl_->ready_traces.clear();
-  impl_->ready_writes.clear();
+  impl_->ready_queues.clear();
   impl_->pending_updates = 0;
 }

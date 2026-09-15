@@ -721,7 +721,7 @@ void ConfirmedBlockEmulator::resolve_trace_ids(MeasurementPtr measurement) {
 
 void ConfirmedBlockEmulator::emulate_traces(MeasurementPtr measurement) {
   // A signed block may contain several disconnected components of the same
-  // trace. Their speculative tails must advance one shared account state.
+  // trace. Their emulated tails must advance one shared account state.
   std::map<TraceId, std::vector<TransactionInfo*>> roots_by_trace;
   for (auto& tx : txs_) {
     if (!tx.trace_ids.has_value()) {

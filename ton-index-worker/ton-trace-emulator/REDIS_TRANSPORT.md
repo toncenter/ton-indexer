@@ -2,7 +2,38 @@
 
 TraceUpdates still enter `TraceProcessor` in their existing order. The processor
 assembles and classifies a trace and submits a prepared `RedisWriteBatch` to
-`RedisMaterializer`. Its limit of 16 outstanding writes remains unchanged.
+`RedisMaterializer`. The processor allows up to 64 outstanding writes.
+
+Finalized updates and confirmed-to-finalized promotions take priority over
+unrelated nonfinalized work and cleanup, both before classification and when
+waiting for Redis. Within each trace, waiting finalized updates and promotions
+form a FIFO prefix ahead of nonfinalized requests. Every finalized update is
+retained: separate updates can supply different fragments of the same trace.
+An update already being prepared, classified, or written finishes before the
+next one; it inherits priority if a finalized request is waiting behind it.
+
+Accepting a finalized update or promotion immediately discards queued pending
+updates of that trace. The scheduler also sends one batched notification when
+it closes the shard blocks of a finalized masterchain block. The processor
+discards queued confirmed updates from those logical `BlockId`s, including
+losing versions with different root/file hashes. It uses the block ids on the
+fragment roots, never the predicted confirmed `mc_block_seqno`. Updates spanning
+several blocks are discarded only when all their source blocks are in the batch.
+The scheduler filters later confirmed arrivals, so the processor needs no
+second closed-block registry. Each discarded update releases its queue count
+and completes successfully (an empty snapshot for confirmed), with telemetry
+attribute `ton.trace_state.superseded=true`. Already prepared/running work,
+all finalized requests, and confirmed updates from other blocks are retained.
+
+Each classifier receives at most one outstanding request, so its mailbox does
+not hide a nonfinalized backlog from this policy.
+
+At 10,000 outstanding trace updates, the processor rejects new pending and
+confirmed updates. Finalized updates remain admissible: the scheduler submits
+only one finalized block for commit at a time, with at most two blocks computing
+or committing. A large committing block can exceed the threshold; nonfinalized
+admission resumes after the total backlog falls below it. This threshold is not
+a hard memory limit, and does not change Redis failure/retry semantics.
 
 `RedisMaterializer` is a CPU actor, owned by `TraceProcessor` through `ActorOwn`.
 Callers submit batches with `send_closure`. It encodes commands with hiredis and
