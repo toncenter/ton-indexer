@@ -53,8 +53,10 @@ ADD ton-index-go/main.go /go/app/main.go
 ADD ton-index-go/go.mod /go/app/go.mod
 ADD ton-index-go/go.sum /go/app/go.sum
 WORKDIR /go/app
-# The pinned abis catalog and its bindings are not tracked in Git.
-ADD --checksum=sha256:9f023acf918493dfc908c66cfd38200e99d393beaaf27296da4563479638fea5 https://github.com/ton-blockchain/abis/releases/download/v0.1.0/abi-catalog.json /go/app/index/acton/catalog/catalog.json
+# The abis catalog pinned in catalog.lock and its bindings are not tracked in Git.
+RUN . index/acton/catalog/catalog.lock \
+ && curl -fsSL -o index/acton/catalog/catalog.json "$ABI_CATALOG_URL" \
+ && echo "$ABI_CATALOG_SHA256  index/acton/catalog/catalog.json" | sha256sum -c
 RUN CGO_ENABLED=0 go tool tolk-abi-to-go --catalog index/acton/catalog/catalog.json --output-dir index/acton/catalog --package catalog
 COPY --from=core-builder /app/build/ton-marker/libton-marker* /usr/lib/
 COPY --from=core-builder /app/ton-marker/src/wrapper.h /usr/local/include/wrapper.h
@@ -76,7 +78,10 @@ ADD ton-emulate-go/main.go /go/app/main.go
 ADD ton-emulate-go/go.mod /go/app/go.mod
 ADD ton-emulate-go/go.sum /go/app/go.sum
 # crud imports the generated catalog from the local ton-index-go dependency.
-ADD --checksum=sha256:9f023acf918493dfc908c66cfd38200e99d393beaaf27296da4563479638fea5 https://github.com/ton-blockchain/abis/releases/download/v0.1.0/abi-catalog.json /go/ton-index-go/index/acton/catalog/catalog.json
+RUN cd /go/ton-index-go \
+ && . index/acton/catalog/catalog.lock \
+ && curl -fsSL -o index/acton/catalog/catalog.json "$ABI_CATALOG_URL" \
+ && echo "$ABI_CATALOG_SHA256  index/acton/catalog/catalog.json" | sha256sum -c
 RUN CGO_ENABLED=0 go -C /go/ton-index-go tool tolk-abi-to-go --catalog index/acton/catalog/catalog.json --output-dir index/acton/catalog --package catalog
 COPY --from=core-builder /app/build/ton-marker/libton-marker* /usr/lib/
 COPY --from=core-builder /app/ton-marker/src/wrapper.h /usr/local/include/wrapper.h

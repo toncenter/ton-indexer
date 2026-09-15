@@ -18,17 +18,33 @@ import (
 	"github.com/xssnick/tonutils-go/tvm/cell"
 )
 
-const pinnedRevision = "9f023acf918493dfc908c66cfd38200e99d393beaaf27296da4563479638fea5"
+// pinnedRevision reads the checksum the build verifies the downloaded catalog
+// against, so the generated bindings are held to the same pin.
+func pinnedRevision(t *testing.T) string {
+	t.Helper()
+	lock, err := os.ReadFile("catalog.lock")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, line := range strings.Split(string(lock), "\n") {
+		if value, ok := strings.CutPrefix(line, "ABI_CATALOG_SHA256="); ok {
+			return strings.TrimSpace(value)
+		}
+	}
+	t.Fatal("catalog.lock does not set ABI_CATALOG_SHA256")
+	return ""
+}
 
 func TestOfflineGeneration(t *testing.T) {
+	pinned := pinnedRevision(t)
 	data, err := os.ReadFile("catalog.json")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := fmt.Sprintf("%x", sha256.Sum256(data)); got != pinnedRevision {
+	if got := fmt.Sprintf("%x", sha256.Sum256(data)); got != pinned {
 		t.Fatalf("snapshot revision drift: %s", got)
 	}
-	if catalog.Revision != pinnedRevision {
+	if catalog.Revision != pinned {
 		t.Fatal("generated revision drift", catalog.Revision)
 	}
 	out, err := codegen.Generate(data, codegen.Options{Package: "catalog", Snapshot: true})
