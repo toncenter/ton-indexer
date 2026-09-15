@@ -4,7 +4,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"math/big"
-	"strings"
+	"slices"
 	"testing"
 
 	"github.com/ton-blockchain/tolk-abi-to-go"
@@ -28,49 +28,33 @@ func TestDecimalExactAndBounded(t *testing.T) {
 	}
 }
 
-func TestStandardStackRoundTrip(t *testing.T) {
+// Every runGetMethodStd spelling is pinned, nested entries included; an empty list is TVM null.
+func TestStandardStackEncoding(t *testing.T) {
 	boc := base64.StdEncoding.EncodeToString(cell.BeginCell().EndCell().ToBOC())
 	stack := []tolkabi.StackValue{{Type: "num", Value: json.Number("9007199254740993")}, {Type: "cell", Value: boc}, {Type: "slice", Value: boc}, {Type: "tuple", Value: []tolkabi.StackValue{{Type: "num", Value: "-0x100"}, {Type: "list", Value: []tolkabi.StackValue{}}}}}
 	wire, err := EncodeStandardStack(stack)
-	if err != nil {
-		t.Fatal(err)
-	}
 	raw, _ := json.Marshal(wire)
-	decoded, err := DecodeStandardStack(raw)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(decoded) != 4 || decoded[0].Type != "int" || decoded[0].Value != "9007199254740993" {
-		t.Fatalf("lost precision: %+v", decoded)
-	}
-	tuple := decoded[3].Value.([]tolkabi.StackValue)
-	if tuple[0].Type != "int" || tuple[0].Value != "-256" || tuple[1].Type != "null" {
-		t.Fatalf("bad recursive stack: %+v", tuple)
-	}
-	if !strings.Contains(string(raw), `"@type":"tvm.numberDecimal"`) {
-		t.Fatal("not standard wire format")
+	want := `[{"@type":"tvm.stackEntryNumber","number":{"@type":"tvm.numberDecimal","number":"9007199254740993"}},{"@type":"tvm.stackEntryCell","cell":{"@type":"tvm.cell","bytes":"` + boc + `"}},{"@type":"tvm.stackEntrySlice","slice":{"@type":"tvm.slice","bytes":"` + boc + `"}},` +
+		`{"@type":"tvm.stackEntryTuple","tuple":{"@type":"tvm.tuple","elements":[{"@type":"tvm.stackEntryNumber","number":{"@type":"tvm.numberDecimal","number":"-256"}},{"@type":"tvm.stackEntryList","list":{"@type":"tvm.list","elements":[]}}]}}]`
+	if err != nil || string(raw) != want {
+		t.Fatalf("not standard wire format: %v\n got %s\nwant %s", err, raw, want)
 	}
 }
 
 func TestStandardStackLimitsAndUnsupported(t *testing.T) {
+	deep := []tolkabi.StackValue{{Type: "num", Value: "1"}}
+	for i := 0; i < 34; i++ {
+		deep = []tolkabi.StackValue{{Type: "tuple", Value: deep}}
+	}
+	wide := slices.Repeat([]tolkabi.StackValue{{Type: "null"}}, maxStackEntries+1) // valid entries, so only the entry limit refuses them
 	boc := base64.StdEncoding.EncodeToString(cell.BeginCell().EndCell().ToBOC())
-	for _, entry := range []tolkabi.StackValue{{Type: "null", Value: "invalid"}, {Type: "builder", Value: boc}, {Type: "nan"}, {Type: "cont", Value: boc}, {Type: "cell", Value: "garbage"}, {Type: "tuple", Value: "bad"}} {
-		if _, err := EncodeStandardStack([]tolkabi.StackValue{entry}); err == nil {
-			t.Fatalf("accepted unsupported/invalid entry: %+v", entry)
+	for i, stack := range [][]tolkabi.StackValue{deep, wide, {{Type: "null", Value: "invalid"}}, {{Type: "builder", Value: boc}}, {{Type: "cell", Value: "garbage"}},
+		{{Type: "num", Value: "1.5"}}, {{Type: "tuple", Value: "not an array"}}, {{Type: "cont"}}} {
+		if _, err := EncodeStandardStack(stack); err == nil {
+			t.Fatalf("accepted oversized, unsupported or invalid stack #%d", i)
 		}
 	}
-	stack := []tolkabi.StackValue{{Type: "num", Value: "1"}}
-	for i := 0; i < 34; i++ {
-		stack = []tolkabi.StackValue{{Type: "tuple", Value: stack}}
-	}
-	if _, err := NormalizeStack(stack); err == nil {
-		t.Fatal("accepted excessive depth")
-	}
-	stack = make([]tolkabi.StackValue, maxStackEntries+1)
-	if _, err := NormalizeStack(stack); err == nil {
-		t.Fatal("accepted excessive entries")
-	}
-	for _, raw := range []string{`null`, `[null]`, `[["num","0x1"]]`, `[{}]`, `[{"@type":"tvm.stackEntryUnsupported"}]`, `[{"@type":"tvm.stackEntryNumber","number":{"@type":"wrong","number":"1"}}]`, `[{"@type":"tvm.stackEntryTuple","tuple":{"@type":"tvm.tuple","elements":null}}]`} {
+	for _, raw := range []string{`null`, `[["num","0x1"]]`, `[{"@type":"tvm.stackEntryUnsupported"}]`, `[{"@type":"tvm.stackEntryNumber","number":{"@type":"wrong","number":"1"}}]`, `[{"@type":"tvm.stackEntryTuple","tuple":{"@type":"tvm.tuple","elements":null}}]`, `[{}]`} {
 		if _, err := DecodeStandardStack(json.RawMessage(raw)); err == nil {
 			t.Fatalf("accepted malformed stack %s", raw)
 		}

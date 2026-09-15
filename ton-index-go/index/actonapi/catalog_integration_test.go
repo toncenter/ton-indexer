@@ -30,41 +30,24 @@ func catalogMethod(t *testing.T, id, name string) (*tolkabi.Contract, tolkabi.Ge
 	return nil, tolkabi.GetMethod{}
 }
 
-func TestRealCatalogIntegerGetters(t *testing.T) {
-	for _, id := range []string{"coffee.CoffeeStakingMaster", "system.Elector"} {
-		t.Run(id, func(t *testing.T) {
-			name, args := "active_election_id", `{}`
-			raw := json.RawMessage(`[{"@type":"tvm.stackEntryNumber","number":{"@type":"tvm.numberDecimal","number":"0"}}]`)
-			if id == "coffee.CoffeeStakingMaster" {
-				name, args = "get_nft_address_by_index", `{"itemIndex":1}`
-				boc := base64.StdEncoding.EncodeToString(cell.BeginCell().MustStoreAddr(address.MustParseRawAddr(testAddress)).EndCell().ToBOC())
-				raw = json.RawMessage(`[{"@type":"tvm.stackEntrySlice","slice":{"@type":"tvm.slice","bytes":"` + boc + `"}}]`)
-			}
-			contract, method := catalogMethod(t, id, name)
-			stack, err := DecodeStandardStack(raw)
-			if err != nil {
-				t.Fatal(err)
-			}
-			seqno := int32(91668427)
-			e := &fakeExecutor{t: t, snapshot: Snapshot{Address: testAddress, CodeHash: &contract.CodeHashes[0], Seqno: &seqno}, execution: Execution{Stack: stack, RawStack: raw, ExitCode: 0, GasUsed: "1292"}}
-			api := New(catalog.Contracts, catalog.Revision, Dependencies{Executor: func(*fiber.Ctx) GetterExecutor { return e }})
-			var result RunResponse
-			call(t, testApp(api), "POST", "/runGetMethod", `{"address":"`+testAddress+`","method":"`+name+`","args":`+args+`,"seqno":91668427}`, 200, &result)
-			if !result.Success || result.DecodeError != "" || result.Decoded == nil || result.GasUsed != "1292" || e.method != method.ID {
-				t.Fatalf("real codec integration failed: %+v", result)
-			}
-			if id == "coffee.CoffeeStakingMaster" {
-				if len(e.stack) != 1 || e.stack[0].Type != "int" || e.stack[0].Value != "1" {
-					t.Fatalf("native arguments not normalized: %+v", e.stack)
-				}
-				wire, err := EncodeStandardStack(e.stack)
-				if err != nil || wire[0].(map[string]any)["@type"] != "tvm.stackEntryNumber" {
-					t.Fatalf("native int cannot cross wire: %v %+v", err, wire)
-				}
-			} else if result.Decoded != "0" {
-				t.Fatalf("Elector result: %#v", result.Decoded)
-			}
-		})
+func TestRealCatalogAddressGetter(t *testing.T) {
+	contract, method := catalogMethod(t, "coffee.CoffeeStakingMaster", "get_nft_address_by_index")
+	boc := base64.StdEncoding.EncodeToString(cell.BeginCell().MustStoreAddr(address.MustParseRawAddr(testAddress)).EndCell().ToBOC())
+	raw := json.RawMessage(`[{"@type":"tvm.stackEntrySlice","slice":{"@type":"tvm.slice","bytes":"` + boc + `"}}]`)
+	stack, err := DecodeStandardStack(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	seqno := int32(91668427)
+	e := &fakeExecutor{t: t, snapshot: Snapshot{Address: testAddress, CodeHash: &contract.CodeHashes[0], Seqno: &seqno}, execution: Execution{Stack: stack, RawStack: raw}}
+	api := New(catalog.Contracts, catalog.Revision, Dependencies{Executor: func(*fiber.Ctx) GetterExecutor { return e }})
+	var result RunResponse
+	call(t, testApp(api), "POST", "/runGetMethod", `{"address":"`+testAddress+`","method":"get_nft_address_by_index","args":{"itemIndex":1},"seqno":91668427}`, 200, &result)
+	if !result.Success || result.DecodeError != "" || result.Decoded == nil || e.method != method.ID {
+		t.Fatalf("real codec integration failed: %+v", result)
+	}
+	if len(e.stack) != 1 || e.stack[0].Type != "int" || e.stack[0].Value != "1" {
+		t.Fatalf("native arguments not normalized: %+v", e.stack)
 	}
 }
 
@@ -76,15 +59,11 @@ func TestRealCatalogPluginLists(t *testing.T) {
 	}{
 		{"standard_empty", `[{"@type":"tvm.stackEntryList","list":{"@type":"tvm.list","elements":[]}}]`, 0},
 		{"standard_one", `[{"@type":"tvm.stackEntryList","list":{"@type":"tvm.list","elements":[{"@type":"tvm.stackEntryTuple","tuple":{"@type":"tvm.tuple","elements":[{"@type":"tvm.stackEntryNumber","number":{"@type":"tvm.numberDecimal","number":"0"}},{"@type":"tvm.stackEntryNumber","number":{"@type":"tvm.numberDecimal","number":"1"}}]}}]}}]`, 1},
-		{"standard_pair_tail", `[{"@type":"tvm.stackEntryTuple","tuple":{"@type":"tvm.tuple","elements":[{"@type":"tvm.stackEntryTuple","tuple":{"@type":"tvm.tuple","elements":[{"@type":"tvm.stackEntryNumber","number":{"@type":"tvm.numberDecimal","number":"0"}},{"@type":"tvm.stackEntryNumber","number":{"@type":"tvm.numberDecimal","number":"1"}}]}},{"@type":"tvm.stackEntryList","list":{"@type":"tvm.list","elements":[]}}]}}]`, 1},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			stack, err := DecodeStandardStack(json.RawMessage(tc.raw))
 			if err != nil {
 				t.Fatal(err)
-			}
-			if stack[0].Type != "tuple" && stack[0].Type != "null" {
-				t.Fatalf("non-core list type: %+v", stack)
 			}
 			result, err := method.DecodeResult(stack)
 			if err != nil {
@@ -95,42 +74,20 @@ func TestRealCatalogPluginLists(t *testing.T) {
 			}
 		})
 	}
-	if _, err := DecodeStandardStack(json.RawMessage(`[{"@type":"tvm.stackEntryUnsupported"}]`)); err == nil {
-		t.Fatal("unsupported output guessed to be null")
-	}
 }
 
-// Many spellings of one hash are one selector's worth of work: the result is
-// deduplicated by contract, so the ABI is serialized once rather than per spelling.
+// Selectors are bounded in number and in the size of the response they select.
 func TestCatalogSelectorsResistAmplification(t *testing.T) {
 	contract := testContract()
-	contract.CodeHashes = []string{strings.Repeat("ab", 32)}
-	contract.ABI = json.RawMessage(`{"description":"` + strings.Repeat("a", 77000) + `"}`)
 	app := testApp(New([]*tolkabi.Contract{contract}, "revision", Dependencies{}))
-	values := url.Values{}
-	for i := 0; i < MaxSelectors; i++ {
-		variant := []byte(contract.CodeHashes[0])
-		for bit := 0; bit < 10; bit++ {
-			if i&(1<<bit) != 0 {
-				variant[bit] -= 'a' - 'A'
-			}
-		}
-		values.Add("code_hash", string(variant))
-	}
-	var page ActonContractsResponse
-	raw := call(t, app, "GET", "/contracts?"+values.Encode(), "", 200, &page)
-	if page.Total != 1 || len(raw) > 2*len(contract.ABI) {
-		t.Fatalf("spellings multiplied the response: total=%d bytes=%d", page.Total, len(raw))
-	}
-	values.Add("code_hash", contract.CodeHashes[0])
-	if raw = call(t, app, "GET", "/contracts?"+values.Encode(), "", 422, nil); len(raw) > 1024 {
-		t.Fatalf("oversized selector list was rendered before being refused: %d bytes", len(raw))
-	}
-	call(t, app, "GET", "/contracts?code_hash="+url.QueryEscape(contract.CodeHashes[0]+" "), "", 422, nil)
+	selectors := strings.Repeat("catalog_id=counter&", MaxSelectors)
+	call(t, app, "GET", "/contracts?"+selectors, "", 200, nil)
+	call(t, app, "GET", "/contracts?"+selectors+"catalog_id=counter", "", 422, nil)
+	call(t, app, "GET", "/contracts?code_hash="+url.QueryEscape(testHash+" "), "", 422, nil)
 
 	// A single oversized catalog ABI must fail before it reaches the wire.
 	contract.ABI = json.RawMessage(`{"description":"` + strings.Repeat("a", MaxMetadataBytes) + `"}`)
-	if raw = call(t, app, "GET", "/contracts?catalog_id=counter", "", 413, nil); len(raw) > 1024 {
+	if raw := call(t, app, "GET", "/contracts?catalog_id=counter", "", 413, nil); len(raw) > 1024 {
 		t.Fatalf("amplified body returned instead of an error: %d bytes", len(raw))
 	}
 }

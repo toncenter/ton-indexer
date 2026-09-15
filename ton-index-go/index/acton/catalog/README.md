@@ -27,8 +27,9 @@ abis commit, the Acton version and the checksum it was built with.
 
 ## Re-pinning
 
-Change both lines of `catalog.lock`. `TestOfflineGeneration` then holds the
-generated bindings to the new checksum, and `TestTSDifferential` checks that
+Change both lines of `catalog.lock`. `TestCatalogCapabilities` then checks the
+pinned contract count and the number of unsupported binding roots (update both
+when a release changes them on purpose), and `TestTSDifferential` checks that
 decoding still matches the TypeScript reference; regenerate
 `testdata/ts-reference.json` with `testdata/generate-reference.cjs` only when a
 release intentionally changes decoded values.
