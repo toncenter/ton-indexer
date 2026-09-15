@@ -1,9 +1,17 @@
-# The catalog is a pinned ton-blockchain/abis release. A file that already has the
-# expected hash is not downloaded again.
-set(ABI_CATALOG_VERSION v0.1.0)
-set(ABI_CATALOG_SHA256 9f023acf918493dfc908c66cfd38200e99d393beaaf27296da4563479638fea5)
+# The catalog is the ton-blockchain/abis release pinned in catalog.lock. A file that
+# already has the expected hash is not downloaded again.
+set(ABI_CATALOG_LOCK "${CMAKE_CURRENT_SOURCE_DIR}/index/acton/catalog/catalog.lock")
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${ABI_CATALOG_LOCK}")
+file(STRINGS "${ABI_CATALOG_LOCK}" ABI_CATALOG_ENTRIES REGEX "^ABI_CATALOG_[A-Z0-9_]+=")
+foreach(ENTRY IN LISTS ABI_CATALOG_ENTRIES)
+  string(REGEX MATCH "^([A-Z0-9_]+)=(.*)$" MATCHED "${ENTRY}")
+  set(${CMAKE_MATCH_1} "${CMAKE_MATCH_2}")
+endforeach()
+if(NOT ABI_CATALOG_URL OR NOT ABI_CATALOG_SHA256)
+  message(FATAL_ERROR "${ABI_CATALOG_LOCK} must set ABI_CATALOG_URL and ABI_CATALOG_SHA256")
+endif()
 file(DOWNLOAD
-  "https://github.com/ton-blockchain/abis/releases/download/${ABI_CATALOG_VERSION}/abi-catalog.json"
+  "${ABI_CATALOG_URL}"
   "${CMAKE_CURRENT_SOURCE_DIR}/index/acton/catalog/catalog.json"
   EXPECTED_HASH SHA256=${ABI_CATALOG_SHA256}
   TLS_VERIFY ON)

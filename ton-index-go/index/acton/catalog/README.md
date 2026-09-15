@@ -8,10 +8,9 @@ generate the bindings before building. A direct `go build` or `go test` needs th
 same steps first, from `ton-index-go`:
 
 ```sh
-curl -fsSL -o index/acton/catalog/catalog.json \
-  https://github.com/ton-blockchain/abis/releases/download/v0.1.0/abi-catalog.json
-echo "9f023acf918493dfc908c66cfd38200e99d393beaaf27296da4563479638fea5  index/acton/catalog/catalog.json" \
-  | shasum -a 256 -c
+. index/acton/catalog/catalog.lock
+curl -fsSL -o index/acton/catalog/catalog.json "$ABI_CATALOG_URL"
+echo "$ABI_CATALOG_SHA256  index/acton/catalog/catalog.json" | shasum -a 256 -c
 CGO_ENABLED=0 go tool tolk-abi-to-go --catalog index/acton/catalog/catalog.json \
   --output-dir index/acton/catalog --package catalog
 ```
@@ -22,18 +21,15 @@ as the runtime the bindings import. Both are maintained upstream in
 
 ## Provenance
 
-- Release: [abis `v0.1.0`](https://github.com/ton-blockchain/abis/releases/tag/v0.1.0),
-  built by its release workflow from `24d608491355205cc7b4dccbf7b852297f798a7a`
-  with Acton 1.1.0 (Tolk 1.4.1).
-- SHA-256, exposed as `catalog.Revision`:
-  `9f023acf918493dfc908c66cfd38200e99d393beaaf27296da4563479638fea5`.
+`catalog.lock` names the pinned release and the SHA-256 of its catalog, which is
+also exposed as `catalog.Revision`. The release notes on that page record the
+abis commit, the Acton version and the checksum it was built with.
 
 ## Re-pinning
 
-Set the release version and its SHA-256 in `ton-index-go/CMakeLists.txt`, both
-builder stages of `Dockerfile`, `.github/workflows/tests.yml` and the commands
-above, and `pinnedRevision` in `catalog_test.go`. `TestTSDifferential` then checks
-that decoding still matches the TypeScript reference; regenerate
+Change both lines of `catalog.lock`. `TestOfflineGeneration` then holds the
+generated bindings to the new checksum, and `TestTSDifferential` checks that
+decoding still matches the TypeScript reference; regenerate
 `testdata/ts-reference.json` with `testdata/generate-reference.cjs` only when a
 release intentionally changes decoded values.
 
