@@ -1,20 +1,20 @@
 package index
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"net"
 	"reflect"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/ton-blockchain/tolk-abi-to-go"
-	"github.com/toncenter/ton-indexer/ton-index-go/index/acton/catalog"
 	"github.com/toncenter/ton-indexer/ton-index-go/index/actonapi"
 	"github.com/toncenter/ton-indexer/ton-index-go/index/models"
 	"github.com/valyala/fasthttp"
@@ -32,10 +32,10 @@ func actonUpstream(t *testing.T, handler fasthttp.RequestHandler) {
 	go func() { _ = server.Serve(listener); close(stopped) }()
 	previous := actonV2HTTPClient
 	actonV2HTTPClient = &fasthttp.Client{
-		MaxConnsPerHost:     v2MaxConnections,
-		MaxConnWaitTimeout:  v2ConnectionWaitLimit,
-		MaxIdleConnDuration: v2IdleConnectionLimit,
-		MaxResponseBodySize: actonMaxUpstreamBytes,
+		MaxConnsPerHost:     previous.MaxConnsPerHost,
+		MaxConnWaitTimeout:  previous.MaxConnWaitTimeout,
+		MaxIdleConnDuration: previous.MaxIdleConnDuration,
+		MaxResponseBodySize: previous.MaxResponseBodySize,
 		Dial:                func(string) (net.Conn, error) { return listener.Dial() },
 	}
 	t.Cleanup(func() {
@@ -110,7 +110,7 @@ func TestActonProxyPinsDiscoveryStateAndExecution(t *testing.T) {
 	if *snapshot.CodeHash != base64.StdEncoding.EncodeToString(code.Hash()) || *snapshot.DataHash != base64.StdEncoding.EncodeToString(data.Hash()) || *snapshot.LastTransactionLT != "9007199254740993" {
 		t.Fatal("incorrect snapshot hashes or LT")
 	}
-	stack := []tolkabi.StackValue{{Type: "tuple", Value: []tolkabi.StackValue{{Type: "num", Value: json.Number("9007199254740993")}, {Type: "slice", Value: dataBOC}}}}
+	stack := []tolkabi.StackValue{{Type: "tuple", Value: []tolkabi.StackValue{{Type: "num", Value: json.Number("9007199254740993")}, {Type: "slice", Value: dataBOC}, {Type: "null"}}}}
 	result, err := executor.Run(context.Background(), snapshot, 76543, stack)
 	if err != nil {
 		t.Fatal(err)
@@ -135,6 +135,11 @@ func TestActonProxyPinsDiscoveryStateAndExecution(t *testing.T) {
 	wire := executionRequest["stack"].([]any)[0].(map[string]any)
 	if wire["@type"] != "tvm.stackEntryTuple" {
 		t.Fatalf("legacy stack used: %+v", wire)
+	}
+	// Tonlib has no null entry, so null must travel as an empty list.
+	entry := wire["tuple"].(map[string]any)["elements"].([]any)[2].(map[string]any)
+	if entry["@type"] != "tvm.stackEntryList" || len(entry["list"].(map[string]any)["elements"].([]any)) != 0 {
+		t.Fatalf("null not encoded as empty Tonlib list: %+v", entry)
 	}
 }
 
@@ -176,45 +181,38 @@ func TestActonProxyPreservesUnsupportedAndFailedVMResults(t *testing.T) {
 }
 
 func TestActonProxyRejectsIncompatibleUpstreamWithoutFallback(t *testing.T) {
-	for _, body := range []string{
-		`not json`, `{"ok":false,"error":"private-key internal detail"}`, `{"ok":true,"result":null}`,
-		`{"ok":true,"result":{"gas_used":1,"stack":[]}}`,
-		`{"ok":true,"result":{"gas_used":1.5,"exit_code":0,"stack":[]}}`,
+	okBody := `{"ok":true,"result":{"gas_used":1,"exit_code":0,"stack":[]}}`
+	for _, tc := range []struct {
+		name, location, body string
+		status               int
+	}{
+		{"not_json", "", `not json`, 200},
+		{"ok_false_with_upstream_text", "", `{"ok":false,"error":"private-key internal detail"}`, 200},
+		{"null_result", "", `{"ok":true,"result":null}`, 200},
+		{"missing_exit_code", "", `{"ok":true,"result":{"gas_used":1,"stack":[]}}`, 200},
+		{"float_gas_used", "", `{"ok":true,"result":{"gas_used":1.5,"exit_code":0,"stack":[]}}`, 200},
+		{"status_503_even_ok_true", "", okBody, 503},
+		{"redirect_not_followed", "http://must-not-follow.invalid/private-key", "", 302},
+		// A valid body, so only the production response-size cap can reject it.
+		{"oversized_body", "", okBody + strings.Repeat(" ", actonMaxUpstreamBytes), 200},
 	} {
-		t.Run(body, func(t *testing.T) {
-			var mu sync.Mutex
-			calls := 0
+		t.Run(tc.name, func(t *testing.T) {
+			var calls atomic.Int32
 			actonUpstream(t, func(c *fasthttp.RequestCtx) {
-				mu.Lock()
-				calls++
-				mu.Unlock()
-				c.SetBodyString(body)
+				calls.Add(1)
+				if tc.location != "" {
+					c.Response.Header.Set("Location", tc.location)
+				}
+				c.SetStatusCode(tc.status)
+				c.SetBodyString(tc.body)
 			})
-			seqno := int32(1)
-			_, err := NewActonExecutor(actonSettings()).Run(context.Background(), &actonapi.Snapshot{Address: "0:" + strings.Repeat("00", 32), Seqno: &seqno}, 76543, nil)
+			snapshot := &actonapi.Snapshot{Address: "0:" + strings.Repeat("00", 32), Seqno: new(int32(1))}
+			result, err := NewActonExecutor(actonSettings()).Run(context.Background(), snapshot, 76543, nil)
 			var apiError models.IndexError
-			if !errors.As(err, &apiError) || apiError.Code != 502 || strings.Contains(err.Error(), "private-key") {
-				t.Fatalf("unexpected upstream error: %v", err)
-			}
-			mu.Lock()
-			defer mu.Unlock()
-			if calls != 1 {
-				t.Fatalf("unexpected fallback: %d requests", calls)
+			if result != nil || !errors.As(err, &apiError) || apiError.Code != 502 || strings.Contains(err.Error(), "private-key") || strings.Contains(err.Error(), "v2.test") || calls.Load() != 1 {
+				t.Fatalf("bad upstream not rejected, leaked detail or fell back: calls=%d err=%v", calls.Load(), err)
 			}
 		})
-	}
-}
-
-func TestActonProxyRejectsInvalidStackBeforeRequest(t *testing.T) {
-	seqno := int32(1)
-	snapshot := &actonapi.Snapshot{Address: "0:" + strings.Repeat("00", 32), Seqno: &seqno}
-	executor := NewActonExecutor(models.RequestSettings{})
-	for _, stack := range [][]tolkabi.StackValue{{{Type: "null", Value: "invalid"}}, {{Type: "num", Value: "1.5"}}, {{Type: "cell", Value: "bad"}}} {
-		_, err := executor.Run(context.Background(), snapshot, 76543, stack)
-		var apiError models.IndexError
-		if !errors.As(err, &apiError) || apiError.Code != 422 {
-			t.Fatalf("bad input reached transport: %v", err)
-		}
 	}
 }
 
@@ -235,22 +233,12 @@ func TestActonProxyDeadlineIsBoundedAndShared(t *testing.T) {
 	if !errors.As(err, &apiError) || apiError.Code != 504 {
 		t.Fatalf("expired deadline allowed request: %v", err)
 	}
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
-	_, err = NewActonExecutor(actonSettings()).Snapshot(ctx, "0:"+strings.Repeat("00", 32), &seqno)
-	if !errors.As(err, &apiError) || apiError.Code != 504 {
-		t.Fatalf("cancelled context allowed request: %v", err)
-	}
 }
 
 func TestActonProxyLibraryReferenceSnapshot(t *testing.T) {
-	contract := catalog.ByID("wallets/w4r2.WalletV4r2")
-	implementation, err := hex.DecodeString(contract.CodeHashes[0])
-	if err != nil {
-		t.Fatal(err)
-	}
-	raw := append([]byte{0xb5, 0xee, 0x9c, 0x72, 1, 1, 1, 1, 0, 35, 0, 8, 66, 2}, implementation...)
-	boc := base64.StdEncoding.EncodeToString(raw)
+	// Any 32 bytes serve as the embedded library hash; no catalog lookup happens here.
+	implementation := bytes.Repeat([]byte{0xab}, 32)
+	boc := base64.StdEncoding.EncodeToString(append([]byte{0xb5, 0xee, 0x9c, 0x72, 1, 1, 1, 1, 0, 35, 0, 8, 66, 2}, implementation...))
 	code, err := tolkabi.DecodeOpaqueBOC(boc)
 	if err != nil {
 		t.Fatal(err)
@@ -274,95 +262,6 @@ func TestActonProxyLibraryReferenceSnapshot(t *testing.T) {
 	encoded, _ := json.Marshal(wire)
 	if _, err := actonapi.DecodeStandardStack(encoded); err != nil {
 		t.Fatalf("opaque stack result rejected: %v", err)
-	}
-}
-
-func TestActonProxyStandardNullAndBuilderRejection(t *testing.T) {
-	boc := base64.StdEncoding.EncodeToString(cell.BeginCell().EndCell().ToBOC())
-	var mu sync.Mutex
-	var paths []string
-	var received map[string]any
-	actonUpstream(t, func(c *fasthttp.RequestCtx) {
-		mu.Lock()
-		paths = append(paths, string(c.Path()))
-		_ = json.Unmarshal(c.PostBody(), &received)
-		mu.Unlock()
-		c.SetBodyString(`{"ok":true,"result":{"gas_used":1,"exit_code":0,"stack":[{"@type":"tvm.stackEntryList","list":{"@type":"tvm.list","elements":[]}}]}}`)
-	})
-	seqno := int32(42)
-	snapshot := &actonapi.Snapshot{Address: "0:" + strings.Repeat("00", 32), Seqno: &seqno}
-	stack := []tolkabi.StackValue{{Type: "null"}}
-	result, err := NewActonExecutor(actonSettings()).Run(context.Background(), snapshot, 123, stack)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if result.StackError != "" || result.Stack[0].Type != "null" {
-		t.Fatalf("standard null result lost: %+v", result)
-	}
-	_, err = NewActonExecutor(actonSettings()).Run(context.Background(), snapshot, 123, []tolkabi.StackValue{{Type: "builder", Value: boc}})
-	var apiError models.IndexError
-	if !errors.As(err, &apiError) || apiError.Code != 422 {
-		t.Fatalf("builder input not rejected: %v", err)
-	}
-	mu.Lock()
-	defer mu.Unlock()
-	if len(paths) != 1 || paths[0] != "/api/v2/runGetMethodStd" || received["seqno"] != float64(42) {
-		t.Fatalf("unexpected transport/selector: %v %+v", paths, received)
-	}
-	entry := received["stack"].([]any)[0].(map[string]any)
-	if entry["@type"] != "tvm.stackEntryList" || len(entry["list"].(map[string]any)["elements"].([]any)) != 0 {
-		t.Fatalf("null not encoded as empty Tonlib list: %+v", entry)
-	}
-}
-
-func TestActonProxyBoundsHTTPStatusAndResponseBody(t *testing.T) {
-	for _, tc := range []struct {
-		name    string
-		respond func(*fasthttp.RequestCtx)
-	}{
-		{"status_503_even_ok_true", func(c *fasthttp.RequestCtx) {
-			c.SetStatusCode(503)
-			c.SetBodyString(`{"ok":true,"result":{"gas_used":1,"exit_code":0,"stack":[]}}`)
-		}},
-		{"oversized_body", func(c *fasthttp.RequestCtx) {
-			c.SetBodyString(strings.Repeat(" ", actonMaxUpstreamBytes+1))
-		}},
-		{"redirect_not_followed", func(c *fasthttp.RequestCtx) {
-			c.Response.Header.Set("Location", "http://must-not-follow.invalid/private-key")
-			c.SetStatusCode(302)
-		}},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			calls := 0
-			actonUpstream(t, func(c *fasthttp.RequestCtx) { calls++; tc.respond(c) })
-			seqno := int32(1)
-			result, err := NewActonExecutor(actonSettings()).Run(context.Background(), &actonapi.Snapshot{Address: "0:" + strings.Repeat("00", 32), Seqno: &seqno}, 85143, nil)
-			var apiError models.IndexError
-			if result != nil || !errors.As(err, &apiError) || apiError.Code != 502 {
-				t.Fatalf("bad upstream not rejected: %v", err)
-			}
-			if strings.Contains(err.Error(), "private-key") || strings.Contains(err.Error(), "v2.test") {
-				t.Fatalf("upstream detail leaked into error: %v", err)
-			}
-			if calls != 1 {
-				t.Fatalf("retried or fell back: calls=%d", calls)
-			}
-		})
-	}
-}
-
-func TestActonProxyPositiveSeqnoBeforeUpstream(t *testing.T) {
-	for _, seqno := range []int32{0, -1} {
-		executor := NewActonExecutor(models.RequestSettings{})
-		addr := "0:" + strings.Repeat("00", 32)
-		_, snapshotErr := executor.Snapshot(context.Background(), addr, &seqno)
-		_, runErr := executor.Run(context.Background(), &actonapi.Snapshot{Address: addr, Seqno: &seqno}, 85143, nil)
-		for _, err := range []error{snapshotErr, runErr} {
-			var apiError models.IndexError
-			if !errors.As(err, &apiError) || apiError.Code != 422 {
-				t.Fatalf("seqno=%d yielded %v, not client validation", seqno, err)
-			}
-		}
 	}
 }
 

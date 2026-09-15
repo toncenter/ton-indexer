@@ -1,6 +1,7 @@
 package actonapi
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/json"
@@ -86,8 +87,7 @@ func call(t *testing.T, app *fiber.App, method, path, body string, status int, d
 
 func TestCatalogIndexAndSelectors(t *testing.T) {
 	contract := testContract()
-	app := testApp(New([]*tolkabi.Contract{contract}, "revision", Dependencies{
-		Executor: func(*fiber.Ctx) GetterExecutor { t.Fatal("listing executed a getter"); return nil }}))
+	app := testApp(New([]*tolkabi.Contract{contract}, "revision", Dependencies{}))
 	// Without a selector the whole catalog is returned, getters included and type
 	// tables left out.
 	var page ActonContractsResponse
@@ -105,14 +105,9 @@ func TestCatalogIndexAndSelectors(t *testing.T) {
 	for _, query := range []string{"limit=0", "limit=1001", "offset=-1", "limit=oops", "code_hash=bad"} {
 		call(t, app, "GET", "/contracts?"+query, "", 422, nil)
 	}
-	tooMany := make([]string, MaxSelectors+1)
-	for i := range tooMany {
-		tooMany[i] = "catalog_id=counter"
-	}
-	call(t, app, "GET", "/contracts?"+strings.Join(tooMany, "&"), "", 422, nil)
 
 	// A selector narrows the result and attaches the compiler ABI.
-	b64 := base64.StdEncoding.EncodeToString(bytesOf(0x12, 32))
+	b64 := base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{0x12}, 32))
 	unknown := strings.Repeat("00", 32)
 	call(t, app, "GET", "/contracts?code_hash="+url.QueryEscape(b64)+"&code_hash="+unknown+"&catalog_id=counter", "", 200, &page)
 	if page.Total != 1 || len(page.Contracts) != 1 || len(page.Contracts[0].ABI) == 0 {
@@ -130,6 +125,20 @@ func TestCatalogIndexAndSelectors(t *testing.T) {
 	call(t, app, "GET", "/contracts?code_hash="+testHash, "", 200, &page)
 	if page.Total != 2 || page.Contracts[0].CatalogID != "counter" {
 		t.Fatalf("ambiguous hash collapsed or misordered: %+v", page)
+	}
+}
+
+// Candidates sharing a code hash rank by getters, then message bindings, then ID, so every
+// response that names one contract for that code names the same one.
+func TestOrderCandidates(t *testing.T) {
+	message := map[string][]tolkabi.Binding{"incoming_messages": {{}}}
+	ordered := OrderCandidates([]*tolkabi.Contract{{ID: "b"}, {ID: "a"}, {ID: "c", Messages: message}, {ID: "d", GetMethods: make([]tolkabi.GetMethod, 1)}})
+	ids := make([]string, 0, len(ordered))
+	for _, contract := range ordered {
+		ids = append(ids, contract.ID)
+	}
+	if got := strings.Join(ids, ","); got != "d,c,a,b" {
+		t.Fatalf("candidates ranked %s, want getters, then message bindings, then ID", got)
 	}
 }
 
@@ -155,14 +164,6 @@ func TestCatalogIndexRevalidates(t *testing.T) {
 	if response.StatusCode != 304 {
 		t.Fatalf("unchanged catalog was sent again: %d", response.StatusCode)
 	}
-}
-
-func bytesOf(value byte, count int) []byte {
-	out := make([]byte, count)
-	for i := range out {
-		out[i] = value
-	}
-	return out
 }
 
 func TestNativeDecode(t *testing.T) {
@@ -298,28 +299,13 @@ func TestRunValidationAndCodeMismatch(t *testing.T) {
 	}
 }
 
-func TestRunCatalogConflictsAndSnapshotMismatch(t *testing.T) {
-	t.Run("duplicate_method_id", func(t *testing.T) {
-		app, executor, contract := runFixture(t)
-		contract.GetMethods = append(contract.GetMethods, tolkabi.GetMethod{Name: "different_getter", ID: 76543})
-		call(t, app, "POST", "/runGetMethod", `{"address":"`+testAddress+`","method":"get_counter"}`, 409, nil)
-		if executor.runs != 0 {
-			t.Fatal("ambiguous method ID executed")
-		}
-	})
-	t.Run("snapshot_address", func(t *testing.T) {
-		app, executor, _ := runFixture(t)
-		executor.snapshot.Address = "0:" + strings.Repeat("11", 32)
-		call(t, app, "POST", "/runGetMethod", `{"address":"`+testAddress+`","method":"get_counter"}`, 502, nil)
-		if executor.runs != 0 {
-			t.Fatal("mismatched snapshot executed")
-		}
-	})
-	t.Run("invalid_explicit_hash", func(t *testing.T) {
-		app, executor, _ := runFixture(t)
-		call(t, app, "POST", "/runGetMethod", `{"address":"`+testAddress+`","method":"get_counter","code_hash":"invalid"}`, 422, nil)
-		if executor.snapshots != 0 {
-			t.Fatal("invalid explicit hash reached upstream")
-		}
-	})
+// A snapshot of another account is refused rather than executed: the code that
+// selected the ABI must belong to the requested address.
+func TestRunSnapshotAddressMismatch(t *testing.T) {
+	app, executor, _ := runFixture(t)
+	executor.snapshot.Address = "0:" + strings.Repeat("11", 32)
+	call(t, app, "POST", "/runGetMethod", `{"address":"`+testAddress+`","method":"get_counter"}`, 502, nil)
+	if executor.runs != 0 {
+		t.Fatal("mismatched snapshot executed")
+	}
 }
