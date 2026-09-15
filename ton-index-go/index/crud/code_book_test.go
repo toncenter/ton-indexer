@@ -11,7 +11,7 @@ import (
 	"github.com/toncenter/ton-indexer/ton-index-go/index/models"
 )
 
-// Pinned from acton-abi-catalog/data/data-abis.json, not a synthetic catalog entry.
+// Pinned from the abis catalog release, not a synthetic catalog entry.
 const vestingCodeHash = "b360d6da4bb86554459ca38c3ec6f26e932370743eacf1219cad54ee006b5ca6"
 const walletCodeHash = "IINLe3KxEhR+Gy+0V7hOdNGjDwT3N9T2KmaOlVLSty8="
 

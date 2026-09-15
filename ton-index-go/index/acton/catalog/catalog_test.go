@@ -18,7 +18,7 @@ import (
 	"github.com/xssnick/tonutils-go/tvm/cell"
 )
 
-const pinnedRevision = "b442556faa253aba85e59cf7372aa90d9701fab684b4ec565480fa74a6efde38"
+const pinnedRevision = "9f023acf918493dfc908c66cfd38200e99d393beaaf27296da4563479638fea5"
 
 func TestOfflineGeneration(t *testing.T) {
 	data, err := os.ReadFile("catalog.json")

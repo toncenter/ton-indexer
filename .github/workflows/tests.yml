@@ -62,6 +62,11 @@ jobs:
           go-version-file: ton-index-go/go.mod
           cache-dependency-path: ton-index-go/go.sum
 
+      - name: Download the pinned ABI catalog
+        run: |
+          curl -fsSL -o index/acton/catalog/catalog.json https://github.com/ton-blockchain/abis/releases/download/v0.1.0/abi-catalog.json
+          echo "9f023acf918493dfc908c66cfd38200e99d393beaaf27296da4563479638fea5  index/acton/catalog/catalog.json" | sha256sum -c
+
       - name: Generate Acton bindings
         run: go tool tolk-abi-to-go --catalog index/acton/catalog/catalog.json --output-dir index/acton/catalog --package catalog
 
