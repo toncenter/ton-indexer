@@ -79,6 +79,7 @@ from indexer.events.blocks.layerzero import (
     LayerZeroSendTokensBlock,
 )
 from indexer.events.blocks.tgbtc import TgBTCDkgLogBlock, TgBTCMintBlock, TgBTCBurnBlock, TgBTCNewKeyBlock
+from indexer.events.blocks.tgwallet import ChangeWalletKeyBlock
 
 logger = logging.getLogger(__name__)
 
@@ -107,8 +108,12 @@ def _dget(data, key):
     return getattr(data, key)
 
 
+def _root_event_node(block: Block):
+    return min(block.event_nodes, key=lambda n: n.get_lt())
+
+
 def _calc_action_id(block: Block) -> str:
-    root_event_node = min(block.event_nodes, key=lambda n: n.get_lt())
+    root_event_node = _root_event_node(block)
     key = ""
     if root_event_node.message is not None:
         key = root_event_node.message.msg_hash
@@ -117,6 +122,44 @@ def _calc_action_id(block: Block) -> str:
     key += block.btype
     h = hashlib.sha256(key.encode())
     return base64.b64encode(h.digest()).decode()
+
+
+GASLESS_REQUEST_BTYPE = 'gasless_request'
+
+
+def _build_gasless_request_ids(blocks: list[Block]) -> dict[int, str]:
+    """
+    Maps the event node every gasless request marker was built from to that marker's action id.
+    The ids are deterministic (see _calc_action_id), so they can be computed before serialization.
+    """
+    return dict(
+        (id(_root_event_node(block)), _calc_action_id(block))
+        for block in blocks
+        if block.btype == GASLESS_REQUEST_BTYPE
+    )
+
+
+def _set_parent_gasless_action(block: Block, action: Action, gasless_request_ids: dict[int, str]):
+    """
+    Links an action that is the immediate result of a relayed (gas-free) request to its
+    gasless_request marker. Only the request message itself and its direct children qualify:
+    anything deeper is a separate logical step (what the receiving wallet does on its own),
+    not a result of the request. Nested relaying therefore chains naturally - the inner
+    gasless_request marker points at the outer one.
+    """
+    if not gasless_request_ids:
+        return
+    node = _root_event_node(block)
+    gasless_action_id = None
+    if block.btype not in (GASLESS_REQUEST_BTYPE, 'call_contract'):
+        # a matcher may have merged the relayed request message itself into a composite block
+        gasless_action_id = gasless_request_ids.get(id(node))
+    if gasless_action_id is None and node.parent is not None:
+        gasless_action_id = gasless_request_ids.get(id(node.parent))
+    if gasless_action_id is None:
+        return
+    extra = action.extra if isinstance(action.extra, dict) else {}
+    action.extra = {**extra, 'parent_gasless_action': gasless_action_id}
 
 
 def _base_block_to_action(block: Block, trace_id: str, finality: FinalityState) -> Action:
@@ -1392,6 +1435,18 @@ def _fill_ethena_deposit_action(block: EthenaDepositBlock, action: Action):
     }
 
 
+def _fill_change_wallet_key_action(block: ChangeWalletKeyBlock, action: Action):
+    action.source = _addr(block.data['source'])
+    action.destination = _addr(block.data['destination'])
+    action.value = _value(block.data['value'])
+
+
+def _fill_gasless_request_action(block: Block, action: Action):
+    action.source = _addr(block.data['source'])
+    action.destination = _addr(block.data['destination'])
+    action.value = _value(block.data['value'])
+
+
 # noinspection PyCompatibility,PyTypeChecker
 def block_to_action(block: Block, trace_id: str, trace: Trace) -> Action:
     if trace is None:
@@ -1567,6 +1622,10 @@ def block_to_action(block: Block, trace_id: str, trace: Trace) -> Action:
             _fill_cancel_nft_trade_action(block, action)
         case 'dns_release':
             _fill_dns_release(block, action)
+        case 'change_wallet_key':
+            _fill_change_wallet_key_action(block, action)
+        case 'gasless_request':
+            _fill_gasless_request_action(block, action)
         case 'nft_update_sale':
             _fill_sale_update_action(block, action)
         case _:
@@ -1630,16 +1689,22 @@ v1_ops = [
     'ethena_deposit',
     'tonco_deposit_liquidity',
     'tonco_withdraw_liquidity',
-    'coffee_deposit_liquidity'
+    'coffee_deposit_liquidity',
+    'change_wallet_key',
+    'gasless_request'
 ]
 
 def serialize_blocks(blocks: list[Block], trace_id, trace: Trace, parent_acton_id = None,
-                    serialize_child_actions=True) -> tuple[list[Action], str]:
+                    serialize_child_actions=True, gasless_request_ids=None) -> tuple[list[Action], str]:
     actions = []
     action_ids = []
     state = 'ok'
     if trace is None:
         raise ValueError("Trace is required to serialize blocks")
+    if gasless_request_ids is None:
+        # built once from the flat block list - the recursive calls below get it passed down,
+        # they only see the children of a single block and would compute an empty map
+        gasless_request_ids = _build_gasless_request_ids(blocks)
     for block in blocks:
         if block.btype != 'root':
             if block.btype == 'call_contract' and block.event_nodes[0].message.destination is None:
@@ -1653,12 +1718,14 @@ def serialize_blocks(blocks: list[Block], trace_id, trace: Trace, parent_acton_i
             action = block_to_action(block, trace_id, trace)
             if parent_acton_id is not None and action.action_id == parent_acton_id:
                 continue
+            _set_parent_gasless_action(block, action, gasless_request_ids)
             action.parent_action_id = parent_acton_id
             action_ids.append(action.action_id)
             actions.append(action)
             if serialize_child_actions:
                 if block.btype not in v1_ops:
-                    child_actions, child_state = serialize_blocks(block.children_blocks, trace_id, trace, action.action_id, serialize_child_actions)
+                    child_actions, child_state = serialize_blocks(block.children_blocks, trace_id, trace, action.action_id,
+                                                                 serialize_child_actions, gasless_request_ids)
                     for child_action in child_actions:
                         if child_action.type == 'contract_deploy':
                             continue

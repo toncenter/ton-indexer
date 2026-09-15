@@ -137,9 +137,99 @@ class WalletV5R1ExternalMessage:
             current_ref = s.load_ref()
             self.payload.append(PayloadMessage(s.load_ref()))
 
+# Telegram wallet (https://github.com/ton-blockchain/tg-wallet-contract) request opcodes.
+# Requests arrive either as externals (the "E" ones) or, when someone else pays for the gas,
+# as internal messages (the "I" ones).
+TG_WALLET_SEND_ONE_MESSAGE_INTERNAL = 0x63896E74
+TG_WALLET_SEND_ONE_MESSAGE_EXTERNAL = 0x63896E75
+TG_WALLET_SEND_BULK_MESSAGES_INTERNAL = 0x73896E74
+TG_WALLET_SEND_BULK_MESSAGES_EXTERNAL = 0x73896E75
+TG_WALLET_CHANGE_PUBLIC_KEY_INTERNAL = 0xFBBA99C7
+TG_WALLET_CHANGE_PUBLIC_KEY_EXTERNAL = 0xFBBA99C8
+
+TG_WALLET_REQUEST_OPCODES = frozenset({
+    TG_WALLET_SEND_ONE_MESSAGE_INTERNAL,
+    TG_WALLET_SEND_ONE_MESSAGE_EXTERNAL,
+    TG_WALLET_SEND_BULK_MESSAGES_INTERNAL,
+    TG_WALLET_SEND_BULK_MESSAGES_EXTERNAL,
+    TG_WALLET_CHANGE_PUBLIC_KEY_INTERNAL,
+    TG_WALLET_CHANGE_PUBLIC_KEY_EXTERNAL,
+})
+
+# Wallet v5 signed request delivered as an internal message ('sint'). Its external counterpart
+# ('sign', 0x7369676E) and the extension request ('extn', 0x6578746E) are not relayed requests.
+WALLET_V5_SIGNED_REQUEST_INTERNAL = 0x73696E74
+
+# A signed wallet request that arrived as an internal message: somebody else relayed the owner's
+# request and attached the TON that pays for the gas.
+GASLESS_REQUEST_OPCODES = frozenset({
+    TG_WALLET_SEND_ONE_MESSAGE_INTERNAL,
+    TG_WALLET_SEND_BULK_MESSAGES_INTERNAL,
+    TG_WALLET_CHANGE_PUBLIC_KEY_INTERNAL,
+    WALLET_V5_SIGNED_REQUEST_INTERNAL,
+})
+
+# signature(512) + opcode(32) + SeqnoHeader(96) = 640 bits, plus the boc header
+_TG_WALLET_MIN_REQUEST_LEN = 80
+
+
+def get_tg_wallet_request_opcode(body: bytes | None) -> int | None:
+    """
+    A request to a Telegram wallet starts with a 512 bit signature, so the first 32 bits of its
+    body - the ones stored as the message opcode - are just a piece of that signature. Return the
+    real opcode that follows the signature, or None if the body is not a tg-wallet request.
+    """
+    if body is None or len(body) < _TG_WALLET_MIN_REQUEST_LEN:
+        return None
+    try:
+        slice = Slice.one_from_boc(body)
+        slice.skip_bits(512)
+        opcode = slice.load_uint(32)
+    except Exception:
+        return None
+    return opcode if opcode in TG_WALLET_REQUEST_OPCODES else None
+
+
+class WalletTgExternalMessage:
+    """
+    Telegram wallet (https://github.com/ton-blockchain/tg-wallet-contract).
+
+    The body is a SignedRequest: the signature goes first (unlike wallet v5, where it is at the
+    end), then the request itself. Messages come either inline (SendOneMessageRequestE) or as a
+    tolk-encoded array<MessageToSend> (SendBulkMessagesRequestE): uint8 len + maybe ref to the
+    first chunk, every chunk being a maybe ref to the next one followed by its items
+    (sendMode:uint8 + ^messageCell).
+    """
+    SEND_ONE_MESSAGE = TG_WALLET_SEND_ONE_MESSAGE_EXTERNAL
+    SEND_BULK_MESSAGES = TG_WALLET_SEND_BULK_MESSAGES_EXTERNAL
+    CHANGE_PUBLIC_KEY = TG_WALLET_CHANGE_PUBLIC_KEY_EXTERNAL
+
+    def __init__(self, slice: Slice):
+        self.signature = slice.load_bits(512)
+        self.opcode = slice.load_uint(32)
+        if self.opcode not in (self.SEND_ONE_MESSAGE, self.SEND_BULK_MESSAGES, self.CHANGE_PUBLIC_KEY):
+            raise ValueError(f'unknown tg-wallet request: {self.opcode:#010x}')
+        self.subwallet_id = slice.load_uint(32)
+        self.valid_until = slice.load_uint(32)
+        self.seqno = slice.load_uint(32)
+        self.payload = []
+        if self.opcode == self.SEND_ONE_MESSAGE:
+            slice.load_uint(8)  # send mode
+            self.payload.append(PayloadMessage(slice.load_ref()))
+        elif self.opcode == self.SEND_BULK_MESSAGES:
+            slice.load_uint(8)  # number of messages, checked by the contract itself
+            chunk = slice.load_maybe_ref()
+            while chunk is not None:
+                s = chunk.to_slice()
+                chunk = s.load_maybe_ref()
+                for _ in range(s.remaining_refs):
+                    s.load_uint(8)  # send mode
+                    self.payload.append(PayloadMessage(s.load_ref()))
+
 def extract_payload_from_wallet_message(body: bytes) -> tuple[list[PayloadMessage], str|None]:
-    wallets = [WalletV3ExternalMessage, WalletV4ExternalMessage, WalletV5R1ExternalMessage]
-    wallet_types = ["v3", "v4", "v5r1"]
+    # the v3/v4 parsers accept almost any body, so the ones checking an opcode go first
+    wallets = [WalletTgExternalMessage, WalletV3ExternalMessage, WalletV4ExternalMessage, WalletV5R1ExternalMessage]
+    wallet_types = ["tg-wallet", "v3", "v4", "v5r1"]
     external_message = None
     wallet_type = None
     

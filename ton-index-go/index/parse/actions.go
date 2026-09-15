@@ -232,6 +232,7 @@ func ParseRawAction(raw *models.RawAction) (*models.Action, error) {
 	act.TraceExternalHash = raw.TraceExternalHash
 	act.TraceExternalHashNorm = raw.TraceExternalHashNorm
 	act.Accounts = raw.Accounts
+	act.ParentGaslessAction = extraString(raw.Extra, "parent_gasless_action")
 
 	switch act.Type {
 	case "call_contract":
@@ -1138,6 +1139,17 @@ func ParseRawAction(raw *models.RawAction) (*models.Action, error) {
 			Source:         raw.Source,
 			Destination:    raw.Destination,
 			Amount:         raw.Amount,
+		}
+	case "change_wallet_key":
+		act.Details = models.ActionDetailsChangeWalletKey{
+			Source:      raw.Source,
+			Destination: raw.Destination,
+		}
+	case "gasless_request":
+		act.Details = models.ActionDetailsGaslessRequest{
+			Source:      raw.Source,
+			Destination: raw.Destination,
+			Value:       raw.Value,
 		}
 	default:
 		details := map[string]string{}

@@ -38,6 +38,7 @@ from indexer.events.blocks.cocoon import (
 from indexer.events.blocks.basic_blocks import (
     CallContractBlock,
     ContractDeploy,
+    GaslessRequestBlock,
     TickTockBlock,
     TonTransferBlock,
 )
@@ -137,6 +138,7 @@ from indexer.events.blocks.layerzero import LayerZeroCommitPacketMatcher, LayerZ
 
 from indexer.events.blocks.tgbtc import TgBTCBurnBlockMatcher, TgBTCMintBlockMatcher, TgBTCNewKeyBlockMatcher
 from indexer.events.blocks.tgbtc import TgBTCMintLogOnlyMatcher, TgBTCBurnLogOnlyMatcher, TgBTCNewKeyLogOnlyMatcher, TgBTCDkgLogOnlyMatcher
+from indexer.events.blocks.tgwallet import ChangeWalletKeyMatcher
 
 async_session = sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
 logger = logging.getLogger(__name__)
@@ -203,6 +205,19 @@ async def unwind_deployments(blocks: list[Block]) -> list[Block]:
         while len(queue) > 0:
             child = queue.pop(0)
             if isinstance(child, ContractDeploy) and child not in visited:
+                blocks.append(child)
+            else:
+                queue.extend(child.children_blocks)
+            visited.add(child)
+    return blocks
+
+async def unwind_gasless_requests(blocks: list[Block]) -> list[Block]:
+    visited = set()
+    for block in blocks:
+        queue = block.children_blocks.copy()
+        while len(queue) > 0:
+            child = queue.pop(0)
+            if isinstance(child, GaslessRequestBlock) and child not in visited:
                 blocks.append(child)
             else:
                 queue.extend(child.children_blocks)
@@ -303,12 +318,15 @@ matchers = [
     CocoonGrantRefundMatcher(),
     CocoonClientIncreaseStakeMatcher(),
     CocoonClientWithdrawMatcher(),
+    # last: only claims a change key call_contract block that no composite matcher wanted
+    ChangeWalletKeyMatcher(),
 ]
 
 trace_post_processors = [
     post_process_dedust_liquidity,
     post_process_dedust_v2_liquidity,
-    unwind_deployments
+    unwind_deployments,
+    unwind_gasless_requests
 ]
 
 matchers_for_failed_externals = [

@@ -55,6 +55,7 @@ enum WalletType {
   WALLET_V4R1 = 7,
   WALLET_V4R2 = 8,
   WALLET_V5R1 = 9,
+  WALLET_TG = 10,
   WALLET_UNKNOWN = -1
 };
 
@@ -83,6 +84,7 @@ private:
   td::Result<td::Ref<vm::Cell>> compose_message_body_v3(const schema::AccountState& account_state);
   td::Result<td::Ref<vm::Cell>> compose_message_body_v4(const schema::AccountState& account_state);
   td::Result<td::Ref<vm::Cell>> compose_message_body_v5(const schema::AccountState& account_state);
+  td::Result<td::Ref<vm::Cell>> compose_message_body_tg(const schema::AccountState& account_state);
   td::Result<td::Ref<vm::Cell>> compose_external_message(td::Ref<vm::Cell> body);
 
   // Helper method to serialize cell to BOC

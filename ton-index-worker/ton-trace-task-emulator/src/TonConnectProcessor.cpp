@@ -3,6 +3,7 @@
 #include <crypto/vm/boc.h>
 #include <crypto/vm/cellslice.h>
 #include "smc-interfaces/FetchAccountFromShard.h"
+#include <algorithm>
 
 void TonConnectProcessor::start_up() {
   LOG(INFO) << "Processing TonConnect task " << tonconnect_task_.id << " for address " << tonconnect_task_.from;
@@ -61,6 +62,9 @@ void TonConnectProcessor::got_account_state(schema::AccountState account_state) 
       break;
     case WALLET_V5R1:
       external_message_body = compose_message_body_v5(account_state);
+      break;
+    case WALLET_TG:
+      external_message_body = compose_message_body_tg(account_state);
       break;
     default:
       error(td::Status::Error("Unsupported wallet type: " + std::to_string(wallet_type)));
@@ -130,6 +134,9 @@ WalletType TonConnectProcessor::detect_wallet_type(const td::Bits256& code_hash)
   }
   if (code_hash_b64 == "IINLe3KxEhR+Gy+0V7hOdNGjDwT3N9T2KmaOlVLSty8=") {
     return WALLET_V5R1;
+  }
+  if (code_hash_b64 == "kUmuUcHkaJcQzr94MCl7Fqz7rbNjqSClN4k+f/7sp2g=") {
+    return WALLET_TG;
   }
   
   LOG(WARNING) << "Unknown wallet type for code hash: " << code_hash_b64;
@@ -356,6 +363,81 @@ td::Result<td::Ref<vm::Cell>> TonConnectProcessor::compose_message_body_v5(const
 
   // signature: bits512 (placeholder; to be replaced with real Ed25519 signature)
   cb.store_bytes(td::Slice(std::string(64, '\0')));
+
+  return cb.finalize();
+}
+
+// Telegram wallet (https://github.com/ton-blockchain/tg-wallet-contract).
+// The body is a `SignedRequest`: the signature goes FIRST (unlike wallet v5, where it is at the end),
+// followed by the request itself. One message is sent as `SendOneMessageRequestE` (stored inline),
+// several messages as `SendBulkMessagesRequestE` carrying `array<MessageToSend>` encoded the Tolk way:
+// uint8 len + maybe ref to the first chunk; every chunk is a maybe ref to the next chunk followed by
+// its items (sendMode:uint8 + ^messageCell).
+td::Result<td::Ref<vm::Cell>> TonConnectProcessor::compose_message_body_tg(const schema::AccountState& account_state) {
+  // Read WalletTg storage: revision(8), seqno(32), subwallet_id(32), public_key(256)
+  auto cs = vm::load_cell_slice(account_state.data);
+  cs.advance(8); // skip storage revision
+  auto seqno     = static_cast<td::uint32>(cs.fetch_ulong(32));
+  auto wallet_id = static_cast<td::uint32>(cs.fetch_ulong(32));
+
+  const uint32_t SEND_ONE_MESSAGE   = 0x63896E75; // SendOneMessageRequestE
+  const uint32_t SEND_BULK_MESSAGES = 0x73896E75; // SendBulkMessagesRequestE
+  const uint8_t  SEND_MODE          = 3;          // external sends must have the "ignore errors" mode
+  const size_t   MAX_CELL_REFS      = 4;
+
+  if (tonconnect_task_.messages.empty())
+    return td::Status::Error("No messages to send");
+  if (tonconnect_task_.messages.size() > 255)
+    return td::Status::Error("Too many messages for tg-wallet (>255)");
+
+  auto valid_until = tonconnect_task_.valid_until.value_or(td::Timestamp::now().at_unix() + 300);
+  valid_until = to_seconds(valid_until);
+
+  std::vector<td::Ref<vm::Cell>> out_msgs;
+  for (const auto& out_msg : tonconnect_task_.messages) {
+    TRY_RESULT(int_msg, message_to_cell(out_msg));
+    out_msgs.push_back(std::move(int_msg));
+  }
+
+  vm::CellBuilder cb;
+  cb.store_bytes(td::Slice(std::string(64, '\0'))); // signature placeholder, emulated with ignore_chksig
+
+  if (out_msgs.size() == 1) {
+    cb.store_long(SEND_ONE_MESSAGE, 32)
+      .store_long(wallet_id, 32)
+      .store_long(valid_until, 32)
+      .store_long(seqno, 32)
+      .store_long(SEND_MODE, 8)
+      .store_ref(out_msgs[0]);
+    return cb.finalize();
+  }
+
+  // Build the array chunks starting from the tail: a chunk referencing the next one holds up to
+  // 3 items, the last one (built first) holds up to 4, since a cell has no more than 4 refs.
+  td::Ref<vm::Cell> chunk_ref;
+  size_t remaining = out_msgs.size();
+  while (remaining > 0) {
+    auto chunk_size = std::min(chunk_ref.is_null() ? MAX_CELL_REFS : MAX_CELL_REFS - 1, remaining);
+    vm::CellBuilder chunk;
+    if (chunk_ref.is_null()) {
+      chunk.store_zeroes(1);
+    } else {
+      chunk.store_ones(1).store_ref(chunk_ref);
+    }
+    for (size_t i = remaining - chunk_size; i < remaining; ++i) {
+      chunk.store_long(SEND_MODE, 8).store_ref(out_msgs[i]);
+    }
+    chunk_ref = chunk.finalize();
+    remaining -= chunk_size;
+  }
+
+  cb.store_long(SEND_BULK_MESSAGES, 32)
+    .store_long(wallet_id, 32)
+    .store_long(valid_until, 32)
+    .store_long(seqno, 32)
+    .store_long(static_cast<long long>(out_msgs.size()), 8) // array len
+    .store_ones(1)                                          // maybe ref to the first chunk
+    .store_ref(chunk_ref);
 
   return cb.finalize();
 }

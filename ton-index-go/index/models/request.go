@@ -217,6 +217,7 @@ type AccountRequest struct {
 
 type ActionRequest struct {
 	AccountAddress       *AccountAddress `query:"account"`
+	InitiatedByAccount   bool            `query:"initiated_by_account"`
 	TransactionHash      []HashType      `query:"tx_hash"`
 	MessageHash          []HashType      `query:"msg_hash"`
 	TraceId              []HashType      `query:"trace_id"`
