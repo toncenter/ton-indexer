@@ -66,7 +66,7 @@ void collect_subtree(const NodeMap& nodes, const std::string& root, std::set<std
     }
 }
 
-void replace_node(const NodeMap& current, NodeMap& result, TraceStateNode node, std::set<std::string>& detached) {
+void collect_detached(const NodeMap& current, const TraceStateNode& node, std::set<std::string>& detached) {
     auto cached = current.find(node.key);
     if (cached != current.end()) {
         for (const auto& child : cached->second.child_keys) {
@@ -75,7 +75,6 @@ void replace_node(const NodeMap& current, NodeMap& result, TraceStateNode node, 
             }
         }
     }
-    result.insert_or_assign(node.key, std::move(node));
 }
 
 void prune_detached(NodeMap& result, const std::set<std::string>& detached,
@@ -99,17 +98,18 @@ void prune_detached(NodeMap& result, const std::set<std::string>& detached,
     }
 }
 
-NodeMap merge_update(const NodeMap& current, const TraceStateUpdate& update, const std::string& previous_root_key) {
+void merge_update(NodeMap& current, const TraceStateUpdate& update, const std::string& previous_root_key) {
     const auto incoming = normalize_update(update);
     auto previous_root = current.find(previous_root_key.empty() ? update.root_key : previous_root_key);
     if (previous_root != current.end() &&
         is_more_final(previous_root->second.finality, incoming.at(update.root_key).finality)) {
-        return current;
+        return;
     }
 
-    NodeMap result = current;
     std::set<std::string> detached;
     std::vector<std::string> pending{update.root_key};
+    std::vector<const TraceStateNode*> accepted;
+    accepted.reserve(incoming.size());
 
     while (!pending.empty()) {
         auto key = std::move(pending.back());
@@ -124,7 +124,10 @@ NodeMap merge_update(const NodeMap& current, const TraceStateUpdate& update, con
         if (key == update.root_key && !previous_root_key.empty() && previous_root_key != key) {
             collect_subtree(current, previous_root_key, detached);
         }
-        replace_node(current, result, incoming_node, detached);
+        // Inspect all removed edges against the pre-fragment graph. An
+        // earlier replacement must not change another node's old subtree.
+        collect_detached(current, incoming_node, detached);
+        accepted.push_back(&incoming_node);
 
         for (const auto& child_key : incoming_node.child_keys) {
             if (incoming.count(child_key) != 0) {
@@ -133,8 +136,10 @@ NodeMap merge_update(const NodeMap& current, const TraceStateUpdate& update, con
         }
     }
 
-    prune_detached(result, detached, {update.root_key});
-    return result;
+    for (const auto* node : accepted) {
+        current.insert_or_assign(node->key, *node);
+    }
+    prune_detached(current, detached, {update.root_key});
 }
 
 TraceStateDelta make_delta(const NodeMap& current, const NodeMap& resulting) {
@@ -174,8 +179,8 @@ bool TraceStateDelta::empty() const {
            added_index_refs.empty();
 }
 
-TraceStateChange TraceState::prepare(const TraceStateUpdate& update, const std::string& previous_root_key) const {
-    return make_change(nodes_, merge_update(nodes_, update, previous_root_key));
+void TraceState::apply_update(const TraceStateUpdate& update, const std::string& previous_root_key) {
+    merge_update(nodes_, update, previous_root_key);
 }
 
 TraceStateChange TraceState::upsert_nodes(

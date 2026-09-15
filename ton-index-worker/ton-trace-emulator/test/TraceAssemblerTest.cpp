@@ -1,4 +1,5 @@
 #include <cstdint>
+#include <limits>
 #include <memory>
 #include <string>
 #include <utility>
@@ -157,4 +158,111 @@ TEST(TraceAssembler, grouped_fragments_have_one_delta_and_are_independent_of_roo
     ASSERT_TRUE(combined.next_trace.nodes.find(key(child)) != nullptr);
     ASSERT_EQ(2u, combined.node_delta.upserted_nodes.size());
   }
+}
+
+TEST(TraceAssembler, grouped_fragments_keep_one_snapshot_delta_and_version) {
+  using namespace trace_test;
+  auto a = message(201, true), b = message(202), c = message(203), old = message(204), tail = message(205);
+  auto root = trace_test::node(a, {b, c}, FinalityState::Finalized);
+  const auto root_hash = root->transaction_root->get_hash().bits();
+  auto branch = trace_test::node(b, {old}, FinalityState::Emulated, 200);
+  branch->children.push_back(trace_test::node(old, {}, FinalityState::Emulated, 400));
+  root->children.push_back(std::move(branch));
+  root->children.push_back(trace_test::node(c, {}, FinalityState::Emulated, 300));
+  ActiveTrace current;
+  trace_test::apply(current, trace(std::move(root), a));
+  auto interfaces = std::make_shared<mch::ParsedBlockLookupSource::InterfaceMap>();
+  const block::StdAddress first{0, hash('1')}, second{0, hash('2')}, untouched{0, hash('3')};
+  (*interfaces)[first] = {};
+  (*interfaces)[second] = {};
+  (*interfaces)[untouched] = {};
+  current.classifier_interfaces = interfaces;
+  auto before = current;
+
+  TraceUpdate update;
+  update.fragments.push_back(trace(trace_test::node(b, {c}, FinalityState::Finalized, 200), a, root_hash));
+  update.fragments.push_back(trace(trace_test::node(c, {tail}, FinalityState::Finalized, 300), a, root_hash));
+  update.fragments.push_back(trace(trace_test::node(tail, {}, FinalityState::Finalized, 400), a, root_hash));
+  update.fragments[0].tx_limit_exceeded = true;
+  update.fragments[0].interfaces[first] = {};
+  update.fragments[1].interfaces[second] = {};
+  auto result = TraceAssembler().apply_update(current, update, "trace").move_as_ok();
+  ASSERT_TRUE(current.nodes.nodes() == before.nodes.nodes());
+  ASSERT_TRUE(current.metadata == before.metadata);
+  ASSERT_TRUE(current.classifier_interfaces == before.classifier_interfaces);
+  ASSERT_EQ(3u, current.classifier_interfaces->size());
+  ASSERT_EQ(1u, result.next_trace.classifier_interfaces->size());
+  ASSERT_EQ(1u, result.next_trace.classifier_interfaces->count(untouched));
+  ASSERT_EQ(current.update_seq + 1, result.next_trace.update_seq);
+  ASSERT_TRUE(result.next_trace.tx_limit_exceeded);
+  ASSERT_EQ(std::string("1"), result.metadata_patch.at("depth_limit_exceeded"));
+  ASSERT_EQ(std::vector<std::string>({key(old)}), result.node_delta.removed_node_keys);
+  ASSERT_EQ(3u, result.node_delta.upserted_nodes.size());
+  ASSERT_EQ(1u, result.node_delta.removed_index_refs.size());
+  ASSERT_EQ(1u, result.node_delta.added_index_refs.size());
+  ASSERT_EQ(4u, result.next_trace.nodes.nodes().size());
+  ASSERT_EQ(3u, result.accepted_nodes.size());
+  for (const auto& accepted : result.accepted_nodes) {
+    ASSERT_EQ(FinalityState::Finalized, accepted.finality);
+  }
+  ASSERT_TRUE(result.next_trace.nodes.find(key(a))->serialized == current.nodes.find(key(a))->serialized);
+
+  auto duplicate = TraceAssembler().apply_update(result.next_trace, update, "trace").move_as_ok();
+  ASSERT_TRUE(duplicate.needs_redis_write);
+  ASSERT_TRUE(duplicate.node_delta.empty());
+  ASSERT_TRUE(duplicate.metadata_patch.empty());
+  ASSERT_EQ(3u, duplicate.reused_serializations);
+  ASSERT_EQ(result.next_trace.update_seq, duplicate.next_trace.update_seq);
+}
+
+TEST(TraceAssembler, invalid_later_fragment_keeps_original_nodes_metadata_and_interfaces) {
+  using namespace trace_test;
+  auto a = message(211, true), b = message(212), c = message(213);
+  auto root = trace_test::node(a, {b, c}, FinalityState::Finalized);
+  const auto root_hash = root->transaction_root->get_hash().bits();
+  ActiveTrace current;
+  trace_test::apply(current, trace(std::move(root), a));
+  auto interfaces = std::make_shared<mch::ParsedBlockLookupSource::InterfaceMap>();
+  const block::StdAddress account{0, hash('1')};
+  (*interfaces)[account] = {};
+  current.classifier_interfaces = interfaces;
+  auto before = current;
+
+  TraceUpdate update;
+  update.fragments.push_back(trace(trace_test::node(b, {}, FinalityState::Finalized), a, root_hash));
+  update.fragments[0].tx_limit_exceeded = true;
+  update.fragments[0].interfaces[account] = {};
+  auto bad = trace(trace_test::node(c, {}, FinalityState::Finalized), a, root_hash);
+  bad.root->transaction_root.clear();
+  update.fragments.push_back(std::move(bad));
+  ASSERT_TRUE(TraceAssembler().apply_update(current, update, "trace").is_error());
+  ASSERT_TRUE(current.nodes.nodes() == before.nodes.nodes());
+  ASSERT_TRUE(current.metadata == before.metadata);
+  ASSERT_EQ(before.update_seq, current.update_seq);
+  ASSERT_TRUE(current.classifier_interfaces == before.classifier_interfaces);
+  ASSERT_EQ(1u, current.classifier_interfaces->count(account));
+}
+
+TEST(TraceAssembler, update_sequence_increments_once_for_multiple_fragments_near_overflow) {
+  using namespace trace_test;
+  auto a = message(221, true), b = message(222), c = message(223);
+  auto root = trace_test::node(a, {b, c}, FinalityState::Finalized);
+  const auto root_hash = root->transaction_root->get_hash().bits();
+  ActiveTrace current;
+  trace_test::apply(current, trace(std::move(root), a));
+  current.update_seq = std::numeric_limits<std::uint64_t>::max() - 1;
+  TraceUpdate update;
+  update.fragments.push_back(trace(trace_test::node(b, {}, FinalityState::Finalized), a, root_hash));
+  update.fragments.push_back(trace(trace_test::node(c, {}, FinalityState::Finalized), a, root_hash));
+  auto result = TraceAssembler().apply_update(current, update, "trace").move_as_ok();
+  ASSERT_EQ(std::numeric_limits<std::uint64_t>::max(), result.next_trace.update_seq);
+  ASSERT_EQ(current.update_seq + 1, result.next_trace.update_seq);
+  auto duplicate = TraceAssembler().apply_update(result.next_trace, update, "trace").move_as_ok();
+  ASSERT_TRUE(duplicate.node_delta.empty());
+  ASSERT_EQ(result.next_trace.update_seq, duplicate.next_trace.update_seq);
+
+  auto changed = make_trace_update(trace(trace_test::node(b, {}, FinalityState::Finalized, 200), a, root_hash), {});
+  const auto before = result.next_trace.nodes.nodes();
+  ASSERT_TRUE(TraceAssembler().apply_update(result.next_trace, changed, "trace").is_error());
+  ASSERT_TRUE(result.next_trace.nodes.nodes() == before);
 }

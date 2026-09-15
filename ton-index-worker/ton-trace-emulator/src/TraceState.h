@@ -71,10 +71,12 @@ struct TraceStateChange {
 
 class TraceState {
 public:
-    // Prepares an update without changing the current in-memory state.
-    // previous_root_key is supplied only when replacing the actual trace root,
+    // Applies a fragment to an exclusively owned working copy, without
+    // copying the graph or computing a delta. Compare with the original state
+    // using delta_to() after all fragments have been applied.
+    // previous_root_key is supplied only when replacing the canonical root,
     // whose raw message hash may differ from update.root_key.
-    TraceStateChange prepare(const TraceStateUpdate& update, const std::string& previous_root_key = {}) const;
+    void apply_update(const TraceStateUpdate& update, const std::string& previous_root_key = {});
 
     // Inserts/replaces already accepted nodes without pruning. Promotion
     // validates that only finality changes before calling this method.

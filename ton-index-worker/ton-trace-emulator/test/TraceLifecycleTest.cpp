@@ -28,11 +28,10 @@ TraceState lifecycle_state(std::string root,
     }
 
     TraceState state;
-    auto change = state.prepare(TraceStateUpdate{
+    state.apply_update(TraceStateUpdate{
         .root_key = std::move(root),
         .nodes = std::move(connected_nodes),
     });
-    state.apply(std::move(change));
     return state;
 }
 

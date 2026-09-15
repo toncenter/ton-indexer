@@ -93,7 +93,8 @@ inline Trace trace(std::unique_ptr<TraceNode> root, const td::Ref<vm::Cell>& ext
 }
 
 inline TraceTransition apply(ActiveTrace& state, Trace patch) {
-  auto result = TraceAssembler().apply(state, patch, "trace");
+  auto update = make_trace_update(std::move(patch), {});
+  auto result = TraceAssembler().apply_update(state, update, "trace");
   if (result.is_error()) {
     LOG(FATAL) << result.error();
   }

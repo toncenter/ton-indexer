@@ -66,10 +66,8 @@ struct TraceTransition {
 
 class TraceAssembler {
  public:
-  td::Result<TraceTransition> apply(const ActiveTrace& current, const Trace& patch, const std::string& trace_key) const;
-
-  // Applies all disconnected fragments of one block update in order and
-  // exposes a single transition relative to current.
+  // Applies all disconnected fragments in order to one private working copy.
+  // Computes one final delta/version; current stays unchanged, including on error.
   td::Result<TraceTransition> apply_update(const ActiveTrace& current, TraceUpdate& update,
                                            const std::string& trace_key) const;
 

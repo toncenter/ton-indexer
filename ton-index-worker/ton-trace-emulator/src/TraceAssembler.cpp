@@ -56,15 +56,6 @@ std::string node_fingerprint(const TraceNode& node) {
   return fingerprint;
 }
 
-void add_metadata_change(const ActiveTrace& current, TraceTransition& transition, std::string field,
-                         std::string value) {
-  auto cached = current.metadata.find(field);
-  if (cached == current.metadata.end() || cached->second != value) {
-    transition.metadata_patch.emplace(field, value);
-    transition.next_trace.metadata.insert_or_assign(std::move(field), std::move(value));
-  }
-}
-
 std::vector<std::string> actual_child_keys(const TraceNode& node) {
   std::vector<std::string> result;
   result.reserve(node.children.size());
@@ -229,91 +220,110 @@ std::optional<std::string> trace_metadata_value(const ActiveTrace& trace, const 
   return it->second;
 }
 
-td::Result<TraceTransition> TraceAssembler::apply(const ActiveTrace& current, const Trace& patch,
-                                                  const std::string& trace_key) const {
-  TraceTransition transition;
-  transition.cached_nodes_count = current.nodes.nodes().size();
-  if (stale_root_update(current, patch)) {
-    return transition;
+namespace {
+
+using ClassifierInterfaces = mch::ParsedBlockLookupSource::InterfaceMap;
+
+td::Status apply_fragment(TraceTransition& transition, const Trace& patch, const std::string& trace_key,
+                          std::shared_ptr<ClassifierInterfaces>& mutable_interfaces) {
+  auto& next = transition.next_trace;
+  if (stale_root_update(next, patch)) {
+    return td::Status::OK();
   }
 
-  auto node_update_result = prepare_node_update(current, patch, trace_key);
+  auto node_update_result = prepare_node_update(next, patch, trace_key);
   if (node_update_result.is_error()) {
     return node_update_result.move_as_error();
   }
   auto node_update = node_update_result.move_as_ok();
-  transition.accepted_nodes = std::move(node_update.accepted_nodes);
-  transition.reused_serializations = node_update.reused_serializations;
+  transition.reused_serializations += node_update.reused_serializations;
 
-  if (transition.accepted_nodes.empty()) {
-    return transition;
+  if (node_update.accepted_nodes.empty()) {
+    return td::Status::OK();
   }
+  transition.accepted_nodes.insert(transition.accepted_nodes.end(),
+                                   std::make_move_iterator(node_update.accepted_nodes.begin()),
+                                   std::make_move_iterator(node_update.accepted_nodes.end()));
 
+  const bool had_root = next.root() != nullptr;
   const auto previous_root_key = patch.contains_root_transaction()
-                                     ? trace_metadata_value(current, "root_node").value_or(std::string{})
+                                     ? trace_metadata_value(next, "root_node").value_or(std::string{})
                                      : std::string{};
-  auto state_change = current.nodes.prepare(node_update.state_update, previous_root_key);
-  transition.node_delta = std::move(state_change.delta);
-  transition.next_trace = current;
-  transition.next_trace.nodes.apply(std::move(state_change));
+  next.nodes.apply_update(node_update.state_update, previous_root_key);
 
   for (const auto& [address, interfaces] : patch.interfaces) {
     auto redis_interfaces = parse_interfaces(interfaces);
     std::stringstream buffer;
     msgpack::pack(buffer, redis_interfaces);
-    add_metadata_change(current, transition, account_key(address), buffer.str());
+    next.metadata.insert_or_assign(account_key(address), buffer.str());
   }
 
-  auto patch_interfaces = mch::make_interface_map(patch);
   if (!patch.interfaces.empty()) {
-    auto next_interfaces =
-        std::make_shared<mch::ParsedBlockLookupSource::InterfaceMap>(*current.classifier_interfaces);
+    if (!mutable_interfaces) {
+      mutable_interfaces = std::make_shared<ClassifierInterfaces>(*next.classifier_interfaces);
+      next.classifier_interfaces = mutable_interfaces;
+    }
     // An explicitly observed empty final interface set must also clear a
     // value cached by an older trace update.
     for (const auto& [account, _] : patch.interfaces) {
-      next_interfaces->erase(account);
+      mutable_interfaces->erase(account);
     }
+    auto patch_interfaces = mch::make_interface_map(patch);
     for (auto& [account, interfaces] : patch_interfaces) {
-      next_interfaces->insert_or_assign(std::move(account), std::move(interfaces));
+      mutable_interfaces->insert_or_assign(std::move(account), std::move(interfaces));
     }
-    transition.next_trace.classifier_interfaces = std::move(next_interfaces);
   }
 
-  auto root_account = account_key(patch.root->address);
   transition.raw_external_message_hash = td::base64_encode(patch.ext_in_msg_hash.as_slice());
   if (patch.contains_root_transaction()) {
-    transition.next_trace.root_account = std::move(root_account);
+    next.root_account = account_key(patch.root->address);
     auto root_accounts = patch.emulated_accounts.equal_range(patch.root->address);
     if (root_accounts.first != root_accounts.second) {
       const auto& final_root_account = std::prev(root_accounts.second)->second;
       if (final_root_account.code.not_null()) {
-        add_metadata_change(current, transition, "root_account_code_hash",
-                            td::base64_encode(final_root_account.code->get_hash().as_slice()));
+        next.metadata.insert_or_assign("root_account_code_hash",
+                                       td::base64_encode(final_root_account.code->get_hash().as_slice()));
       }
     }
   }
-  if (patch.contains_root_transaction() || !current.root()) {
-    add_metadata_change(current, transition, "root_node", transition.raw_external_message_hash);
+  if (patch.contains_root_transaction() || !had_root) {
+    next.metadata.insert_or_assign("root_node", transition.raw_external_message_hash);
   }
-  add_metadata_change(current, transition, "depth_limit_exceeded", patch.tx_limit_exceeded ? "1" : "0");
+  next.metadata.insert_or_assign("depth_limit_exceeded", patch.tx_limit_exceeded ? "1" : "0");
 
-  transition.next_trace.tx_limit_exceeded = patch.tx_limit_exceeded;
-  const auto has_state_change = !transition.node_delta.empty() || !transition.metadata_patch.empty();
-  if (has_state_change) {
-    if (current.update_seq == std::numeric_limits<std::uint64_t>::max()) {
-      return td::Status::Error("Trace update_seq overflow");
-    }
-    transition.next_trace.update_seq = current.update_seq + 1;
-  }
-
-  transition.next_trace.finality = patch.root->finality_state;
-  if (is_more_final(current.finality, transition.next_trace.finality)) {
-    transition.next_trace.finality = current.finality;
+  next.tx_limit_exceeded = patch.tx_limit_exceeded;
+  if (is_more_final(patch.root->finality_state, next.finality)) {
+    next.finality = patch.root->finality_state;
   }
   // Exact duplicates still refresh Redis TTLs and notifications.
   transition.needs_redis_write = true;
+  return td::Status::OK();
+}
+
+td::Result<TraceTransition> finish_transition(const ActiveTrace& current, TraceTransition transition) {
+  if (!transition.needs_redis_write) {
+    transition.next_trace = ActiveTrace{};
+    return transition;
+  }
+  auto& next = transition.next_trace;
+  transition.node_delta = current.nodes.delta_to(next.nodes);
+  for (const auto& [field, value] : next.metadata) {
+    auto cached = current.metadata.find(field);
+    if (cached == current.metadata.end() || cached->second != value) {
+      transition.metadata_patch.emplace(field, value);
+    }
+  }
+  next.update_seq = current.update_seq;
+  if (!transition.node_delta.empty() || !transition.metadata_patch.empty()) {
+    if (current.update_seq == std::numeric_limits<std::uint64_t>::max()) {
+      return td::Status::Error("Trace update_seq overflow");
+    }
+    ++next.update_seq;
+  }
   return transition;
 }
+
+}  // namespace
 
 td::Result<TraceTransition> TraceAssembler::apply_update(const ActiveTrace& current, TraceUpdate& update,
                                                          const std::string& trace_key) const {
@@ -336,64 +346,36 @@ td::Result<TraceTransition> TraceAssembler::apply_update(const ActiveTrace& curr
     return combined;
   }
 
-  ActiveTrace staged = current;
-  bool needs_redis_write = false;
+  combined.next_trace = current;
+  std::shared_ptr<ClassifierInterfaces> mutable_interfaces;
   bool tx_limit_exceeded = false;
   std::set<std::string> accepted_keys;
   for (const auto& patch : update.fragments) {
     tx_limit_exceeded = tx_limit_exceeded || patch.tx_limit_exceeded;
-    auto transition_result = apply(staged, patch, trace_key);
-    if (transition_result.is_error()) {
-      return transition_result.move_as_error_prefix("Failed to apply trace update fragment: ");
+    auto status = apply_fragment(combined, patch, trace_key, mutable_interfaces);
+    if (status.is_error()) {
+      return status.move_as_error_prefix("Failed to apply trace update fragment: ");
     }
-    auto transition = transition_result.move_as_ok();
-    combined.reused_serializations += transition.reused_serializations;
-    for (const auto& accepted : transition.accepted_nodes) {
-      accepted_keys.insert(accepted.key);
+    for (auto& accepted : combined.accepted_nodes) {
+      accepted_keys.insert(std::move(accepted.key));
     }
-    if (!transition.needs_redis_write) {
-      continue;
-    }
-    needs_redis_write = true;
-    combined.raw_external_message_hash = std::move(transition.raw_external_message_hash);
-    staged = std::move(transition.next_trace);
+    combined.accepted_nodes.clear();
   }
 
-  if (!needs_redis_write) {
-    return combined;
-  }
-
-  staged.tx_limit_exceeded = tx_limit_exceeded;
-  staged.metadata.insert_or_assign("depth_limit_exceeded", tx_limit_exceeded ? "1" : "0");
-  combined.node_delta = current.nodes.delta_to(staged.nodes);
-  for (const auto& [field, value] : staged.metadata) {
-    auto cached = current.metadata.find(field);
-    if (cached == current.metadata.end() || cached->second != value) {
-      combined.metadata_patch.emplace(field, value);
+  if (combined.needs_redis_write) {
+    combined.next_trace.tx_limit_exceeded = tx_limit_exceeded;
+    combined.next_trace.metadata.insert_or_assign("depth_limit_exceeded", tx_limit_exceeded ? "1" : "0");
+    for (const auto& key : accepted_keys) {
+      const auto* node = combined.next_trace.nodes.find(key);
+      if (node) {
+        combined.accepted_nodes.push_back(AcceptedNode{
+            .key = key,
+            .finality = static_cast<FinalityState>(static_cast<std::uint8_t>(node->finality)),
+        });
+      }
     }
   }
-  for (const auto& key : accepted_keys) {
-    const auto* node = staged.nodes.find(key);
-    if (node) {
-      combined.accepted_nodes.push_back(AcceptedNode{
-          .key = key,
-          .finality = static_cast<FinalityState>(static_cast<std::uint8_t>(node->finality)),
-      });
-    }
-  }
-
-  const bool has_state_change = !combined.node_delta.empty() || !combined.metadata_patch.empty();
-  staged.update_seq = current.update_seq;
-  if (has_state_change) {
-    if (current.update_seq == std::numeric_limits<std::uint64_t>::max()) {
-      return td::Status::Error("Trace update_seq overflow");
-    }
-    staged.update_seq++;
-  }
-
-  combined.needs_redis_write = true;
-  combined.next_trace = std::move(staged);
-  return combined;
+  return finish_transition(current, std::move(combined));
 }
 
 td::Result<mch::EmuTraceView> TraceAssembler::build_full_trace(const ActiveTrace& trace, const std::string& trace_key,

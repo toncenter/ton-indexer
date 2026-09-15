@@ -44,8 +44,15 @@ TraceStateUpdate update(std::string root, std::initializer_list<TraceStateNode> 
     };
 }
 
+TraceStateChange prepare_change(const TraceState& state, const TraceStateUpdate& next,
+                               const std::string& previous_root_key = {}) {
+    auto working = state;
+    working.apply_update(next, previous_root_key);
+    return TraceStateChange{.delta = state.delta_to(working), .resulting_nodes = working.nodes()};
+}
+
 TraceStateDelta apply(TraceState& state, const TraceStateUpdate& next) {
-    auto change = state.prepare(next);
+    auto change = prepare_change(state, next);
     auto delta = change.delta;
     state.apply(std::move(change));
     return delta;
@@ -56,7 +63,7 @@ TraceStateDelta apply(TraceState& state, const TraceStateUpdate& next) {
 TEST(TraceState, new_trace_produces_sorted_upserts_and_exact_indexes) {
     TraceState state;
 
-    auto change = state.prepare(update("root", {
+    auto change = prepare_change(state, update("root", {
         node("root", Finality::Emulated, {"tail"}),
         node("tail", Finality::Emulated),
     }));
@@ -77,7 +84,7 @@ TEST(TraceState, duplicate_emulated_update_is_a_noop_and_keeps_omitted_tail) {
         node("tail", Finality::Emulated),
     }));
 
-    auto change = state.prepare(update("root", {
+    auto change = prepare_change(state, update("root", {
         *state.find("root"),
     }));
 
@@ -93,7 +100,7 @@ TEST(TraceState, lower_finality_node_cannot_change_anything_below_it) {
         node("child", Finality::Finalized, {}, "child-original"),
     }));
 
-    auto change = state.prepare(update("root", {
+    auto change = prepare_change(state, update("root", {
         node("root", Finality::Confirmed, {"child"}, "root-downgrade"),
         node("child", Finality::Confirmed, {}, "child-should-not-change"),
     }));
@@ -109,7 +116,7 @@ TEST(TraceState, confirmed_node_keeps_its_still_referenced_omitted_pending_tail)
         node("tail", Finality::Emulated),
     }));
 
-    auto change = state.prepare(update("root", {
+    auto change = prepare_change(state, update("root", {
         node("root", Finality::Confirmed, {"tail"}, "same-root"),
     }));
     const auto& delta = change.delta;
@@ -147,7 +154,7 @@ TEST(TraceState, changed_pending_out_messages_remove_only_the_detached_branch) {
                                     node("keep", Finality::Emulated),
                                 }));
     apply(state, update("unrelated", {node("unrelated", Finality::Confirmed)}));
-    auto change = state.prepare(update("root", {node("root", Finality::Emulated, {"keep"}, "new-root")}));
+    auto change = prepare_change(state, update("root", {node("root", Finality::Emulated, {"keep"}, "new-root")}));
     ASSERT_EQ(std::vector<std::string>({"old", "old-tail"}), change.delta.removed_node_keys);
     ASSERT_EQ(2u, change.delta.removed_index_refs.size());
     state.apply(std::move(change));
@@ -164,7 +171,7 @@ TEST(TraceState, replacing_raw_root_keeps_shared_descendants_and_unrelated_fragm
                                  node("old", Finality::Emulated),
                              }));
     apply(state, update("unrelated", {node("unrelated", Finality::Confirmed)}));
-    auto change = state.prepare(update("B", {node("B", Finality::Confirmed, {"shared"})}), "A");
+    auto change = prepare_change(state, update("B", {node("B", Finality::Confirmed, {"shared"})}), "A");
     ASSERT_EQ(std::vector<std::string>({"A", "old"}), change.delta.removed_node_keys);
     state.apply(std::move(change));
     ASSERT_TRUE(state.find("shared") != nullptr);
@@ -175,7 +182,7 @@ TEST(TraceState, replacing_raw_root_keeps_shared_descendants_and_unrelated_fragm
 TEST(TraceState, late_pending_raw_root_cannot_replace_a_finalized_root) {
     TraceState state;
     apply(state, update("B", {node("B", Finality::Finalized, {"child"}), node("child", Finality::Emulated)}));
-    auto change = state.prepare(update("A", {node("A", Finality::Emulated)}), "B");
+    auto change = prepare_change(state, update("A", {node("A", Finality::Emulated)}), "B");
     ASSERT_TRUE(change.delta.empty());
 }
 
@@ -214,7 +221,7 @@ TEST(TraceState, next_patch_builds_on_a_patch_whose_redis_write_failed) {
 
     // Redis did not confirm this write, but the patch is still part of the
     // logical trace state on which future partial updates must build.
-    auto failed_redis_write = state.prepare(update("B", {
+    auto failed_redis_write = prepare_change(state, update("B", {
         node("B", Finality::Finalized, {"C"}),
         node("C", Finality::Confirmed),
     }));
@@ -231,7 +238,7 @@ TEST(TraceState, next_patch_builds_on_a_patch_whose_redis_write_failed) {
 
 TEST(TraceState, prepare_does_not_change_state_until_apply) {
     TraceState state;
-    auto change = state.prepare(update("root", {
+    auto change = prepare_change(state, update("root", {
         node("root", Finality::Emulated),
     }));
 
@@ -249,7 +256,7 @@ TEST(TraceState, changed_index_score_emits_exact_remove_and_add) {
 
     auto changed = node("root", Finality::Emulated, {}, "v2");
     changed.index_refs = {index_for("root", 200)};
-    auto change = state.prepare(update("root", {changed}));
+    auto change = prepare_change(state, update("root", {changed}));
     const auto& delta = change.delta;
 
     ASSERT_TRUE(delta.removed_node_keys.empty());
@@ -321,10 +328,42 @@ TEST(TraceState, large_trace_leaf_update_is_still_a_single_node_delta) {
     nodes.push_back(node("root", Finality::Confirmed, std::move(children)));
     state.apply(state.upsert_nodes(std::move(nodes)));
 
-    auto change = state.prepare(update("leaf-500", {node("leaf-500", Finality::Confirmed, {}, "new-leaf")}));
+    auto change = prepare_change(state, update("leaf-500", {node("leaf-500", Finality::Confirmed, {}, "new-leaf")}));
     ASSERT_EQ(1u, change.delta.upserted_nodes.size());
     ASSERT_EQ("leaf-500", change.delta.upserted_nodes.front().key);
     ASSERT_TRUE(change.delta.removed_node_keys.empty());
     ASSERT_TRUE(change.delta.added_index_refs.empty());
     ASSERT_TRUE(change.delta.removed_index_refs.empty());
+}
+
+TEST(TraceState, working_copy_preserves_reattached_branches_and_produces_one_final_delta) {
+    TraceState original;
+    apply(original, update("root", {
+        node("root", Finality::Emulated, {"left", "right"}),
+        node("left", Finality::Emulated, {"shared"}),
+        node("right", Finality::Emulated, {"shared"}),
+        node("shared", Finality::Emulated, {"tail"}),
+        node("tail", Finality::Emulated),
+    }));
+    auto before = original.nodes();
+    TraceState working = original;
+    working.apply_update(update("root", {
+        node("root", Finality::Confirmed, {"right"}),
+        node("right", Finality::Confirmed, {"bridge"}),
+        node("bridge", Finality::Confirmed, {"shared"}),
+    }));
+    ASSERT_TRUE(working.find("left") == nullptr);
+    ASSERT_TRUE(working.find("shared") != nullptr);
+    ASSERT_TRUE(working.find("tail") != nullptr);
+
+    working.apply_update(update("shared", {node("shared", Finality::Finalized)}));
+    ASSERT_TRUE(working.find("tail") == nullptr);
+    ASSERT_TRUE(original.nodes() == before);
+    const auto delta = original.delta_to(working);
+    ASSERT_EQ(std::vector<std::string>({"left", "tail"}), delta.removed_node_keys);
+    ASSERT_EQ(4u, delta.upserted_nodes.size());
+    ASSERT_EQ(2u, delta.removed_index_refs.size());
+    ASSERT_EQ(1u, delta.added_index_refs.size());
+    ASSERT_EQ(index_for("bridge"), delta.added_index_refs.front());
+    ASSERT_EQ(Finality::Finalized, working.find("shared")->finality);
 }
