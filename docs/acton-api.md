@@ -18,17 +18,12 @@ Request and response schemas, limits and error codes are in the Swagger UI at
 
 ## Catalog and bindings
 
-`ton-index-go/index/acton/catalog/catalog.json` is a checked-in snapshot;
-`*_gen.go` next to it are gitignored build artifacts. CMake, Docker and CI
-generate them. For a direct `go build` or `go test`, run this first from
-`ton-index-go`:
-
-```sh
-CGO_ENABLED=0 go tool tolk-abi-to-go --catalog index/acton/catalog/catalog.json \
-  --output-dir index/acton/catalog --package catalog
-```
-
-Provenance, licenses and how to re-pin the snapshot:
+The contract catalog is a pinned
+[ton-blockchain/abis](https://github.com/ton-blockchain/abis) release. CMake,
+Docker and CI download it, verify its checksum and generate the native Go
+bindings; neither the catalog nor the bindings are tracked in Git. The commands
+for a direct `go build` or `go test`, the pinned release, provenance, licenses and
+how to re-pin are in
 [`index/acton/catalog/README.md`](../ton-index-go/index/acton/catalog/README.md).
 
 ## Notes for explorer clients

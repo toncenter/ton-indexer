@@ -1,3 +1,13 @@
+# The catalog is a pinned ton-blockchain/abis release. A file that already has the
+# expected hash is not downloaded again.
+set(ABI_CATALOG_VERSION v0.1.0)
+set(ABI_CATALOG_SHA256 9f023acf918493dfc908c66cfd38200e99d393beaaf27296da4563479638fea5)
+file(DOWNLOAD
+  "https://github.com/ton-blockchain/abis/releases/download/${ABI_CATALOG_VERSION}/abi-catalog.json"
+  "${CMAKE_CURRENT_SOURCE_DIR}/index/acton/catalog/catalog.json"
+  EXPECTED_HASH SHA256=${ABI_CATALOG_SHA256}
+  TLS_VERIFY ON)
+
 # Always run so any missing binding is repaired without glob/reconfigure loops.
 # The generator preserves contents and mtimes when outputs are unchanged.
 add_custom_target(ton-index-go-abi

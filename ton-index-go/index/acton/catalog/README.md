@@ -1,40 +1,41 @@
-# Pinned Acton catalog
+# Pinned ABI catalog
 
-`catalog.json` is a checked-in snapshot of Acton's 288-contract compiler-ABI
-bundle. The native Go bindings beside it (`*_gen.go`) are gitignored build
-artifacts; CMake, Docker and CI generate them. A direct `go build` or `go test`
-needs them generated first, from `ton-index-go`:
+`catalog.json` is the compiled contract catalog from a pinned
+[ton-blockchain/abis](https://github.com/ton-blockchain/abis) release, and the
+native Go bindings beside it (`*_gen.go`) are generated from it. Neither is
+tracked in Git: CMake, Docker and CI download the catalog, verify its SHA-256 and
+generate the bindings before building. A direct `go build` or `go test` needs the
+same steps first, from `ton-index-go`:
 
 ```sh
+curl -fsSL -o index/acton/catalog/catalog.json \
+  https://github.com/ton-blockchain/abis/releases/download/v0.1.0/abi-catalog.json
+echo "9f023acf918493dfc908c66cfd38200e99d393beaaf27296da4563479638fea5  index/acton/catalog/catalog.json" \
+  | shasum -a 256 -c
 CGO_ENABLED=0 go tool tolk-abi-to-go --catalog index/acton/catalog/catalog.json \
   --output-dir index/acton/catalog --package catalog
 ```
 
 The generator is pinned by the `tool` directive in `go.mod`, at the same version
-as the runtime the bindings import.
-
-The generator and runtime are maintained upstream in
+as the runtime the bindings import. Both are maintained upstream in
 [`ton-blockchain/tolk-abi-to-go`](https://github.com/ton-blockchain/tolk-abi-to-go).
 
 ## Provenance
 
-- Source: [ton-blockchain/acton](https://github.com/ton-blockchain/acton) at
-  `5dd8d80af21734efc31480849f3d313f4d89e751`,
-  [`crates/acton-abi-catalog/data/data-abis.json`](https://github.com/ton-blockchain/acton/blob/5dd8d80af21734efc31480849f3d313f4d89e751/crates/acton-abi-catalog/data/data-abis.json).
+- Release: [abis `v0.1.0`](https://github.com/ton-blockchain/abis/releases/tag/v0.1.0),
+  built by its release workflow from `24d608491355205cc7b4dccbf7b852297f798a7a`
+  with Acton 1.1.0 (Tolk 1.4.1).
 - SHA-256, exposed as `catalog.Revision`:
-  `b442556faa253aba85e59cf7372aa90d9701fab684b4ec565480fa74a6efde38`.
-- Underlying ABI definitions: [ton-blockchain/abis](https://github.com/ton-blockchain/abis).
-  This pins Acton's bundle, which does not record a separate abis revision.
+  `9f023acf918493dfc908c66cfd38200e99d393beaaf27296da4563479638fea5`.
 
-## Re-pinning the snapshot
+## Re-pinning
 
-```sh
-CGO_ENABLED=0 go tool tolk-abi-to-go \
-  --catalog /path/to/acton/crates/acton-abi-catalog/data/data-abis.json \
-  --output-dir index/acton/catalog --package catalog --snapshot
-```
-
-Then update the provenance above and `pinnedRevision` in `catalog_test.go`.
+Set the release version and its SHA-256 in `ton-index-go/CMakeLists.txt`, both
+builder stages of `Dockerfile`, `.github/workflows/tests.yml` and the commands
+above, and `pinnedRevision` in `catalog_test.go`. `TestTSDifferential` then checks
+that decoding still matches the TypeScript reference; regenerate
+`testdata/ts-reference.json` with `testdata/generate-reference.cjs` only when a
+release intentionally changes decoded values.
 
 ## Licenses
 
