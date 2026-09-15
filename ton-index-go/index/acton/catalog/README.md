@@ -32,11 +32,3 @@ generated bindings to the new checksum, and `TestTSDifferential` checks that
 decoding still matches the TypeScript reference; regenerate
 `testdata/ts-reference.json` with `testdata/generate-reference.cjs` only when a
 release intentionally changes decoded values.
-
-## Licenses
-
-`ton-blockchain/abis` material is MIT, Copyright (c) 2026 TON Core — see
-[LICENSE-ABIS-MIT](LICENSE-ABIS-MIT). Acton is `MIT OR Apache-2.0`; this
-redistribution takes the MIT option, Copyright (c) 2025 TON Core — see
-[LICENSE-ACTON-MIT](LICENSE-ACTON-MIT). Neither replaces this repository's own
-license.

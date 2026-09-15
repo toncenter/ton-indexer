@@ -22,8 +22,8 @@ The contract catalog is a pinned
 [ton-blockchain/abis](https://github.com/ton-blockchain/abis) release. CMake,
 Docker and CI download it, verify its checksum and generate the native Go
 bindings; neither the catalog nor the bindings are tracked in Git. The commands
-for a direct `go build` or `go test`, the pinned release, provenance, licenses and
-how to re-pin are in
+for a direct `go build` or `go test`, the pinned release, provenance and how to
+re-pin are in
 [`index/acton/catalog/README.md`](../ton-index-go/index/acton/catalog/README.md).
 
 ## Notes for explorer clients
