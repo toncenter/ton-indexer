@@ -1,0 +1,32 @@
+# nominator / Withdraw request, one payout consumed (4b5N)
+# trace: 4b5NvcGM3iow6o3Qc9ATpQLp9PlPv1Y62XvPTcbzUkQ=
+actions:
+  - type: stake_withdrawal_request
+    matcher: nominator_pool_withdraw_request
+    anchor: nominator_pool_withdraw_request@92986477000002
+    id: 3SmdDJ5P416TUtL53m01tZk/i+ebIRcALlFxdUEuuLI=
+    success: true
+    source: 0:34EEF9857552B9A911602918298F70FB6ED2C1107EAC5738450569BFCC38DA01
+    source_secondary: null
+    destination: "-1:FB6A6AF34963D20383BA09D8BCF3BE4C714845F27D193D04819EE5094816247A"
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: null
+    opcode: null
+    staking_data:
+      provider: nominator
+    tx_hashes:
+      - J/0WwXR6RrssZXFnWHyjZd4yLTFCyRQLLmSI26gKbEc=
+      - YAZ9XOUmqOYcL6shlRbDS3raNmZotfr2x4h7s4/dUms=
+    accounts:
+      - "-1:FB6A6AF34963D20383BA09D8BCF3BE4C714845F27D193D04819EE5094816247A"
+      - 0:34EEF9857552B9A911602918298F70FB6ED2C1107EAC5738450569BFCC38DA01
+    start_lt: 92986477000002
+    end_lt: 92986481000001
+    start_utime: 1785197971
+    end_utime: 1785197972
+    mc_seqno_end: 82441235

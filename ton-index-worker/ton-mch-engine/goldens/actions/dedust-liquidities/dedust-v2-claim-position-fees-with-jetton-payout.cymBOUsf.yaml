@@ -1,0 +1,242 @@
+# dedust-liquidities / DeDust v2 claim position fees with jetton payout
+# note: fee claim followed by a jetton_transfer carrying the jetton leg
+# trace: cymBOUsfra7ZhoecaxwLyvSZi3EhpOFmvTPTSaKHfeA=
+actions:
+  - type: call_contract
+    anchor: call_contract#25f19752@76122327000037
+    id: dBfugzX6OOB+8HJfAb2LmMXUdkDPyNUfDyKtcBr7f1Q=
+    success: true
+    source: 0:C5158FA9C3AAD267EA09B3A3EF8C60C9B65B015FE7F2B740CABFF95F0EC8A2EF
+    source_secondary: null
+    destination: 0:C5F8757BC53AC74DBA85FF58FA0560989DE19B384225422FEA8B13100059DDEB
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: 149133398
+    opcode: 0x25f19752
+    tx_hashes:
+      - Mmm9lMfkCfoTrBeCIlORHmjB7u6ObharQJwPaoNc+FQ=
+      - eFDu63gU4jpeNcn0XMePm7yKe/ka30Iv35aj048HbXo=
+    accounts:
+      - 0:C5158FA9C3AAD267EA09B3A3EF8C60C9B65B015FE7F2B740CABFF95F0EC8A2EF
+      - 0:C5F8757BC53AC74DBA85FF58FA0560989DE19B384225422FEA8B13100059DDEB
+    start_lt: 76122327000037
+    end_lt: 76122327000038
+    start_utime: 1778438436
+    end_utime: 1778438436
+    mc_seqno_end: 65924955
+    parent_action_id: p6dd+tipbecpiSqu3B16QwK6CsEp4NXIsKqZjEQPYpw=
+    ancestor_type:
+      - dedust_v2_claim_fees
+  - type: call_contract
+    anchor: call_contract#29ff1bcf@76122327000039
+    id: KnuOpX38jtItuegq3eau9fG9RU+/SDTK+xLP2R8UoFg=
+    success: true
+    source: 0:C5F8757BC53AC74DBA85FF58FA0560989DE19B384225422FEA8B13100059DDEB
+    source_secondary: null
+    destination: 0:C5158FA9C3AAD267EA09B3A3EF8C60C9B65B015FE7F2B740CABFF95F0EC8A2EF
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: 148593576
+    opcode: 0x29ff1bcf
+    tx_hashes:
+      - Mmm9lMfkCfoTrBeCIlORHmjB7u6ObharQJwPaoNc+FQ=
+      - QJMEsQof7WsdCCtyNVDv53RFjiOBZGDD9LZVZxQt8MA=
+    accounts:
+      - 0:C5158FA9C3AAD267EA09B3A3EF8C60C9B65B015FE7F2B740CABFF95F0EC8A2EF
+      - 0:C5F8757BC53AC74DBA85FF58FA0560989DE19B384225422FEA8B13100059DDEB
+    start_lt: 76122327000039
+    end_lt: 76122327000040
+    start_utime: 1778438436
+    end_utime: 1778438436
+    mc_seqno_end: 65924955
+    parent_action_id: p6dd+tipbecpiSqu3B16QwK6CsEp4NXIsKqZjEQPYpw=
+    ancestor_type:
+      - dedust_v2_claim_fees
+  - type: call_contract
+    anchor: call_contract#3216ca09@76122327000041
+    id: SamjV9NnLspRECNLAjMR44zOip+4M+KaJwf8Mk+i0o4=
+    success: true
+    source: 0:C5158FA9C3AAD267EA09B3A3EF8C60C9B65B015FE7F2B740CABFF95F0EC8A2EF
+    source_secondary: null
+    destination: 0:C0DCADCB4C9299AE3E3E8BF8FBD50F2893BD2610A654B94C1E747D7098A01E76
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: 4321947465
+    opcode: 0x3216ca09
+    tx_hashes:
+      - 60akluEiFIb2+fsK95cGEsPgMqpRpoBZGnM+m387llY=
+      - QJMEsQof7WsdCCtyNVDv53RFjiOBZGDD9LZVZxQt8MA=
+    accounts:
+      - 0:C0DCADCB4C9299AE3E3E8BF8FBD50F2893BD2610A654B94C1E747D7098A01E76
+      - 0:C5158FA9C3AAD267EA09B3A3EF8C60C9B65B015FE7F2B740CABFF95F0EC8A2EF
+    start_lt: 76122327000041
+    end_lt: 76122327000042
+    start_utime: 1778438436
+    end_utime: 1778438436
+    mc_seqno_end: 65924955
+    parent_action_id: p6dd+tipbecpiSqu3B16QwK6CsEp4NXIsKqZjEQPYpw=
+    ancestor_type:
+      - dedust_v2_claim_fees
+  - type: call_contract
+    anchor: call_contract#5652f1df@76122327000035
+    id: 97nVn43/br9Ls6VB+QFfkPH43SjPFpWnfuv8Txe5zvk=
+    success: true
+    source: 0:C0DCADCB4C9299AE3E3E8BF8FBD50F2893BD2610A654B94C1E747D7098A01E76
+    source_secondary: null
+    destination: 0:C5158FA9C3AAD267EA09B3A3EF8C60C9B65B015FE7F2B740CABFF95F0EC8A2EF
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: 150000000
+    opcode: 0x5652f1df
+    tx_hashes:
+      - cymBOUsfra7ZhoecaxwLyvSZi3EhpOFmvTPTSaKHfeA=
+      - eFDu63gU4jpeNcn0XMePm7yKe/ka30Iv35aj048HbXo=
+    accounts:
+      - 0:C0DCADCB4C9299AE3E3E8BF8FBD50F2893BD2610A654B94C1E747D7098A01E76
+      - 0:C5158FA9C3AAD267EA09B3A3EF8C60C9B65B015FE7F2B740CABFF95F0EC8A2EF
+    start_lt: 76122327000035
+    end_lt: 76122327000036
+    start_utime: 1778438436
+    end_utime: 1778438436
+    mc_seqno_end: 65924955
+    parent_action_id: p6dd+tipbecpiSqu3B16QwK6CsEp4NXIsKqZjEQPYpw=
+    ancestor_type:
+      - dedust_v2_claim_fees
+  - type: call_contract
+    anchor: call_contract#d53276db@76122327000043
+    id: Qf5xSo4r7WrTFJt19tgR3tWHgwGg7LMzSAIUD/C0adA=
+    success: true
+    source: 0:C5158FA9C3AAD267EA09B3A3EF8C60C9B65B015FE7F2B740CABFF95F0EC8A2EF
+    source_secondary: null
+    destination: 0:C0DCADCB4C9299AE3E3E8BF8FBD50F2893BD2610A654B94C1E747D7098A01E76
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: 96913173
+    opcode: 0xd53276db
+    tx_hashes:
+      - EjB0C1Nk3vlYyrJQpqEaxwitvGLGSm6h/8kVp60rhaw=
+      - QJMEsQof7WsdCCtyNVDv53RFjiOBZGDD9LZVZxQt8MA=
+    accounts:
+      - 0:C0DCADCB4C9299AE3E3E8BF8FBD50F2893BD2610A654B94C1E747D7098A01E76
+      - 0:C5158FA9C3AAD267EA09B3A3EF8C60C9B65B015FE7F2B740CABFF95F0EC8A2EF
+    start_lt: 76122327000043
+    end_lt: 76122327000044
+    start_utime: 1778438436
+    end_utime: 1778438436
+    mc_seqno_end: 65924955
+    parent_action_id: p6dd+tipbecpiSqu3B16QwK6CsEp4NXIsKqZjEQPYpw=
+    ancestor_type:
+      - dedust_v2_claim_fees
+  - type: dedust_v2_claim_fees
+    matcher: dedust_v2_claim_fees
+    anchor: dedust_v2_claim_fees@76122327000035
+    id: p6dd+tipbecpiSqu3B16QwK6CsEp4NXIsKqZjEQPYpw=
+    success: true
+    source: 0:C0DCADCB4C9299AE3E3E8BF8FBD50F2893BD2610A654B94C1E747D7098A01E76
+    source_secondary: null
+    destination: 0:C5158FA9C3AAD267EA09B3A3EF8C60C9B65B015FE7F2B740CABFF95F0EC8A2EF
+    destination_secondary: 0:C5F8757BC53AC74DBA85FF58FA0560989DE19B384225422FEA8B13100059DDEB
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: null
+    opcode: null
+    dex_withdraw_liquidity_data:
+      amount1: 4321947465
+      amount2: 1900001570507729
+      asset1_out: null
+      asset2_out: 0:F09F9C20CECCCD55A05B2C974C90E06D59F2B24A8444A17AAE4E9736769B853D
+      dex: dedust_v2
+      dex_jetton_wallet_1: null
+      dex_jetton_wallet_2: 0:CAD4D3EFD6D7F13ED6581135397A409044D9C40E2A71176A059A6DDC429D81A5
+      dex_wallet_1: 0:C5158FA9C3AAD267EA09B3A3EF8C60C9B65B015FE7F2B740CABFF95F0EC8A2EF
+      dex_wallet_2: 0:C5158FA9C3AAD267EA09B3A3EF8C60C9B65B015FE7F2B740CABFF95F0EC8A2EF
+      is_refund: false
+      lp_tokens_burnt: null
+      user_jetton_wallet_1: null
+      user_jetton_wallet_2: 0:DFBF5DF495312066C08C07A5961401BED400FD222B0D611B3961B1D5E76EC01C
+    tx_hashes:
+      - 60akluEiFIb2+fsK95cGEsPgMqpRpoBZGnM+m387llY=
+      - EjB0C1Nk3vlYyrJQpqEaxwitvGLGSm6h/8kVp60rhaw=
+      - F5QR2A/68aWggrTD2qvcBjn9RrZhWkQYDdnVQHI7lvc=
+      - Mmm9lMfkCfoTrBeCIlORHmjB7u6ObharQJwPaoNc+FQ=
+      - QJMEsQof7WsdCCtyNVDv53RFjiOBZGDD9LZVZxQt8MA=
+      - SfILBGu8xsmlRX1sJ8q8CVmfcATuVb/4Oh0uNqH6MTw=
+      - SxDvCVdcLbuRA7W/Vg+R+nenz5wIp9a+DXPHgPsngL4=
+      - cymBOUsfra7ZhoecaxwLyvSZi3EhpOFmvTPTSaKHfeA=
+      - eFDu63gU4jpeNcn0XMePm7yKe/ka30Iv35aj048HbXo=
+    accounts:
+      - 0:C0DCADCB4C9299AE3E3E8BF8FBD50F2893BD2610A654B94C1E747D7098A01E76
+      - 0:C5158FA9C3AAD267EA09B3A3EF8C60C9B65B015FE7F2B740CABFF95F0EC8A2EF
+      - 0:C5F8757BC53AC74DBA85FF58FA0560989DE19B384225422FEA8B13100059DDEB
+      - 0:CAD4D3EFD6D7F13ED6581135397A409044D9C40E2A71176A059A6DDC429D81A5
+      - 0:DFBF5DF495312066C08C07A5961401BED400FD222B0D611B3961B1D5E76EC01C
+    start_lt: 76122327000035
+    end_lt: 76122327000047
+    start_utime: 1778438436
+    end_utime: 1778438436
+    mc_seqno_end: 65924955
+  - type: jetton_transfer
+    matcher: jetton_transfer
+    anchor: jetton_transfer@76122327000042
+    id: KwVBIPmyt+ZP3WGeW2aEqq1S4I0Q8xZ2zeJmrdMDKUM=
+    success: true
+    source: 0:C5158FA9C3AAD267EA09B3A3EF8C60C9B65B015FE7F2B740CABFF95F0EC8A2EF
+    source_secondary: 0:CAD4D3EFD6D7F13ED6581135397A409044D9C40E2A71176A059A6DDC429D81A5
+    destination: 0:C0DCADCB4C9299AE3E3E8BF8FBD50F2893BD2610A654B94C1E747D7098A01E76
+    destination_secondary: 0:DFBF5DF495312066C08C07A5961401BED400FD222B0D611B3961B1D5E76EC01C
+    asset: 0:F09F9C20CECCCD55A05B2C974C90E06D59F2B24A8444A17AAE4E9736769B853D
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: 1900001570507729
+    value: null
+    opcode: null
+    jetton_transfer_data:
+      comment: null
+      custom_payload: null
+      forward_amount: 0
+      forward_payload: null
+      is_encrypted_comment: false
+      query_id: 8326152600206254086
+      response_destination: 0:C0DCADCB4C9299AE3E3E8BF8FBD50F2893BD2610A654B94C1E747D7098A01E76
+    tx_hashes:
+      - F5QR2A/68aWggrTD2qvcBjn9RrZhWkQYDdnVQHI7lvc=
+      - QJMEsQof7WsdCCtyNVDv53RFjiOBZGDD9LZVZxQt8MA=
+      - SfILBGu8xsmlRX1sJ8q8CVmfcATuVb/4Oh0uNqH6MTw=
+      - SxDvCVdcLbuRA7W/Vg+R+nenz5wIp9a+DXPHgPsngL4=
+    accounts:
+      - 0:C0DCADCB4C9299AE3E3E8BF8FBD50F2893BD2610A654B94C1E747D7098A01E76
+      - 0:C5158FA9C3AAD267EA09B3A3EF8C60C9B65B015FE7F2B740CABFF95F0EC8A2EF
+      - 0:CAD4D3EFD6D7F13ED6581135397A409044D9C40E2A71176A059A6DDC429D81A5
+      - 0:DFBF5DF495312066C08C07A5961401BED400FD222B0D611B3961B1D5E76EC01C
+    start_lt: 76122327000042
+    end_lt: 76122327000047
+    start_utime: 1778438436
+    end_utime: 1778438436
+    mc_seqno_end: 65924955
+    parent_action_id: p6dd+tipbecpiSqu3B16QwK6CsEp4NXIsKqZjEQPYpw=
+    ancestor_type:
+      - dedust_v2_claim_fees

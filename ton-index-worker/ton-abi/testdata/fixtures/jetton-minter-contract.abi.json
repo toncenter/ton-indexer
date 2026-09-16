@@ -1,0 +1,432 @@
+{
+  "abi_schema_version": "1.0",
+  "contract_name": "JettonMinter",
+  "unique_types": [
+    {
+      "kind": "void"
+    },
+    {
+      "kind": "int"
+    },
+    {
+      "kind": "slice"
+    },
+    {
+      "kind": "cell"
+    },
+    {
+      "kind": "builder"
+    },
+    {
+      "kind": "bool"
+    },
+    {
+      "kind": "coins"
+    },
+    {
+      "kind": "address"
+    },
+    {
+      "kind": "intN",
+      "n": 32
+    },
+    {
+      "kind": "uintN",
+      "n": 32
+    },
+    {
+      "kind": "intN",
+      "n": 64
+    },
+    {
+      "kind": "uintN",
+      "n": 64
+    },
+    {
+      "kind": "StructRef",
+      "struct_name": "MintNewJettons"
+    },
+    {
+      "kind": "StructRef",
+      "struct_name": "InternalTransferStep"
+    },
+    {
+      "kind": "addressOpt"
+    },
+    {
+      "kind": "AliasRef",
+      "alias_name": "ForwardPayloadRemainder"
+    },
+    {
+      "kind": "remaining"
+    },
+    {
+      "kind": "cellOf",
+      "inner_ty_idx": 13
+    },
+    {
+      "kind": "StructRef",
+      "struct_name": "BurnNotificationForMinter"
+    },
+    {
+      "kind": "StructRef",
+      "struct_name": "RequestWalletAddress"
+    },
+    {
+      "kind": "StructRef",
+      "struct_name": "ChangeMinterAdmin"
+    },
+    {
+      "kind": "StructRef",
+      "struct_name": "ChangeMinterContent"
+    },
+    {
+      "kind": "StructRef",
+      "struct_name": "MinterStorage"
+    },
+    {
+      "kind": "StructRef",
+      "struct_name": "ReturnExcessesBack"
+    },
+    {
+      "kind": "StructRef",
+      "struct_name": "ResponseWalletAddress"
+    },
+    {
+      "kind": "cellOf",
+      "inner_ty_idx": 7
+    },
+    {
+      "kind": "nullable",
+      "inner_ty_idx": 25
+    },
+    {
+      "kind": "StructRef",
+      "struct_name": "JettonDataReply"
+    }
+  ],
+  "struct_instantiations": [],
+  "alias_instantiations": [],
+  "declarations": [
+    {
+      "kind": "struct",
+      "name": "JettonDataReply",
+      "ty_idx": 27,
+      "fields": [
+        {
+          "name": "totalSupply",
+          "ty_idx": 1
+        },
+        {
+          "name": "mintable",
+          "ty_idx": 5
+        },
+        {
+          "name": "adminAddress",
+          "ty_idx": 7
+        },
+        {
+          "name": "jettonContent",
+          "ty_idx": 3
+        },
+        {
+          "name": "jettonWalletCode",
+          "ty_idx": 3
+        }
+      ]
+    },
+    {
+      "kind": "alias",
+      "name": "ForwardPayloadRemainder",
+      "ty_idx": 15,
+      "target_ty_idx": 16
+    },
+    {
+      "kind": "struct",
+      "name": "InternalTransferStep",
+      "ty_idx": 13,
+      "prefix": {
+        "prefix_num": 395134233,
+        "prefix_len": 32
+      },
+      "fields": [
+        {
+          "name": "queryId",
+          "ty_idx": 11
+        },
+        {
+          "name": "jettonAmount",
+          "ty_idx": 6
+        },
+        {
+          "name": "transferInitiator",
+          "ty_idx": 14
+        },
+        {
+          "name": "sendExcessesTo",
+          "ty_idx": 14
+        },
+        {
+          "name": "forwardTonAmount",
+          "ty_idx": 6
+        },
+        {
+          "name": "forwardPayload",
+          "ty_idx": 15
+        }
+      ]
+    },
+    {
+      "kind": "struct",
+      "name": "ReturnExcessesBack",
+      "ty_idx": 23,
+      "prefix": {
+        "prefix_num": 3576854235,
+        "prefix_len": 32
+      },
+      "fields": [
+        {
+          "name": "queryId",
+          "ty_idx": 11
+        }
+      ]
+    },
+    {
+      "kind": "struct",
+      "name": "BurnNotificationForMinter",
+      "ty_idx": 18,
+      "prefix": {
+        "prefix_num": 2078119902,
+        "prefix_len": 32
+      },
+      "fields": [
+        {
+          "name": "queryId",
+          "ty_idx": 11
+        },
+        {
+          "name": "jettonAmount",
+          "ty_idx": 6
+        },
+        {
+          "name": "burnInitiator",
+          "ty_idx": 7
+        },
+        {
+          "name": "sendExcessesTo",
+          "ty_idx": 14
+        }
+      ]
+    },
+    {
+      "kind": "struct",
+      "name": "RequestWalletAddress",
+      "ty_idx": 19,
+      "prefix": {
+        "prefix_num": 745978227,
+        "prefix_len": 32
+      },
+      "fields": [
+        {
+          "name": "queryId",
+          "ty_idx": 11
+        },
+        {
+          "name": "ownerAddress",
+          "ty_idx": 7
+        },
+        {
+          "name": "includeOwnerAddress",
+          "ty_idx": 5
+        }
+      ]
+    },
+    {
+      "kind": "struct",
+      "name": "ResponseWalletAddress",
+      "ty_idx": 24,
+      "prefix": {
+        "prefix_num": 3513996288,
+        "prefix_len": 32
+      },
+      "fields": [
+        {
+          "name": "queryId",
+          "ty_idx": 11
+        },
+        {
+          "name": "jettonWalletAddress",
+          "ty_idx": 14
+        },
+        {
+          "name": "ownerAddress",
+          "ty_idx": 26
+        }
+      ]
+    },
+    {
+      "kind": "struct",
+      "name": "MintNewJettons",
+      "ty_idx": 12,
+      "prefix": {
+        "prefix_num": 21,
+        "prefix_len": 32
+      },
+      "fields": [
+        {
+          "name": "queryId",
+          "ty_idx": 11
+        },
+        {
+          "name": "mintRecipient",
+          "ty_idx": 7
+        },
+        {
+          "name": "tonAmount",
+          "ty_idx": 6
+        },
+        {
+          "name": "internalTransferMsg",
+          "ty_idx": 17
+        }
+      ]
+    },
+    {
+      "kind": "struct",
+      "name": "ChangeMinterAdmin",
+      "ty_idx": 20,
+      "prefix": {
+        "prefix_num": 3,
+        "prefix_len": 32
+      },
+      "fields": [
+        {
+          "name": "queryId",
+          "ty_idx": 11
+        },
+        {
+          "name": "newAdminAddress",
+          "ty_idx": 7
+        }
+      ]
+    },
+    {
+      "kind": "struct",
+      "name": "ChangeMinterContent",
+      "ty_idx": 21,
+      "prefix": {
+        "prefix_num": 4,
+        "prefix_len": 32
+      },
+      "fields": [
+        {
+          "name": "queryId",
+          "ty_idx": 11
+        },
+        {
+          "name": "newContent",
+          "ty_idx": 3
+        }
+      ]
+    },
+    {
+      "kind": "struct",
+      "name": "MinterStorage",
+      "ty_idx": 22,
+      "fields": [
+        {
+          "name": "totalSupply",
+          "ty_idx": 6
+        },
+        {
+          "name": "adminAddress",
+          "ty_idx": 7
+        },
+        {
+          "name": "content",
+          "ty_idx": 3
+        },
+        {
+          "name": "jettonWalletCode",
+          "ty_idx": 3
+        }
+      ]
+    }
+  ],
+  "storage": {
+    "storage_ty_idx": 22
+  },
+  "incoming_messages": [
+    {
+      "body_ty_idx": 12
+    },
+    {
+      "body_ty_idx": 18
+    },
+    {
+      "body_ty_idx": 19
+    },
+    {
+      "body_ty_idx": 20
+    },
+    {
+      "body_ty_idx": 21
+    }
+  ],
+  "incoming_external": [],
+  "outgoing_messages": [
+    {
+      "body_ty_idx": 23
+    },
+    {
+      "body_ty_idx": 24
+    },
+    {
+      "body_ty_idx": 13
+    }
+  ],
+  "emitted_events": [],
+  "get_methods": [
+    {
+      "tvm_method_id": 106029,
+      "name": "get_jetton_data",
+      "parameters": [],
+      "return_ty_idx": 27
+    },
+    {
+      "tvm_method_id": 103289,
+      "name": "get_wallet_address",
+      "parameters": [
+        {
+          "name": "ownerAddress",
+          "ty_idx": 7
+        }
+      ],
+      "return_ty_idx": 7
+    }
+  ],
+  "thrown_errors": [
+    {
+      "kind": "constant",
+      "name": "ERR_NOT_FROM_ADMIN",
+      "err_code": 73
+    },
+    {
+      "kind": "constant",
+      "name": "ERR_UNAUTHORIZED_BURN",
+      "err_code": 74
+    },
+    {
+      "kind": "constant",
+      "name": "ERR_NOT_ENOUGH_AMOUNT_TO_RESPOND",
+      "err_code": 75
+    },
+    {
+      "kind": "plain_int",
+      "err_code": 65535
+    }
+  ],
+  "compiler_name": "tolk",
+  "compiler_version": "1.4.1",
+  "code_boc64": "te6ccgECDAEAAigAART/APSkE/S88sgLAQIBYgIDAvjQ+JHyQCDXLCPe7L70jmMx7UTQAdM/+gD6SPpQMAT6ACDUMddM+JL4KMjPhCAW+lIV+lLJAcjPhNDMzPkWyM+KAEDL/89QE8cF8uBKWKHIAfoCzsntVCFukVvgyM+FCBL6UoIQ1TJ2288Ljss/yYBC+wDg1ywhY7XLnOMCBAUCA3pgCgsA4jH4l/iTcPg6ggiYloCgvPLgS9M/+kjXCgCVIMj6UsmRbeJtIvpEMJEyjigw7UTQ1DHXTPgoyM+EIBT6UhP6UslYyM+E0MzM+RbIz4oAQMv/z1AB4viSyM+FiPpSghDRc1QAzwuOE8s/+lT0AMmAQPsABPqJ1yeOazHtRND6ACD6SNQx10z4kljHBfLgSQPTPzH6SPoA10wg0NcsILxqKMzyv9M/MfoAMBWgyAH6AhPOye1U+CjIz4QgEvpS+lLJyM+JiAFTFMjPhNDMzPkWzwv/WPoCgQCNzwtwE8wSzMzJcfsA4NcsIAAAABzjAonXJwYHCAkACAAAABUAQjHtRND6APpI+JJYxwXy4EkC0z8x+kgwyFj6AvpSzsntVAAIAAAABABYjiEx7UTQ+gD6SNQx+JIixwXy4EkD10zIUAP6AvpSzM7J7VTgMIQPAccA8vQAUa289qJoahjrpnwUZGfCEAn9KQl9KWSA5GfCaGZmfItkZ8UAIGX/56hAAB+vFvaiaH0AfSRqa6Y/qpBA"
+}

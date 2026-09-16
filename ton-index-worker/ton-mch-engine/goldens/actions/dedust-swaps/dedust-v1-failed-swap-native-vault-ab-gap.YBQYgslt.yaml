@@ -1,0 +1,53 @@
+# dedust-swaps / dedust v1 failed swap native vault (ab-gap)
+# trace: YBQYgsltVHCigC9q03KhXnBgho2bsxFuvOD8u6UC_J4=
+actions:
+  - type: jetton_swap
+    matcher: dedust_swap
+    anchor: jetton_swap@93502046000002
+    id: nMPdmWwCBj9mhG+IMjeOQxfg98waU9CVfZyW0cfKPps=
+    success: false
+    source: 0:CEE275C941F48642C51C72CA25B8CC458A927D22201D1C9F7908947A0D46171D
+    source_secondary: null
+    destination: 0:CEE275C941F48642C51C72CA25B8CC458A927D22201D1C9F7908947A0D46171D
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: 0:B113A994B5024A16719F69139328EB759596C38A25F59028B146FECDC3621DFE
+    asset2_secondary: null
+    amount: null
+    value: null
+    opcode: null
+    jetton_swap_data:
+      dex: dedust
+      dex_incoming_transfer:
+        amount: 382506052459
+        asset: null
+        destination: 0:DAE153A74D894BBC32748198CD626E4F5DF4A69AD2FA56CE80FC2644B5708D20
+        destination_jetton_wallet: null
+        source: 0:CEE275C941F48642C51C72CA25B8CC458A927D22201D1C9F7908947A0D46171D
+        source_jetton_wallet: null
+      dex_outgoing_transfer:
+        amount: 382506052459
+        asset: null
+        destination: 0:CEE275C941F48642C51C72CA25B8CC458A927D22201D1C9F7908947A0D46171D
+        destination_jetton_wallet: null
+        source: 0:DAE153A74D894BBC32748198CD626E4F5DF4A69AD2FA56CE80FC2644B5708D20
+        source_jetton_wallet: null
+      min_out_amount: null
+      peer_swaps: []
+      sender: 0:CEE275C941F48642C51C72CA25B8CC458A927D22201D1C9F7908947A0D46171D
+    tx_hashes:
+      - 7SCrANMaOYf02c15gM+4MTuEMgmJg9C9q9QMpH+wO0U=
+      - YBQYgsltVHCigC9q03KhXnBgho2bsxFuvOD8u6UC/J4=
+      - glMtfIxnW/00y7QBrEFWBycxXjJg58FdoEDKcJwL1Gw=
+      - sfGiigYlWkHQaogb9jXEER5nUZWO52U0l1pXN/Vbn08=
+      - yWgdNeKy9Oqe784xeNdEENyyvF2EOl+XIRYWjPFdgvM=
+    accounts:
+      - 0:3E5FFCA8DDFCF36C36C9FF46F31562AAB51B9914845AD6C26CBDE649D58A5588
+      - 0:CEE275C941F48642C51C72CA25B8CC458A927D22201D1C9F7908947A0D46171D
+      - 0:DAE153A74D894BBC32748198CD626E4F5DF4A69AD2FA56CE80FC2644B5708D20
+    start_lt: 93502046000002
+    end_lt: 93502048000005
+    start_utime: 1785411758
+    end_utime: 1785411759
+    mc_seqno_end: 82925780

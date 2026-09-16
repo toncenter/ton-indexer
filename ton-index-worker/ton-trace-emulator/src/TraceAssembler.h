@@ -1,0 +1,80 @@
+#pragma once
+
+#include <cstdint>
+#include <map>
+#include <memory>
+#include <optional>
+#include <string>
+#include <vector>
+
+#include "emu/EmuTypes.h"
+#include "td/utils/Status.h"
+
+#include "TraceEmulator.h"
+#include "TraceState.h"
+#include "TraceUpdate.h"
+
+using TraceMetadata = std::map<std::string, std::string>;
+
+struct RedisTraceNode;
+
+struct ActionState {
+  std::optional<std::string> blob;
+  std::optional<std::string> classify_state;
+  std::optional<std::uint8_t> blob_finality;
+  std::vector<TraceStateIndexRef> aai_refs;
+  std::vector<mch::EmuActionRoute> routes;
+  // False means the blob belongs to an older trace version and must not be streamed.
+  bool blob_is_current{false};
+};
+
+// Canonical, fully owned state of one active trace. TraceStateNode keeps both
+// the Redis representation and an independent transaction BOC for classifier
+// inputs. No field here depends on the lifetime of a source BlockData.
+struct ActiveTrace {
+  TraceState nodes;
+  ActionState actions;
+  TraceMetadata metadata;
+  std::shared_ptr<const mch::ParsedBlockLookupSource::InterfaceMap> classifier_interfaces =
+      std::make_shared<const mch::ParsedBlockLookupSource::InterfaceMap>();
+  std::uint64_t update_seq{0};
+  std::optional<std::string> root_account;
+  FinalityState finality{FinalityState::Emulated};
+  bool tx_limit_exceeded{false};
+
+  const TraceStateNode* root() const {
+    auto it = metadata.find("root_node");
+    return it == metadata.end() ? nullptr : nodes.find(it->second);
+  }
+};
+
+struct AcceptedNode {
+  std::string key;
+  FinalityState finality{FinalityState::Emulated};
+};
+
+struct TraceTransition {
+  bool needs_redis_write{false};
+  ActiveTrace next_trace;
+  TraceStateDelta node_delta;
+  TraceMetadata metadata_patch;
+  std::vector<AcceptedNode> accepted_nodes;
+  std::size_t cached_nodes_count{0};
+  std::size_t reused_serializations{0};
+  std::string raw_external_message_hash;
+};
+
+class TraceAssembler {
+ public:
+  // Applies all disconnected fragments in order to one private working copy.
+  // Computes one final delta/version; current stays unchanged, including on error.
+  td::Result<TraceTransition> apply_update(const ActiveTrace& current, TraceUpdate& update,
+                                           const std::string& trace_key) const;
+
+  td::Result<mch::EmuTraceView> build_full_trace(const ActiveTrace& trace, const std::string& trace_key,
+                                                 const Trace& lookup_context) const;
+};
+
+std::optional<std::string> trace_metadata_value(const ActiveTrace& trace, const std::string& field);
+
+std::string trace_node_fingerprint(const RedisTraceNode& node);

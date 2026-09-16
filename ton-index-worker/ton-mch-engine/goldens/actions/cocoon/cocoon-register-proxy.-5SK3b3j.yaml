@@ -1,0 +1,91 @@
+# cocoon / Cocoon Register Proxy
+# trace: -5SK3b3jO5MhZCqc6AMK931wBbvGGZcZPM0AruldKXE=
+actions:
+  - type: call_contract
+    anchor: call_contract#2565934c@63590176000004
+    id: AvWkoNNkoGsQOa4cWJD73tgzFzo+rUeH9M04iQY9fAg=
+    success: true
+    source: 0:AB6831390BF3B13923E7DEFFB9552A65626113BF0BA2D2D3DC203DECFCE4A6F6
+    source_secondary: null
+    destination: 0:E796C95723646D2355A12E6B5E9646F8095406C6BF04FF14888E5D0783BF6336
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: 5596400
+    opcode: 0x2565934c
+    tx_hashes:
+      - +wqkKPTvDLfbpZPWAd8KOO9shxAVips+ro3JQv3G5tU=
+      - lqk5/zZ8bMt3ZsroaXveJjcEVsL1+emQENvrA5meZuI=
+    accounts:
+      - 0:AB6831390BF3B13923E7DEFFB9552A65626113BF0BA2D2D3DC203DECFCE4A6F6
+      - 0:E796C95723646D2355A12E6B5E9646F8095406C6BF04FF14888E5D0783BF6336
+    start_lt: 63590176000004
+    end_lt: 63590176000005
+    start_utime: 1763080204
+    end_utime: 1763080204
+    mc_seqno_end: 53968151
+    parent_action_id: DPulFKKVMZTSzv8EnS4Cp16CvWCeUO6tveYrroeGuy4=
+    ancestor_type:
+      - cocoon_register_proxy
+  - type: call_contract
+    anchor: call_contract#927c7cb5@63590176000002
+    id: RkQ75jZ4TZRBPgG5mKDzLTQmjSmXUCXAWK+uIGIb5Wk=
+    success: true
+    source: 0:E796C95723646D2355A12E6B5E9646F8095406C6BF04FF14888E5D0783BF6336
+    source_secondary: null
+    destination: 0:AB6831390BF3B13923E7DEFFB9552A65626113BF0BA2D2D3DC203DECFCE4A6F6
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: 10000000
+    opcode: 0x927c7cb5
+    tx_hashes:
+      - +5SK3b3jO5MhZCqc6AMK931wBbvGGZcZPM0AruldKXE=
+      - lqk5/zZ8bMt3ZsroaXveJjcEVsL1+emQENvrA5meZuI=
+    accounts:
+      - 0:AB6831390BF3B13923E7DEFFB9552A65626113BF0BA2D2D3DC203DECFCE4A6F6
+      - 0:E796C95723646D2355A12E6B5E9646F8095406C6BF04FF14888E5D0783BF6336
+    start_lt: 63590176000002
+    end_lt: 63590176000003
+    start_utime: 1763080204
+    end_utime: 1763080204
+    mc_seqno_end: 53968151
+    parent_action_id: DPulFKKVMZTSzv8EnS4Cp16CvWCeUO6tveYrroeGuy4=
+    ancestor_type:
+      - cocoon_register_proxy
+  - type: cocoon_register_proxy
+    matcher: cocoon_register_proxy
+    anchor: cocoon_register_proxy@63590176000002
+    id: DPulFKKVMZTSzv8EnS4Cp16CvWCeUO6tveYrroeGuy4=
+    success: true
+    source: null
+    source_secondary: null
+    destination: 0:AB6831390BF3B13923E7DEFFB9552A65626113BF0BA2D2D3DC203DECFCE4A6F6
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: null
+    opcode: null
+    cocoon_register_proxy_data:
+      query_id: 0
+    tx_hashes:
+      - +5SK3b3jO5MhZCqc6AMK931wBbvGGZcZPM0AruldKXE=
+      - +wqkKPTvDLfbpZPWAd8KOO9shxAVips+ro3JQv3G5tU=
+      - lqk5/zZ8bMt3ZsroaXveJjcEVsL1+emQENvrA5meZuI=
+    accounts:
+      - 0:AB6831390BF3B13923E7DEFFB9552A65626113BF0BA2D2D3DC203DECFCE4A6F6
+      - 0:E796C95723646D2355A12E6B5E9646F8095406C6BF04FF14888E5D0783BF6336
+    start_lt: 63590176000002
+    end_lt: 63590176000005
+    start_utime: 1763080204
+    end_utime: 1763080204
+    mc_seqno_end: 53968151

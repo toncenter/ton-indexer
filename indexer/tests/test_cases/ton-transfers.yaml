@@ -3,12 +3,13 @@ cases:
     trace-id: CFl6PQXQyJ4FQFj9YsZwblnCg3m8Po9wuiBmrR4zGz4=
     expected-blocks:
       - type: ton_transfer
-        values.data:
-          source: "-1:0000000000000000000000000000000000000000000000000000000000000000"
-          destination: "-1:3333333333333333333333333333333333333333333333333333333333333333"
-          value: 2630055735
-          comment: null
-          encrypted: false
+        values:
+          data:
+            source: "-1:0000000000000000000000000000000000000000000000000000000000000000"
+            destination: "-1:3333333333333333333333333333333333333333333333333333333333333333"
+            value: 2630055735
+            comment: null
+            encrypted: false
     expected-actions:
       - type: ton_transfer
         values:
@@ -40,3 +41,105 @@ cases:
             encrypted: False
           source: 0:9E53B9A59CC76005E9B00D571D4933D8548361F87608D58BC1A0029FACCEF345
           destination: 0:F99B14600AE44D2F12B178E8C6EABD78892AE82C5E45B6898F9DEB7EB203F9C4
+  four call_contract legs (ab-gap drill):
+    trace-id: TXFkYzpo-8IZvMcy8lhsrKG9QJH73JaYAwsAitgNqdM=
+    expected-actions:
+    - type: call_contract
+      selector: '{{ value.start_lt == 93507612000002 }}'
+      values:
+        tx_hashes:
+        - SCATX+EK+sBc7VUhO0cRjJYIgTMRfjwU1ZDrkJlUZ9E=
+        - TXFkYzpo+8IZvMcy8lhsrKG9QJH73JaYAwsAitgNqdM=
+        accounts:
+        - 0:03450710942AA5A0F9BE97090431B16397E0938302E982CD378080BB0FABE44B
+        - 0:0381803D195451DA64DF3168D2097505B786427C478BF94E01E6E115E5D3270C
+        success: true
+        source: 0:0381803D195451DA64DF3168D2097505B786427C478BF94E01E6E115E5D3270C
+        destination: 0:03450710942AA5A0F9BE97090431B16397E0938302E982CD378080BB0FABE44B
+        value: 100000000
+        opcode: 3074793004
+        start_lt: 93507612000002
+        end_lt: 93507612000003
+    - type: call_contract
+      selector: '{{ value.start_lt == 93507612000004 }}'
+      values:
+        tx_hashes:
+        - SCATX+EK+sBc7VUhO0cRjJYIgTMRfjwU1ZDrkJlUZ9E=
+        - p9V5fS92y3XeaQ+htXZWKYeb8AjHYYEFLZ7NVI/I+A8=
+        accounts:
+        - 0:03450710942AA5A0F9BE97090431B16397E0938302E982CD378080BB0FABE44B
+        - 0:2642F4C72EA525D597E21C721021EBEC2F116E295426DE3A2F536EF96CF86DB6
+        success: true
+        source: 0:03450710942AA5A0F9BE97090431B16397E0938302E982CD378080BB0FABE44B
+        destination: 0:2642F4C72EA525D597E21C721021EBEC2F116E295426DE3A2F536EF96CF86DB6
+        value: 99495731
+        opcode: 1684722724
+        start_lt: 93507612000004
+        end_lt: 93507613000007
+    - type: call_contract
+      selector: '{{ value.start_lt == 93507613000009 }}'
+      values:
+        tx_hashes:
+        - ZtB3pO8NMVrFvshwOzHCFbgTQtoZrDNCG4p8ev1FnGc=
+        - p9V5fS92y3XeaQ+htXZWKYeb8AjHYYEFLZ7NVI/I+A8=
+        accounts:
+        - 0:0381803D195451DA64DF3168D2097505B786427C478BF94E01E6E115E5D3270C
+        - 0:2642F4C72EA525D597E21C721021EBEC2F116E295426DE3A2F536EF96CF86DB6
+        success: true
+        source: 0:2642F4C72EA525D597E21C721021EBEC2F116E295426DE3A2F536EF96CF86DB6
+        destination: 0:0381803D195451DA64DF3168D2097505B786427C478BF94E01E6E115E5D3270C
+        value: 7199503818
+        opcode: 1724427634
+        start_lt: 93507613000009
+        end_lt: 93507614000001
+    - type: call_contract
+      selector: '{{ value.start_lt == 93507613000010 }}'
+      values:
+        tx_hashes:
+        - OMv9tNBs4RQ/tqSX5FORGLi9DDnlanocQcz2bB+fFXQ=
+        - p9V5fS92y3XeaQ+htXZWKYeb8AjHYYEFLZ7NVI/I+A8=
+        accounts:
+        - 0:0381803D195451DA64DF3168D2097505B786427C478BF94E01E6E115E5D3270C
+        - 0:2642F4C72EA525D597E21C721021EBEC2F116E295426DE3A2F536EF96CF86DB6
+        success: true
+        source: 0:2642F4C72EA525D597E21C721021EBEC2F116E295426DE3A2F536EF96CF86DB6
+        destination: 0:0381803D195451DA64DF3168D2097505B786427C478BF94E01E6E115E5D3270C
+        value: 98292062
+        opcode: 3576854235
+        start_lt: 93507613000010
+        end_lt: 93507614000002
+  call_contract plus ton_transfer (ab-gap drill):
+    trace-id: sS0j8bD7JQj7389dsGXLdNUisE6I1ApyvdPM1gkODVc=
+    expected-actions:
+    - type: call_contract
+      values:
+        tx_hashes:
+        - WLiinCLxJYMe2gNKdLJOHDlsWpU20I0FhcdO3vtsZSE=
+        - sS0j8bD7JQj7389dsGXLdNUisE6I1ApyvdPM1gkODVc=
+        accounts:
+        - 0:0252C897B4EFD535908824F508991B54E9B1B63A912F8187D5620D770C509053
+        - 0:25A9088019897E5DD8CEF3F0732288D06998AFEEBE772CCB67875941F985B6BF
+        success: true
+        source: 0:0252C897B4EFD535908824F508991B54E9B1B63A912F8187D5620D770C509053
+        destination: 0:25A9088019897E5DD8CEF3F0732288D06998AFEEBE772CCB67875941F985B6BF
+        value: 29234639
+        opcode: 3576854235
+        start_lt: 93507931000003
+        end_lt: 93507933000002
+    - type: ton_transfer
+      values:
+        tx_hashes:
+        - 7TzDaLymWJrNqfbSDGbYncS0/DXqrSCL5rAfcnqs+00=
+        - sS0j8bD7JQj7389dsGXLdNUisE6I1ApyvdPM1gkODVc=
+        accounts:
+        - 0:0252C897B4EFD535908824F508991B54E9B1B63A912F8187D5620D770C509053
+        - 0:25A9088019897E5DD8CEF3F0732288D06998AFEEBE772CCB67875941F985B6BF
+        success: true
+        source: 0:0252C897B4EFD535908824F508991B54E9B1B63A912F8187D5620D770C509053
+        destination: 0:25A9088019897E5DD8CEF3F0732288D06998AFEEBE772CCB67875941F985B6BF
+        value: 826216366
+        start_lt: 93507931000002
+        end_lt: 93507933000001
+        ton_transfer_data:
+          content: null
+          encrypted: false

@@ -7,7 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"strconv"
+	"strings"
 
 	"github.com/toncenter/ton-indexer/ton-index-go/index/models"
 	"github.com/vmihailenco/msgpack/v5"
@@ -282,7 +282,7 @@ type actionChangeDnsRecordDetails struct {
 	Key         *string `msgpack:"key"`
 	ValueSchema *string `msgpack:"value_schema"`
 	Value       *string `msgpack:"value"`
-	Flags       *string `msgpack:"flags"`
+	Flags       *int64  `msgpack:"flags"`
 }
 
 type actionNftMintDetails struct {
@@ -319,11 +319,14 @@ type actionDexWithdrawLiquidityData struct {
 	UserJettonWallet2 *string `msgpack:"user_jetton_wallet_2"`
 	DexJettonWallet1  *string `msgpack:"dex_jetton_wallet_1"`
 	DexJettonWallet2  *string `msgpack:"dex_jetton_wallet_2"`
-	LpTokensBurnt     *string `msgpack:"lp_tokens_burnt"`
-	BurnedNFTIndex    *string `msgpack:"burned_nft_index"`
-	BurnedNFTAddress  *string `msgpack:"burned_nft_address"`
-	TickLower         *string `msgpack:"tick_lower"`
-	TickUpper         *string `msgpack:"tick_upper"`
+	// Pool-side vault and wallet fields in dex_withdraw_liquidity_details.
+	DexWallet1       *string `msgpack:"dex_wallet_1"`
+	DexWallet2       *string `msgpack:"dex_wallet_2"`
+	LpTokensBurnt    *string `msgpack:"lp_tokens_burnt"`
+	BurnedNFTIndex   *string `msgpack:"burned_nft_index"`
+	BurnedNFTAddress *string `msgpack:"burned_nft_address"`
+	TickLower        *string `msgpack:"tick_lower"`
+	TickUpper        *string `msgpack:"tick_upper"`
 }
 
 type actionStakingData struct {
@@ -866,8 +869,31 @@ func ptrInt32FromUint16(v *uint16) *int32 {
 	return &i
 }
 
+// normAddr uppercases raw address hex for address-book lookups. Non-raw input is
+// returned unchanged, and uppercase input does not allocate.
+func normAddr(s string) string {
+	i := strings.IndexByte(s, ':')
+	if i < 0 {
+		return s
+	}
+	for j := i + 1; j < len(s); j++ {
+		switch c := s[j]; {
+		case c >= 'a' && c <= 'f':
+			return s[:i+1] + strings.ToUpper(s[i+1:])
+		case (c >= '0' && c <= '9') || (c >= 'A' && c <= 'F'):
+		default:
+			return s
+		}
+	}
+	return s
+}
+
 func ptrAccountAddress(s *string) *models.AccountAddress {
-	return (*models.AccountAddress)(s)
+	if s == nil {
+		return nil
+	}
+	a := models.AccountAddress(normAddr(*s))
+	return &a
 }
 
 func ptrHashType(s *string) *models.HashType {
@@ -942,7 +968,7 @@ func (a *Action) ToRawAction() (*models.RawAction, error) {
 
 	accounts := make([]models.AccountAddress, 0, len(a.Accounts))
 	for _, acc := range a.Accounts {
-		accounts = append(accounts, models.AccountAddress(acc))
+		accounts = append(accounts, models.AccountAddress(normAddr(acc)))
 	}
 
 	raw := &models.RawAction{
@@ -1053,18 +1079,10 @@ func (a *Action) ToRawAction() (*models.RawAction, error) {
 		raw.JettonSwapMinOutAmount = a.JettonSwapData.MinOutAmount
 	}
 	if a.ChangeDnsRecordData != nil {
-		var dnsRecordsFlag *int64
-		if a.ChangeDnsRecordData.Flags != nil {
-			v, err := strconv.ParseInt(*a.ChangeDnsRecordData.Flags, 10, 64)
-			if err != nil {
-				return nil, err
-			}
-			dnsRecordsFlag = &v
-		}
 		raw.ChangeDNSRecordKey = a.ChangeDnsRecordData.Key
 		raw.ChangeDNSRecordValueSchema = a.ChangeDnsRecordData.ValueSchema
 		raw.ChangeDNSRecordValue = a.ChangeDnsRecordData.Value
-		raw.ChangeDNSRecordFlags = dnsRecordsFlag
+		raw.ChangeDNSRecordFlags = a.ChangeDnsRecordData.Flags
 	}
 	if a.NftMintData != nil {
 		raw.NFTMintNFTItemIndex = a.NftMintData.NftItemIndex
@@ -1106,6 +1124,8 @@ func (a *Action) ToRawAction() (*models.RawAction, error) {
 		raw.DexWithdrawLiquidityDataUserJettonWallet2 = ptrAccountAddress(a.DexWithdrawLiquidityData.UserJettonWallet2)
 		raw.DexWithdrawLiquidityDataDexJettonWallet1 = ptrAccountAddress(a.DexWithdrawLiquidityData.DexJettonWallet1)
 		raw.DexWithdrawLiquidityDataDexJettonWallet2 = ptrAccountAddress(a.DexWithdrawLiquidityData.DexJettonWallet2)
+		raw.DexWithdrawLiquidityDataDexWallet1 = ptrAccountAddress(a.DexWithdrawLiquidityData.DexWallet1)
+		raw.DexWithdrawLiquidityDataDexWallet2 = ptrAccountAddress(a.DexWithdrawLiquidityData.DexWallet2)
 		raw.DexWithdrawLiquidityDataLpTokensBurnt = a.DexWithdrawLiquidityData.LpTokensBurnt
 		raw.DexWithdrawLiquidityDataBurnedNFTIndex = a.DexWithdrawLiquidityData.BurnedNFTIndex
 		raw.DexWithdrawLiquidityDataBurnedNFTAddress = ptrAccountAddress(a.DexWithdrawLiquidityData.BurnedNFTAddress)
@@ -1160,7 +1180,7 @@ func (a *Action) ToRawAction() (*models.RawAction, error) {
 		if a.VestingAddWhitelistData.AccountsAdded != nil {
 			accts := make([]models.AccountAddress, len(a.VestingAddWhitelistData.AccountsAdded))
 			for i, s := range a.VestingAddWhitelistData.AccountsAdded {
-				accts[i] = models.AccountAddress(s)
+				accts[i] = models.AccountAddress(normAddr(s))
 			}
 			raw.VestingAddWhitelistAccountsAdded = accts
 		}
@@ -1189,7 +1209,7 @@ func (a *Action) ToRawAction() (*models.RawAction, error) {
 		if len(a.JvaultClaimData.ClaimedJettons) > 0 {
 			cj := make([]models.AccountAddress, len(a.JvaultClaimData.ClaimedJettons))
 			for i, s := range a.JvaultClaimData.ClaimedJettons {
-				cj[i] = models.AccountAddress(s)
+				cj[i] = models.AccountAddress(normAddr(s))
 			}
 			raw.JvaultClaimClaimedJettons = cj
 		}
@@ -1312,7 +1332,7 @@ func (n *TraceNode) ToTransaction() (*models.Transaction, error) {
 	isTock := false
 
 	t := &models.Transaction{
-		Account:                  models.AccountAddress(n.Transaction.Account),
+		Account:                  models.AccountAddress(normAddr(n.Transaction.Account)),
 		Hash:                     models.HashType(*n.Transaction.Hash.Base64Ptr()),
 		Lt:                       int64(n.Transaction.Lt),
 		Now:                      int32(n.Transaction.Now),

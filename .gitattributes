@@ -1,0 +1,4 @@
+# Normalize line endings in the repository to LF. Insurance for the
+# byte-reproduction gates (ton_abi_gen_check compares committed generated files
+# against freshly emitted text, which is always LF) on CRLF-prone clones.
+* text=auto eol=lf

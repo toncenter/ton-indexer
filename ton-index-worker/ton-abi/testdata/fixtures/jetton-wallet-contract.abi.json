@@ -1,0 +1,395 @@
+{
+  "abi_schema_version": "1.0",
+  "contract_name": "JettonWallet",
+  "unique_types": [
+    {
+      "kind": "void"
+    },
+    {
+      "kind": "int"
+    },
+    {
+      "kind": "slice"
+    },
+    {
+      "kind": "cell"
+    },
+    {
+      "kind": "builder"
+    },
+    {
+      "kind": "bool"
+    },
+    {
+      "kind": "coins"
+    },
+    {
+      "kind": "address"
+    },
+    {
+      "kind": "intN",
+      "n": 32
+    },
+    {
+      "kind": "uintN",
+      "n": 32
+    },
+    {
+      "kind": "intN",
+      "n": 64
+    },
+    {
+      "kind": "uintN",
+      "n": 64
+    },
+    {
+      "kind": "StructRef",
+      "struct_name": "AskToTransfer"
+    },
+    {
+      "kind": "addressOpt"
+    },
+    {
+      "kind": "nullable",
+      "inner_ty_idx": 3
+    },
+    {
+      "kind": "AliasRef",
+      "alias_name": "ForwardPayloadRemainder"
+    },
+    {
+      "kind": "remaining"
+    },
+    {
+      "kind": "StructRef",
+      "struct_name": "AskToBurn"
+    },
+    {
+      "kind": "StructRef",
+      "struct_name": "InternalTransferStep"
+    },
+    {
+      "kind": "StructRef",
+      "struct_name": "WalletStorage"
+    },
+    {
+      "kind": "StructRef",
+      "struct_name": "TransferNotificationForRecipient"
+    },
+    {
+      "kind": "StructRef",
+      "struct_name": "ReturnExcessesBack"
+    },
+    {
+      "kind": "StructRef",
+      "struct_name": "BurnNotificationForMinter"
+    },
+    {
+      "kind": "StructRef",
+      "struct_name": "JettonWalletDataReply"
+    }
+  ],
+  "struct_instantiations": [],
+  "alias_instantiations": [],
+  "declarations": [
+    {
+      "kind": "struct",
+      "name": "JettonWalletDataReply",
+      "ty_idx": 23,
+      "fields": [
+        {
+          "name": "jettonBalance",
+          "ty_idx": 6
+        },
+        {
+          "name": "ownerAddress",
+          "ty_idx": 7
+        },
+        {
+          "name": "minterAddress",
+          "ty_idx": 7
+        },
+        {
+          "name": "jettonWalletCode",
+          "ty_idx": 3
+        }
+      ]
+    },
+    {
+      "kind": "alias",
+      "name": "ForwardPayloadRemainder",
+      "ty_idx": 15,
+      "target_ty_idx": 16
+    },
+    {
+      "kind": "struct",
+      "name": "AskToTransfer",
+      "ty_idx": 12,
+      "prefix": {
+        "prefix_num": 260734629,
+        "prefix_len": 32
+      },
+      "fields": [
+        {
+          "name": "queryId",
+          "ty_idx": 11
+        },
+        {
+          "name": "jettonAmount",
+          "ty_idx": 6
+        },
+        {
+          "name": "transferRecipient",
+          "ty_idx": 7
+        },
+        {
+          "name": "sendExcessesTo",
+          "ty_idx": 13
+        },
+        {
+          "name": "customPayload",
+          "ty_idx": 14
+        },
+        {
+          "name": "forwardTonAmount",
+          "ty_idx": 6
+        },
+        {
+          "name": "forwardPayload",
+          "ty_idx": 15
+        }
+      ]
+    },
+    {
+      "kind": "struct",
+      "name": "TransferNotificationForRecipient",
+      "ty_idx": 20,
+      "prefix": {
+        "prefix_num": 1935855772,
+        "prefix_len": 32
+      },
+      "fields": [
+        {
+          "name": "queryId",
+          "ty_idx": 11
+        },
+        {
+          "name": "jettonAmount",
+          "ty_idx": 6
+        },
+        {
+          "name": "transferInitiator",
+          "ty_idx": 13
+        },
+        {
+          "name": "forwardPayload",
+          "ty_idx": 15
+        }
+      ]
+    },
+    {
+      "kind": "struct",
+      "name": "InternalTransferStep",
+      "ty_idx": 18,
+      "prefix": {
+        "prefix_num": 395134233,
+        "prefix_len": 32
+      },
+      "fields": [
+        {
+          "name": "queryId",
+          "ty_idx": 11
+        },
+        {
+          "name": "jettonAmount",
+          "ty_idx": 6
+        },
+        {
+          "name": "transferInitiator",
+          "ty_idx": 13
+        },
+        {
+          "name": "sendExcessesTo",
+          "ty_idx": 13
+        },
+        {
+          "name": "forwardTonAmount",
+          "ty_idx": 6
+        },
+        {
+          "name": "forwardPayload",
+          "ty_idx": 15
+        }
+      ]
+    },
+    {
+      "kind": "struct",
+      "name": "ReturnExcessesBack",
+      "ty_idx": 21,
+      "prefix": {
+        "prefix_num": 3576854235,
+        "prefix_len": 32
+      },
+      "fields": [
+        {
+          "name": "queryId",
+          "ty_idx": 11
+        }
+      ]
+    },
+    {
+      "kind": "struct",
+      "name": "AskToBurn",
+      "ty_idx": 17,
+      "prefix": {
+        "prefix_num": 1499400124,
+        "prefix_len": 32
+      },
+      "fields": [
+        {
+          "name": "queryId",
+          "ty_idx": 11
+        },
+        {
+          "name": "jettonAmount",
+          "ty_idx": 6
+        },
+        {
+          "name": "sendExcessesTo",
+          "ty_idx": 13
+        },
+        {
+          "name": "customPayload",
+          "ty_idx": 14
+        }
+      ]
+    },
+    {
+      "kind": "struct",
+      "name": "BurnNotificationForMinter",
+      "ty_idx": 22,
+      "prefix": {
+        "prefix_num": 2078119902,
+        "prefix_len": 32
+      },
+      "fields": [
+        {
+          "name": "queryId",
+          "ty_idx": 11
+        },
+        {
+          "name": "jettonAmount",
+          "ty_idx": 6
+        },
+        {
+          "name": "burnInitiator",
+          "ty_idx": 7
+        },
+        {
+          "name": "sendExcessesTo",
+          "ty_idx": 13
+        }
+      ]
+    },
+    {
+      "kind": "struct",
+      "name": "WalletStorage",
+      "ty_idx": 19,
+      "fields": [
+        {
+          "name": "jettonBalance",
+          "ty_idx": 6,
+          "default_value": {
+            "kind": "int",
+            "v": "0"
+          }
+        },
+        {
+          "name": "ownerAddress",
+          "ty_idx": 7
+        },
+        {
+          "name": "minterAddress",
+          "ty_idx": 7
+        }
+      ]
+    }
+  ],
+  "storage": {
+    "storage_ty_idx": 19
+  },
+  "incoming_messages": [
+    {
+      "body_ty_idx": 12
+    },
+    {
+      "body_ty_idx": 17
+    },
+    {
+      "body_ty_idx": 18
+    }
+  ],
+  "incoming_external": [],
+  "outgoing_messages": [
+    {
+      "body_ty_idx": 20
+    },
+    {
+      "body_ty_idx": 21
+    },
+    {
+      "body_ty_idx": 18
+    },
+    {
+      "body_ty_idx": 22
+    }
+  ],
+  "emitted_events": [],
+  "get_methods": [
+    {
+      "tvm_method_id": 97026,
+      "name": "get_wallet_data",
+      "parameters": [],
+      "return_ty_idx": 23
+    }
+  ],
+  "thrown_errors": [
+    {
+      "kind": "constant",
+      "name": "ERR_WRONG_WORKCHAIN",
+      "err_code": 333
+    },
+    {
+      "kind": "constant",
+      "name": "ERR_NOT_FROM_OWNER",
+      "err_code": 705
+    },
+    {
+      "kind": "constant",
+      "name": "ERR_NOT_ENOUGH_BALANCE",
+      "err_code": 706
+    },
+    {
+      "kind": "constant",
+      "name": "ERR_INVALID_WALLET",
+      "err_code": 707
+    },
+    {
+      "kind": "constant",
+      "name": "ERR_INVALID_PAYLOAD",
+      "err_code": 708
+    },
+    {
+      "kind": "constant",
+      "name": "ERR_NOT_ENOUGH_TON",
+      "err_code": 709
+    },
+    {
+      "kind": "plain_int",
+      "err_code": 65535
+    }
+  ],
+  "compiler_name": "tolk",
+  "compiler_version": "1.4.1",
+  "code_boc64": "te6ccgECCwEAAlEAART/APSkE/S88sgLAQIBYgIDA7zQ+JGONNMfMdcsILxqKMyW0z8x+gAwjhHXLCPe7L70kvI/4dM/MfoAMOLtRND6AAKgyAH6As7J7VTgINcsILxqKMzjAtcsIHxT9SzjAtcsIsr4PeTjAjCEDwHHAPL0BAUGAB2g9gXaiaH0AfSR9JBh8FUD+DHtRNAB0z/6APpQ+lD6AAb6ACD6SPpIMPiSIccFkTCOJviS+CooyM+EIPpSE/pSyVjIz4TQzMz5FsjPigBAy//PUMcF8uLD4lEmoMgB+gLOye1U+Jf4J28QIaGCCJiWgGa2CKGCCOThwKChIpQ3W2wh4w0gbrMjwgCw4w8HCAkB/jHTP/oA+kj6UPQB+gAg10ny4sQj+kQw8tFN7UTQ+gAg+kj6SDD4kiLHBfLiwVM4vvLiwlE4ocgB+gISzsntVCNyceME+Jf4k3D4OhKoJaCCCmJaAKC88uLF+CrIz4QgF/pSEvpSycjPkF41FGYYyz9QBvoCFfpUEvpUAfoCEs4KAKAx7UTQ+gAg+kj6SDD4kiLHBfLiwQTTP/oA+lAwU1G+8uLCUVGhyAH6AhTOye1UyM+R73Zfess/WPoC+lL6VMnIz4WIEvpScc8LbszJgFD7AABk+JNw+DojoKHIz5HNi0JyJ88LP1AG+gIU+lQWzsnIz4UIE/pSUAX6AnHPC2rMyXH7AAIAMMjPhQj6Ulj6AoIQ1TJ2288Liss/yXL7AAAEXwMARMnIz4mIAV3Iz4TQzMz5Fs8L/4EAjc8LdBLMEszMyYBA+wA="
+}

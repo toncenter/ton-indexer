@@ -1,0 +1,56 @@
+cases:
+  Wallet v5 add extension:
+    trace-id: MbyOvYQJRnJQyUV7ittF35KykWxqBU5v1Wzo1ohMkR4=
+    expected-actions:
+      - type: wallet_v5_add_extension
+        values:
+          success: true
+          source: 0:4C8FC9B86FF27F4B9423F4353DDA56C3F48D8979E815FE11FD3F486DEDDA503B
+          destination: 0:3E81E9D3E344DD788F396D7B49FAD5CDF72FB0A874373162114088760824C955
+          accounts:
+            - 0:4C8FC9B86FF27F4B9423F4353DDA56C3F48D8979E815FE11FD3F486DEDDA503B
+            - 0:3E81E9D3E344DD788F396D7B49FAD5CDF72FB0A874373162114088760824C955
+          tx_hashes:
+            - MbyOvYQJRnJQyUV7ittF35KykWxqBU5v1Wzo1ohMkR4=
+          wallet_v5_extension_data:
+            wallet_id: 2147483645
+            seqno: 33
+            valid_until: 1776948067
+            signature_allowed: null
+
+  Wallet v5 remove extension:
+    trace-id: m9eS5wXOsBwyUn9GToVIPeLYaieGF_Ye46_GYVDwg4A=
+    expected-actions:
+      - type: wallet_v5_remove_extension
+        values:
+          success: true
+          source: 0:4C8FC9B86FF27F4B9423F4353DDA56C3F48D8979E815FE11FD3F486DEDDA503B
+          destination: 0:3E81E9D3E344DD788F396D7B49FAD5CDF72FB0A874373162114088760824C955
+          accounts:
+            - 0:4C8FC9B86FF27F4B9423F4353DDA56C3F48D8979E815FE11FD3F486DEDDA503B
+            - 0:3E81E9D3E344DD788F396D7B49FAD5CDF72FB0A874373162114088760824C955
+          tx_hashes:
+            - m9eS5wXOsBwyUn9GToVIPeLYaieGF/Ye46/GYVDwg4A=
+          wallet_v5_extension_data:
+            wallet_id: 2147483645
+            seqno: 34
+            valid_until: 1776948108
+            signature_allowed: null
+
+  Wallet v5 add extension (failed, exit_code 139):
+    trace-id: L2m2NaOmby0AZmK8R_zw_lJJvNQjoNeBtG4ALFJiJ5s=
+    expected-actions:
+      - type: wallet_v5_add_extension
+        values:
+          success: false
+          source: 0:4C8FC9B86FF27F4B9423F4353DDA56C3F48D8979E815FE11FD3F486DEDDA503B
+          destination: 0:4C8FC9B86FF27F4B9423F4353DDA56C3F48D8979E815FE11FD3F486DEDDA503B
+          accounts:
+            - 0:4C8FC9B86FF27F4B9423F4353DDA56C3F48D8979E815FE11FD3F486DEDDA503B
+          tx_hashes:
+            - L2m2NaOmby0AZmK8R/zw/lJJvNQjoNeBtG4ALFJiJ5s=
+          wallet_v5_extension_data:
+            wallet_id: 2147483645
+            seqno: 27
+            valid_until: 1776943988
+            signature_allowed: null

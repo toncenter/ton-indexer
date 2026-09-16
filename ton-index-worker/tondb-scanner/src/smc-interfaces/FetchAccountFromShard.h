@@ -8,6 +8,11 @@
 
 using AllShardStates = std::vector<td::Ref<vm::Cell>>;
 
+// Performs the synchronous shard-state dictionary lookup and TLB unpack used by
+// both actors and direct callers.
+td::Result<schema::AccountState> lookup_account(const AllShardStates& shard_states,
+                                                const block::StdAddress& address);
+
 class FetchAccountFromShardV2: public td::actor::Actor {
 private:
   AllShardStates shard_states_;

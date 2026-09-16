@@ -1,0 +1,56 @@
+# tgbtc / tgBTC dkg log (fallback)
+# trace: _6GHAnnp8ZMqUy6G6ZbAjcwO4WD2xp_yms84bK9wsmE=
+actions:
+  - type: call_contract
+    anchor: call_contract#690f357a@33298795000002
+    id: VFAVeoo1sdptAexu0bhAqT4Kj4cEAZBFjODTIPnwJKY=
+    success: true
+    source: 0:E7C197C6B8DC54C88B7BF0FB86E8834E97EE740CEB47254E4A154E7EE023848F
+    source_secondary: null
+    destination: 0:0F06DD725549DD60A6CA3743AC532DB52789CB15AF1F943FE96ADBB4C1A86155
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: 1000000000
+    opcode: 0x690f357a
+    tx_hashes:
+      - /6GHAnnp8ZMqUy6G6ZbAjcwO4WD2xp/yms84bK9wsmE=
+      - D1ROsxLMQLE2o+rVwWHZsAM0TMeIky1Mmbyuz5etYJk=
+    accounts:
+      - 0:0F06DD725549DD60A6CA3743AC532DB52789CB15AF1F943FE96ADBB4C1A86155
+      - 0:E7C197C6B8DC54C88B7BF0FB86E8834E97EE740CEB47254E4A154E7EE023848F
+    start_lt: 33298795000002
+    end_lt: 33298798000001
+    start_utime: 1744132682
+    end_utime: 1744132691
+    mc_seqno_end: 29940383
+  - type: tgbtc_dkg_log_fallback
+    matcher: tgbtc_dkg_log_only
+    anchor: tgbtc_dkg_log@33298795000003
+    id: d9Atv+2rYWSTQu+Lp1W412A5LVrmrcpwnjZiLZcQtys=
+    success: true
+    source: 0:E7C197C6B8DC54C88B7BF0FB86E8834E97EE740CEB47254E4A154E7EE023848F
+    source_secondary: null
+    destination: null
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: 1744132682
+    opcode: null
+    extra:
+      pubkey: bb3a21df270dd0e6dc1169f4afb93be5eb2945df81c011f2b29f648daf64d150
+    tx_hashes:
+      - /6GHAnnp8ZMqUy6G6ZbAjcwO4WD2xp/yms84bK9wsmE=
+    accounts:
+      - 0:E7C197C6B8DC54C88B7BF0FB86E8834E97EE740CEB47254E4A154E7EE023848F
+    start_lt: 33298795000003
+    end_lt: 33298795000001
+    start_utime: 1744132682
+    end_utime: 1744132682
+    mc_seqno_end: 29940380

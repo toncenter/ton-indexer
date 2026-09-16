@@ -1,0 +1,92 @@
+# dedust-liquidities / DeDust V2 deposit jetton/TON with refund
+# trace: 8ioobbcdHm4jq4mKPqgCBQAiXz-DfiRKz8u6D48Tm2M=
+actions:
+  - type: contract_deploy
+    anchor: contract_deploy#dc5ddba1@75866330000007
+    id: eyPzl4N0Z64OXWGf1gRp8VKJLtAu4Qwi8Ctd2R8Gek0=
+    success: true
+    source: 0:1309FE836D986792A1AF59F560E168E02E84B4276191498EFF0C1C78C877A7C5
+    source_secondary: null
+    destination: 0:1305BD8A781613048846E8A0B910B1429123F86FC1C6B05FFB469281F7930964
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: 248669193
+    opcode: 0xdc5ddba1
+    tx_hashes:
+      - izVtvBoX8MZOt/n2JyRGInpPXE9yFBQmBDTVYxai+rc=
+      - qZOBOtyKo7/RWPe6yJfuhaXBOzX/N1XmS9cou8kf5N4=
+    accounts:
+      - 0:1305BD8A781613048846E8A0B910B1429123F86FC1C6B05FFB469281F7930964
+      - 0:1309FE836D986792A1AF59F560E168E02E84B4276191498EFF0C1C78C877A7C5
+    start_lt: 75866330000007
+    end_lt: 75866330000008
+    start_utime: 1778336626
+    end_utime: 1778336626
+    mc_seqno_end: 65675737
+  - type: dex_deposit_liquidity
+    matcher: dedust_v2_deposit_final
+    anchor: dedust_v2_deposit_liquidity@75866330000004
+    id: 8FdtM/9zxuCL93hgZjBHgBmn3C2R8dr6UjeTI2sQY/o=
+    success: true
+    source: 0:B2C1EAE1705695DCC7143F5A12675E0FB082A56340C6AE038BCC9840266F618D
+    source_secondary: null
+    destination: 0:1309FE836D986792A1AF59F560E168E02E84B4276191498EFF0C1C78C877A7C5
+    destination_secondary: 0:1305BD8A781613048846E8A0B910B1429123F86FC1C6B05FFB469281F7930964
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: null
+    opcode: null
+    dex_deposit_liquidity_data:
+      amount1: 2044642517
+      amount2: 999999999
+      asset1: 0:65AAC9B5E380EAE928DB3C8E238D9BC0D61A9320FDC2BC7A2F6C87D6FEDF9208
+      asset2: null
+      dex: dedust_v2
+      lp_tokens_minted: 1429909967
+      target_amount_1: 2044642518
+      target_amount_2: 1000000000
+      target_asset_1: 0:65AAC9B5E380EAE928DB3C8E238D9BC0D61A9320FDC2BC7A2F6C87D6FEDF9208
+      target_asset_2: null
+      user_jetton_wallet_1: 0:8E4499C900841D7583D9559A2F1F0BA229330240C156A198B57611D5F1017C02
+      user_jetton_wallet_2: null
+      vault_excesses:
+        - amount: 1
+          asset: 0:65AAC9B5E380EAE928DB3C8E238D9BC0D61A9320FDC2BC7A2F6C87D6FEDF9208
+        - amount: 1
+          asset: null
+    tx_hashes:
+      - 4LPZ8mQB5ZEYMX9LPPaNtSe0vWBCT5ek2p3FCuL62so=
+      - 5YYDmitBjdD+/XnoUISTSI+pzzJbyqwpC5jbXnuPm7k=
+      - 8ioobbcdHm4jq4mKPqgCBQAiXz+DfiRKz8u6D48Tm2M=
+      - ChFMqZJxL84WLcZn5Deq2VJo6BxEJuzxBR03KvsfS3c=
+      - HQ7r1tdsVHWeXwSdJ7CotAaDDIl5LhoiTBa765xiclM=
+      - KjqfAWJVaZLzNIG/dfWyJYS/VbFqOzKpAX2vOA762eU=
+      - NNwSIykNr+tyOql9MA7FYP192mPAVmawMTH0K7vOLFs=
+      - U3+OQPflVIPA5D/KRGHTXenuBVRwLgtymOB8cqVveu0=
+      - X1Qe6LqRSFHuPYTmxf9TyQ0Irtzt48J8RAnNTGp9mMs=
+      - hI2qngGdy6I6r/7bcay4ZxMKzP61igpwM50PY18PTI0=
+      - izVtvBoX8MZOt/n2JyRGInpPXE9yFBQmBDTVYxai+rc=
+      - mXsMWl0bvsTha3HHXDN/vHHwDU/gOltp0LOZjObd6wU=
+      - n6vxSAGyslRtvXT5I1RHgc+dWrUVX6x+JSAjpP0tYSg=
+      - nWLDwkRbE4vS8EBAjB/iv76jfGgG71U8+OZ+UHictOk=
+      - qZOBOtyKo7/RWPe6yJfuhaXBOzX/N1XmS9cou8kf5N4=
+      - sTYKKWqi4E+vmlouZsLs/RBaQq+MNZte3+hRSitkt0U=
+    accounts:
+      - 0:1305BD8A781613048846E8A0B910B1429123F86FC1C6B05FFB469281F7930964
+      - 0:1309FE836D986792A1AF59F560E168E02E84B4276191498EFF0C1C78C877A7C5
+      - 0:13ADB153D654DE541615E574149747224E75A445A93E15C07CB476EA798C74C6
+      - 0:6D60409E49DB85AE2C3096A714ECAA00766F1D2E725E94D98E2F3BC5734248C3
+      - 0:8E4499C900841D7583D9559A2F1F0BA229330240C156A198B57611D5F1017C02
+      - 0:B2C1EAE1705695DCC7143F5A12675E0FB082A56340C6AE038BCC9840266F618D
+    start_lt: 75866330000004
+    end_lt: 75866330000021
+    start_utime: 1778336626
+    end_utime: 1778336626
+    mc_seqno_end: 65675737

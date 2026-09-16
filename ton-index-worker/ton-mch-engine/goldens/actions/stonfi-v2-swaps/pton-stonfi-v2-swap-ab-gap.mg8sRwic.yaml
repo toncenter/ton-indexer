@@ -1,0 +1,56 @@
+# stonfi-v2-swaps / pton stonfi v2 swap (ab-gap)
+# trace: mg8sRwic_zM8iy-pZoVdocmQsozeVKNt7G5j_k6nYyc=
+actions:
+  - type: jetton_swap
+    matcher: stonfi_v2_swap
+    anchor: jetton_swap@93501751000002
+    id: Z7wJtaDvaRAj/kv7vi0C9OyIFMF57RLdjAtkuHfGGpc=
+    success: false
+    source: 0:8C69DF5F282ECA17E8582BC165F8C74A18227D5C44322D98DD932DF9C7F35890
+    source_secondary: null
+    destination: 0:8C69DF5F282ECA17E8582BC165F8C74A18227D5C44322D98DD932DF9C7F35890
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: null
+    opcode: null
+    jetton_swap_data:
+      dex: stonfi_v2
+      dex_incoming_transfer:
+        amount: 849999999999
+        asset: null
+        destination: 0:92E1411AE546892F33B2C8A89EA90390D8FF4CFBB917A643B91E73F706FDB9D1
+        destination_jetton_wallet: 0:9220C181A6CFEACD11B7B8F62138DF1BB9CC82B6ED2661D2F5FAEE204B3EFB20
+        source: 0:8C69DF5F282ECA17E8582BC165F8C74A18227D5C44322D98DD932DF9C7F35890
+        source_jetton_wallet: null
+      dex_outgoing_transfer:
+        amount: 849999999999
+        asset: null
+        destination: 0:8C69DF5F282ECA17E8582BC165F8C74A18227D5C44322D98DD932DF9C7F35890
+        destination_jetton_wallet: null
+        source: 0:92E1411AE546892F33B2C8A89EA90390D8FF4CFBB917A643B91E73F706FDB9D1
+        source_jetton_wallet: null
+      min_out_amount: null
+      peer_swaps: []
+      sender: 0:8C69DF5F282ECA17E8582BC165F8C74A18227D5C44322D98DD932DF9C7F35890
+    tx_hashes:
+      - 0nzMJtYlI/rDa25oct+Pr8VolQ+m8QeZ6xC6UmXUx+g=
+      - J1gXNSe4JpaYKXdVovZOBm2VenB09eling1chHLSkA4=
+      - Uev7ytEaGOUWqHhvuYZIRiJHCXjXf1FrbcSF4HhO5U0=
+      - mg8sRwic/zM8iy+pZoVdocmQsozeVKNt7G5j/k6nYyc=
+      - r7AWgwXufbVV4ihOE0HSQsIJbjXKwtIx7chYXYVWP78=
+      - tkfLJ1lbzJX1CM9yo2HwXe1R4tA6ncw0X19oA+MuNx8=
+      - uMcpNYrp3JfnRNbRE0Ju08QEny1l9jVudi9VDJvS49o=
+    accounts:
+      - 0:8649CAD97B5C5BC96A960EF748EA6CCFF8601C01616FE995EE6893AE4AA7A6C6
+      - 0:8C69DF5F282ECA17E8582BC165F8C74A18227D5C44322D98DD932DF9C7F35890
+      - 0:9220C181A6CFEACD11B7B8F62138DF1BB9CC82B6ED2661D2F5FAEE204B3EFB20
+      - 0:92E1411AE546892F33B2C8A89EA90390D8FF4CFBB917A643B91E73F706FDB9D1
+    start_lt: 93501751000002
+    end_lt: 93501751000099
+    start_utime: 1785411638
+    end_utime: 1785411638
+    mc_seqno_end: 82925519

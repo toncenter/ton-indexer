@@ -1,0 +1,294 @@
+# tonstakers / TS Withdrawal via nft burn
+# trace: a0rjbO1XsPBt-2LXRQZT4piiD8x_OrfG82dU0in-WUc=
+actions:
+  - type: call_contract
+    anchor: call_contract#1140a64f@49329350000006
+    id: nGmcxuy2aNGOG9NxohtYCLgSmrV0VSoH78gixui4ddc=
+    success: true
+    source: 0:F6FF877DD4CE1355B101572045F09D54C29309737EB52CA542CFA6C195F7CC5B
+    source_secondary: null
+    destination: 0:73BB3452DBB73C9DB94C604B8238397DE206D144A43975C5001D49A9CF9040C2
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: 801001479426
+    opcode: 0x1140a64f
+    tx_hashes:
+      - DCB/nVN3gtVKnN34CWgCv4pK+cQ5axzJbf7HgOXo0oc=
+      - QgMwqBJWRbqx1FslpzfY5NhSpw3IA/0f8nq+WRURPVk=
+    accounts:
+      - 0:73BB3452DBB73C9DB94C604B8238397DE206D144A43975C5001D49A9CF9040C2
+      - 0:F6FF877DD4CE1355B101572045F09D54C29309737EB52CA542CFA6C195F7CC5B
+    start_lt: 49329350000006
+    end_lt: 49329356000001
+    start_utime: 1726861826
+    end_utime: 1726861845
+    mc_seqno_end: 40526992
+  - type: call_contract
+    anchor: call_contract#4bc7c2df@49329372000003
+    id: mb6NGH8ywyYV8AfeFd41icwa/sGyC4RZFRFqdgmUfok=
+    success: true
+    source: 0:73BB3452DBB73C9DB94C604B8238397DE206D144A43975C5001D49A9CF9040C2
+    source_secondary: null
+    destination: 0:F6FF877DD4CE1355B101572045F09D54C29309737EB52CA542CFA6C195F7CC5B
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: 82811275
+    opcode: 0x4bc7c2df
+    tx_hashes:
+      - XubQf90W7iwGuMISiLHxwLvP2StRavcOvxFinwKm/bA=
+      - Y5d2J+ykoJedam42z1Q+T0+5Ao2ysrSsk761d6krEjA=
+    accounts:
+      - 0:73BB3452DBB73C9DB94C604B8238397DE206D144A43975C5001D49A9CF9040C2
+      - 0:F6FF877DD4CE1355B101572045F09D54C29309737EB52CA542CFA6C195F7CC5B
+    start_lt: 49329372000003
+    end_lt: 49329376000001
+    start_utime: 1726861894
+    end_utime: 1726861906
+    mc_seqno_end: 40527007
+  - type: call_contract
+    anchor: call_contract#54d37487@49329350000003
+    id: MdyeY1f6g2y+Ut7Isf+SaAE0UQC2O+5Rq4zYhgqzsxM=
+    success: true
+    source: 0:F6FF877DD4CE1355B101572045F09D54C29309737EB52CA542CFA6C195F7CC5B
+    source_secondary: null
+    destination: 0:FD7BF2264EA4B58B2F5C18A1D15215025A36CF7F815DD615B01333AA401FCA3D
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: 97330427025
+    opcode: 0x54d37487
+    tx_hashes:
+      - QgMwqBJWRbqx1FslpzfY5NhSpw3IA/0f8nq+WRURPVk=
+      - RK6FSFsHOflMYqYdLHK/HeRgX019bqdMqRlLgj3mSyM=
+    accounts:
+      - 0:F6FF877DD4CE1355B101572045F09D54C29309737EB52CA542CFA6C195F7CC5B
+      - 0:FD7BF2264EA4B58B2F5C18A1D15215025A36CF7F815DD615B01333AA401FCA3D
+    start_lt: 49329350000003
+    end_lt: 49329350000004
+    start_utime: 1726861826
+    end_utime: 1726861826
+    mc_seqno_end: 40526988
+  - type: call_contract
+    anchor: call_contract#c1344900@49329350000004
+    id: jIul+GEIVz+NsU3JZU5euMOZ2o+F6xsf+AvseITAGE8=
+    success: true
+    source: 0:F6FF877DD4CE1355B101572045F09D54C29309737EB52CA542CFA6C195F7CC5B
+    source_secondary: null
+    destination: 0:FD7BF2264EA4B58B2F5C18A1D15215025A36CF7F815DD615B01333AA401FCA3D
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: 19407600
+    opcode: 0xc1344900
+    tx_hashes:
+      - 9QiupqGFHeiCQFUmzfvS/EUoGiPmo/1UVg9ESI5Dwgw=
+      - QgMwqBJWRbqx1FslpzfY5NhSpw3IA/0f8nq+WRURPVk=
+    accounts:
+      - 0:F6FF877DD4CE1355B101572045F09D54C29309737EB52CA542CFA6C195F7CC5B
+      - 0:FD7BF2264EA4B58B2F5C18A1D15215025A36CF7F815DD615B01333AA401FCA3D
+    start_lt: 49329350000004
+    end_lt: 49329350000005
+    start_utime: 1726861826
+    end_utime: 1726861826
+    mc_seqno_end: 40526988
+  - type: call_contract
+    anchor: call_contract#dfdca27b@49329348000008
+    id: wgaRlkCL4vYcrK01+TKF298Sn3OyQWN+qsVVwkykQ8Q=
+    success: true
+    source: "-1:9166A722EB4FB6185655A01D6723F2A026D4522CB29CF94483261D5E3EE37A1F"
+    source_secondary: null
+    destination: 0:F6FF877DD4CE1355B101572045F09D54C29309737EB52CA542CFA6C195F7CC5B
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: 920171089172363
+    opcode: 0xdfdca27b
+    tx_hashes:
+      - IeiyULocLt5AbiL9J8vfQ99wX3UVZLoMIQgRTmYwd7U=
+      - QgMwqBJWRbqx1FslpzfY5NhSpw3IA/0f8nq+WRURPVk=
+    accounts:
+      - "-1:9166A722EB4FB6185655A01D6723F2A026D4522CB29CF94483261D5E3EE37A1F"
+      - 0:F6FF877DD4CE1355B101572045F09D54C29309737EB52CA542CFA6C195F7CC5B
+    start_lt: 49329348000008
+    end_lt: 49329350000001
+    start_utime: 1726861815
+    end_utime: 1726861826
+    mc_seqno_end: 40526988
+  - type: call_contract
+    anchor: call_contract#eb373a05@49329348000002
+    id: ce+PyScqovLAl+i9VJiWDplTzJ0N+lnKzF/7gGiP0Xo=
+    success: true
+    source: "-1:FF1E08FCB52CE7C4A16B4B23AABAD74C47C3A279F3DD3611430B7821D9C7C060"
+    source_secondary: null
+    destination: "-1:9166A722EB4FB6185655A01D6723F2A026D4522CB29CF94483261D5E3EE37A1F"
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: 1040000000
+    opcode: 0xeb373a05
+    tx_hashes:
+      - a0rjbO1XsPBt+2LXRQZT4piiD8x/OrfG82dU0in+WUc=
+      - tBuiD8C3V0DGmCTg9mdlYNNSGxzgbQaFgZqzgFCLUQE=
+    accounts:
+      - "-1:9166A722EB4FB6185655A01D6723F2A026D4522CB29CF94483261D5E3EE37A1F"
+      - "-1:FF1E08FCB52CE7C4A16B4B23AABAD74C47C3A279F3DD3611430B7821D9C7C060"
+    start_lt: 49329348000002
+    end_lt: 49329348000003
+    start_utime: 1726861815
+    end_utime: 1726861815
+    mc_seqno_end: 40526983
+  - type: election_recover
+    matcher: election_recover
+    anchor: election_recover@49329348000004
+    id: tXUirWEnHwNPcKS5WGoqeuCFtTycdErGIMrbQa3cf+k=
+    success: true
+    source: "-1:9166A722EB4FB6185655A01D6723F2A026D4522CB29CF94483261D5E3EE37A1F"
+    source_secondary: null
+    destination: null
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: 920944725398917
+    value: null
+    opcode: null
+    tx_hashes:
+      - 0jJO0vpIqmfdE0CTaO41jPu8/j1K6YE3lWNDwigp+yI=
+      - IeiyULocLt5AbiL9J8vfQ99wX3UVZLoMIQgRTmYwd7U=
+      - tBuiD8C3V0DGmCTg9mdlYNNSGxzgbQaFgZqzgFCLUQE=
+    accounts:
+      - "-1:3333333333333333333333333333333333333333333333333333333333333333"
+      - "-1:9166A722EB4FB6185655A01D6723F2A026D4522CB29CF94483261D5E3EE37A1F"
+    start_lt: 49329348000004
+    end_lt: 49329348000007
+    start_utime: 1726861815
+    end_utime: 1726861815
+    mc_seqno_end: 40526983
+  - type: stake_withdrawal
+    matcher: tonstakers_delayed_withdrawal
+    anchor: tonstakers_withdraw@49329356000002
+    id: XNxJHyzzlO0D/yEd8RurcE/znTukSZ/5BXCdF1m7Of0=
+    success: true
+    source: 0:2DB46E79EAF6124C8B687DE60C2FAB94220AA4B3DA85E4F191B5FFD833FBB5B6
+    source_secondary: null
+    destination: 0:F6FF877DD4CE1355B101572045F09D54C29309737EB52CA542CFA6C195F7CC5B
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: 798178302119
+    value: null
+    opcode: null
+    staking_data:
+      provider: liquid_staking
+      tokens_burnt: 773926085446
+      ts_nft: 0:9E96100D5C6170EBE584F383DE873905B573A8D4050A45F97127E2DA03E49010
+    tx_hashes:
+      - DCB/nVN3gtVKnN34CWgCv4pK+cQ5axzJbf7HgOXo0oc=
+      - E1Hrp9NqTZBjNRoD7dEX0vjIaShGKw5cHsdt2zRrYZY=
+      - T9DT2/SRcyG2VVph2a2V+mBgMIhXeuOrhD9gzU3HMJw=
+      - iBhKKI7JLPKBfprsm+7zKczBnxaApO7IlEU7S8tqkdU=
+    accounts:
+      - 0:2DB46E79EAF6124C8B687DE60C2FAB94220AA4B3DA85E4F191B5FFD833FBB5B6
+      - 0:73BB3452DBB73C9DB94C604B8238397DE206D144A43975C5001D49A9CF9040C2
+      - 0:9E96100D5C6170EBE584F383DE873905B573A8D4050A45F97127E2DA03E49010
+      - 0:F6FF877DD4CE1355B101572045F09D54C29309737EB52CA542CFA6C195F7CC5B
+    start_lt: 49329356000002
+    end_lt: 49329369000001
+    start_utime: 1726861845
+    end_utime: 1726861886
+    mc_seqno_end: 40527002
+  - type: stake_withdrawal
+    matcher: tonstakers_delayed_withdrawal
+    anchor: tonstakers_withdraw@49329360000002
+    id: mxUh5XPjoELj1U+2I1a5LUmJ3XfOC80v4L7Hj1e2yHA=
+    success: true
+    source: 0:454E01198AFFB8A7D37AA7156816BC0F1FA8AE02BD5CDD6327CFA2BF133AE921
+    source_secondary: null
+    destination: 0:F6FF877DD4CE1355B101572045F09D54C29309737EB52CA542CFA6C195F7CC5B
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: 85961295
+    value: null
+    opcode: null
+    staking_data:
+      provider: liquid_staking
+      tokens_burnt: 4170935
+      ts_nft: 0:30A867E3D5D69284A96CFF30B742316CD5B514C55FCC2E9564F42D65A9A3D252
+    tx_hashes:
+      - 2Wo0GlurbVmJADBUZ5eovSImVH82RHov3x2bTDTjfx8=
+      - E1Hrp9NqTZBjNRoD7dEX0vjIaShGKw5cHsdt2zRrYZY=
+      - lZWrnFBu0t4NGPLydB5SXZ5witbDu+hu8pvA7jZjNHU=
+      - wQi2OgTPNC22kZS/T1XN+mtjO7/OAI2ALTjCwhKVwYU=
+    accounts:
+      - 0:30A867E3D5D69284A96CFF30B742316CD5B514C55FCC2E9564F42D65A9A3D252
+      - 0:454E01198AFFB8A7D37AA7156816BC0F1FA8AE02BD5CDD6327CFA2BF133AE921
+      - 0:73BB3452DBB73C9DB94C604B8238397DE206D144A43975C5001D49A9CF9040C2
+      - 0:9E96100D5C6170EBE584F383DE873905B573A8D4050A45F97127E2DA03E49010
+      - 0:F6FF877DD4CE1355B101572045F09D54C29309737EB52CA542CFA6C195F7CC5B
+    start_lt: 49329360000002
+    end_lt: 49329374000001
+    start_utime: 1726861858
+    end_utime: 1726861898
+    mc_seqno_end: 40527005
+  - type: stake_withdrawal
+    matcher: tonstakers_delayed_withdrawal
+    anchor: tonstakers_withdraw@49329364000002
+    id: L+okOzObKz3T89cZYygKrpAtCPzDix2Fabsg4U9hXbw=
+    success: true
+    source: 0:454E01198AFFB8A7D37AA7156816BC0F1FA8AE02BD5CDD6327CFA2BF133AE921
+    source_secondary: null
+    destination: 0:F6FF877DD4CE1355B101572045F09D54C29309737EB52CA542CFA6C195F7CC5B
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: 2982933841
+    value: null
+    opcode: null
+    staking_data:
+      provider: liquid_staking
+      tokens_burnt: 2802990078
+      ts_nft: 0:5F090D11D41733FB3CC4FC637B1CACC0CF9F9154D1DE1F4A3F962F78C5D5982A
+    tx_hashes:
+      - 4ERFgmk6YE0aa5fzLs+KXzG591GdtNYsg12SZ572U8s=
+      - Y5d2J+ykoJedam42z1Q+T0+5Ao2ysrSsk761d6krEjA=
+      - kaTIlXa9489Sxxmfdbz5AcOZ3Nf1Vd6l1oYiM2S5Yw0=
+      - lZWrnFBu0t4NGPLydB5SXZ5witbDu+hu8pvA7jZjNHU=
+    accounts:
+      - 0:30A867E3D5D69284A96CFF30B742316CD5B514C55FCC2E9564F42D65A9A3D252
+      - 0:454E01198AFFB8A7D37AA7156816BC0F1FA8AE02BD5CDD6327CFA2BF133AE921
+      - 0:5F090D11D41733FB3CC4FC637B1CACC0CF9F9154D1DE1F4A3F962F78C5D5982A
+      - 0:73BB3452DBB73C9DB94C604B8238397DE206D144A43975C5001D49A9CF9040C2
+      - 0:F6FF877DD4CE1355B101572045F09D54C29309737EB52CA542CFA6C195F7CC5B
+    start_lt: 49329364000002
+    end_lt: 49329376000001
+    start_utime: 1726861870
+    end_utime: 1726861906
+    mc_seqno_end: 40527007

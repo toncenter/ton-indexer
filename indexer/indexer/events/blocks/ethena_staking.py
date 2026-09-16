@@ -106,6 +106,46 @@ class EthenaWithdrawalRequestBlockMatcher(BlockMatcher):
         return [new_block]
 
 
+def build_ethena_deposit_core(
+    jetton_transfer: Block,
+    jetton_mint: Block | None,
+) -> EthenaDepositBlock | None:
+    """Shared build core for ethena_deposit. Returns None to reject the match
+    (hardcoded-asset gate). Does NOT merge consumed blocks — the caller (legacy
+    build_block or the mch synthesized wrapper) is responsible for merge_blocks.
+    """
+    if jetton_mint is None:
+        return None
+
+    transfer_asset = jetton_transfer.data["asset"]
+    mint_asset = jetton_mint.data["asset"]
+
+    expected_transfer_asset = "0:086FA2A675F74347B08DD4606A549B8FDB98829CB282BC1949D3B12FBAED9DCC"
+    expected_mint_asset = "0:D0E545323C7ACB7102653C073377F7E3C67F122EB94D430A250739F109D4A57D"
+
+    if transfer_asset is None or not transfer_asset.jetton_address:
+        return None
+    if transfer_asset.jetton_address.as_str() != expected_transfer_asset:
+        return None
+
+    if mint_asset is None or not mint_asset.jetton_address:
+        return None
+    if mint_asset.jetton_address.as_str() != expected_mint_asset:
+        return None
+
+    return EthenaDepositBlock(
+        EthenaDepositData(
+            source=AccountId(jetton_transfer.data["sender"]),
+            user_jetton_wallet=AccountId(jetton_transfer.data["sender_wallet"]),
+            pool=AccountId(jetton_transfer.data["receiver"]),
+            value=Amount(jetton_transfer.data["amount"]),
+            tokens_minted=Amount(jetton_mint.data["amount"]),
+            asset=mint_asset,
+            source_asset=transfer_asset,
+        )
+    )
+
+
 class EthenaDepositBlockMatcher(BlockMatcher):
     def __init__(self):
         super().__init__(
@@ -117,44 +157,18 @@ class EthenaDepositBlockMatcher(BlockMatcher):
 
     async def build_block(self, block: Block, other_blocks: list[Block]) -> list[Block]:
         from indexer.events.blocks.jettons import JettonMintBlock
-        
+
         jetton_transfer = block
         jetton_mint = None
-        
+
         for other_block in other_blocks:
             if isinstance(other_block, JettonMintBlock):
                 jetton_mint = other_block
                 break
-        
-        if jetton_mint is None:
+
+        new_block = build_ethena_deposit_core(jetton_transfer, jetton_mint)
+        if new_block is None:
             return []
-        
-        transfer_asset = jetton_transfer.data["asset"]
-        mint_asset = jetton_mint.data["asset"]
-        
-        expected_transfer_asset = "0:086FA2A675F74347B08DD4606A549B8FDB98829CB282BC1949D3B12FBAED9DCC"
-        expected_mint_asset = "0:D0E545323C7ACB7102653C073377F7E3C67F122EB94D430A250739F109D4A57D"
-        
-        if transfer_asset is None or not transfer_asset.jetton_address:
-            return []
-        if transfer_asset.jetton_address.as_str() != expected_transfer_asset:
-            return []
-        
-        if mint_asset is None or not mint_asset.jetton_address:
-            return []
-        if mint_asset.jetton_address.as_str() != expected_mint_asset:
-            return []
-        
-        data = EthenaDepositData(
-            source=AccountId(jetton_transfer.data["sender"]),
-            user_jetton_wallet=AccountId(jetton_transfer.data["sender_wallet"]),
-            pool=AccountId(jetton_transfer.data["receiver"]),
-            value=Amount(jetton_transfer.data["amount"]),
-            tokens_minted=Amount(jetton_mint.data["amount"]),
-            asset=mint_asset,
-            source_asset=transfer_asset
-        )
-        
-        new_block = EthenaDepositBlock(data)
+
         new_block.merge_blocks([jetton_transfer, jetton_mint])
         return [new_block]

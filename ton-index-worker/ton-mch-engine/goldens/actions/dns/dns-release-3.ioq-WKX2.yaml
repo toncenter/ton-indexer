@@ -1,0 +1,76 @@
+# dns / DNS release 3
+# trace: ioq-WKX2gMsHeK0oNTMWtXQuUfkraOo7-g-4CXvdV9s=
+actions:
+  - type: call_contract
+    anchor: call_contract#4ed14b65@93572477000002
+    id: Ty7VhjJTd0NkUKyYnBmHqD7XiVOvTwp0od40unYPf7s=
+    success: true
+    source: 0:87C961A878D6D03899A2462A32FB60084DB3BBD0E043DA54ED3CED9CE6989862
+    source_secondary: null
+    destination: 0:6A1509C27C1C40DBDED8739EA968F2709829B3E6EDAF3088ADC33C7C91EAF8D3
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: 5000000000
+    opcode: 0x4ed14b65
+    tx_hashes:
+      - ioq+WKX2gMsHeK0oNTMWtXQuUfkraOo7+g+4CXvdV9s=
+      - xIiC8e0r4ABwWw2P2c+UTFxcL7i40Ws0Vtb/vTh1P0Q=
+    accounts:
+      - 0:6A1509C27C1C40DBDED8739EA968F2709829B3E6EDAF3088ADC33C7C91EAF8D3
+      - 0:87C961A878D6D03899A2462A32FB60084DB3BBD0E043DA54ED3CED9CE6989862
+    start_lt: 93572477000002
+    end_lt: 93572477000003
+    start_utime: 1785441293
+    end_utime: 1785441293
+    mc_seqno_end: 82991093
+    parent_action_id: yx8KmLCXOgjv8BxWRNPz4dsl+YVzlLguvRv5+jlrTJE=
+    ancestor_type:
+      - dns_release
+  - type: dns_release
+    matcher: dns_release
+    anchor: dns_release@93572477000002
+    id: yx8KmLCXOgjv8BxWRNPz4dsl+YVzlLguvRv5+jlrTJE=
+    success: true
+    source: 0:87C961A878D6D03899A2462A32FB60084DB3BBD0E043DA54ED3CED9CE6989862
+    source_secondary: null
+    destination: 0:6A1509C27C1C40DBDED8739EA968F2709829B3E6EDAF3088ADC33C7C91EAF8D3
+    destination_secondary: null
+    asset: 0:B774D95EB20543F186C06B371AB88AD704F7E256130CAF96189368A7D0CB6CCF
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: 5000000000
+    opcode: null
+    nft_transfer_data:
+      custom_payload: null
+      forward_amount: null
+      forward_payload: null
+      is_purchase: null
+      marketplace: null
+      marketplace_address: null
+      nft_item_index: 38635352237179861710045854923340894515876392805202579644473459379936209928192
+      payout_amount: null
+      payout_comment: null
+      payout_comment_encoded: null
+      payout_comment_encrypted: null
+      price: null
+      query_id: 1785441283542
+      real_prev_owner: null
+      response_destination: null
+      royalty_amount: null
+    tx_hashes:
+      - ioq+WKX2gMsHeK0oNTMWtXQuUfkraOo7+g+4CXvdV9s=
+      - xIiC8e0r4ABwWw2P2c+UTFxcL7i40Ws0Vtb/vTh1P0Q=
+    accounts:
+      - 0:6A1509C27C1C40DBDED8739EA968F2709829B3E6EDAF3088ADC33C7C91EAF8D3
+      - 0:87C961A878D6D03899A2462A32FB60084DB3BBD0E043DA54ED3CED9CE6989862
+    start_lt: 93572477000002
+    end_lt: 93572477000003
+    start_utime: 1785441293
+    end_utime: 1785441293
+    mc_seqno_end: 82991093

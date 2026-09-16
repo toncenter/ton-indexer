@@ -1,0 +1,27 @@
+# wallet-v5-extensions / Wallet v5 add extension
+# trace: MbyOvYQJRnJQyUV7ittF35KykWxqBU5v1Wzo1ohMkR4=
+actions:
+  - type: unknown
+    anchor: unknown
+    id: MbyOvYQJRnJQyUV7ittF35KykWxqBU5v1Wzo1ohMkR4=
+    success: true
+    source: null
+    source_secondary: null
+    destination: null
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: null
+    opcode: null
+    tx_hashes:
+      - MbyOvYQJRnJQyUV7ittF35KykWxqBU5v1Wzo1ohMkR4=
+    accounts:
+      - 0:4C8FC9B86FF27F4B9423F4353DDA56C3F48D8979E815FE11FD3F486DEDDA503B
+    start_lt: 64925392000001
+    end_lt: 64925392000001
+    start_utime: 1776947069
+    end_utime: 1776947069
+    mc_seqno_end: 53944348

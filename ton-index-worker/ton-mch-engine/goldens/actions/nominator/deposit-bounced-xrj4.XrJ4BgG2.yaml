@@ -1,0 +1,33 @@
+# nominator / Deposit bounced (XrJ4)
+# trace: XrJ4BgG2rSQyr3vItrDD4kFQZMU0v17UGRD3LQPvuOA=
+actions:
+  - type: stake_deposit
+    matcher: nominator_pool_deposit
+    anchor: nominator_pool_deposit@67815874000002
+    id: gN684/OclnklBLO2MHyN6vz65R3hJAa3mKa0JdgHT0M=
+    success: false
+    source: 0:10DF989ED7D51F3E41327ABEE8B9EEA9711F818F385573ED806F61EFCB80BF53
+    source_secondary: null
+    destination: "-1:386E6A793B70ED6235E67560183040734CFB2EF9C3CC720E758B767D6DF748EF"
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: 81869411
+    value: null
+    opcode: null
+    staking_data:
+      provider: nominator
+    tx_hashes:
+      - XrJ4BgG2rSQyr3vItrDD4kFQZMU0v17UGRD3LQPvuOA=
+      - qttOmpR4+VuV8dxUuW61eoZqByExVcJ4qQgpBUqoP4g=
+      - tKKBWSSTkv8JgsvCSZy/doQFXEcRb9kwJhXJ+//vW84=
+    accounts:
+      - "-1:386E6A793B70ED6235E67560183040734CFB2EF9C3CC720E758B767D6DF748EF"
+      - 0:10DF989ED7D51F3E41327ABEE8B9EEA9711F818F385573ED806F61EFCB80BF53
+    start_lt: 67815874000002
+    end_lt: 67815876000001
+    start_utime: 1773177748
+    end_utime: 1773177759
+    mc_seqno_end: 58154612

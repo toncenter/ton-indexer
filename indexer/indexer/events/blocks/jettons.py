@@ -38,6 +38,71 @@ class JettonMintBlock(Block):
         return f"JETTON MINT {self.data}"
 
 
+async def build_jetton_transfer_core(
+    transfer_block: Block | CallContractBlock,
+    internal_transfer: Block | CallContractBlock | None,
+) -> JettonTransferBlock | None:
+    """Shared build core for jetton_transfer. Returns None to reject the match.
+
+    Does NOT merge consumed blocks — the caller (legacy build_block or the mch
+    synthesized wrapper) is responsible for merge_blocks.
+    """
+    jetton_transfer_message = JettonTransfer(transfer_block.get_body())
+    new_block = JettonTransferBlock({}, jetton_transfer_message)
+
+    has_internal_transfer = internal_transfer is not None
+    amount = jetton_transfer_message.amount
+    forward_ton_amount = jetton_transfer_message.forward_amount
+    if has_internal_transfer:
+        try:
+            internal_transfer_msg = JettonInternalTransfer(internal_transfer.get_body())
+            amount = internal_transfer_msg.amount
+            forward_ton_amount = internal_transfer_msg.forward_ton_amount
+        except Exception:
+            pass
+    sender = transfer_block.get_message().source
+    sender_jetton_wallet = transfer_block.get_message().destination
+    receiver_wallet = internal_transfer.get_message().destination
+    receiver = jetton_transfer_message.destination
+
+    receiver_wallet_info = await context.interface_repository.get().get_jetton_wallet(receiver_wallet)
+    if receiver_wallet_info is None:
+        return None
+
+    if receiver_wallet_info.owner != receiver.to_str(False):
+        transfer_block.broken = True
+        receiver = receiver_wallet_info.owner
+
+    asset = Asset(is_ton=False, jetton_address=receiver_wallet_info.jetton)
+
+    data = {
+        'has_internal_transfer': has_internal_transfer,
+        'sender': AccountId(sender),
+        'sender_wallet': AccountId(sender_jetton_wallet),
+        'receiver': AccountId(receiver),
+        'receiver_wallet': AccountId(receiver_wallet),
+        'response_address': AccountId(jetton_transfer_message.response),
+        'forward_amount': Amount(forward_ton_amount),
+        'desired_forward_amount': Amount(jetton_transfer_message.forward_amount),
+        'query_id': jetton_transfer_message.query_id,
+        'asset': asset,
+        'amount': Amount(amount),
+        'desired_amount': Amount(jetton_transfer_message.amount),
+        'forward_payload': base64.b64encode(jetton_transfer_message.forward_payload).decode(
+            'utf-8') if jetton_transfer_message.forward_payload is not None else None,
+        'custom_payload': base64.b64encode(jetton_transfer_message.custom_payload).decode(
+            'utf-8') if jetton_transfer_message.custom_payload is not None else None,
+        'comment': jetton_transfer_message.comment,
+        'encrypted_comment': jetton_transfer_message.encrypted_comment,
+        'payload_opcode': jetton_transfer_message.payload_sum_type,
+        'stonfi_swap_body': jetton_transfer_message.stonfi_swap_body
+    }
+
+    new_block.data = data
+    new_block.failed = transfer_block.failed or internal_transfer.failed
+    return new_block
+
+
 class JettonTransferBlockMatcher(BlockMatcher):
     def __init__(self):
         super().__init__(child_matcher=ContractMatcher(opcode=JettonInternalTransfer.opcode,
@@ -47,64 +112,11 @@ class JettonTransferBlockMatcher(BlockMatcher):
         return isinstance(block, CallContractBlock) and block.opcode == JettonTransfer.opcode
 
     async def build_block(self, block: Block | CallContractBlock, other_blocks: list[Block]) -> list[Block]:
-        include = [block]
-        include.extend(other_blocks)
-        jetton_transfer_message = JettonTransfer(block.get_body())
-        new_block = JettonTransferBlock({}, jetton_transfer_message)
-
         internal_transfer = find_call_contract(other_blocks, JettonInternalTransfer.opcode)
-        has_internal_transfer = internal_transfer is not None
-        amount = jetton_transfer_message.amount
-        forward_ton_amount = jetton_transfer_message.forward_amount
-        if has_internal_transfer:
-            try:
-                internal_transfer_msg = JettonInternalTransfer(internal_transfer.get_body())
-                amount = internal_transfer_msg.amount
-                forward_ton_amount = internal_transfer_msg.forward_ton_amount
-            except Exception:
-                pass
-        sender = block.get_message().source
-        sender_jetton_wallet = block.get_message().destination
-        receiver_wallet = internal_transfer.get_message().destination
-        receiver = jetton_transfer_message.destination
-
-        receiver_wallet_info = await context.interface_repository.get().get_jetton_wallet(receiver_wallet)
-        if receiver_wallet_info is None:
+        new_block = await build_jetton_transfer_core(block, internal_transfer)
+        if new_block is None:
             return []
-
-        if receiver_wallet_info.owner != receiver.to_str(False):
-            block.broken = True
-            receiver = receiver_wallet_info.owner
-
-        asset = Asset(is_ton=False, jetton_address=receiver_wallet_info.jetton)
-
-        data = {
-            'has_internal_transfer': has_internal_transfer,
-            'sender': AccountId(sender),
-            'sender_wallet': AccountId(sender_jetton_wallet),
-            'receiver': AccountId(receiver),
-            'receiver_wallet': AccountId(receiver_wallet),
-            'response_address': AccountId(jetton_transfer_message.response),
-            'forward_amount': Amount(forward_ton_amount),
-            'desired_forward_amount': Amount(jetton_transfer_message.forward_amount),
-            'query_id': jetton_transfer_message.query_id,
-            'asset': asset,
-            'amount': Amount(amount),
-            'desired_amount': Amount(jetton_transfer_message.amount),
-            'forward_payload': base64.b64encode(jetton_transfer_message.forward_payload).decode(
-                'utf-8') if jetton_transfer_message.forward_payload is not None else None,
-            'custom_payload': base64.b64encode(jetton_transfer_message.custom_payload).decode(
-                'utf-8') if jetton_transfer_message.custom_payload is not None else None,
-            'comment': jetton_transfer_message.comment,
-            'encrypted_comment': jetton_transfer_message.encrypted_comment,
-            'payload_opcode': jetton_transfer_message.payload_sum_type,
-            'stonfi_swap_body': jetton_transfer_message.stonfi_swap_body
-        }
-
-        new_block.data = data
-        new_block.merge_blocks(include)
-        new_block.failed = block.failed or internal_transfer.failed
-
+        new_block.merge_blocks([block] + other_blocks)
         return [new_block]
 
 class PTonTransferMatcher(BlockMatcher):
@@ -178,13 +190,12 @@ async def _get_jetton_burn_data(new_block: Block, block: Block | CallContractBlo
 
 async def _get_jetton_mint_data(
     new_block: Block, block: Block | CallContractBlock,
-    blocks: list[Block]
+    internal_transfer_block: Block | CallContractBlock | None
 ) -> tuple[dict, bool]:
     if block.opcode == MinterJettonMint.opcode:
         jetton_mint_info = MinterJettonMint(block.get_body())
     else:
         jetton_mint_info = JettonMint(block.get_body())
-    internal_transfer_block = find_call_contract(blocks, JettonInternalTransfer.opcode)
 
     if not block.failed and internal_transfer_block is not None:
         internal_transfer_info = JettonInternalTransfer(internal_transfer_block.get_body())
@@ -228,6 +239,26 @@ async def _get_jetton_mint_data(
             data['amount'] = Amount(jetton_mint_info.master_msg_jetton_amount)
     return data, True
 
+async def build_jetton_burn_core(burn_block: Block | CallContractBlock) -> JettonBurnBlock:
+    """Shared build core for jetton_burn. Does NOT merge consumed blocks."""
+    new_block = JettonBurnBlock()
+    new_block.data = await _get_jetton_burn_data(new_block, burn_block)
+    new_block.failed = burn_block.failed
+    return new_block
+
+
+async def build_jetton_mint_core(
+    mint_block: Block | CallContractBlock,
+    internal_transfer_block: Block | CallContractBlock | None,
+) -> JettonMintBlock:
+    """Shared build core for jetton_mint. Does NOT merge consumed blocks."""
+    new_block = JettonMintBlock()
+    new_block.data, new_block.failed = await _get_jetton_mint_data(
+        new_block, mint_block, internal_transfer_block
+    )
+    return new_block
+
+
 class JettonBurnBlockMatcher(BlockMatcher):
     def __init__(self):
         super().__init__(child_matcher=ContractMatcher(opcode=JettonBurnNotification.opcode, optional=True,
@@ -237,13 +268,8 @@ class JettonBurnBlockMatcher(BlockMatcher):
         return isinstance(block, CallContractBlock) and block.opcode == JettonBurn.opcode
 
     async def build_block(self, block: Block, other_blocks: list[Block]) -> list[Block]:
-        new_block = JettonBurnBlock()
-        include = [block]
-        include.extend(other_blocks)
-
-        new_block.data = await _get_jetton_burn_data(new_block, block)
-        new_block.merge_blocks(include)
-        new_block.failed = block.failed
+        new_block = await build_jetton_burn_core(block)
+        new_block.merge_blocks([block] + other_blocks)
         return [new_block]
 
 
@@ -272,11 +298,9 @@ class JettonMintBlockMatcher(BlockMatcher):
         )
 
     async def build_block(self, block: Block, other_blocks: list[Block]) -> list[Block]:
-        new_block = JettonMintBlock()
-        include = [block]
-        include.extend(other_blocks)
-        new_block.data, new_block.failed = await _get_jetton_mint_data(new_block, block, other_blocks)
-        new_block.merge_blocks(include)
+        internal_transfer_block = find_call_contract(other_blocks, JettonInternalTransfer.opcode)
+        new_block = await build_jetton_mint_core(block, internal_transfer_block)
+        new_block.merge_blocks([block] + other_blocks)
         return [new_block]
 
 class FallbackJettonTransferBlockMatcher(BlockMatcher):

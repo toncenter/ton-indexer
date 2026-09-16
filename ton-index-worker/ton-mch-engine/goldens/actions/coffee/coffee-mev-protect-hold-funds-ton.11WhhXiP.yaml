@@ -1,0 +1,90 @@
+# coffee / Coffee mev protect hold funds (TON)
+# trace: 11WhhXiPhXuLm5C85XGw4WYY8BDn6Xnee-nPq-W0tkA=
+actions:
+  - type: call_contract
+    anchor: call_contract#6bc79e7e@58461678000002
+    id: 4Uetst3t1aaVUCL4jxN2UDh/3e6FrFotd+AcE/rnG08=
+    success: true
+    source: 0:B73108D2341752AF80BB14C19F4EC8DE8739EB90AC541EE0B91C8DDAC3BA9842
+    source_secondary: null
+    destination: 0:055D3E4FB377F6EC27656BC36135DF4ECC8BEC0CAC61D8D3D8CD1C7D346D482C
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: 15590000000
+    opcode: 0x6bc79e7e
+    tx_hashes:
+      - 11WhhXiPhXuLm5C85XGw4WYY8BDn6Xnee+nPq+W0tkA=
+      - TRaLYG66ckHlw3h6nzJ3Xg0iez9Geo03HZUkgsXLa9I=
+    accounts:
+      - 0:055D3E4FB377F6EC27656BC36135DF4ECC8BEC0CAC61D8D3D8CD1C7D346D482C
+      - 0:B73108D2341752AF80BB14C19F4EC8DE8739EB90AC541EE0B91C8DDAC3BA9842
+    start_lt: 58461678000002
+    end_lt: 58461681000001
+    start_utime: 1750276925
+    end_utime: 1750276933
+    mc_seqno_end: 48977240
+    parent_action_id: A93pTV3dxh6efcIMSAAqpqlnX9DfzS8aDozYknJeBIA=
+    ancestor_type:
+      - coffee_mev_protect_hold_funds
+  - type: call_contract
+    anchor: call_contract#c0ffeea0@58461678000003
+    id: NktLhX2QgtbWj0tfzHLs6yCWbBi/nQAl52LNjbGBT08=
+    success: true
+    source: 0:B73108D2341752AF80BB14C19F4EC8DE8739EB90AC541EE0B91C8DDAC3BA9842
+    source_secondary: null
+    destination: 0:A8D9FB483FAFC657D0F504F11CB499AB4A9C961348BB0EEBFD5542AB52029BFB
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: 45000000
+    opcode: 0xc0ffeea0
+    tx_hashes:
+      - 11WhhXiPhXuLm5C85XGw4WYY8BDn6Xnee+nPq+W0tkA=
+      - oNPW/Qj7CuvvMbPbEwUMeHPNAYjxCF/s7UPWaAHFrPU=
+    accounts:
+      - 0:A8D9FB483FAFC657D0F504F11CB499AB4A9C961348BB0EEBFD5542AB52029BFB
+      - 0:B73108D2341752AF80BB14C19F4EC8DE8739EB90AC541EE0B91C8DDAC3BA9842
+    start_lt: 58461678000003
+    end_lt: 58461678000004
+    start_utime: 1750276925
+    end_utime: 1750276925
+    mc_seqno_end: 48977237
+    parent_action_id: A93pTV3dxh6efcIMSAAqpqlnX9DfzS8aDozYknJeBIA=
+    ancestor_type:
+      - coffee_mev_protect_hold_funds
+  - type: coffee_mev_protect_hold_funds
+    matcher: coffee_mev_protect_hold_funds
+    anchor: coffee_mev_protect_hold_funds@58461678000001
+    id: A93pTV3dxh6efcIMSAAqpqlnX9DfzS8aDozYknJeBIA=
+    success: true
+    source: 0:B73108D2341752AF80BB14C19F4EC8DE8739EB90AC541EE0B91C8DDAC3BA9842
+    source_secondary: null
+    destination: 0:055D3E4FB377F6EC27656BC36135DF4ECC8BEC0CAC61D8D3D8CD1C7D346D482C
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: 15590000000
+    value: null
+    opcode: null
+    tx_hashes:
+      - 11WhhXiPhXuLm5C85XGw4WYY8BDn6Xnee+nPq+W0tkA=
+      - TRaLYG66ckHlw3h6nzJ3Xg0iez9Geo03HZUkgsXLa9I=
+      - oNPW/Qj7CuvvMbPbEwUMeHPNAYjxCF/s7UPWaAHFrPU=
+    accounts:
+      - 0:055D3E4FB377F6EC27656BC36135DF4ECC8BEC0CAC61D8D3D8CD1C7D346D482C
+      - 0:A8D9FB483FAFC657D0F504F11CB499AB4A9C961348BB0EEBFD5542AB52029BFB
+      - 0:B73108D2341752AF80BB14C19F4EC8DE8739EB90AC541EE0B91C8DDAC3BA9842
+    start_lt: 58461678000001
+    end_lt: 58461681000001
+    start_utime: 1750276925
+    end_utime: 1750276933
+    mc_seqno_end: 48977240

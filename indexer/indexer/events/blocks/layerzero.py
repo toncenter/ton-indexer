@@ -386,40 +386,59 @@ class LayerZeroReceiveMatcher(BlockMatcher):
     def test_self(self, block: Block) -> bool:
         return (isinstance(block, CallContractBlock)
                 and block.opcode == LzReceivePrepareParser.opcode)
-    
+
     @loguru_logger.catch()
     async def build_block(self, block: Block, other_blocks: list[Block]):
         execute_callback_block = get_labeled("execute_callback", other_blocks, CallContractBlock)
-        
-        if not execute_callback_block:
+        new_block = build_layerzero_receive_core(block, execute_callback_block)
+        if new_block is None:
             return []
-        execute_callback_msg = execute_callback_block.get_message()
-        
-        execute_msg_data = LayerZeroOappExecuteCallback(execute_callback_block.get_body())
-        packet = execute_msg_data.packet
-        if execute_callback_msg.destination[2:].lower() != packet.path.dst_oapp[2:].lower():
-            logger.warning(f"address from execute_callback doesn't match dst_oapp in packet")
-            return []
-        
-        data = LayerZeroReceiveData(
-            sender=AccountId(block.get_message().source),
-            channel=AccountId(execute_callback_msg.source),
-            oapp=AccountId(execute_callback_msg.destination),
-            packet_data=LayerZeroPacketData(
-                src_oapp=packet.path.src_oapp,
-                dst_oapp=packet.path.dst_oapp,
-                src_eid=packet.path.src_eid,
-                dst_eid=packet.path.dst_eid,
-                nonce=packet.nonce,
-                guid=packet.guid,
-                message=packet.message
-            )
-        )
-        
-        new_block = LayerZeroReceiveBlock(data)
         new_block.merge_blocks([block] + other_blocks)
-        
         return [new_block]
+
+
+def build_layerzero_receive_core(block: Block, execute_callback_block: CallContractBlock | None):
+    """Shared build core for LayerZero receive (legacy matcher + mch builder).
+
+    `execute_callback_block` is whatever the label "execute_callback" resolves to
+    in the legacy matcher. The legacy pattern reuses that label on two nested
+    nodes (this file, LzReceiveExecute at :363 and LayerZeroOappExecuteCallback at
+    :368); `get_labeled` returns the FIRST in traversal order — the OUTER
+    LayerzeroLzReceiveExecute (0x0c7b8418), whose source is the channel and whose
+    destination is the receiver OApp. The mch builder must pass that same block.
+
+    Returns the LayerZeroReceiveBlock, or None to reject the match. The caller is
+    responsible for merge_blocks (byte-identical to the pre-extraction body)."""
+    if not execute_callback_block:
+        return None
+    execute_callback_msg = execute_callback_block.get_message()
+
+    execute_msg_data = LayerZeroOappExecuteCallback(execute_callback_block.get_body())
+    packet = execute_msg_data.packet
+    if execute_callback_msg.destination[2:].lower() != packet.path.dst_oapp[2:].lower():
+        logger.warning(f"address from execute_callback doesn't match dst_oapp in packet")
+        return None
+
+    data = LayerZeroReceiveData(
+        sender=AccountId(block.get_message().source),
+        channel=AccountId(execute_callback_msg.source),
+        oapp=AccountId(execute_callback_msg.destination),
+        # Canonical dict form (matches specs/layerzero.mch's `packet_data` record
+        # literal — the C++ engine has no LayerZeroPacketData subclass). Field
+        # names identical to LayerZeroPacketData; the serializer takes this dict
+        # verbatim into layerzero_packet_data.
+        packet_data={
+            "src_oapp": packet.path.src_oapp,
+            "dst_oapp": packet.path.dst_oapp,
+            "src_eid":  packet.path.src_eid,
+            "dst_eid":  packet.path.dst_eid,
+            "nonce":    packet.nonce,
+            "guid":     packet.guid,
+            "message":  packet.message,
+        },
+    )
+
+    return LayerZeroReceiveBlock(data)
 
 class LayerZeroCommitPacketMatcher(BlockMatcher):
     """

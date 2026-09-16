@@ -130,18 +130,6 @@ def deserialize_trace(data: Dict[str, Any]) -> Trace:
     )
 
 
-def deserialize_nft_item(data: Dict[str, Any]) -> NFTItem:
-    """Deserialize dictionary to NFTItem."""
-    return NFTItem(
-        address=data['address'],
-        init=data['init'],
-        index=data['index'],
-        collection_address=data['collection_address'],
-        owner_address=data['owner_address'],
-        content=data['content'],
-    )
-
-
 def deserialize_jetton_wallet(data: Dict[str, Any]) -> JettonWallet:
     """Deserialize dictionary to JettonWallet."""
     return JettonWallet(
@@ -160,6 +148,7 @@ def deserialize_nft_item(data: Dict[str, Any]) -> NFTItem:
         collection_address=data['collection_address'],
         owner_address=data['owner_address'],
         content=data['content'],
+        code_hash=data.get('code_hash'),
     )
 
 

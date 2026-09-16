@@ -1,0 +1,99 @@
+# gasless / Gasless jetton transfer by a wallet v5
+# note: named from the v1.3-only yaml; trace file is untracked and no longer in the working tree, and it has no action golden
+# trace: tF9rJ18uKOZuwJaQ0z2ZB2ln0OcFMEa0fy6rYxMgQNY=
+actions:
+  - type: call_contract
+    anchor: call_contract#73696e74@100905990000004
+    id: S1yEb9vINCmY97rNmcHCdPmGIlqYJ5CljYeDncoQ/IM=
+    success: true
+    source: 0:147CB558F69A4D95D99F76A6D600E839172EECBF4C06D1A2695F430274FA956F
+    source_secondary: null
+    destination: 0:16C2A925BAEEA63544C029E30A88868D1C0372E21DFD3BDB06707CED83733FEE
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: 25583249
+    opcode: 0x73696e74
+    tx_hashes:
+      - EirR598TMc1bzh+VfytIF+bHNcEnZ2tcFifWUq8nNt0=
+      - tF9rJ18uKOZuwJaQ0z2ZB2ln0OcFMEa0fy6rYxMgQNY=
+    accounts:
+      - 0:147CB558F69A4D95D99F76A6D600E839172EECBF4C06D1A2695F430274FA956F
+      - 0:16C2A925BAEEA63544C029E30A88868D1C0372E21DFD3BDB06707CED83733FEE
+    start_lt: 100905990000004
+    end_lt: 100905990000005
+    start_utime: 1788380968
+    end_utime: 1788380968
+    mc_seqno_end: 90192469
+  - type: gasless_request
+    anchor: gasless_request@100905990000004
+    id: dQSOwTkDA/8wH/TeVfe7vmQTrKAbyT7JKZiRbAl9qHg=
+    success: true
+    source: 0:147CB558F69A4D95D99F76A6D600E839172EECBF4C06D1A2695F430274FA956F
+    source_secondary: null
+    destination: 0:16C2A925BAEEA63544C029E30A88868D1C0372E21DFD3BDB06707CED83733FEE
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: 25583249
+    opcode: null
+    tx_hashes:
+      - EirR598TMc1bzh+VfytIF+bHNcEnZ2tcFifWUq8nNt0=
+      - tF9rJ18uKOZuwJaQ0z2ZB2ln0OcFMEa0fy6rYxMgQNY=
+    accounts:
+      - 0:147CB558F69A4D95D99F76A6D600E839172EECBF4C06D1A2695F430274FA956F
+      - 0:16C2A925BAEEA63544C029E30A88868D1C0372E21DFD3BDB06707CED83733FEE
+    start_lt: 100905990000004
+    end_lt: 100905990000005
+    start_utime: 1788380968
+    end_utime: 1788380968
+    mc_seqno_end: 90192469
+  - type: jetton_transfer
+    matcher: jetton_transfer
+    anchor: jetton_transfer@100905990000006
+    id: sOyNIEgTzUdJkftksEQMqspgI9IxemYnp3uD3Mc6Xbo=
+    success: true
+    source: 0:16C2A925BAEEA63544C029E30A88868D1C0372E21DFD3BDB06707CED83733FEE
+    source_secondary: 0:9D658EF06372815EBB62D02E6D338D1352275C0F962DF1E989E4C7866E0899C7
+    destination: 0:79B40414D7B862E6B9C2852A683739A650C317C1AD4C014BC1AF986B27356883
+    destination_secondary: 0:1D4383DB3209C1AEFE5DCDD8DA04148FEE5C42C66707CEFBB14F2ECEDB3B70BE
+    asset: 0:B113A994B5024A16719F69139328EB759596C38A25F59028B146FECDC3621DFE
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: 2093172
+    value: null
+    opcode: null
+    extra:
+      parent_gasless_action: dQSOwTkDA/8wH/TeVfe7vmQTrKAbyT7JKZiRbAl9qHg=
+    jetton_transfer_data:
+      comment: null
+      custom_payload: null
+      forward_amount: 1
+      forward_payload: null
+      is_encrypted_comment: false
+      query_id: 0
+      response_destination: 0:7AE5056C3FD9406F9BBBE7C7089CD4C40801D9075486CBEDB7CE12DF119EACF1
+    tx_hashes:
+      - EirR598TMc1bzh+VfytIF+bHNcEnZ2tcFifWUq8nNt0=
+      - VOPzwq929KtEgKh5PUn2ctMW+AfD5Zk4ilKY0aBXqEM=
+      - Wfm3FTMB+jQdm/Yu7AiOE344AELkDxBv/v9MEzUDI5Y=
+      - sobQiD5BA1rr1UNEqk6UCVmgoSS5HJI+65QfRbaD9NQ=
+      - zNO9LmZWdfUnaWMD7nW/nqjSU34miMOgv/TBLNo1Q4U=
+    accounts:
+      - 0:16C2A925BAEEA63544C029E30A88868D1C0372E21DFD3BDB06707CED83733FEE
+      - 0:1D4383DB3209C1AEFE5DCDD8DA04148FEE5C42C66707CEFBB14F2ECEDB3B70BE
+      - 0:79B40414D7B862E6B9C2852A683739A650C317C1AD4C014BC1AF986B27356883
+      - 0:7AE5056C3FD9406F9BBBE7C7089CD4C40801D9075486CBEDB7CE12DF119EACF1
+      - 0:9D658EF06372815EBB62D02E6D338D1352275C0F962DF1E989E4C7866E0899C7
+    start_lt: 100905990000006
+    end_lt: 100905990000012
+    start_utime: 1788380968
+    end_utime: 1788380968
+    mc_seqno_end: 90192469

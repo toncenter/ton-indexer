@@ -1,0 +1,54 @@
+# nft / nft transfer classified as call_contract (ab-gap)
+# trace: 5b-KXr82wUSLIHPSHkFaW791xTyN0Rmu5h0mFm_4IdQ=
+actions:
+  - type: nft_transfer
+    matcher: telegram_nft_purchase
+    anchor: nft_transfer@93508041000001
+    id: eNv4Xi2Zs70u66hW5zw5D5HOAsGUI7J8l/HkxmwKQUk=
+    success: true
+    source: null
+    source_secondary: null
+    destination: 0:C07EBAC37124E575E48E2185906FACE4F6FF7EE19B8A6F34991ECA96B4AEBDBC
+    destination_secondary: null
+    asset: 0:80D78A35F955A14B679FAA887FF4CD5BFC0F43B4A4EEA2A7E6927F3701B273C2
+    asset_secondary: 0:259DAD04E640488B70276492D9697C09D39667D15D9C51A4532811073456FB76
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: null
+    opcode: null
+    nft_listing_data:
+      marketplace_fee_address: 0:042387986C394CA4A98D96E25CAF50BAF8936B464EDDCD817FFA5E655F8A6E02
+      royalty_address: 0:408DA3B28B6C065A593E10391269BAAA9C5F8CAEBC0C69D9F0AABBAB2A99256B
+    nft_transfer_data:
+      custom_payload: null
+      forward_amount: null
+      forward_payload: cellhash:ADDD1FEDBC3536A49C71B79F3E2553C6DC1496D4972B1BC7AFC96064E8BC2596
+      is_purchase: true
+      marketplace: fragment
+      marketplace_address: null
+      nft_item_index: "80687116043475847273716908132340291189938499005198668280813625388822962444673"
+      payout_amount: 8496523073
+      payout_comment: null
+      payout_comment_encoded: null
+      payout_comment_encrypted: null
+      price: 10000000000
+      query_id: 93508041000001
+      real_prev_owner: null
+      response_destination: null
+      royalty_amount: 499933333
+    tx_hashes:
+      - 1whoASFA2pvkagxs2SOntt4XwO8HNALixgIX6ZSZs/o=
+      - 5b+KXr82wUSLIHPSHkFaW791xTyN0Rmu5h0mFm/4IdQ=
+      - AGWc7WLT1NKuICutt9x4dhIWx73DMbl5iv2ebSX6yqA=
+      - oJNqSpS2sBjCUFq1PFiq3DPFL4F+WORY2cKuA9aCieU=
+    accounts:
+      - 0:042387986C394CA4A98D96E25CAF50BAF8936B464EDDCD817FFA5E655F8A6E02
+      - 0:259DAD04E640488B70276492D9697C09D39667D15D9C51A4532811073456FB76
+      - 0:408DA3B28B6C065A593E10391269BAAA9C5F8CAEBC0C69D9F0AABBAB2A99256B
+      - 0:C07EBAC37124E575E48E2185906FACE4F6FF7EE19B8A6F34991ECA96B4AEBDBC
+    start_lt: 93508041000001
+    end_lt: 93508041000005
+    start_utime: 1785414304
+    end_utime: 1785414304
+    mc_seqno_end: 82931282

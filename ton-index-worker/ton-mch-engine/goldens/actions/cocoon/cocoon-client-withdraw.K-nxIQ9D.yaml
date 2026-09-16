@@ -1,0 +1,153 @@
+# cocoon / Cocoon Client Withdraw
+# trace: K-nxIQ9D2cc51j_BfU2nurITZia3POGyoZkiSeP9qqI=
+actions:
+  - type: call_contract
+    anchor: call_contract#2565934c@40912532000003
+    id: lFgeZtDKf1gTaMrV8B91ioo5CdaGlX+rCReh2N7yDn4=
+    success: true
+    source: 0:54BBB810AB6BA5D74F78B71F0815291EA9B84C3AC85D87F11BE5079B6AEB267E
+    source_secondary: null
+    destination: 0:F88EACAE633FAAFBBAF40F843BA54977C77D573E8582337244A5F745B84F8F2B
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: 687513600
+    opcode: 0x2565934c
+    tx_hashes:
+      - bWC1oqdul0RWQPgOgrEClBvZcXni64euGgR8P/+K0mU=
+      - jtIZTmh64YnhJlWXicBmRPR4ajVIdSFc2MLS5qnRKdc=
+    accounts:
+      - 0:54BBB810AB6BA5D74F78B71F0815291EA9B84C3AC85D87F11BE5079B6AEB267E
+      - 0:F88EACAE633FAAFBBAF40F843BA54977C77D573E8582337244A5F745B84F8F2B
+    start_lt: 40912532000003
+    end_lt: 40912537000002
+    start_utime: 1762259127
+    end_utime: 1762259136
+    mc_seqno_end: 37128881
+    parent_action_id: k01za9vRui9OPcX7juseNo/qFPsXZKPMBb778Rsq6z0=
+    ancestor_type:
+      - cocoon_client_withdraw
+  - type: call_contract
+    anchor: call_contract#65448ff4@40912527000002
+    id: Pr570LN4QtyvwKPJc/EzQqGeH7j2tbmiP+XfSBtQ4bk=
+    success: true
+    source: 0:38B9DB6796941103B4FF1CB3DC8E312FC936A226DF2A1C3FB7ADC2ED2459EBCF
+    source_secondary: null
+    destination: 0:54BBB810AB6BA5D74F78B71F0815291EA9B84C3AC85D87F11BE5079B6AEB267E
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: 694226800
+    opcode: 0x65448ff4
+    tx_hashes:
+      - TAdPv0ZhsedBLo0ujNAwj7ZD8efj2COzmnyCgbvoC5A=
+      - bWC1oqdul0RWQPgOgrEClBvZcXni64euGgR8P/+K0mU=
+    accounts:
+      - 0:38B9DB6796941103B4FF1CB3DC8E312FC936A226DF2A1C3FB7ADC2ED2459EBCF
+      - 0:54BBB810AB6BA5D74F78B71F0815291EA9B84C3AC85D87F11BE5079B6AEB267E
+    start_lt: 40912527000002
+    end_lt: 40912532000001
+    start_utime: 1762259117
+    end_utime: 1762259127
+    mc_seqno_end: 37128877
+    parent_action_id: k01za9vRui9OPcX7juseNo/qFPsXZKPMBb778Rsq6z0=
+    ancestor_type:
+      - cocoon_client_withdraw
+  - type: call_contract
+    anchor: call_contract#c59a7cd3@40912532000002
+    id: vGw6NA6H3fa7yuJE/YKJiZ+kVDOrTb0XJTZ07LK5Ctw=
+    success: false
+    source: 0:54BBB810AB6BA5D74F78B71F0815291EA9B84C3AC85D87F11BE5079B6AEB267E
+    source_secondary: null
+    destination: 0:F88EACAE633FAAFBBAF40F843BA54977C77D573E8582337244A5F745B84F8F2B
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: 999985640
+    opcode: 0xc59a7cd3
+    tx_hashes:
+      - AKBa6rWIVZHFZIKEAJ51MUpVGV2sXu/EMAfT1l4scT4=
+      - bWC1oqdul0RWQPgOgrEClBvZcXni64euGgR8P/+K0mU=
+    accounts:
+      - 0:54BBB810AB6BA5D74F78B71F0815291EA9B84C3AC85D87F11BE5079B6AEB267E
+      - 0:F88EACAE633FAAFBBAF40F843BA54977C77D573E8582337244A5F745B84F8F2B
+    start_lt: 40912532000002
+    end_lt: 40912537000001
+    start_utime: 1762259127
+    end_utime: 1762259136
+    mc_seqno_end: 37128881
+    parent_action_id: k01za9vRui9OPcX7juseNo/qFPsXZKPMBb778Rsq6z0=
+    ancestor_type:
+      - cocoon_client_withdraw
+  - type: call_contract
+    anchor: call_contract#da068e78@40912524000002
+    id: at64EuyERKEY/ZNYz//hdCtj2mOGQk/hGmYfFA3ZXfY=
+    success: true
+    source: 0:F88EACAE633FAAFBBAF40F843BA54977C77D573E8582337244A5F745B84F8F2B
+    source_secondary: null
+    destination: 0:38B9DB6796941103B4FF1CB3DC8E312FC936A226DF2A1C3FB7ADC2ED2459EBCF
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: 699414800
+    opcode: 0xda068e78
+    tx_hashes:
+      - K+nxIQ9D2cc51j/BfU2nurITZia3POGyoZkiSeP9qqI=
+      - TAdPv0ZhsedBLo0ujNAwj7ZD8efj2COzmnyCgbvoC5A=
+    accounts:
+      - 0:38B9DB6796941103B4FF1CB3DC8E312FC936A226DF2A1C3FB7ADC2ED2459EBCF
+      - 0:F88EACAE633FAAFBBAF40F843BA54977C77D573E8582337244A5F745B84F8F2B
+    start_lt: 40912524000002
+    end_lt: 40912527000001
+    start_utime: 1762259111
+    end_utime: 1762259117
+    mc_seqno_end: 37128873
+    parent_action_id: k01za9vRui9OPcX7juseNo/qFPsXZKPMBb778Rsq6z0=
+    ancestor_type:
+      - cocoon_client_withdraw
+  - type: cocoon_client_withdraw
+    matcher: cocoon_client_withdraw
+    anchor: cocoon_client_withdraw@40912524000002
+    id: k01za9vRui9OPcX7juseNo/qFPsXZKPMBb778Rsq6z0=
+    success: true
+    source: 0:F88EACAE633FAAFBBAF40F843BA54977C77D573E8582337244A5F745B84F8F2B
+    source_secondary: null
+    destination: 0:38B9DB6796941103B4FF1CB3DC8E312FC936A226DF2A1C3FB7ADC2ED2459EBCF
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: 999985640
+    value: null
+    opcode: null
+    cocoon_client_withdraw_data:
+      query_id: 374934315680212459
+      withdraw_amount: 999985640
+    tx_hashes:
+      - AKBa6rWIVZHFZIKEAJ51MUpVGV2sXu/EMAfT1l4scT4=
+      - K+nxIQ9D2cc51j/BfU2nurITZia3POGyoZkiSeP9qqI=
+      - TAdPv0ZhsedBLo0ujNAwj7ZD8efj2COzmnyCgbvoC5A=
+      - bWC1oqdul0RWQPgOgrEClBvZcXni64euGgR8P/+K0mU=
+      - jtIZTmh64YnhJlWXicBmRPR4ajVIdSFc2MLS5qnRKdc=
+    accounts:
+      - 0:38B9DB6796941103B4FF1CB3DC8E312FC936A226DF2A1C3FB7ADC2ED2459EBCF
+      - 0:54BBB810AB6BA5D74F78B71F0815291EA9B84C3AC85D87F11BE5079B6AEB267E
+      - 0:F88EACAE633FAAFBBAF40F843BA54977C77D573E8582337244A5F745B84F8F2B
+    start_lt: 40912524000002
+    end_lt: 40912537000002
+    start_utime: 1762259111
+    end_utime: 1762259136
+    mc_seqno_end: 37128881

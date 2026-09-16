@@ -1,0 +1,1159 @@
+{
+ "fixtures": {
+  "-02fS1r1ED0E0KV9ZwwRfYp3HBDPOiZIFgUaXav1I-I=": {
+   "group": "dns",
+   "name": "DNS purchase 1",
+   "slug": "dns-purchase-1"
+  },
+  "-0M6pWgvSrqN06gIYbqrG2UbMCBKwiSuhR3-mZzRCS0=": {
+   "group": "dedust-liquidities",
+   "name": "Merged deposit, jetton excess",
+   "slug": "merged-deposit-jetton-excess"
+  },
+  "-5SK3b3jO5MhZCqc6AMK931wBbvGGZcZPM0AruldKXE=": {
+   "group": "cocoon",
+   "name": "Cocoon Register Proxy",
+   "slug": "cocoon-register-proxy"
+  },
+  "-OII6CIrWH76IRnP252ExZ3hWGxs3hUjm1JGCFLF3cU=": {
+   "group": "jvault",
+   "name": "Stake (full referral call chain)",
+   "slug": "stake-full-referral-call-chain"
+  },
+  "-mNf-yQ8il4ON2rvCXdJwa8-3Ty_3pcoemEtMXHRn4I=": {
+   "group": "dedust-liquidities",
+   "name": "DeDust v2 withdraw refunded to the owner",
+   "slug": "dedust-v2-withdraw-refunded-to-the-owner",
+   "note": "is_refund=true, LP tokens returned; identical withdraw payload to the second refund sample"
+  },
+  "0--IKFmIbKevaBKSEvai2YCm47_coyO30KO1VyYaXvI=": {
+   "group": "tonco",
+   "name": "Tonco deposit liquidity one side TON (strange case)",
+   "slug": "tonco-deposit-liquidity-one-side-ton-strange-case"
+  },
+  "005toDO4Q3z9WP4LSihK9uVPDH-ygXgGSEDNnT9h3oc=": {
+   "group": "cocoon",
+   "name": "Cocoon Proxy Charge",
+   "slug": "cocoon-proxy-charge"
+  },
+  "00BTqIs6w2qgKXyjfUIwS1WMPbYzWvOn0P16eku_O-4=": {
+   "group": "stonfi-v2-swaps",
+   "name": "Stonfi v2 Jetton -> Jetton multirouter",
+   "slug": "stonfi-v2-jetton-to-jetton-multirouter"
+  },
+  "00vuJ5v4lkaAELRDh9hh7LyCwiLfpHUpiudpNOiHdnA=": {
+   "group": "jvault",
+   "name": "Stake (simple)",
+   "slug": "stake-simple"
+  },
+  "00wjHu7i1KD7Rhcr4Rsg7RSJhKtygBOfoJ2eo6B2Rt4=": {
+   "group": "coffee",
+   "name": "Coffee staking deposit (just another)",
+   "slug": "coffee-staking-deposit-just-another"
+  },
+  "013-itRDy37A4DNurC-pFIfagpvLEqH3q_7NU5IGDic=": {
+   "group": "coffee",
+   "name": "Coffee staking claim rewards",
+   "slug": "coffee-staking-claim-rewards"
+  },
+  "01SkGWslZ8iEn3bXyb0ga5dWB5gRzw8zWAuwfUI4ZMA=": {
+   "group": "stonfi-swaps",
+   "name": "Stonfi Jetton -> Ton (receiver != sender)",
+   "slug": "stonfi-jetton-to-ton-receiver-not-equal-sender"
+  },
+  "01yfeTlzIHDqWZwz-PJTRADD3nDv5LWynHMGsnPZGJU=": {
+   "group": "layerzero",
+   "name": "LayerZero send msg to tron",
+   "slug": "layerzero-send-msg-to-tron"
+  },
+  "02KO-3RSDiakxzyMbk2MxKMsVsAgtGM78n1aWdxqFm4=": {
+   "group": "evaa",
+   "name": "Jetton withdrawal(locked)",
+   "slug": "jetton-withdrawal-locked"
+  },
+  "02N57kDv6SOZ0OaS-7TnLwTtvm5xt12EM7aaLOl5QKk=": {
+   "group": "evaa",
+   "name": "Jetton withdrawal (withdraw_not_collateralized_excess)",
+   "slug": "jetton-withdrawal-withdraw-not-collateralized-excess"
+  },
+  "02TsVcC_MOggAZvHHBITbHCvzAt_hCq5WVAiKcZFMno=": {
+   "group": "tonco",
+   "name": "Tonco swap TON -> USDT failed",
+   "slug": "tonco-swap-ton-to-usdt-failed"
+  },
+  "02ZsangSM2tiw_-vYumdC8Kde09o3-7qnJHLIgWrv4s=": {
+   "group": "cocoon",
+   "name": "Cocoon Client Top Up",
+   "slug": "cocoon-client-top-up"
+  },
+  "02kEPzkQVCmJ-brMD7TNz88HwOCzidWbXiKF56lWPJs=": {
+   "group": "jvault",
+   "name": "JVault stake entered by jetton transfer",
+   "slug": "jvault-stake-entered-by-jetton-transfer"
+  },
+  "02lXjywHnaBuI4CGq55IpcuxA0Q5QMOlYsoJwii4SNI=": {
+   "group": "jvault",
+   "name": "Stake (partial referral updates)",
+   "slug": "stake-partial-referral-updates"
+  },
+  "03RZCW7mu3eJp-FWifVzKsRHafUrqQNu4E6YwZxvXJ0=": {
+   "group": "vesting",
+   "name": "Vesting send message",
+   "slug": "vesting-send-message"
+  },
+  "03XZQ1CkN3nBPi4IICznU8BWFghrneCV17qcdq33BrA=": {
+   "group": "vesting",
+   "name": "Vesting add whitelist",
+   "slug": "vesting-add-whitelist"
+  },
+  "03dhjTFKdEV_03M0b0aDfZvdlWxVoUutqXaXRyYG9nw=": {
+   "group": "tonco",
+   "name": "Tonco swap TON -> KUKU",
+   "slug": "tonco-swap-ton-to-kuku"
+  },
+  "0CHtYFyuAUpk75hWntPKTfF2qcVEfOXnt4BCzfzXD2w=": {
+   "group": "evaa",
+   "name": "Ton withdrawal (no funds)",
+   "slug": "ton-withdrawal-no-funds"
+  },
+  "0DBVOFKwlN16c0lzUq8T55Hzca_Yxuc52mDgXW-xBYU=": {
+   "group": "evaa",
+   "name": "Ton withdrawal (withdraw_missing_prices_excess)",
+   "slug": "ton-withdrawal-withdraw-missing-prices-excess"
+  },
+  "0GW2kNF4nRhw5xA3b5E35-EhF9H25H3Nvm5MJJo2VD0=": {
+   "group": "tonco",
+   "name": "Tonco deposit liquidity (normal)",
+   "slug": "tonco-deposit-liquidity-normal"
+  },
+  "0HIS6vA7Hk0SdwNB5P2i0zovRDZLpWyQBzpBsJAX1sg=": {
+   "group": "coffee",
+   "name": "Coffee staking claim rewards (another)",
+   "slug": "coffee-staking-claim-rewards-another"
+  },
+  "0IpCwGaMBpo9nqnjKOiBAnHhawXzcrpRHErKz6LJUFM=": {
+   "group": "layerzero",
+   "name": "LayerZero dvn verify",
+   "slug": "layerzero-dvn-verify"
+  },
+  "0JSRYHwEQ6P5aTAh8p8_YgJS5LZlapbc_W4VTjSrshk=": {
+   "group": "tonco",
+   "name": "Tonco withdraw liquidity",
+   "slug": "tonco-withdraw-liquidity"
+  },
+  "0Jzh0p9LKCaM7xi4yiGWOJEnn9WZ8xKUkTzY30DDQ3Q=": {
+   "group": "tonco",
+   "name": "Tonco withdraw liquidity (one side)",
+   "slug": "tonco-withdraw-liquidity-one-side"
+  },
+  "0_AQj88LwG2cEpyjulN9yyJWzx8_ymJMizzoR_FfDzU=": {
+   "group": "layerzero",
+   "name": "LayerZero send some test msg from ton to ton lol",
+   "slug": "layerzero-send-some-test-msg-from-ton-to-ton-lol"
+  },
+  "0_JGy9zypUz4Br8zqCwx12YnRM-WxcP2MDeYHHDkdwI=": {
+   "group": "tonco",
+   "name": "Tonco deposit liquidity two sides jetton",
+   "slug": "tonco-deposit-liquidity-two-sides-jetton"
+  },
+  "0_cGqTo2WPRltXjqtcPZX6rnDw6epyzggddM4XvTv8Y=": {
+   "group": "dns",
+   "name": "DNS purchase 3",
+   "slug": "dns-purchase-3"
+  },
+  "0aN2lM_7jGXPgg4Dg4wCRqm2ClpeVUWmjG2lzOOfyZw=": {
+   "group": "dns",
+   "name": "DNS purchase 2",
+   "slug": "dns-purchase-2"
+  },
+  "0iATkyOyvTvNjrVp0CbQo4RDIo7wljsohpVizWVHE1A=": {
+   "group": "dedust-liquidities",
+   "name": "DeDust V2 failed swap TON-in (slippage refund)",
+   "slug": "dedust-v2-failed-swap-ton-in-slippage-refund"
+  },
+  "0uFDUicjsZVS8Ofe2OAZLO0FPks-g5LFuGhWYYYh2I0=": {
+   "group": "jvault",
+   "name": "Unstake request",
+   "slug": "unstake-request"
+  },
+  "0vFe6hsNR4q75AjTQnOm7B1eoX9ZUDoNrsxeil6PY7E=": {
+   "group": "layerzero",
+   "name": "LayerZero commit packet",
+   "slug": "layerzero-commit-packet"
+  },
+  "11WhhXiPhXuLm5C85XGw4WYY8BDn6Xnee-nPq-W0tkA=": {
+   "group": "coffee",
+   "name": "Coffee mev protect hold funds (TON)",
+   "slug": "coffee-mev-protect-hold-funds-ton"
+  },
+  "12Jtky5tD9ra9tUPUSSGXkMRySu85MpmdVFImk3jCRA=": {
+   "group": "layerzero",
+   "name": "LayerZero commit packet from eth to ton",
+   "slug": "layerzero-commit-packet-from-eth-to-ton"
+  },
+  "1Ds6qKAk8J_Im5l6iszbO2Rt3Iq1FeIL3AyFxoyFfUY=": {
+   "group": "multisig",
+   "name": "Multisig create and immediate execute",
+   "slug": "multisig-create-and-immediate-execute"
+  },
+  "1DtgStJMB5JNE8vxQD2SYG1E4DO3a6nsUQlA2y-y_E4=": {
+   "group": "nominator",
+   "name": "Deposit success (1Dtg)",
+   "slug": "deposit-success-1dtg"
+  },
+  "1KbovH9MSuusbYQaA8IFllpelQVkRcrcC9A8MUVnZ3w=": {
+   "group": "coffee",
+   "name": "Coffee deposit liquidity TON + ARBUZ (with vault excess)",
+   "slug": "coffee-deposit-liquidity-ton-plus-arbuz-with-vault-excess"
+  },
+  "1LzTIRFPDw1CixKXM9wxSE5zxTg7okb2kstnP3GQhNU=": {
+   "group": "cocoon",
+   "name": "Cocoon Worker Payout",
+   "slug": "cocoon-worker-payout"
+  },
+  "1NL0tCMrxYE_fu-V-gJvUR_ioFsSPT7HVFGWZIB627A=": {
+   "group": "vesting",
+   "name": "Vesting send message dropped",
+   "slug": "vesting-send-message-dropped"
+  },
+  "1OrxQbhicqml435pt0GPrXePkkdTGXRMlNJ4q67UZ-M=": {
+   "group": "tgbtc",
+   "name": "tgBTC mint (another)",
+   "slug": "tgbtc-mint-another"
+  },
+  "1Q2c26rRKh2pbjDEqA1yv3M5dGKwP2DdDcXg0_qbtSU=": {
+   "group": "dedust-liquidities",
+   "name": "DeDust V2 withdraw jetton/jetton",
+   "slug": "dedust-v2-withdraw-jetton-jetton"
+  },
+  "1TUCte7dcNAyZaScButmzKI1pzRqxafdUDclpanNNe8=": {
+   "group": "coffee",
+   "name": "Coffee create pool creator (only create)",
+   "slug": "coffee-create-pool-creator-only-create"
+  },
+  "1VcQkyvd9V-HG0lNytSst83ap9KP46eoVvLvQi7wsx0=": {
+   "group": "coffee",
+   "name": "Coffee create pool (full and simple)",
+   "slug": "coffee-create-pool-full-and-simple"
+  },
+  "1XI-Ow6YCL6VR21r5rojRYf_G7dwTdv5paVEhJolZB4=": {
+   "group": "tonco",
+   "name": "Tonco withdraw liquidity (two jettons)",
+   "slug": "tonco-withdraw-liquidity-two-jettons"
+  },
+  "1fOLTYG-BKmjzSDbL1SIsXYO2lizqWyluPgmgfAm2Wg=": {
+   "group": "dedust-liquidities",
+   "name": "DeDust V2 failed swap jetton-in (slippage refund)",
+   "slug": "dedust-v2-failed-swap-jetton-in-slippage-refund"
+  },
+  "1gnDaOa5Fh8ZglQELMgsywJaevp2NfPSDg5AmW8jNP8=": {
+   "group": "cocoon",
+   "name": "Cocoon Worker Last Payout",
+   "slug": "cocoon-worker-last-payout"
+  },
+  "1lRaVzUa7EjqG228WiDTg_2b_HSGlO5apCmj2JEAHxA=": {
+   "group": "layerzero",
+   "name": "LayerZero receive",
+   "slug": "layerzero-receive"
+  },
+  "1qD3P7k62Wscr4J92DXfRmsFUoXsd631PVCjJDuZPi0=": {
+   "group": "tgbtc",
+   "name": "tgBTC mint (another very long)",
+   "slug": "tgbtc-mint-another-very-long"
+  },
+  "1rMRvEYh8TtCNox3P4VG6wcGLWX4YrU7jc55iqxzo6c=": {
+   "group": "tgbtc",
+   "name": "tgBTC mint (very long)",
+   "slug": "tgbtc-mint-very-long"
+  },
+  "2UJH7bBZDI4vmFG7O7HgraaQQF0BfjS2Eg5JaY62_Zo=": {
+   "group": "dedust-swaps",
+   "name": "dedust v2 swap (ab-gap)",
+   "slug": "dedust-v2-swap-ab-gap"
+  },
+  "2c8XSjnlpuxjOu3ixrdO0m_W1fiikVWZQB6h5sJe7U4=": {
+   "group": "cocoon",
+   "name": "Cocoon Proxy Payout",
+   "slug": "cocoon-proxy-payout"
+  },
+  "2gDW04F5Zve-t6WkfZR2jOgM15IDtYfVkIbuRTvrzT8=": {
+   "group": "layerzero",
+   "name": "LayerZero receive another",
+   "slug": "layerzero-receive-another"
+  },
+  "2xripwtdxwKPdHABREASj6enBvKBTwsOVJx6YEZfI64=": {
+   "group": "stonfi-swaps",
+   "name": "pton stonfi v1 swap (ab-gap)",
+   "slug": "pton-stonfi-v1-swap-ab-gap"
+  },
+  "2yH8U5KFpFp_okVlTrth4pBuiIr8p7QKjJSImz2DTrI=": {
+   "group": "tgbtc",
+   "name": "tgBTC burn (wierd schema)",
+   "slug": "tgbtc-burn-wierd-schema"
+  },
+  "35MtsOa0weeyUpH8_9pk58WhIrOuyB6ycEH9lY-KhUY=": {
+   "group": "tgbtc",
+   "name": "tgBTC burn (very old wierd and crippled)",
+   "slug": "tgbtc-burn-very-old-wierd-and-crippled"
+  },
+  "3UJokH6MJ8TSK3Get0x_n975z1gfeALOnnhQYyZ8t-c=": {
+   "group": "cocoon",
+   "name": "Cocoon Unregister Proxy",
+   "slug": "cocoon-unregister-proxy"
+  },
+  "3gHUMt8h1SyaO7pMTIWZ3d0adXpyHbvb7j-0RZQFjiU=": {
+   "group": "jvault",
+   "name": "Stake (failed, cancellation)",
+   "slug": "stake-failed-cancellation"
+  },
+  "3uecEX5TvThuugPaMO4MqlOxGGHRQpNRErwAP7fL7J4=": {
+   "group": "coffee",
+   "name": "Coffee create pool (full + notification at the end)",
+   "slug": "coffee-create-pool-full-plus-notification-at-the-end"
+  },
+  "4AAiT_8jTvxhujXOywe0zZv1sylSlAwnZV9stEG3gnM=": {
+   "group": "nft",
+   "name": "teleitem start auction (ab-gap)",
+   "slug": "teleitem-start-auction-ab-gap"
+  },
+  "4PNVGQkZJUWAiiPq3rIekA9O5-HLaXmYmP30iixAefA=": {
+   "group": "stonfi-swaps",
+   "name": "Stonfi Jetton -> Ton (receiver == sender)",
+   "slug": "stonfi-jetton-to-ton-receiver-equal-sender"
+  },
+  "4QljGlOz1j4I-Upxyt8Tsp8bRXoS05bP9gOnBCQQRj8=": {
+   "group": "jetton-mints",
+   "name": "Jetton mint(0x642b7d07)",
+   "slug": "jetton-mint-0x642b7d07"
+  },
+  "4SLKuSOof3oAYQV1RKIMHgSdqKnTFqz4bn4wMlzZHFk=": {
+   "group": "jvault",
+   "name": "Unstake request (failed referral)",
+   "slug": "unstake-request-failed-referral"
+  },
+  "4Zs27oXglTqSa90MBUaUOxgYCXpLG7JLnLQKw+CGiws=": {
+   "group": "tonco",
+   "name": "Tonco deploy pools",
+   "slug": "tonco-deploy-pools"
+  },
+  "4b5NvcGM3iow6o3Qc9ATpQLp9PlPv1Y62XvPTcbzUkQ=": {
+   "group": "nominator",
+   "name": "Withdraw request, one payout consumed (4b5N)",
+   "slug": "withdraw-request-one-payout-consumed-4b5n"
+  },
+  "4i76tpq_x8MmmPIwv84usk0l9e1pRcCKR3ydyQfzZuU=": {
+   "group": "dedust-liquidities",
+   "name": "DeDust V2 claim reward jetton",
+   "slug": "dedust-v2-claim-reward-jetton"
+  },
+  "59b4F0GX09WQKfMi2v09JdqqO1eab4fH8YPSrGqujnM=": {
+   "group": "nominator",
+   "name": "Withdraw request, zero payouts (59b4)",
+   "slug": "withdraw-request-zero-payouts-59b4"
+  },
+  "5B6Ex8kvs5Qb8lcTKPbFhlz2yhVv7aUIvkvngzWK6dI=": {
+   "group": "cocoon",
+   "name": "Cocoon Client Register and Change Secret Hash",
+   "slug": "cocoon-client-register-and-change-secret-hash"
+  },
+  "5b-KXr82wUSLIHPSHkFaW791xTyN0Rmu5h0mFm_4IdQ=": {
+   "group": "nft",
+   "name": "nft transfer classified as call_contract (ab-gap)",
+   "slug": "nft-transfer-classified-as-call-contract-ab-gap"
+  },
+  "5rfO7FVucVaVGDuEtOK6pW7TN7iYvLdSQ0QoVAYRPXs=": {
+   "group": "dedust-liquidities",
+   "name": "DeDust v2 deposit of two jettons, final leg",
+   "slug": "dedust-v2-deposit-of-two-jettons-final-leg"
+  },
+  "62Oe2uSj1TW6uIN-hfzhSE8JpZUn5S5pZiWFIRhgldY=": {
+   "group": "jvault",
+   "name": "Unstake (with referrals)",
+   "slug": "unstake-with-referrals"
+  },
+  "7-PBki6rgQj5bmiG-BxVXPDpkbSM1TucbB83OFr2CC4=": {
+   "group": "nominator",
+   "name": "Deposit success (7-PB)",
+   "slug": "deposit-success-7-pb"
+  },
+  "7RgomgmV3Hc3KQTnkKtSOzAGW7v61-cacwv5vouskSA=": {
+   "group": "tonstakers",
+   "name": "TS Stake deposit (live, tsTON wallet deployed by the transfer)",
+   "slug": "ts-stake-deposit-live-tston-wallet-deployed-by-the-transfer"
+  },
+  "7bcODUs7IVJBjdApVMCJyUKoztjS_k4msfHyYOwt3qk=": {
+   "group": "dedust-swaps",
+   "name": "DeDust hybrid swap jetton to TON with extra payout legs",
+   "slug": "dedust-hybrid-swap-jetton-to-ton-with-extra-payout-legs",
+   "note": "hybrid DeDust spec fixture; three standalone jetton transfers accompany the single swap"
+  },
+  "7rGTg9ycXwQQ7130kmtsTtVLC1pOewRPotGNjkuXkms=": {
+   "group": "dedust-liquidities",
+   "name": "DeDust v2 withdraw request with no protocol action",
+   "slug": "dedust-v2-withdraw-request-with-no-protocol-action",
+   "note": "Withdraw 0x20b5ef89 and WithdrawLiquidity 0xbc1531a9 present, nothing matches"
+  },
+  "846TnKmLxd4Otdbr4cMnvoqFJmzDT09IFTrGC9bpmes=": {
+   "group": "dedust-liquidities",
+   "name": "DeDust V2 claim position fees",
+   "slug": "dedust-v2-claim-position-fees"
+  },
+  "8AaLEkhKD60VBcYev2St_S8O0n3E6pIJDFzA14GfDPE=": {
+   "group": "dedust-liquidities",
+   "name": "DeDust v2 payout chain with no protocol action",
+   "slug": "dedust-v2-payout-chain-with-no-protocol-action",
+   "note": "opcodes 0x3db5f13a, 0x0d299e12 and DeDust payout 0x3216ca09 are present but no matcher fires"
+  },
+  "8ioobbcdHm4jq4mKPqgCBQAiXz-DfiRKz8u6D48Tm2M=": {
+   "group": "dedust-liquidities",
+   "name": "DeDust V2 deposit jetton/TON with refund",
+   "slug": "dedust-v2-deposit-jetton-ton-with-refund"
+  },
+  "9ASdFVnxka3wXQIY-czQvwSDLxTxHxbloVgZUhWAH-4=": {
+   "group": "cocoon",
+   "name": "Cocoon Client Increase Stake",
+   "slug": "cocoon-client-increase-stake"
+  },
+  "9KOVZ1QzXhyT1yO6OsUTvBwkV9pZoG2YVBkCCKN6zi0=": {
+   "group": "dns",
+   "name": "DNS release 1",
+   "slug": "dns-release-1"
+  },
+  "9kXcFtmZgBDVZgMv14V-vJ2qY4oDWgzV1HP7w1nYaew=": {
+   "group": "subscriptions",
+   "name": "Subscribe 1",
+   "slug": "subscribe-1"
+  },
+  "9ncN7iBzDJswNbex9fiAbG37vXl9qu6HOrLPe16yp0w=": {
+   "group": "nominator",
+   "name": "Withdraw request, one payout consumed (9ncN)",
+   "slug": "withdraw-request-one-payout-consumed-9ncn"
+  },
+  "A88GSRUqsE9po3lrzfdNf9D9XwXzDu7vQ9BqGx1VS94=": {
+   "group": "cocoon",
+   "name": "Cocoon Client Request Refund (Via Wallet)",
+   "slug": "cocoon-client-request-refund-via-wallet"
+  },
+  "ADMo80jSlcAWGOudmITAHQEX13l9VKWYF5w80Fd2pPs=": {
+   "group": "evaa",
+   "name": "EVAA liquidation unsatisfied (unknown error 1)",
+   "slug": "evaa-liquidation-unsatisfied-unknown-error-1"
+  },
+  "AMdf-I0NoFEBeMMac3s9-0LcCUfLy1fYZcSp0MH7lnA=": {
+   "group": "cocoon",
+   "name": "Cocoon Client Request Refund (Direct)",
+   "slug": "cocoon-client-request-refund-direct"
+  },
+  "APLmhF6A2x2HJkhGrBOB86fUizlonodaK7bUPNGDOIU=": {
+   "group": "dedust-swaps",
+   "name": "DeDust v2 two-hop swap jetton to TON to USDT",
+   "slug": "dedust-v2-two-hop-swap-jetton-to-ton-to-usdt",
+   "note": "two peer_swaps steps, no intermediate jetton transfer actions"
+  },
+  "APpTI_e4-tKeBPZgtCDXmZhharEE-tvVh0tBPoCK6i0=": {
+   "group": "nominator",
+   "name": "Op-0x2 double-payout withdrawal (APpT)",
+   "slug": "op-0x2-double-payout-withdrawal-appt"
+  },
+  "AwXnEQjcWDNvRs6aowUK6IkypsQuX8-EyhUzFowCNuk=": {
+   "group": "subscriptions",
+   "name": "Unsubscribe 1",
+   "slug": "unsubscribe-1"
+  },
+  "BD_4YMGJ9vOn8-2PFwxAj_vwi_UcrYRD61OXsHMHSb8=": {
+   "group": "dedust-liquidities",
+   "name": "Final deposit with ton excesses",
+   "slug": "final-deposit-with-ton-excesses"
+  },
+  "BGhr3QvCA4-8NaUWkjqMUyEivmDuCF37sGpBS6W0x6w=": {
+   "group": "nominator",
+   "name": "Immediate withdrawal, two payouts (BGhr)",
+   "slug": "immediate-withdrawal-two-payouts-bghr"
+  },
+  "C7bHOfSrBJPLHXMZkVnIQladzgYZHIlKOiJRvbxRRuI=": {
+   "group": "coffee",
+   "name": "Complicated Swap (Dedust, Coffee + Stonfi)",
+   "slug": "complicated-swap-dedust-coffee-plus-stonfi"
+  },
+  "CD5IIyWGj3nbuAyIEgmeMGJ28UdC4lMHqRRYcxdLraE=": {
+   "group": "coffee",
+   "name": "Another less complicated Swap (Stonfi + Coffee)",
+   "slug": "another-less-complicated-swap-stonfi-plus-coffee"
+  },
+  "CFl6PQXQyJ4FQFj9YsZwblnCg3m8Po9wuiBmrR4zGz4=": {
+   "group": "ton-transfers",
+   "name": "Simple ton transfer",
+   "slug": "simple-ton-transfer"
+  },
+  "CaitzDiXgDuUMWIvvPLZwCI8YcDfz_M5dbXyaOs7Occ=": {
+   "group": "tg-wallet",
+   "name": "Change wallet key requested by internal message",
+   "slug": "change-wallet-key-requested-by-internal-message",
+   "note": "named from the v1.3-only yaml; trace file is untracked and no longer in the working tree, and it has no action golden"
+  },
+  "CjtIXjqazbSFrtPqqMMFBgMG6-huwp5CfNtXpQAf8xY=": {
+   "group": "tonco",
+   "name": "Tonco swap USDT -> STORM with hop",
+   "slug": "tonco-swap-usdt-to-storm-with-hop"
+  },
+  "CvKIwyXweBMr92O5aPbqmPJJWXgklMpKmawq7HRB6d0=": {
+   "group": "jvault",
+   "name": "Unstake request (success referral)",
+   "slug": "unstake-request-success-referral"
+  },
+  "CwcLdAHHpMSrEbbd_9S7YRvBreXTQHSGIov5Mbv39KA=": {
+   "group": "nominator",
+   "name": "Withdraw request, zero payouts (CwcL)",
+   "slug": "withdraw-request-zero-payouts-cwcl"
+  },
+  "DAL_tL08iL0GO1ZqDkqd6kpl4NNmFurhegqjrKiW0sc=": {
+   "group": "nominator",
+   "name": "Op-0x2 double-payout withdrawal (DAL_)",
+   "slug": "op-0x2-double-payout-withdrawal-dal"
+  },
+  "EOSxi6ERPIqAHjKYGUA-TUJFSjw5uYxIB7CwQEhnVuc=": {
+   "group": "cocoon",
+   "name": "Cocoon Grant Refund",
+   "slug": "cocoon-grant-refund"
+  },
+  "E_ktemwUPyP4hfuuBbuf3DUnN33611NaKQhG3odLZao=": {
+   "group": "stonfi-swaps",
+   "name": "Stonfi Jetton -> Jetton",
+   "slug": "stonfi-jetton-to-jetton"
+  },
+  "Ez03fWgLT3VrlFzKfKQ-N-c2_rNBSZtPwrTz_1kB_yw=": {
+   "group": "tgbtc",
+   "name": "tgBTC burn (another)",
+   "slug": "tgbtc-burn-another"
+  },
+  "EzvOGPJeJvK3MNp8HDFBvLlPmO799Xr2sw3fSFFYJWw=": {
+   "group": "nft",
+   "name": "nft cancel sale (ab-gap)",
+   "slug": "nft-cancel-sale-ab-gap"
+  },
+  "F73aJsg-E-RHh3nJel9-KZ23sQ80dLMqt26gbUEXHIs=": {
+   "group": "nft",
+   "name": "Getgems auction purchase 2",
+   "slug": "getgems-auction-purchase-2"
+  },
+  "FhwMKeBugwmrUMHFRwumUY1Klw5XVO3wPJqGBVhqM68=": {
+   "group": "subscriptions",
+   "name": "Subscribe 3",
+   "slug": "subscribe-3"
+  },
+  "Fj6hSkHT6F-PyFB1F3-hq2alVtEYB0BkAzPQCGUp3BI=": {
+   "group": "evaa",
+   "name": "EVAA liquidation unsatisfied (unknown error 3)",
+   "slug": "evaa-liquidation-unsatisfied-unknown-error-3"
+  },
+  "GO-NI0EjOuhj1z4YzHK-VDAAOJsLm710DvyRRRMXhoY=": {
+   "group": "tonstakers",
+   "name": "TS Withdrawal request",
+   "slug": "ts-withdrawal-request"
+  },
+  "GrBNR_bqjMb-qIhBVPYMy1nVQ5eJTXCuhJH7of4_B2g=": {
+   "group": "dedust-liquidities",
+   "name": "DeDust V2 rejected join jetton/jetton",
+   "slug": "dedust-v2-rejected-join-jetton-jetton"
+  },
+  "GsBbieLdkLAm022pIvZNnUuMmz71FQvMP6TIZLHpWlg=": {
+   "group": "dedust-liquidities",
+   "name": "DeDust v2 withdraw with TON and jetton payouts",
+   "slug": "dedust-v2-withdraw-with-ton-and-jetton-payouts"
+  },
+  "I8W6RKYLE-NJPAComfUWhsG7_L5VvFxNEzizt5N8AAc=": {
+   "group": "jetton-mints",
+   "name": "Jetton mint(0x15) 2",
+   "slug": "jetton-mint-0x15-2"
+  },
+  "IG3rAERJtYBswEBCpy_3redfrE-4cQS0cAfg1-W1UO8=": {
+   "group": "nominator",
+   "name": "Mixed withdraw request and vesting send message",
+   "slug": "mixed-withdraw-request-and-vesting-send-message"
+  },
+  "IlYj6neBD7lYZ0WKxfFIrrrkK3fhiEK_VfH48ihb6ZU=": {
+   "group": "dedust-liquidities",
+   "name": "Final deposit",
+   "slug": "final-deposit"
+  },
+  "K-nxIQ9D2cc51j_BfU2nurITZia3POGyoZkiSeP9qqI=": {
+   "group": "cocoon",
+   "name": "Cocoon Client Withdraw",
+   "slug": "cocoon-client-withdraw"
+  },
+  "KEbatIe0U3ZHIx6sYTg4O1tgYP9L6hMiHJ8nNnZdyBE=": {
+   "group": "layerzero",
+   "name": "LayerZero send usdt to eth",
+   "slug": "layerzero-send-usdt-to-eth"
+  },
+  "KYQfjYD1YybzQIuoJwkoXL-Y-apztmw6AGjIcPhotjQ=": {
+   "group": "dedust-liquidities",
+   "name": "Rejected final deposit",
+   "slug": "rejected-final-deposit"
+  },
+  "K_PlZB5RlxrIdSTiEdvKqazSqLUWzQ8PB4NzDTxAHk8=": {
+   "group": "coffee",
+   "name": "Coffee staking deposit",
+   "slug": "coffee-staking-deposit"
+  },
+  "L2m2NaOmby0AZmK8R_zw_lJJvNQjoNeBtG4ALFJiJ5s=": {
+   "group": "wallet-v5-extensions",
+   "name": "Wallet v5 add extension (failed, exit_code 139)",
+   "slug": "wallet-v5-add-extension-failed-exit-code-139"
+  },
+  "LQB6Qv2acXEvPrJdr2pP6j4JK86vZQAYIihFN6XqGRg=": {
+   "group": "nft",
+   "name": "nft cancel auction (ab-gap)",
+   "slug": "nft-cancel-auction-ab-gap"
+  },
+  "Lsy5I_gotIvt0EYwoPuqd-1s-IyYNR3Sc0XmM_lWKa8=": {
+   "group": "jvault",
+   "name": "Claim rewards",
+   "slug": "claim-rewards"
+  },
+  "M2rUrfJXfjW8Xsex9RY8vXo__9MZHdh-emPatSp2Ooc=": {
+   "group": "nft",
+   "name": "nft put on auction (ab-gap)",
+   "slug": "nft-put-on-auction-ab-gap"
+  },
+  "MZQz_qHLV8OiohUw3-mjpA7TihnbDKFGE0i7LUUsuVk=": {
+   "group": "dedust-liquidities",
+   "name": "DeDust V2 multi-hop swap (3 hops, SwapStep chain)",
+   "slug": "dedust-v2-multi-hop-swap-3-hops-swapstep-chain"
+  },
+  "MbyOvYQJRnJQyUV7ittF35KykWxqBU5v1Wzo1ohMkR4=": {
+   "group": "wallet-v5-extensions",
+   "name": "Wallet v5 add extension",
+   "slug": "wallet-v5-add-extension"
+  },
+  "Mk9O4OZz5p1IH604tukwy07EHSY9Tdvwme1kH5iZqek=": {
+   "group": "nft",
+   "name": "Getgems auction purchase",
+   "slug": "getgems-auction-purchase"
+  },
+  "MyrAUqqz_XH2D5bUdRd-YYCVo7JEEzjWX00gGXRFLLY=": {
+   "group": "jetton-mints",
+   "name": "Jetton mint(0x642b7d07) failed",
+   "slug": "jetton-mint-0x642b7d07-failed"
+  },
+  "NVBb_A--g2M72byFHECct41iFyC7T53sbr6R11CltLw=": {
+   "group": "coffee",
+   "name": "Coffee deposit liquidity TON + CES",
+   "slug": "coffee-deposit-liquidity-ton-plus-ces"
+  },
+  "NbEnt36XgsN-t3PduVYXBz3WRhYM6RGDAgja56FUGjY=": {
+   "group": "multisig",
+   "name": "Multisig approve opcode arm accepted",
+   "slug": "multisig-approve-opcode-arm-accepted"
+  },
+  "OShVZJVqIFxR94PEc48lwzt71eue2H7RgrzMi5zs7Hc=": {
+   "group": "dedust-liquidities",
+   "name": "DeDust V2 withdraw TON/jetton",
+   "slug": "dedust-v2-withdraw-ton-jetton"
+  },
+  "OV5zvYSKMoiFa3iYtadO55uo3w5hdiBtXRl7Qc-7SiA=": {
+   "group": "dedust-swaps",
+   "name": "DeDust hybrid swap TON to jetton with extra payout legs",
+   "slug": "dedust-hybrid-swap-ton-to-jetton-with-extra-payout-legs",
+   "note": "TON-in via PayNative 0xa5a7cbf8; two standalone jetton transfers accompany the swap"
+  },
+  "OVUczRKE1uzsXPhTEAJQhJWb0yAPrnMLZZocBRwMJd0=": {
+   "group": "dedust-liquidities",
+   "name": "DeDust v2 payout landing as a plain jetton transfer",
+   "slug": "dedust-v2-payout-landing-as-a-plain-jetton-transfer",
+   "note": "only the jetton_transfer matcher fires; the surrounding DeDust payout chain stays unclassified"
+  },
+  "OcT5DRJbqONuQtvqFmASdvE2GTh6lYwdhfegRrWUvac=": {
+   "group": "dedust-liquidities",
+   "name": "Merged rejected deposit",
+   "slug": "merged-rejected-deposit"
+  },
+  "Ou-hXwfHtNeTs97mBY3LVCmlnsoySA7hJXeoZSfOAao=": {
+   "group": "dedust-swaps",
+   "name": "DeDust v2 failed swap with TON refund",
+   "slug": "dedust-v2-failed-swap-with-ton-refund",
+   "note": "dedust_v2_failed_swap matcher; refund leg is an unsuccessful ton_transfer, outgoing amount 0"
+  },
+  "OyAQgEdEKZcuU2-3dAkKpk_RFjTYJXXQYxCKoZSB7uA=": {
+   "group": "evaa",
+   "name": "Withdraw tsTon",
+   "slug": "withdraw-tston"
+  },
+  "PAP4CeUFvg7ixzz5-0eFHrR2vahRZh8wPqAIZdV-c5g=": {
+   "group": "jetton-transfer",
+   "name": "Failed jetton transfer (external only)",
+   "slug": "failed-jetton-transfer-external-only"
+  },
+  "P_q9R2ol2k_yoMr0eDfQvHzrYAh430TiyJoyVtcsalQ=": {
+   "group": "dedust-liquidities",
+   "name": "DeDust v2 payout landing as a plain jetton transfer, second sample",
+   "slug": "dedust-v2-payout-landing-as-a-plain-jetton-transfer-second",
+   "note": "same shape as the first sample, no DeDust payout 0x3216ca09 leg"
+  },
+  "PdxEcev5rXzXI-fHb1VPfFA1eLcm3n4Mx6NbsuATc3A=": {
+   "group": "tonco",
+   "name": "tonco host reject (ab-gap)",
+   "slug": "tonco-host-reject-ab-gap"
+  },
+  "Pz4XQKMBH155_M3Bolebl8ulXipSfJ42eP-wG4Wn5Og=": {
+   "group": "evaa",
+   "name": "Ton supply",
+   "slug": "ton-supply"
+  },
+  "QilH-V1kzvOH8jquiL-36pCaUWypDuKINlUHbE3j79s=": {
+   "group": "tg-wallet",
+   "name": "Change wallet key requested by external message",
+   "slug": "change-wallet-key-requested-by-external-message",
+   "note": "named from the v1.3-only yaml; trace file is untracked and no longer in the working tree, and it has no action golden"
+  },
+  "S4XM4TRqBSWvsrGUQY_NLEbIRM7q7iS6hx-uWg4Hv14=": {
+   "group": "jetton-transfer",
+   "name": "Failed jetton transfers (external, identical transfers)",
+   "slug": "failed-jetton-transfers-external-identical-transfers"
+  },
+  "SSUQR8t_fRnph032XDanjuRYexTLHTmAWQG5qBrBgtM=": {
+   "group": "tgbtc",
+   "name": "tgBTC new key (just another)",
+   "slug": "tgbtc-new-key-just-another"
+  },
+  "SVotcOQBV7MZ-CdW7WsaOucRods9-SF0vnl646rxsBc=": {
+   "group": "jetton-mints",
+   "name": "Jetton mint(0x15) 1",
+   "slug": "jetton-mint-0x15-1"
+  },
+  "T-oXSZb9qU9H5js9gaOZIJ8RicZmZ8l9oV4s_f9pV6g=": {
+   "group": "coffee",
+   "name": "Coffee staking withdraw",
+   "slug": "coffee-staking-withdraw"
+  },
+  "T4FDfsNC46KffpNf_OOD30JqjdzpqfpCqtJHIoO3Lnc=": {
+   "group": "dedust-liquidities",
+   "name": "DeDust V2 withdraw failed (slippage)",
+   "slug": "dedust-v2-withdraw-failed-slippage"
+  },
+  "T4ZexTBP42cObyNEUyj8zpd2kDXElijp03HzIIVMqvQ=": {
+   "group": "stonfi-swaps",
+   "name": "Stonfi Ton -> Jetton (receiver != sender)",
+   "slug": "stonfi-ton-to-jetton-receiver-not-equal-sender"
+  },
+  "TAi-sZDDdv1zFm6RQMu0UmQdYq9_MuNvFBSfSWiqgL4=": {
+   "group": "stonfi-v2-swaps",
+   "name": "Stonfi Jetton -> Ton -> Jetton",
+   "slug": "stonfi-jetton-to-ton-to-jetton"
+  },
+  "TDsLHsBMnAQGQ0nLSoy5wfUXjMjc28aCc241U9U9D2M=": {
+   "group": "tgbtc",
+   "name": "tgBTC burn (with strange burn notification)",
+   "slug": "tgbtc-burn-with-strange-burn-notification"
+  },
+  "TXFkYzpo-8IZvMcy8lhsrKG9QJH73JaYAwsAitgNqdM=": {
+   "group": "ton-transfers",
+   "name": "four call_contract legs (ab-gap drill)",
+   "slug": "four-call-contract-legs-ab-gap-drill"
+  },
+  "Uc8KYt0t3y8-gnvbfOxMZBW8F5k945xqkllMS-ZMISE=": {
+   "group": "gasless",
+   "name": "Fan-out and recursive gasless requests",
+   "slug": "fan-out-and-recursive-gasless-requests",
+   "note": "named from the v1.3-only yaml; trace file is untracked and no longer in the working tree, and it has no action golden"
+  },
+  "Ugmymow0mpGDSuNUKC1YHkd28o7qceVvYtokZ--D-3E=": {
+   "group": "ton-transfers",
+   "name": "Failed ton transfer (external-in only)",
+   "slug": "failed-ton-transfer-external-in-only"
+  },
+  "WyDZqNoT4YsuauWAnRh5kVXWBsRzkFG5VRTEq96XuEA=": {
+   "group": "dedust-liquidities",
+   "name": "Multiple deposits with one deposit contract",
+   "slug": "multiple-deposits-with-one-deposit-contract"
+  },
+  "XbaXJMw3ssABoaIXul2iIN_kYfu-HoPsD0NZFLyMRxA=": {
+   "group": "tgbtc",
+   "name": "tgBTC new key",
+   "slug": "tgbtc-new-key"
+  },
+  "XoYtOPQk2eBbj66i8zjGejuCdoIcPAT1XcqSIxZ9zSE=": {
+   "group": "dedust-liquidities",
+   "name": "DeDust v2 withdraw with a dust TON leg",
+   "slug": "dedust-v2-withdraw-with-a-dust-ton-leg",
+   "note": "amount1 is 29268 nanoton against a large jetton leg"
+  },
+  "XrJ4BgG2rSQyr3vItrDD4kFQZMU0v17UGRD3LQPvuOA=": {
+   "group": "nominator",
+   "name": "Deposit bounced (XrJ4)",
+   "slug": "deposit-bounced-xrj4"
+  },
+  "YBQYgsltVHCigC9q03KhXnBgho2bsxFuvOD8u6UC_J4=": {
+   "group": "dedust-swaps",
+   "name": "dedust v1 failed swap native vault (ab-gap)",
+   "slug": "dedust-v1-failed-swap-native-vault-ab-gap"
+  },
+  "YoVdDeJnFOQU1hjowGB8td2IEKG12Y7NTSzgqPkrIvU=": {
+   "group": "dedust-liquidities",
+   "name": "DeDust V2 claim reward TON",
+   "slug": "dedust-v2-claim-reward-ton"
+  },
+  "ZmxsFjYsHqPDUouPjWIZHrPExhYisMFjIGBG320OY5U=": {
+   "group": "dedust-liquidities",
+   "name": "DeDust v2 deposit TON and jetton with pool deploy",
+   "slug": "dedust-v2-deposit-ton-and-jetton-with-pool-deploy",
+   "note": "three contract_deploy rows alongside the deposit"
+  },
+  "_4VnZDY_vkS57MyeF3M43QAyEpWriYSveSPIP4Ygtog=": {
+   "group": "nft",
+   "name": "nft update sale (ab-gap)",
+   "slug": "nft-update-sale-ab-gap"
+  },
+  "_6GHAnnp8ZMqUy6G6ZbAjcwO4WD2xp_yms84bK9wsmE=": {
+   "group": "tgbtc",
+   "name": "tgBTC dkg log (fallback)",
+   "slug": "tgbtc-dkg-log-fallback"
+  },
+  "_7TiwVoy-w5U7lbbF5_RD0yGAauPKFCjMcuYRX4eeoU=": {
+   "group": "coffee",
+   "name": "Coffee create vault",
+   "slug": "coffee-create-vault"
+  },
+  "_KePnuNGucIpfF1FhRFdzd85XgsXO3ooKFAKXjI-vhM=": {
+   "group": "ethena",
+   "name": "Unstake request",
+   "slug": "unstake-request"
+  },
+  "_McWId7Sb4on1WxdqubL3wt_wJAhI_c92ZVTk2sNQ8k=": {
+   "group": "subscriptions",
+   "name": "Unsubscribe 2",
+   "slug": "unsubscribe-2"
+  },
+  "_vW3SyjDo4bfNP0zC6_tkPSWUbuGY20bupBSKYgDhWw=": {
+   "group": "multisig",
+   "name": "Multisig order executing a STON.fi v2 swap",
+   "slug": "multisig-order-executing-a-ston-fi-v2-swap",
+   "note": "approve call 0xa762230f is unsuccessful, execution still proceeds"
+  },
+  "a0rjbO1XsPBt-2LXRQZT4piiD8x_OrfG82dU0in-WUc=": {
+   "group": "tonstakers",
+   "name": "TS Withdrawal via nft burn",
+   "slug": "ts-withdrawal-via-nft-burn"
+  },
+  "a2KiN6J6vxr1f0a-sfxXz4Q0znhuUAj6GUOSIeRdF-o=": {
+   "group": "dedust-swaps",
+   "name": "DeDust v2 single hop jetton to jetton swap",
+   "slug": "dedust-v2-single-hop-jetton-to-jetton-swap"
+  },
+  "a4iGagV3jl5etlZ77Zxj8krjyQn7Z3Uqzb7YRYIOY_U=": {
+   "group": "dedust-liquidities",
+   "name": "DeDust v2 partial deposit, one side only",
+   "slug": "dedust-v2-partial-deposit-one-side-only",
+   "note": "dedust_v2_deposit_partial matcher; only amount1 present, deposit contract stays open"
+  },
+  "a792Fwrpfic6hRQknLGJHE2G5Wvt3jSW6vvsql1XYb0=": {
+   "group": "dedust-liquidities",
+   "name": "DeDust V2 deposit jetton/jetton",
+   "slug": "dedust-v2-deposit-jetton-jetton"
+  },
+  "aMUaDa0Ml9lnk7KzHKpkW1UK6FPyYod2qotieVVWMd8=": {
+   "group": "nft",
+   "name": "Fragment purchase",
+   "slug": "fragment-purchase"
+  },
+  "awhk7c9wvvH3jR3PrLJbd4sqrfpRlHRwjvlwuIGtPXk=": {
+   "group": "nominator",
+   "name": "Deposit bounced (awhk)",
+   "slug": "deposit-bounced-awhk"
+  },
+  "ayytTEXiuVWQfFcCWi7sCrdOrt9jzIMFCPHJZbzUl_Y=": {
+   "group": "subscriptions",
+   "name": "Subscribe 2",
+   "slug": "subscribe-2"
+  },
+  "b0QdK2TPX7Pv7NiXvpJxf_0PEumbW1FMewsnbFi-nqs=": {
+   "group": "coffee",
+   "name": "Coffee withdraw liquidity (jetton - jetton)",
+   "slug": "coffee-withdraw-liquidity-jetton-jetton"
+  },
+  "c8jOrHqyuJe1hMGx4fm1BTGKXgBQ5O35rbExCkhmRG8=": {
+   "group": "coffee",
+   "name": "Less complicated Swap (Dedust + Coffee)",
+   "slug": "less-complicated-swap-dedust-plus-coffee"
+  },
+  "cq7UujFWNfSnpHdRKseD41yHqj4Yx3SCWsnkw8IRPoU=": {
+   "group": "coffee",
+   "name": "Terrifying Swap (Stonfi, Coffee + Stonfi V2, Dedust, Stonfi V2)",
+   "slug": "terrifying-swap-stonfi-coffee-plus-stonfi-v2-dedust-stonfi"
+  },
+  "cymBOUsfra7ZhoecaxwLyvSZi3EhpOFmvTPTSaKHfeA=": {
+   "group": "dedust-liquidities",
+   "name": "DeDust v2 claim position fees with jetton payout",
+   "slug": "dedust-v2-claim-position-fees-with-jetton-payout",
+   "note": "fee claim followed by a jetton_transfer carrying the jetton leg"
+  },
+  "d6F6BJ2OX-urMZBlYLrKmTFtnY6Pn8FbCQZVEP8LULI=": {
+   "group": "multisig",
+   "name": "Multisig order executing a pTON transfer leg",
+   "slug": "multisig-order-executing-a-pton-transfer-leg",
+   "note": "STON.fi pTON and jetton legs classify individually, no jetton_swap action is produced"
+  },
+  "dp1xdxzIC7tCyZfy80VTW5be7SimpOOTnuf3_8BZjb0=": {
+   "group": "coffee",
+   "name": "Coffee DEX Swap USDT -> TON (hop) -> CES",
+   "slug": "coffee-dex-swap-usdt-to-ton-hop-to-ces"
+  },
+  "eHcqfIJmDvinqBcPrSLJOFfYRr7gE8vtrq6hn1nTu70=": {
+   "group": "dedust-swaps",
+   "name": "DeDust v2 multi-hop swap ending in USDT",
+   "slug": "dedust-v2-multi-hop-swap-ending-in-usdt",
+   "note": "three peer_swaps steps chained through TON and an intermediate jetton"
+  },
+  "f-PQvtcLmt4lrRMFr9OlMrkLoFLt6hXatdfQHMI3GZM=": {
+   "group": "dedust-liquidities",
+   "name": "DeDust v2 deposit jetton and TON, final leg",
+   "slug": "dedust-v2-deposit-jetton-and-ton-final-leg"
+  },
+  "f4J1gD7fmSBUMJy47G3qmk7CvXa1O8Ofr7Ehw-Ttd2Y=": {
+   "group": "evaa",
+   "name": "EVAA liquidation unsatisfied (unknown error 2)",
+   "slug": "evaa-liquidation-unsatisfied-unknown-error-2"
+  },
+  "f8GEr5zwfv66Lc66oG0zxFjYbcD42KzPylO-RKv1vGQ=": {
+   "group": "multisig",
+   "name": "Multisig order executing a STON.fi v1 swap",
+   "slug": "multisig-order-executing-a-ston-fi-v1-swap",
+   "note": "approve call 0xa762230f is unsuccessful, execution still proceeds"
+  },
+  "fjQUb23kT00oQ91fTrD48MAYii2jG9XD_bft1iLtzJc=": {
+   "group": "dedust-liquidities",
+   "name": "DeDust V2 claim position fees jetton+jetton",
+   "slug": "dedust-v2-claim-position-fees-jetton-plus-jetton"
+  },
+  "fyrdkfqB6iMQu9vl78M5x1IMBSrPCziFyFEJTAPFKoA=": {
+   "group": "tonstakers",
+   "name": "TS Stake deposit (live, wallet 0x9fb53633)",
+   "slug": "ts-stake-deposit-live-wallet-0x9fb53633"
+  },
+  "g1JLQayzzERU9tojKPorN9Asd-MCF_0omnRkwOd_Olo=": {
+   "group": "tonco",
+   "name": "Tonco swap USDT -> TON",
+   "slug": "tonco-swap-usdt-to-ton"
+  },
+  "gNfX_4fYaOs7VuQEOcQiQdMuG6ndQfESNuQ2Og9UkRo=": {
+   "group": "dns",
+   "name": "DNS release 2",
+   "slug": "dns-release-2"
+  },
+  "gr3f68A6xHUJI3qtHGaK3GqK2MxE86NK6vOYPQM4Rz4=": {
+   "group": "dedust-liquidities",
+   "name": "DeDust v2 withdraw refunded to the owner, second sample",
+   "slug": "dedust-v2-withdraw-refunded-to-the-owner-second-sample",
+   "note": "same refund payload and lp_tokens_burnt as the first refund sample, different trace"
+  },
+  "i-gQwY3nWC6BQx1XOSWliBC-b1Pt7Y-Fn5jphK5uCGk=": {
+   "group": "dedust-liquidities",
+   "name": "DeDust v2 claim reward with jetton payout",
+   "slug": "dedust-v2-claim-reward-with-jetton-payout",
+   "note": "reward claim followed by a jetton_transfer carrying the payout"
+  },
+  "ioq-WKX2gMsHeK0oNTMWtXQuUfkraOo7-g-4CXvdV9s=": {
+   "group": "dns",
+   "name": "DNS release 3",
+   "slug": "dns-release-3"
+  },
+  "iqIHDlbalqobuAMgJOC_T_9L6nLiwdOOr7BNKBtqIyA=": {
+   "group": "tgbtc",
+   "name": "tgBTC mint",
+   "slug": "tgbtc-mint"
+  },
+  "j-5yrT2HRDFd7Eu9tmXI1IPjZa2VOnfL9vyKVeE18GM=": {
+   "group": "evaa",
+   "name": "Jetton supply",
+   "slug": "jetton-supply"
+  },
+  "jFObmtSqr6Fzn6QnPonxGlzgTWjWvRcoi0BF_wSCjcM=": {
+   "group": "gasless",
+   "name": "Gasless send by a Telegram wallet",
+   "slug": "gasless-send-by-a-telegram-wallet",
+   "note": "named from the v1.3-only yaml; trace file is untracked and no longer in the working tree, and it has no action golden"
+  },
+  "jR18KgOd7Bmlhja1EmBRM_b-bPrdMuJwvsnfwhdYPiY=": {
+   "group": "nominator",
+   "name": "Immediate withdrawal, two payouts (jR18)",
+   "slug": "immediate-withdrawal-two-payouts-jr18"
+  },
+  "jwYkEIdwbHJAGiZD6JYHs_TWBBdJQBWK0hIfwDL1wqU=": {
+   "group": "stonfi-swaps",
+   "name": "Stonfi Ton -> Jetton failed",
+   "slug": "stonfi-ton-to-jetton-failed"
+  },
+  "k0yADcY39ZkSu5Y7keHvfMzFyadhlDZ1OvxH-c8aU7M=": {
+   "group": "dedust-liquidities",
+   "name": "Merged with ton excesses",
+   "slug": "merged-with-ton-excesses"
+  },
+  "k4j3bwj6FjSeLcdN8t4usf2Dq4qWpHkNDm2WH8_qeq4=": {
+   "group": "jvault",
+   "name": "Failed unstake request",
+   "slug": "failed-unstake-request"
+  },
+  "kzOC0KQqVHHaNaiKPttuaR92uMct8n4kCDLTfq-CPuw=": {
+   "group": "dedust-liquidities",
+   "name": "DeDust V2 deposit TON/jetton",
+   "slug": "dedust-v2-deposit-ton-jetton"
+  },
+  "lH7be2DwnwVSo6D3ZZL0xAI7F-vNk4bZ7KXCDpO4Zfo=": {
+   "group": "dedust-liquidities",
+   "name": "DeDust v2 deposit TON and jetton with vault excess",
+   "slug": "dedust-v2-deposit-ton-and-jetton-with-vault-excess",
+   "note": "target amounts exceed the credited amounts, excess returned"
+  },
+  "m9eS5wXOsBwyUn9GToVIPeLYaieGF_Ye46_GYVDwg4A=": {
+   "group": "wallet-v5-extensions",
+   "name": "Wallet v5 remove extension",
+   "slug": "wallet-v5-remove-extension"
+  },
+  "mG5NGg-37hpz1Vgs5KvDo0HKgtQKCnMbmGEpdApY5Ls=": {
+   "group": "nft",
+   "name": "Getgems purchase",
+   "slug": "getgems-purchase"
+  },
+  "mTVGq-A5PCaXAdu-Xuab0J-vtygXRJ1GwqZbW-aYN84=": {
+   "group": "jvault",
+   "name": "Unstake (failed)",
+   "slug": "unstake-failed"
+  },
+  "mg8sRwic_zM8iy-pZoVdocmQsozeVKNt7G5j_k6nYyc=": {
+   "group": "stonfi-v2-swaps",
+   "name": "pton stonfi v2 swap (ab-gap)",
+   "slug": "pton-stonfi-v2-swap-ab-gap"
+  },
+  "n7wJbUq7_-Li9GUnwlje3eGe5u1mZQGNEXQlGV8L-cI=": {
+   "group": "evaa",
+   "name": "Withdraw Ton",
+   "slug": "withdraw-ton"
+  },
+  "o6-kGFnpDMI4nMlMH1zrNNijL0taVyegbi2KlWkgJ-8=": {
+   "group": "stonfi-v2-swaps",
+   "name": "stonfi v2 host reject (ab-gap)",
+   "slug": "stonfi-v2-host-reject-ab-gap"
+  },
+  "oN0zmyAm2HKIwSTaTdo45Mu4tgvHf7uFSBwIvv0gEig=": {
+   "group": "multisig",
+   "name": "Multisig approve comment arm and execute",
+   "slug": "multisig-approve-comment-arm-and-execute"
+  },
+  "oND3Z5gMq1cKAe6TOJ5QAsqt-8_6wtG6X1hgkHP_Yhk=": {
+   "group": "tonstakers",
+   "name": "TS Immediate Withdrawal",
+   "slug": "ts-immediate-withdrawal"
+  },
+  "p1-SZ1wV7yEe2qf1SQujTW5OMifEPuuX-jPPrPNiKxw=": {
+   "group": "coffee",
+   "name": "Coffee DEX Swap USDT -> TON",
+   "slug": "coffee-dex-swap-usdt-to-ton"
+  },
+  "phSM_WddFu61r5ztnhCDAKSw81kuB6eBOrGYE0peYvc=": {
+   "group": "dedust-liquidities",
+   "name": "DeDust v2 withdraw with a failed jetton payout",
+   "slug": "dedust-v2-withdraw-with-a-failed-jetton-payout",
+   "note": "withdraw action succeeds, the 0x0f8a7ea5 payout leg does not"
+  },
+  "rU8BN41CoPsfmLPpLrucPQX8v8lJnwob39gp5yKBdko=": {
+   "group": "tonstakers",
+   "name": "TS Stake deposit (live, wallet 0x339d6469)",
+   "slug": "ts-stake-deposit-live-wallet-0x339d6469"
+  },
+  "rV0MIZB9AKrWu2IUpsDnGjiL4SufrJ-g5xbCZFq5KuE=": {
+   "group": "nft",
+   "name": "Telegram NFT mint with auction fill-up assignment",
+   "slug": "telegram-nft-mint-with-auction-fill-up-assignment",
+   "note": "telegram_nft_assigned fires under a call_contract parent, next to the nft_mint"
+  },
+  "rV1gzQRFXipz6XEByCTq_3Q2LZpa4i61aLsvHf1CR1A=": {
+   "group": "nft",
+   "name": "teleitem cancel auction (ab-gap)",
+   "slug": "teleitem-cancel-auction-ab-gap"
+  },
+  "rbzKlyNgAhDnQ15r4tremaPVl_xURNgmSJQSyhGLSX4=": {
+   "group": "tonstakers",
+   "name": "TS Stake deposit",
+   "slug": "ts-stake-deposit"
+  },
+  "sS0j8bD7JQj7389dsGXLdNUisE6I1ApyvdPM1gkODVc=": {
+   "group": "ton-transfers",
+   "name": "call_contract plus ton_transfer (ab-gap drill)",
+   "slug": "call-contract-plus-ton-transfer-ab-gap-drill"
+  },
+  "t3w52NsDV64FlPrPzP-KiGEZDz5C_4YLG9HaIDM9mpM=": {
+   "group": "dedust-liquidities",
+   "name": "DeDust V2 claim position fees TON+jetton",
+   "slug": "dedust-v2-claim-position-fees-ton-plus-jetton"
+  },
+  "t61lSZfcbGpUXopnXap7RxoC9kEJw2mqo19H3lHr-fg=": {
+   "group": "multisig",
+   "name": "Multisig create order with uint256 seqno",
+   "slug": "multisig-create-order-with-uint256-seqno"
+  },
+  "tF9rJ18uKOZuwJaQ0z2ZB2ln0OcFMEa0fy6rYxMgQNY=": {
+   "group": "gasless",
+   "name": "Gasless jetton transfer by a wallet v5",
+   "slug": "gasless-jetton-transfer-by-a-wallet-v5",
+   "note": "named from the v1.3-only yaml; trace file is untracked and no longer in the working tree, and it has no action golden"
+  },
+  "tJchcmap3KKyjSw6GJ2YpZ4OkyN-DwvoD2u_KQh164Q=": {
+   "group": "dedust-liquidities",
+   "name": "DeDust V2 claim position fees zero fees",
+   "slug": "dedust-v2-claim-position-fees-zero-fees"
+  },
+  "uXA5LQpf_4c9NEOK6trJZuBMitcBLNYxK7_2OfzphtI=": {
+   "group": "jetton-mints",
+   "name": "Jetton mint(0x642b7d07) with notification",
+   "slug": "jetton-mint-0x642b7d07-with-notification"
+  },
+  "utNOlIUjzWv7MRoSUfkjHkBaIg40RkYMLOy9ljAaykQ=": {
+   "group": "stonfi-swaps",
+   "name": "Stonfi Jetton -> Ton swap with referral payout",
+   "slug": "stonfi-jetton-to-ton-swap-with-referral-payout"
+  },
+  "vdNpUDA43aIw6QlbcKMgi7q4S0MnJAVTfXVRqbAt5Tw=": {
+   "group": "stonfi-v2-swaps",
+   "name": "Stonfi v2 Jetton -> Jetton",
+   "slug": "stonfi-v2-jetton-to-jetton"
+  },
+  "vhM4-FbBKgC8khEg0MTKMvPx8MiBuEYbrqHgDjPFHcQ=": {
+   "group": "ethena",
+   "name": "Deposit",
+   "slug": "deposit"
+  },
+  "vm06QGxPVgGqBfV7IInJ010KtOh94Ianp30ExnwISq4=": {
+   "group": "dedust-liquidities",
+   "name": "DeDust v2 payout chain with no protocol action, second sample",
+   "slug": "dedust-v2-payout-chain-with-no-protocol-action-second-sample",
+   "note": "same opcode chain as the first sample, different pool and trace"
+  },
+  "ww5gZmgoXhHJ1a1wukBU5Dp1LxufRT1pzfniQTgUXxE=": {
+   "group": "evaa",
+   "name": "Jetton supply (failed)",
+   "slug": "jetton-supply-failed"
+  },
+  "xBl_8BTUqSv52IWAzrmg54-V0YR_WQsV1buJxKBq4vE=": {
+   "group": "tgbtc",
+   "name": "tgBTC burn",
+   "slug": "tgbtc-burn"
+  },
+  "xu061_cOVdxLMa4sn1JJXEK5XkBiPdCzEDRNI_wWKPs=": {
+   "group": "dedust-liquidities",
+   "name": "First deposit",
+   "slug": "first-deposit"
+  },
+  "MCv1dU2InQwPfgQCpgjEVVqBkIyp4yWMqI-R5-cT-jk=": {
+   "group": "dns",
+   "name": "DNS purchase 4 (change_dns parent)",
+   "slug": "dns-purchase-4",
+   "note": "AuctionFillUp whose parent is the winner's ChangeDnsRecord; dns_purchase must register before change_dns"
+  },
+  "yfdIWpnHBPwfCVOofQ4XhwxGW-3MfWR3WTxUC6qVWjE=": {
+   "group": "dns",
+   "name": "DNS purchase 5 (change_dns parent)",
+   "slug": "dns-purchase-5",
+   "note": "same shape, second live trace"
+  }
+ }
+}

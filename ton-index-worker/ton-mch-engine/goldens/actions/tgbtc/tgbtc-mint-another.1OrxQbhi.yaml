@@ -1,0 +1,247 @@
+# tgbtc / tgBTC mint (another)
+# trace: 1OrxQbhicqml435pt0GPrXePkkdTGXRMlNJ4q67UZ-M=
+actions:
+  - type: call_contract
+    anchor: call_contract#3f781d24@31155762000002
+    id: Zn/stmNSR6LkbX45DntwmI8CB3ol0KxKPhWMXK1PMls=
+    success: true
+    source: 0:22FC2803EA3937A8392ED47B03CAA604377875B13435193AD316FD35DE458289
+    source_secondary: null
+    destination: 0:B5AC556F935CA7040850A404A5E0ECDC14CD75575C420C9C2327787E1698480A
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: 1000000000
+    opcode: 0x3f781d24
+    tx_hashes:
+      - 1OrxQbhicqml435pt0GPrXePkkdTGXRMlNJ4q67UZ+M=
+      - aG5NyYeThT58mPgMc4n8I78mS0TbJ4iMxOaw4+CUGzU=
+    accounts:
+      - 0:22FC2803EA3937A8392ED47B03CAA604377875B13435193AD316FD35DE458289
+      - 0:B5AC556F935CA7040850A404A5E0ECDC14CD75575C420C9C2327787E1698480A
+    start_lt: 31155762000002
+    end_lt: 31155764000001
+    start_utime: 1739072583
+    end_utime: 1739072588
+    mc_seqno_end: 27956499
+    parent_action_id: C2gNTx60TG68PYj8pbSXd9iUTmHxIdzDpXTknU/fgxU=
+    ancestor_type:
+      - tgbtc_mint
+  - type: call_contract
+    anchor: call_contract#498af388@31155764000002
+    id: WLrEIS9SoI7oURDM1rvQ85/YI3dRn2phyqzECO9+AYE=
+    success: true
+    source: 0:B5AC556F935CA7040850A404A5E0ECDC14CD75575C420C9C2327787E1698480A
+    source_secondary: null
+    destination: 0:5B340A1D2F44C694FB946ABBBD48611605A9088B78EA6152F8F9269FAA721FE4
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: 988977600
+    opcode: 0x498af388
+    tx_hashes:
+      - JzypBImxmRG9RCZ4gpuJzatty5hruw1YGg7ra75+W8s=
+      - aG5NyYeThT58mPgMc4n8I78mS0TbJ4iMxOaw4+CUGzU=
+    accounts:
+      - 0:5B340A1D2F44C694FB946ABBBD48611605A9088B78EA6152F8F9269FAA721FE4
+      - 0:B5AC556F935CA7040850A404A5E0ECDC14CD75575C420C9C2327787E1698480A
+    start_lt: 31155764000002
+    end_lt: 31155768000001
+    start_utime: 1739072588
+    end_utime: 1739072596
+    mc_seqno_end: 27956502
+    parent_action_id: C2gNTx60TG68PYj8pbSXd9iUTmHxIdzDpXTknU/fgxU=
+    ancestor_type:
+      - tgbtc_mint
+  - type: call_contract
+    anchor: call_contract#642a879b@31155771000002
+    id: FKLq+RYkKKXVYjONWtsedMMcvQ9bEyfyYep3S9ux8LI=
+    success: true
+    source: 0:B5AC556F935CA7040850A404A5E0ECDC14CD75575C420C9C2327787E1698480A
+    source_secondary: null
+    destination: 0:533B74E7668DB0C63C3F1B423093CB4024959916025F4485E5EE41611A3EC289
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: 956652000
+    opcode: 0x642a879b
+    tx_hashes:
+      - /PeXz2XTUar9Jjw0056ne1JSoBroxvfKsumrT9BpYO8=
+      - qFl8I8mqlyzHPhVUFJYNRxR3g9yCLxRC20eCyExJowg=
+    accounts:
+      - 0:533B74E7668DB0C63C3F1B423093CB4024959916025F4485E5EE41611A3EC289
+      - 0:B5AC556F935CA7040850A404A5E0ECDC14CD75575C420C9C2327787E1698480A
+    start_lt: 31155771000002
+    end_lt: 31155774000001
+    start_utime: 1739072604
+    end_utime: 1739072610
+    mc_seqno_end: 27956508
+    parent_action_id: C2gNTx60TG68PYj8pbSXd9iUTmHxIdzDpXTknU/fgxU=
+    ancestor_type:
+      - tgbtc_mint
+  - type: call_contract
+    anchor: call_contract#c98af388@31155768000002
+    id: kXQsoj+dBB+D418/xzFjxoT2vNey7ha+0v/Z/+t9leg=
+    success: true
+    source: 0:5B340A1D2F44C694FB946ABBBD48611605A9088B78EA6152F8F9269FAA721FE4
+    source_secondary: null
+    destination: 0:B5AC556F935CA7040850A404A5E0ECDC14CD75575C420C9C2327787E1698480A
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: 986786400
+    opcode: 0xc98af388
+    tx_hashes:
+      - /PeXz2XTUar9Jjw0056ne1JSoBroxvfKsumrT9BpYO8=
+      - JzypBImxmRG9RCZ4gpuJzatty5hruw1YGg7ra75+W8s=
+    accounts:
+      - 0:5B340A1D2F44C694FB946ABBBD48611605A9088B78EA6152F8F9269FAA721FE4
+      - 0:B5AC556F935CA7040850A404A5E0ECDC14CD75575C420C9C2327787E1698480A
+    start_lt: 31155768000002
+    end_lt: 31155771000001
+    start_utime: 1739072596
+    end_utime: 1739072604
+    mc_seqno_end: 27956505
+    parent_action_id: C2gNTx60TG68PYj8pbSXd9iUTmHxIdzDpXTknU/fgxU=
+    ancestor_type:
+      - tgbtc_mint
+  - type: call_contract
+    anchor: call_contract#e42a879b@31155774000002
+    id: 3kdKZv786IaQTyPPQ9XDdqzxTa0fD/Y2PorZ0PmeEfo=
+    success: true
+    source: 0:533B74E7668DB0C63C3F1B423093CB4024959916025F4485E5EE41611A3EC289
+    source_secondary: null
+    destination: 0:B5AC556F935CA7040850A404A5E0ECDC14CD75575C420C9C2327787E1698480A
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: 943131200
+    opcode: 0xe42a879b
+    tx_hashes:
+      - 7TpqEzIPNhR5weDiLljPPFKO+T5FG8SfPzYOnxKv5i4=
+      - qFl8I8mqlyzHPhVUFJYNRxR3g9yCLxRC20eCyExJowg=
+    accounts:
+      - 0:533B74E7668DB0C63C3F1B423093CB4024959916025F4485E5EE41611A3EC289
+      - 0:B5AC556F935CA7040850A404A5E0ECDC14CD75575C420C9C2327787E1698480A
+    start_lt: 31155774000002
+    end_lt: 31155777000001
+    start_utime: 1739072610
+    end_utime: 1739072618
+    mc_seqno_end: 27956511
+    parent_action_id: C2gNTx60TG68PYj8pbSXd9iUTmHxIdzDpXTknU/fgxU=
+    ancestor_type:
+      - tgbtc_mint
+  - type: contract_deploy
+    anchor: contract_deploy#642a879b@31155771000002
+    id: 5Tf+m2k2+PZdpcmeK//yoCJrc+1XIX7rBrkcvaQHplM=
+    success: true
+    source: 0:B5AC556F935CA7040850A404A5E0ECDC14CD75575C420C9C2327787E1698480A
+    source_secondary: null
+    destination: 0:533B74E7668DB0C63C3F1B423093CB4024959916025F4485E5EE41611A3EC289
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: 956652000
+    opcode: 0x642a879b
+    tx_hashes:
+      - /PeXz2XTUar9Jjw0056ne1JSoBroxvfKsumrT9BpYO8=
+      - qFl8I8mqlyzHPhVUFJYNRxR3g9yCLxRC20eCyExJowg=
+    accounts:
+      - 0:533B74E7668DB0C63C3F1B423093CB4024959916025F4485E5EE41611A3EC289
+      - 0:B5AC556F935CA7040850A404A5E0ECDC14CD75575C420C9C2327787E1698480A
+    start_lt: 31155771000002
+    end_lt: 31155774000001
+    start_utime: 1739072604
+    end_utime: 1739072610
+    mc_seqno_end: 27956508
+  - type: jetton_mint
+    matcher: jetton_mint
+    anchor: jetton_mint@31155777000002
+    id: GnlO9P+r4Jkr1+p45omu3oFniktqb/QTgV4J+iXzxCo=
+    success: true
+    source: null
+    source_secondary: null
+    destination: 0:22FC2803EA3937A8392ED47B03CAA604377875B13435193AD316FD35DE458289
+    destination_secondary: 0:6E62CDCC324B37B0FA201A2483E588E57E30333784BF277BECFB66E0126CAA9D
+    asset: 0:E8CB571401B1AADB9DEFC1FA0F72A4A5A0E0D5016903067891D763C91541E72B
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: 8800
+    value: 0
+    opcode: null
+    tx_hashes:
+      - 7TpqEzIPNhR5weDiLljPPFKO+T5FG8SfPzYOnxKv5i4=
+      - HqqIpeUzZhi0btlRBZg+RFKdylUUiKrtAxgZQEsWVw0=
+      - t6KXQfrLEblZRohaZljZ2hlbEuYuhn7k/JS0V96Uguk=
+      - xxL1q1CeWh7mHfzejLliTVXM1k5McKSw27LXpzh7KvA=
+    accounts:
+      - 0:22FC2803EA3937A8392ED47B03CAA604377875B13435193AD316FD35DE458289
+      - 0:6E62CDCC324B37B0FA201A2483E588E57E30333784BF277BECFB66E0126CAA9D
+      - 0:B5AC556F935CA7040850A404A5E0ECDC14CD75575C420C9C2327787E1698480A
+      - 0:E8CB571401B1AADB9DEFC1FA0F72A4A5A0E0D5016903067891D763C91541E72B
+    start_lt: 31155777000002
+    end_lt: 31155787000001
+    start_utime: 1739072618
+    end_utime: 1739072640
+    mc_seqno_end: 27956520
+    parent_action_id: C2gNTx60TG68PYj8pbSXd9iUTmHxIdzDpXTknU/fgxU=
+    ancestor_type:
+      - tgbtc_mint
+  - type: tgbtc_mint
+    matcher: tgbtc_mint
+    anchor: tgbtc_mint@31155762000002
+    id: C2gNTx60TG68PYj8pbSXd9iUTmHxIdzDpXTknU/fgxU=
+    success: true
+    source: 0:22FC2803EA3937A8392ED47B03CAA604377875B13435193AD316FD35DE458289
+    source_secondary: 0:B5AC556F935CA7040850A404A5E0ECDC14CD75575C420C9C2327787E1698480A
+    destination: 0:22FC2803EA3937A8392ED47B03CAA604377875B13435193AD316FD35DE458289
+    destination_secondary: 0:6E62CDCC324B37B0FA201A2483E588E57E30333784BF277BECFB66E0126CAA9D
+    asset: 0:E8CB571401B1AADB9DEFC1FA0F72A4A5A0E0D5016903067891D763C91541E72B
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: 8800
+    value: null
+    opcode: null
+    extra:
+      btc_txid: c8254c7852b5e94c78f1667c29784a760e27c23c3cbf389705184944b4fa0716
+    tx_hashes:
+      - /PeXz2XTUar9Jjw0056ne1JSoBroxvfKsumrT9BpYO8=
+      - 7TpqEzIPNhR5weDiLljPPFKO+T5FG8SfPzYOnxKv5i4=
+      - HqqIpeUzZhi0btlRBZg+RFKdylUUiKrtAxgZQEsWVw0=
+      - JzypBImxmRG9RCZ4gpuJzatty5hruw1YGg7ra75+W8s=
+      - aG5NyYeThT58mPgMc4n8I78mS0TbJ4iMxOaw4+CUGzU=
+      - qFl8I8mqlyzHPhVUFJYNRxR3g9yCLxRC20eCyExJowg=
+      - t6KXQfrLEblZRohaZljZ2hlbEuYuhn7k/JS0V96Uguk=
+      - xxL1q1CeWh7mHfzejLliTVXM1k5McKSw27LXpzh7KvA=
+    accounts:
+      - 0:22FC2803EA3937A8392ED47B03CAA604377875B13435193AD316FD35DE458289
+      - 0:533B74E7668DB0C63C3F1B423093CB4024959916025F4485E5EE41611A3EC289
+      - 0:5B340A1D2F44C694FB946ABBBD48611605A9088B78EA6152F8F9269FAA721FE4
+      - 0:6E62CDCC324B37B0FA201A2483E588E57E30333784BF277BECFB66E0126CAA9D
+      - 0:B5AC556F935CA7040850A404A5E0ECDC14CD75575C420C9C2327787E1698480A
+      - 0:E8CB571401B1AADB9DEFC1FA0F72A4A5A0E0D5016903067891D763C91541E72B
+    start_lt: 31155762000002
+    end_lt: 31155787000001
+    start_utime: 1739072583
+    end_utime: 1739072640
+    mc_seqno_end: 27956520

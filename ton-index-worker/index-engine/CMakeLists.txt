@@ -10,4 +10,5 @@ target_include_directories(index-engine-core
 target_compile_features(index-engine-core PRIVATE cxx_std_20)
 target_link_libraries(index-engine-core
         tondb-scanner
-        ton-observability)
+        ton-observability
+        mch-classify)

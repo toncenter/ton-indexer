@@ -1,0 +1,56 @@
+# tonco / Tonco swap TON -> USDT failed
+# trace: 02TsVcC_MOggAZvHHBITbHCvzAt_hCq5WVAiKcZFMno=
+actions:
+  - type: jetton_swap
+    matcher: tonco_swap
+    anchor: jetton_swap@56311231000002
+    id: oE1osHP7A7EmNWJzjDDnwqhopqQ/VILBo4x+R7kDC0I=
+    success: false
+    source: 0:93D1D18CC577322A938CD3E6F86BEDAF1D05A30947B936E88B78512E5DFB335A
+    source_secondary: null
+    destination: 0:93D1D18CC577322A938CD3E6F86BEDAF1D05A30947B936E88B78512E5DFB335A
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: 0:B113A994B5024A16719F69139328EB759596C38A25F59028B146FECDC3621DFE
+    asset2_secondary: null
+    amount: null
+    value: null
+    opcode: null
+    jetton_swap_data:
+      dex: tonco
+      dex_incoming_transfer:
+        amount: 952556061547
+        asset: null
+        destination: 0:BFFADD270A738531DA7B13BA8FC403826C2586173F9EDE9C316FAB53BC59AC86
+        destination_jetton_wallet: 0:871DA9215B14902166F0EA2A16DB56278D528108377F8158C5F4CCFDFDD22E17
+        source: 0:93D1D18CC577322A938CD3E6F86BEDAF1D05A30947B936E88B78512E5DFB335A
+        source_jetton_wallet: null
+      dex_outgoing_transfer:
+        amount: 952556061547
+        asset: null
+        destination: 0:93D1D18CC577322A938CD3E6F86BEDAF1D05A30947B936E88B78512E5DFB335A
+        destination_jetton_wallet: null
+        source: 0:BFFADD270A738531DA7B13BA8FC403826C2586173F9EDE9C316FAB53BC59AC86
+        source_jetton_wallet: null
+      min_out_amount: 2856642750
+      peer_swaps: []
+      sender: 0:93D1D18CC577322A938CD3E6F86BEDAF1D05A30947B936E88B78512E5DFB335A
+    tx_hashes:
+      - /Zxg7NDWQL6CPxYX1f7t5iE0tqCckfw2z4QzYkoXlUg=
+      - 02TsVcC/MOggAZvHHBITbHCvzAt/hCq5WVAiKcZFMno=
+      - 5Xf+rCs/1WLRH/xz44qhNy7VjLVMQv4S2RTrahPJpfI=
+      - bHZgva8JUkFKB6rqvPkEkQOTZOYQqywq5wfW8QBkw4E=
+      - jXtE8f+tjatCnnTAqQMBjJuzUyWN2s7HTqEodOnsS6U=
+      - peaWmI4lu9q9pddwWPR5v5hTZBac+WkGdwfICZ+fsIM=
+      - zdPAtSpB4kyeSnHZUIWCU1YWvB7dBbwypB1lUnHxhPI=
+    accounts:
+      - 0:871DA9215B14902166F0EA2A16DB56278D528108377F8158C5F4CCFDFDD22E17
+      - 0:93D1D18CC577322A938CD3E6F86BEDAF1D05A30947B936E88B78512E5DFB335A
+      - 0:BFFADD270A738531DA7B13BA8FC403826C2586173F9EDE9C316FAB53BC59AC86
+      - 0:F6E6F4AD13073E875413D6A96C60F430A94E4888E868C79208D02FF1B0336931
+    start_lt: 56311231000002
+    end_lt: 56311237000005
+    start_utime: 1745248164
+    end_utime: 1745248183
+    mc_seqno_end: 47040778

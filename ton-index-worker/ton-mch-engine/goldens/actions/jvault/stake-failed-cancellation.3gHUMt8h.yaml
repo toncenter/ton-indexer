@@ -1,0 +1,250 @@
+# jvault / Stake (failed, cancellation)
+# trace: 3gHUMt8h1SyaO7pMTIWZ3d0adXpyHbvb7j-0RZQFjiU=
+actions:
+  - type: call_contract
+    anchor: call_contract#383411ea@53763455000002
+    id: kZXL58qgKhPXK2Dsalfz7StgMOdoDi22m5hG24KiOCc=
+    success: true
+    source: 0:DA0BEB83E10D069139C6F655EA3DBE472A0C94865CDC41524E1C90E70F254D51
+    source_secondary: null
+    destination: 0:61AB79E0B562BF9163124CF979263528BAFFDAA6380DC5A6113AC385E27EBDE5
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: 16114400
+    opcode: 0x383411ea
+    tx_hashes:
+      - 4gzTsqpkBMQnDJFjT34i8J46vNQkdGdCV/Ysq6rknb4=
+      - vR9TnymFAUY0jpOTjXP93+sn2xJcDp9Gjn4iQiUvEHY=
+    accounts:
+      - 0:61AB79E0B562BF9163124CF979263528BAFFDAA6380DC5A6113AC385E27EBDE5
+      - 0:DA0BEB83E10D069139C6F655EA3DBE472A0C94865CDC41524E1C90E70F254D51
+    start_lt: 53763455000002
+    end_lt: 53763459000001
+    start_utime: 1739023509
+    end_utime: 1739023520
+    mc_seqno_end: 44748312
+    parent_action_id: waNQyh2IILCzOAk+xbEZEeTvd6DaXx3UYN8Nqce4AF4=
+    ancestor_type:
+      - jvault_stake
+  - type: call_contract
+    anchor: call_contract#9eada1d9@53763459000002
+    id: FAJ/RoZRoiznbYfm98bi+LSy70bKyBwk2/9ZfL+aF9k=
+    success: true
+    source: 0:84DE3BCB1566A2700345DE26DF54CCEA0963D5CC2CDA9C2E52B2AAC8489096AE
+    source_secondary: null
+    destination: 0:DA0BEB83E10D069139C6F655EA3DBE472A0C94865CDC41524E1C90E70F254D51
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: 294314643
+    opcode: 0x9eada1d9
+    tx_hashes:
+      - COD/MW1vcTJWre1Wus10EUmHX0WI06+K1EWBoXJmEog=
+      - uFRGkaqrLMDR2ZwuRs0VEIEn+KOXFA1v9+W1fWkitRc=
+    accounts:
+      - 0:84DE3BCB1566A2700345DE26DF54CCEA0963D5CC2CDA9C2E52B2AAC8489096AE
+      - 0:DA0BEB83E10D069139C6F655EA3DBE472A0C94865CDC41524E1C90E70F254D51
+    start_lt: 53763459000002
+    end_lt: 53763463000001
+    start_utime: 1739023521
+    end_utime: 1739023529
+    mc_seqno_end: 44748316
+    parent_action_id: waNQyh2IILCzOAk+xbEZEeTvd6DaXx3UYN8Nqce4AF4=
+    ancestor_type:
+      - jvault_stake
+  - type: call_contract
+    anchor: call_contract#d53276db@53763459000002
+    id: 3IdUwEgLovI3A6aKx0lDf7wsYJJROryd+RLyTg181JQ=
+    success: true
+    source: 0:61AB79E0B562BF9163124CF979263528BAFFDAA6380DC5A6113AC385E27EBDE5
+    source_secondary: null
+    destination: 0:BF6A2B365AF62AC72AD9100C28ECAFD761EB2822E1264E0FB48AE135BF77DACE
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: 13165913
+    opcode: 0xd53276db
+    tx_hashes:
+      - 4gzTsqpkBMQnDJFjT34i8J46vNQkdGdCV/Ysq6rknb4=
+      - U7l7iS/fOH+2ol93x7Vjx6m7VEV6KVwY6UFbScrrOUA=
+    accounts:
+      - 0:61AB79E0B562BF9163124CF979263528BAFFDAA6380DC5A6113AC385E27EBDE5
+      - 0:BF6A2B365AF62AC72AD9100C28ECAFD761EB2822E1264E0FB48AE135BF77DACE
+    start_lt: 53763459000002
+    end_lt: 53763462000001
+    start_utime: 1739023520
+    end_utime: 1739023527
+    mc_seqno_end: 44748315
+    parent_action_id: waNQyh2IILCzOAk+xbEZEeTvd6DaXx3UYN8Nqce4AF4=
+    ancestor_type:
+      - jvault_stake
+  - type: call_contract
+    anchor: call_contract#d68a4ac1@53763455000003
+    id: 2nRFlpcG1S7dToRj01sOe5NMgMZE2oSk3eAhHSChKnc=
+    success: true
+    source: 0:DA0BEB83E10D069139C6F655EA3DBE472A0C94865CDC41524E1C90E70F254D51
+    source_secondary: null
+    destination: 0:84DE3BCB1566A2700345DE26DF54CCEA0963D5CC2CDA9C2E52B2AAC8489096AE
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: 297753452
+    opcode: 0xd68a4ac1
+    tx_hashes:
+      - uFRGkaqrLMDR2ZwuRs0VEIEn+KOXFA1v9+W1fWkitRc=
+      - vR9TnymFAUY0jpOTjXP93+sn2xJcDp9Gjn4iQiUvEHY=
+    accounts:
+      - 0:84DE3BCB1566A2700345DE26DF54CCEA0963D5CC2CDA9C2E52B2AAC8489096AE
+      - 0:DA0BEB83E10D069139C6F655EA3DBE472A0C94865CDC41524E1C90E70F254D51
+    start_lt: 53763455000003
+    end_lt: 53763459000001
+    start_utime: 1739023509
+    end_utime: 1739023521
+    mc_seqno_end: 44748313
+    parent_action_id: waNQyh2IILCzOAk+xbEZEeTvd6DaXx3UYN8Nqce4AF4=
+    ancestor_type:
+      - jvault_stake
+  - type: jetton_transfer
+    matcher: jetton_transfer
+    anchor: jetton_transfer@53763442000002
+    id: RIpCSWicVZiA9e/Bo33I5DccHKWujWx7dBSbp1Vkam8=
+    success: true
+    source: 0:BF6A2B365AF62AC72AD9100C28ECAFD761EB2822E1264E0FB48AE135BF77DACE
+    source_secondary: 0:2D7CA2C1BB9BA6265CD24A7C6C887BE63AF04E6E2BB9831ECB59B7F80828F51E
+    destination: 0:DA0BEB83E10D069139C6F655EA3DBE472A0C94865CDC41524E1C90E70F254D51
+    destination_secondary: 0:473430B4D4C1C3E14FB71481E4B70E902120645E01A98D0905A0E864815A5E95
+    asset: 0:6CA2C99C66B0FA1478A303BA9618BC39C28FDA1FC50DE37E618BDDF98C9FD24C
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: 1638000000000
+    value: null
+    opcode: null
+    jetton_transfer_data:
+      comment: null
+      custom_payload: null
+      forward_amount: 340000000
+      forward_payload: cellhash:257E0DAE7C3F99807F9CE92EC6E3454216C071E12FC139C9826763899FBE98D4
+      is_encrypted_comment: false
+      query_id: 0
+      response_destination: 0:BF6A2B365AF62AC72AD9100C28ECAFD761EB2822E1264E0FB48AE135BF77DACE
+    tx_hashes:
+      - 3gHUMt8h1SyaO7pMTIWZ3d0adXpyHbvb7j+0RZQFjiU=
+      - CQA4Hb44zQOImSn4FpiyOT2sYtM0DdHjpIaPfBZLAAU=
+      - adHA02BkRBHewPvi9oMWm/mK/nXkN8AHF1vz4ok7+yI=
+      - qDWrAomti6KDVU/Cgh85Th/DaUkyhwNq97l49JzQqDI=
+      - vR9TnymFAUY0jpOTjXP93+sn2xJcDp9Gjn4iQiUvEHY=
+    accounts:
+      - 0:2D7CA2C1BB9BA6265CD24A7C6C887BE63AF04E6E2BB9831ECB59B7F80828F51E
+      - 0:473430B4D4C1C3E14FB71481E4B70E902120645E01A98D0905A0E864815A5E95
+      - 0:BF6A2B365AF62AC72AD9100C28ECAFD761EB2822E1264E0FB48AE135BF77DACE
+      - 0:DA0BEB83E10D069139C6F655EA3DBE472A0C94865CDC41524E1C90E70F254D51
+    start_lt: 53763442000002
+    end_lt: 53763455000001
+    start_utime: 1739023470
+    end_utime: 1739023509
+    mc_seqno_end: 44748309
+    parent_action_id: waNQyh2IILCzOAk+xbEZEeTvd6DaXx3UYN8Nqce4AF4=
+    ancestor_type:
+      - jvault_stake
+  - type: jetton_transfer
+    matcher: jetton_transfer
+    anchor: jetton_transfer@53763463000002
+    id: WX6nVmP1+wssOXkvaRZLYh3bUe25vEOQK7PN6AFO3Vs=
+    success: true
+    source: 0:DA0BEB83E10D069139C6F655EA3DBE472A0C94865CDC41524E1C90E70F254D51
+    source_secondary: 0:473430B4D4C1C3E14FB71481E4B70E902120645E01A98D0905A0E864815A5E95
+    destination: 0:BF6A2B365AF62AC72AD9100C28ECAFD761EB2822E1264E0FB48AE135BF77DACE
+    destination_secondary: 0:2D7CA2C1BB9BA6265CD24A7C6C887BE63AF04E6E2BB9831ECB59B7F80828F51E
+    asset: 0:6CA2C99C66B0FA1478A303BA9618BC39C28FDA1FC50DE37E618BDDF98C9FD24C
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: 1638000000000
+    value: null
+    opcode: null
+    jetton_transfer_data:
+      comment: Stake was unsuccessful
+      custom_payload: null
+      forward_amount: 1
+      forward_payload: cellhash:8ADACF78AB09B67687D09F921BD310CE52680F962011218B0AEC1843DB8277F3
+      is_encrypted_comment: false
+      query_id: 0
+      response_destination: 0:BF6A2B365AF62AC72AD9100C28ECAFD761EB2822E1264E0FB48AE135BF77DACE
+    tx_hashes:
+      - 7YreA/Wc3aIVrlHwLZsknwXwl60ImT4yUHFGv+CZuDY=
+      - COD/MW1vcTJWre1Wus10EUmHX0WI06+K1EWBoXJmEog=
+      - DujChBi3v0c1m2lxkaPNIb5IHUEGKbaBIsr826j99pI=
+      - E8KJe3ANAc8vPJ3Nb+f6cdtnwp0Rwh2z62NQZTSPhtc=
+      - cDbvM3YWnMrwf+0+VUcsHsfUOGX60tmfGHhWhmAThnI=
+    accounts:
+      - 0:2D7CA2C1BB9BA6265CD24A7C6C887BE63AF04E6E2BB9831ECB59B7F80828F51E
+      - 0:473430B4D4C1C3E14FB71481E4B70E902120645E01A98D0905A0E864815A5E95
+      - 0:BF6A2B365AF62AC72AD9100C28ECAFD761EB2822E1264E0FB48AE135BF77DACE
+      - 0:DA0BEB83E10D069139C6F655EA3DBE472A0C94865CDC41524E1C90E70F254D51
+    start_lt: 53763463000002
+    end_lt: 53763473000002
+    start_utime: 1739023529
+    end_utime: 1739023555
+    mc_seqno_end: 44748326
+    parent_action_id: waNQyh2IILCzOAk+xbEZEeTvd6DaXx3UYN8Nqce4AF4=
+    ancestor_type:
+      - jvault_stake
+  - type: jvault_stake
+    matcher: jvault_stake
+    anchor: jvault_stake@53763442000002
+    id: waNQyh2IILCzOAk+xbEZEeTvd6DaXx3UYN8Nqce4AF4=
+    success: false
+    source: 0:BF6A2B365AF62AC72AD9100C28ECAFD761EB2822E1264E0FB48AE135BF77DACE
+    source_secondary: 0:2D7CA2C1BB9BA6265CD24A7C6C887BE63AF04E6E2BB9831ECB59B7F80828F51E
+    destination: 0:DA0BEB83E10D069139C6F655EA3DBE472A0C94865CDC41524E1C90E70F254D51
+    destination_secondary: null
+    asset: 0:6CA2C99C66B0FA1478A303BA9618BC39C28FDA1FC50DE37E618BDDF98C9FD24C
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: 1638000000000
+    value: null
+    opcode: null
+    jvault_stake_data:
+      period: 2592000
+      stake_wallet: 0:84DE3BCB1566A2700345DE26DF54CCEA0963D5CC2CDA9C2E52B2AAC8489096AE
+    tx_hashes:
+      - 3gHUMt8h1SyaO7pMTIWZ3d0adXpyHbvb7j+0RZQFjiU=
+      - 4gzTsqpkBMQnDJFjT34i8J46vNQkdGdCV/Ysq6rknb4=
+      - 7YreA/Wc3aIVrlHwLZsknwXwl60ImT4yUHFGv+CZuDY=
+      - COD/MW1vcTJWre1Wus10EUmHX0WI06+K1EWBoXJmEog=
+      - CQA4Hb44zQOImSn4FpiyOT2sYtM0DdHjpIaPfBZLAAU=
+      - DujChBi3v0c1m2lxkaPNIb5IHUEGKbaBIsr826j99pI=
+      - E8KJe3ANAc8vPJ3Nb+f6cdtnwp0Rwh2z62NQZTSPhtc=
+      - U7l7iS/fOH+2ol93x7Vjx6m7VEV6KVwY6UFbScrrOUA=
+      - adHA02BkRBHewPvi9oMWm/mK/nXkN8AHF1vz4ok7+yI=
+      - cDbvM3YWnMrwf+0+VUcsHsfUOGX60tmfGHhWhmAThnI=
+      - qDWrAomti6KDVU/Cgh85Th/DaUkyhwNq97l49JzQqDI=
+      - uFRGkaqrLMDR2ZwuRs0VEIEn+KOXFA1v9+W1fWkitRc=
+      - vR9TnymFAUY0jpOTjXP93+sn2xJcDp9Gjn4iQiUvEHY=
+    accounts:
+      - 0:2D7CA2C1BB9BA6265CD24A7C6C887BE63AF04E6E2BB9831ECB59B7F80828F51E
+      - 0:473430B4D4C1C3E14FB71481E4B70E902120645E01A98D0905A0E864815A5E95
+      - 0:61AB79E0B562BF9163124CF979263528BAFFDAA6380DC5A6113AC385E27EBDE5
+      - 0:84DE3BCB1566A2700345DE26DF54CCEA0963D5CC2CDA9C2E52B2AAC8489096AE
+      - 0:BF6A2B365AF62AC72AD9100C28ECAFD761EB2822E1264E0FB48AE135BF77DACE
+      - 0:DA0BEB83E10D069139C6F655EA3DBE472A0C94865CDC41524E1C90E70F254D51
+    start_lt: 53763442000002
+    end_lt: 53763473000002
+    start_utime: 1739023470
+    end_utime: 1739023555
+    mc_seqno_end: 44748326

@@ -1,0 +1,39 @@
+# tonstakers / TS Immediate Withdrawal
+# trace: oND3Z5gMq1cKAe6TOJ5QAsqt-8_6wtG6X1hgkHP_Yhk=
+actions:
+  - type: stake_withdrawal
+    matcher: tonstakers_withdraw
+    anchor: tonstakers_withdraw@40144229000002
+    id: bDNrLcitUjDQMntoOjKebxBcO6m3vSzk1RM1Wj5jqrI=
+    success: true
+    source: 0:0926C763841945D6B99A7FF960D0D3CE69A79B2E1D60E1B8C966BEB135557435
+    source_secondary: null
+    destination: 0:A45B17F28409229B78360E3290420F13E4FE20F90D7E2BF8C4AC6703259E22FA
+    destination_secondary: null
+    asset: 0:BDF3FA8098D129B54B4F73B5BAC5D1E1FD91EB054169C3916DFC8CCD536D1000
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: 477298994
+    value: null
+    opcode: null
+    staking_data:
+      provider: liquid_staking
+      tokens_burnt: 499933340
+      ts_nft: null
+    tx_hashes:
+      - +FFSJfobbwKHkj0Cz2W3St4R+F0Rs4IWKrGnHtW2Xu0=
+      - /6tynZnn+8X2mn4MFgMRmGDWZfbMLxGyjXOoY/R0oi4=
+      - mTMc5G1TOtZJJ77o77esiYo++zJt7Rh7t3JNqxbdtIk=
+      - oND3Z5gMq1cKAe6TOJ5QAsqt+8/6wtG6X1hgkHP/Yhk=
+      - yKsoebYYAM+KTpI6S6Hgo7cz+t8ZbItv7qIdjW/nH0Y=
+    accounts:
+      - 0:0926C763841945D6B99A7FF960D0D3CE69A79B2E1D60E1B8C966BEB135557435
+      - 0:A45B17F28409229B78360E3290420F13E4FE20F90D7E2BF8C4AC6703259E22FA
+      - 0:BDF3FA8098D129B54B4F73B5BAC5D1E1FD91EB054169C3916DFC8CCD536D1000
+      - 0:D073AFD2A6FC28D9764765929A360EC20FCF43D565239E17A34ABFDFD9D82C73
+    start_lt: 40144229000002
+    end_lt: 40144229000009
+    start_utime: 1692121802
+    end_utime: 1692121802
+    mc_seqno_end: 31944949

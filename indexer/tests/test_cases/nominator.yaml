@@ -1,0 +1,287 @@
+cases:
+  Deposit success (1Dtg):
+    trace-id: 1DtgStJMB5JNE8vxQD2SYG1E4DO3a6nsUQlA2y-y_E4=
+    expected-actions:
+      - type: stake_deposit
+        values:
+          accounts:
+            - -1:8E4DAF271E02A0ED9058246244CB3203C78D23A0FC26BDCD6C65EB185F19AFCE
+            - 0:90761DC24CD60F7833E062F5DCB4045093ABFD2503EBABE8092B5A3E76682108
+          tx_hashes:
+            - tN+F5GF7lE++eSnUrZGHbOKDTMPRGL0D0YjQz3wuMk0=
+            - 1DtgStJMB5JNE8vxQD2SYG1E4DO3a6nsUQlA2y+y/E4=
+          source: 0:90761DC24CD60F7833E062F5DCB4045093ABFD2503EBABE8092B5A3E76682108
+          destination: -1:8E4DAF271E02A0ED9058246244CB3203C78D23A0FC26BDCD6C65EB185F19AFCE
+          amount: 6750000000000
+          success: true
+          staking_data:
+            provider: nominator
+
+  Deposit success (7-PB):
+    trace-id: 7-PBki6rgQj5bmiG-BxVXPDpkbSM1TucbB83OFr2CC4=
+    expected-actions:
+      - type: stake_deposit
+        values:
+          accounts:
+            - 0:0CDE9962F7230FE1B6F5024984439B5092C9BFCA643C2B6DDF0B72BB765673AB
+            - -1:B7683E13C8833407E7E116E38CFF1C5543E43190A0BB2CA6F52E1ACA3C32AC8A
+          tx_hashes:
+            - z7L9BXr84WUtSLQRKMI7XfkPNcJbC1qqRkHgto4KK8A=
+            - ezruN+Gzhi1ZZSQ/UCeDf3Kz7TPekGxrRDJCvkVXydg=
+          source: 0:0CDE9962F7230FE1B6F5024984439B5092C9BFCA643C2B6DDF0B72BB765673AB
+          destination: -1:B7683E13C8833407E7E116E38CFF1C5543E43190A0BB2CA6F52E1ACA3C32AC8A
+          amount: 1346898335834463
+          success: true
+          staking_data:
+            provider: nominator
+
+  Deposit bounced (XrJ4):
+    trace-id: XrJ4BgG2rSQyr3vItrDD4kFQZMU0v17UGRD3LQPvuOA=
+    expected-actions:
+      - type: stake_deposit
+        values:
+          accounts:
+            - 0:10DF989ED7D51F3E41327ABEE8B9EEA9711F818F385573ED806F61EFCB80BF53
+            - -1:386E6A793B70ED6235E67560183040734CFB2EF9C3CC720E758B767D6DF748EF
+          tx_hashes:
+            - XrJ4BgG2rSQyr3vItrDD4kFQZMU0v17UGRD3LQPvuOA=
+            - qttOmpR4+VuV8dxUuW61eoZqByExVcJ4qQgpBUqoP4g=
+            - tKKBWSSTkv8JgsvCSZy/doQFXEcRb9kwJhXJ+//vW84=
+          source: 0:10DF989ED7D51F3E41327ABEE8B9EEA9711F818F385573ED806F61EFCB80BF53
+          destination: -1:386E6A793B70ED6235E67560183040734CFB2EF9C3CC720E758B767D6DF748EF
+          amount: 81869411
+          success: false
+          staking_data:
+            provider: nominator
+
+  Deposit bounced (awhk):
+    trace-id: awhk7c9wvvH3jR3PrLJbd4sqrfpRlHRwjvlwuIGtPXk=
+    expected-actions:
+      - type: stake_deposit
+        values:
+          accounts:
+            - 0:A2D33F07E1F8F3124F60D0FE6A7883BCB855D05291E102C1727E3B37A5DC88BB
+            - -1:811CED271F8F449CB51EB5920090B92CB200B20F07170676E9DB6FBE9DA516CF
+          tx_hashes:
+            - mwQVkioUgxKDAgoCGJDfcpVW8uFeJge1yMWOaDj+YeI=
+            - awhk7c9wvvH3jR3PrLJbd4sqrfpRlHRwjvlwuIGtPXk=
+            - yDEQwPygl8zlVd0a0eqaG0GAnYFogGcnIxNoe2zyOP8=
+          source: 0:A2D33F07E1F8F3124F60D0FE6A7883BCB855D05291E102C1727E3B37A5DC88BB
+          destination: -1:811CED271F8F449CB51EB5920090B92CB200B20F07170676E9DB6FBE9DA516CF
+          amount: 170000000
+          success: false
+          staking_data:
+            provider: nominator
+
+  Withdraw request, zero payouts (CwcL):
+    trace-id: CwcLdAHHpMSrEbbd_9S7YRvBreXTQHSGIov5Mbv39KA=
+    expected-actions:
+      - type: stake_withdrawal_request
+        values:
+          accounts:
+            - -1:A97069032F8AA37F8E2F37C883F3ECAB8ECFB05563A2E4B550B9D6C329BBA41D
+            - 0:7C91AA4F1C204DAD44E38E588BBD83AC92B1640C98AFF709EEA439541B523812
+          tx_hashes:
+            - UlGGUqfDzs+wdhNAvh/Du4oiBWX0pylK06xI8nh5sdY=
+            - CwcLdAHHpMSrEbbd/9S7YRvBreXTQHSGIov5Mbv39KA=
+            - WqUiTMnOMdej2j17oOdbYmuSQa1Aq/IHyS4bWYlMGok=
+          source: 0:7C91AA4F1C204DAD44E38E588BBD83AC92B1640C98AFF709EEA439541B523812
+          destination: -1:A97069032F8AA37F8E2F37C883F3ECAB8ECFB05563A2E4B550B9D6C329BBA41D
+          success: false
+          staking_data:
+            provider: nominator
+
+  Withdraw request, zero payouts (59b4):
+    trace-id: 59b4F0GX09WQKfMi2v09JdqqO1eab4fH8YPSrGqujnM=
+    expected-actions:
+      - type: stake_withdrawal_request
+        values:
+          accounts:
+            - -1:A97069032F8AA37F8E2F37C883F3ECAB8ECFB05563A2E4B550B9D6C329BBA41D
+            - 0:27BAFBC6D4A559505C397864E9E2A68C69FFBEA37C61F34B54D114231D3906F3
+          tx_hashes:
+            - 59b4F0GX09WQKfMi2v09JdqqO1eab4fH8YPSrGqujnM=
+            - eQc/VhpKUvtTHZpkUyfCeJZ8MakglMgAN7z5gX8kzsQ=
+            - ltH7j+plmVUtL+T0QrdNCoUBIun1oih6jHrgguXrFO8=
+          source: 0:27BAFBC6D4A559505C397864E9E2A68C69FFBEA37C61F34B54D114231D3906F3
+          destination: -1:A97069032F8AA37F8E2F37C883F3ECAB8ECFB05563A2E4B550B9D6C329BBA41D
+          success: false
+          staking_data:
+            provider: nominator
+
+  Withdraw request, one payout consumed (4b5N):
+    trace-id: 4b5NvcGM3iow6o3Qc9ATpQLp9PlPv1Y62XvPTcbzUkQ=
+    expected-actions:
+      - type: stake_withdrawal_request
+        values:
+          accounts:
+            - -1:FB6A6AF34963D20383BA09D8BCF3BE4C714845F27D193D04819EE5094816247A
+            - 0:34EEF9857552B9A911602918298F70FB6ED2C1107EAC5738450569BFCC38DA01
+          tx_hashes:
+            - 4b5NvcGM3iow6o3Qc9ATpQLp9PlPv1Y62XvPTcbzUkQ=
+            - YAZ9XOUmqOYcL6shlRbDS3raNmZotfr2x4h7s4/dUms=
+            - J/0WwXR6RrssZXFnWHyjZd4yLTFCyRQLLmSI26gKbEc=
+          source: 0:34EEF9857552B9A911602918298F70FB6ED2C1107EAC5738450569BFCC38DA01
+          destination: -1:FB6A6AF34963D20383BA09D8BCF3BE4C714845F27D193D04819EE5094816247A
+          success: true
+          staking_data:
+            provider: nominator
+
+  Withdraw request, one payout consumed (9ncN):
+    trace-id: 9ncN7iBzDJswNbex9fiAbG37vXl9qu6HOrLPe16yp0w=
+    expected-actions:
+      - type: stake_withdrawal_request
+        values:
+          accounts:
+            - 0:4432033B292D5168DCE5CF47ACC45FADA250721C3394C8D57D32AD063A16CA5A
+            - -1:38A38549467969D70B2A487A2FD50B6DA924D075AD99D6F18AF9BEC468F42878
+          tx_hashes:
+            - nb9Xk9SbZJgaFjzPI9QHnj0Bl5lhiu3giMigcMz6spw=
+            - pt06tYv472psrCfFhWJXhxXVilaU7Gaw9o14VXxwTcg=
+            - 9ncN7iBzDJswNbex9fiAbG37vXl9qu6HOrLPe16yp0w=
+          source: 0:4432033B292D5168DCE5CF47ACC45FADA250721C3394C8D57D32AD063A16CA5A
+          destination: -1:38A38549467969D70B2A487A2FD50B6DA924D075AD99D6F18AF9BEC468F42878
+          success: true
+          staking_data:
+            provider: nominator
+
+  Immediate withdrawal, two payouts (jR18):
+    trace-id: jR18KgOd7Bmlhja1EmBRM_b-bPrdMuJwvsnfwhdYPiY=
+    expected-actions:
+      - type: stake_withdrawal
+        values:
+          accounts:
+            - 0:CC09E575D78B7575E33B600B1BB328BED2D70F6DB9275AC86CD3FFBF8D370BF7
+            - -1:86EAF966B35A5DB101955021A482233EF3E95E98809E24FB573DF9150B107508
+          tx_hashes:
+            - oTTc1TMUtOscTbHYv2x3Nn/T8sTSw6wvGIXl+NcHh6A=
+            - EzPKY80NWHDsaJ0dYNAl4gGVYF33Xolml1qm8akwWIs=
+            - jR18KgOd7Bmlhja1EmBRM/b+bPrdMuJwvsnfwhdYPiY=
+            - iRGU3GQQXzbdnokGQKEQpWlJp4teDUpUJxuTaGPVdAo=
+          source: 0:CC09E575D78B7575E33B600B1BB328BED2D70F6DB9275AC86CD3FFBF8D370BF7
+          destination: -1:86EAF966B35A5DB101955021A482233EF3E95E98809E24FB573DF9150B107508
+          amount: 2079869145287964
+          success: true
+          staking_data:
+            provider: nominator
+
+  Immediate withdrawal, two payouts (BGhr):
+    trace-id: BGhr3QvCA4-8NaUWkjqMUyEivmDuCF37sGpBS6W0x6w=
+    expected-actions:
+      - type: stake_withdrawal
+        values:
+          accounts:
+            - 0:B472E9B533CBD3C2A4D173EA841572A28BDC57DC9239A4A60434819697B5AF61
+            - -1:86EAF966B35A5DB101955021A482233EF3E95E98809E24FB573DF9150B107508
+          tx_hashes:
+            - 7XP1n5xCOkiC3WOsgN8Ysn6gtrvkGu+keQxFbEDj4Kg=
+            - ednNFKBIYJhatiXwMvVxyvmqsn8HrimFADsOl/X7dDQ=
+            - BGhr3QvCA4+8NaUWkjqMUyEivmDuCF37sGpBS6W0x6w=
+            - cPt/g2YjtEICr+ZNO/n2ozjxVtWeuCyYpdETZM6JX64=
+          source: 0:B472E9B533CBD3C2A4D173EA841572A28BDC57DC9239A4A60434819697B5AF61
+          destination: -1:86EAF966B35A5DB101955021A482233EF3E95E98809E24FB573DF9150B107508
+          amount: 1118697659378295
+          success: true
+          staking_data:
+            provider: nominator
+
+  Op-0x2 double-payout withdrawal (APpT):
+    trace-id: APpTI_e4-tKeBPZgtCDXmZhharEE-tvVh0tBPoCK6i0=
+    expected-actions:
+      - type: stake_withdrawal
+        selector: "{{ value.source == '0:0CDE9962F7230FE1B6F5024984439B5092C9BFCA643C2B6DDF0B72BB765673AB' }}"
+        values:
+          accounts:
+            - -1:B7683E13C8833407E7E116E38CFF1C5543E43190A0BB2CA6F52E1ACA3C32AC8A
+            - 0:0CDE9962F7230FE1B6F5024984439B5092C9BFCA643C2B6DDF0B72BB765673AB
+          tx_hashes:
+            - BGY9j0qPl6M9MY+mUepKFMEMPhY5bIazY2WqcCVLLXY=
+            - 8ToiWZyJ2SHT27rd7BvbUbzFVGsyZ6VbezOlDHNWMVY=
+          source: 0:0CDE9962F7230FE1B6F5024984439B5092C9BFCA643C2B6DDF0B72BB765673AB
+          destination: -1:B7683E13C8833407E7E116E38CFF1C5543E43190A0BB2CA6F52E1ACA3C32AC8A
+          amount: 1349623120732929
+          success: true
+          staking_data:
+            provider: nominator
+      - type: stake_withdrawal
+        selector: "{{ value.source == '-1:70DD043BE9B7D9883485574D72F3D54D455EF119608892AE6609DC2637E6106F' }}"
+        values:
+          accounts:
+            - -1:B7683E13C8833407E7E116E38CFF1C5543E43190A0BB2CA6F52E1ACA3C32AC8A
+            - -1:70DD043BE9B7D9883485574D72F3D54D455EF119608892AE6609DC2637E6106F
+          tx_hashes:
+            - BGY9j0qPl6M9MY+mUepKFMEMPhY5bIazY2WqcCVLLXY=
+            - 39bbiyc6qrAiBFOVvAY5sNsANNWS8UGqZ/x749usk0c=
+          source: -1:70DD043BE9B7D9883485574D72F3D54D455EF119608892AE6609DC2637E6106F
+          destination: -1:B7683E13C8833407E7E116E38CFF1C5543E43190A0BB2CA6F52E1ACA3C32AC8A
+          amount: 9829610000
+          success: true
+          staking_data:
+            provider: nominator
+
+  Op-0x2 double-payout withdrawal (DAL_):
+    trace-id: DAL_tL08iL0GO1ZqDkqd6kpl4NNmFurhegqjrKiW0sc=
+    expected-actions:
+      - type: stake_withdrawal
+        selector: "{{ value.source == '-1:28A30058F860E1073DC5ABC4E4A4D409148F90446990DD6E8DEDFF07A12615AA' }}"
+        values:
+          accounts:
+            - -1:28A30058F860E1073DC5ABC4E4A4D409148F90446990DD6E8DEDFF07A12615AA
+            - -1:4C7F32D719FE1537CED974C66E145FCFFC496C94A3B4BA9910202C0B048F667F
+          tx_hashes:
+            - NK4kfqJYZCj1LcBL8TrJ1camUoQxvDdC2J7xstQg+ng=
+            - GRnTXhmQRkop+lAfHT2MxA4/6BOpi9AdQJSPlSYDJpA=
+          source: -1:28A30058F860E1073DC5ABC4E4A4D409148F90446990DD6E8DEDFF07A12615AA
+          destination: -1:4C7F32D719FE1537CED974C66E145FCFFC496C94A3B4BA9910202C0B048F667F
+          amount: 9829610000
+          success: true
+          staking_data:
+            provider: nominator
+      - type: stake_withdrawal
+        selector: "{{ value.source == '0:BBA456CF2383A18B01406B3DCC512C7983160F778D3FD4C2D44DC5601D441F90' }}"
+        values:
+          accounts:
+            - 0:BBA456CF2383A18B01406B3DCC512C7983160F778D3FD4C2D44DC5601D441F90
+            - -1:4C7F32D719FE1537CED974C66E145FCFFC496C94A3B4BA9910202C0B048F667F
+          tx_hashes:
+            - c05l30PCNGTzQ+GYxRqLM8uMVVKk4v6jqVnXU4u+vuY=
+            - GRnTXhmQRkop+lAfHT2MxA4/6BOpi9AdQJSPlSYDJpA=
+          source: 0:BBA456CF2383A18B01406B3DCC512C7983160F778D3FD4C2D44DC5601D441F90
+          destination: -1:4C7F32D719FE1537CED974C66E145FCFFC496C94A3B4BA9910202C0B048F667F
+          amount: 1134857510640934
+          success: true
+          staking_data:
+            provider: nominator
+
+  Mixed withdraw request and vesting send message:
+    trace-id: IG3rAERJtYBswEBCpy_3redfrE-4cQS0cAfg1-W1UO8=
+    expected-actions:
+      - type: vesting_send_message
+        values:
+          accounts:
+            - 0:EDBA9C58843012F296DCC70B9E0DA8948FBB06E580D8417F2FAF6996C6EC98AE
+            - 0:28CAFA0E3C98C78380BF9FF1117926D2DA53C8E1792647551176D3F9861AFCE1
+            - -1:38A38549467969D70B2A487A2FD50B6DA924D075AD99D6F18AF9BEC468F42878
+          tx_hashes:
+            - mnDlbgOSyeo1vKPnm1cZiFcooxRDLgkriK425p+1wPQ=
+            - IG3rAERJtYBswEBCpy/3redfrE+4cQS0cAfg1+W1UO8=
+            - s4bqZjbajPVi9iw7/qd+VRGdH98WjncVHEiJnz1LRJo=
+          source: 0:EDBA9C58843012F296DCC70B9E0DA8948FBB06E580D8417F2FAF6996C6EC98AE
+          destination: 0:28CAFA0E3C98C78380BF9FF1117926D2DA53C8E1792647551176D3F9861AFCE1
+          destination_secondary: -1:38A38549467969D70B2A487A2FD50B6DA924D075AD99D6F18AF9BEC468F42878
+          amount: 1000000000
+          success: true
+      - type: stake_withdrawal_request
+        values:
+          accounts:
+            - 0:28CAFA0E3C98C78380BF9FF1117926D2DA53C8E1792647551176D3F9861AFCE1
+            - -1:38A38549467969D70B2A487A2FD50B6DA924D075AD99D6F18AF9BEC468F42878
+          tx_hashes:
+            - Qoi/anYdaO9ksxCoZ7IQ3V8gtySPuvnGR5yx/NsxWAE=
+            - mnDlbgOSyeo1vKPnm1cZiFcooxRDLgkriK425p+1wPQ=
+            - dF+QsiLaJ4/OeqpTJSNUY4kNi3FmrEXTbi3JuOa31Bo=
+          source: 0:28CAFA0E3C98C78380BF9FF1117926D2DA53C8E1792647551176D3F9861AFCE1
+          destination: -1:38A38549467969D70B2A487A2FD50B6DA924D075AD99D6F18AF9BEC468F42878
+          success: true
+          staking_data:
+            provider: nominator

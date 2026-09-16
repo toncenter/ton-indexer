@@ -1,0 +1,51 @@
+# dedust-liquidities / DeDust V2 failed swap TON-in (slippage refund)
+# trace: 0iATkyOyvTvNjrVp0CbQo4RDIo7wljsohpVizWVHE1A=
+actions:
+  - type: jetton_swap
+    matcher: dedust_v2_failed_swap
+    anchor: jetton_swap@81537666000029
+    id: UGZ8AvdORH2UdjWcDHd+59d8bvGmsKO+c9zcxKFDAGo=
+    success: false
+    source: 0:3640DCE992FF00D13C35A8F25082C33D4286E2A86773EB4543719BF7374E91B9
+    source_secondary: null
+    destination: 0:3640DCE992FF00D13C35A8F25082C33D4286E2A86773EB4543719BF7374E91B9
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: 0:0EC9FE27FBBC13B53238E4B190C1F69C11F9E4A4E6BDBFA6E3A7081E0875F959
+    asset2_secondary: null
+    amount: null
+    value: null
+    opcode: null
+    jetton_swap_data:
+      dex: dedust_v2
+      dex_incoming_transfer:
+        amount: 30179064758
+        asset: null
+        destination: 0:FD4AAE2D1404B14BAD64DA5BFA8031C862C178B34A173F1E6E252887AB3B5768
+        destination_jetton_wallet: null
+        source: 0:3640DCE992FF00D13C35A8F25082C33D4286E2A86773EB4543719BF7374E91B9
+        source_jetton_wallet: null
+      dex_outgoing_transfer:
+        amount: 0
+        asset: 0:0EC9FE27FBBC13B53238E4B190C1F69C11F9E4A4E6BDBFA6E3A7081E0875F959
+        destination: 0:3640DCE992FF00D13C35A8F25082C33D4286E2A86773EB4543719BF7374E91B9
+        destination_jetton_wallet: null
+        source: 0:FD4AAE2D1404B14BAD64DA5BFA8031C862C178B34A173F1E6E252887AB3B5768
+        source_jetton_wallet: null
+      min_out_amount: 1805965483449843
+      peer_swaps: []
+      sender: 0:3640DCE992FF00D13C35A8F25082C33D4286E2A86773EB4543719BF7374E91B9
+    tx_hashes:
+      - 0iATkyOyvTvNjrVp0CbQo4RDIo7wljsohpVizWVHE1A=
+      - LCHS+aIi74qCkGCKb3p7gnBkmmbTieWsnYMyXn6PG5Q=
+      - NI06gZHPXabEV7CDG2wDFf7Te/Tq+qjpTLnzw761E8Y=
+      - UG8IpjcMoeFXnBF3nzhIqiCUeHgw1wxZbZEvb0OJvzE=
+    accounts:
+      - 0:3640DCE992FF00D13C35A8F25082C33D4286E2A86773EB4543719BF7374E91B9
+      - 0:FD4AAE2D1404B14BAD64DA5BFA8031C862C178B34A173F1E6E252887AB3B5768
+    start_lt: 81537666000029
+    end_lt: 81537667000004
+    start_utime: 1780592679
+    end_utime: 1780592679
+    mc_seqno_end: 71203115

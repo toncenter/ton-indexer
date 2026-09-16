@@ -1,0 +1,127 @@
+# dns / DNS purchase 3
+# trace: 0_cGqTo2WPRltXjqtcPZX6rnDw6epyzggddM4XvTv8Y=
+actions:
+  - type: call_contract
+    anchor: call_contract#370fec51@68027425000004
+    id: 4O9IZbeL3fj83D88MklkQeToozO26lOYr3k7mwBIxpc=
+    success: true
+    source: 0:73B3C1B14F2AA24D378D10FA2F758EADD6EC0551CF33EA1E910F471DE649201B
+    source_secondary: null
+    destination: 0:B774D95EB20543F186C06B371AB88AD704F7E256130CAF96189368A7D0CB6CCF
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: 24323257
+    opcode: 0x370fec51
+    tx_hashes:
+      - Fra9bxi/pFYgYAFgC35nuoh0nUDIf6+lSTK85k/mkVs=
+      - uIdOAnG6SR5hBsdT3UjnHbWPryIcyX1Vlt7N5aG6G0A=
+    accounts:
+      - 0:73B3C1B14F2AA24D378D10FA2F758EADD6EC0551CF33EA1E910F471DE649201B
+      - 0:B774D95EB20543F186C06B371AB88AD704F7E256130CAF96189368A7D0CB6CCF
+    start_lt: 68027425000004
+    end_lt: 68027425000005
+    start_utime: 1773672725
+    end_utime: 1773672725
+    mc_seqno_end: 58364911
+    parent_action_id: j/1YQwkkfuJCj7F2b+E+fg1O1KLw+M/fOkXRmiVFBAU=
+    ancestor_type:
+      - dns_purchase
+  - type: dns_purchase
+    matcher: dns_purchase
+    anchor: dns_purchase@68027425000004
+    id: j/1YQwkkfuJCj7F2b+E+fg1O1KLw+M/fOkXRmiVFBAU=
+    success: true
+    source: null
+    source_secondary: null
+    destination: 0:2681FA1135CDB32B5B96981E60BB7E453960F33541237DD7167CB6AEBA21F69F
+    destination_secondary: null
+    asset: 0:B774D95EB20543F186C06B371AB88AD704F7E256130CAF96189368A7D0CB6CCF
+    asset_secondary: 0:73B3C1B14F2AA24D378D10FA2F758EADD6EC0551CF33EA1E910F471DE649201B
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: null
+    opcode: null
+    nft_transfer_data:
+      custom_payload: null
+      forward_amount: null
+      forward_payload: null
+      is_purchase: true
+      marketplace: null
+      marketplace_address: null
+      nft_item_index: 23165594964569253781249057145818525693270769323293921359848759328037939445760
+      payout_amount: 24323257
+      payout_comment: null
+      payout_comment_encoded: null
+      payout_comment_encrypted: null
+      price: 24323257
+      query_id: 1773672722
+      real_prev_owner: null
+      response_destination: null
+      royalty_amount: null
+    tx_hashes:
+      - Fra9bxi/pFYgYAFgC35nuoh0nUDIf6+lSTK85k/mkVs=
+      - uIdOAnG6SR5hBsdT3UjnHbWPryIcyX1Vlt7N5aG6G0A=
+    accounts:
+      - 0:2681FA1135CDB32B5B96981E60BB7E453960F33541237DD7167CB6AEBA21F69F
+      - 0:73B3C1B14F2AA24D378D10FA2F758EADD6EC0551CF33EA1E910F471DE649201B
+      - 0:B774D95EB20543F186C06B371AB88AD704F7E256130CAF96189368A7D0CB6CCF
+    start_lt: 68027425000004
+    end_lt: 68027425000005
+    start_utime: 1773672725
+    end_utime: 1773672725
+    mc_seqno_end: 58364911
+  - type: nft_transfer
+    matcher: nft_transfer
+    anchor: nft_transfer@68027425000002
+    id: cGb0YdPtjMUsYwKmV6C91vp7TihJ1uDNHtNrQvieUkU=
+    success: true
+    source: 0:2681FA1135CDB32B5B96981E60BB7E453960F33541237DD7167CB6AEBA21F69F
+    source_secondary: null
+    destination: 0:A70628DD7CE4FBF4AB2492C419A7ABA95DDD82E8C088A46482AF835C6EEE517E
+    destination_secondary: null
+    asset: 0:B774D95EB20543F186C06B371AB88AD704F7E256130CAF96189368A7D0CB6CCF
+    asset_secondary: 0:73B3C1B14F2AA24D378D10FA2F758EADD6EC0551CF33EA1E910F471DE649201B
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: null
+    opcode: null
+    nft_listing_data:
+      marketplace_fee_address: null
+      royalty_address: null
+    nft_transfer_data:
+      custom_payload: null
+      forward_amount: 1
+      forward_payload: cellhash:96A296D224F285C67BEE93C30F8A309157F0DAA35DC5B87E410B78630A09CFC7
+      is_purchase: false
+      marketplace: null
+      marketplace_address: null
+      nft_item_index: 23165594964569253781249057145818525693270769323293921359848759328037939445760
+      payout_amount: null
+      payout_comment: null
+      payout_comment_encoded: null
+      payout_comment_encrypted: null
+      price: null
+      query_id: 1773672722
+      real_prev_owner: null
+      response_destination: 0:2681FA1135CDB32B5B96981E60BB7E453960F33541237DD7167CB6AEBA21F69F
+      royalty_amount: null
+    tx_hashes:
+      - 0/cGqTo2WPRltXjqtcPZX6rnDw6epyzggddM4XvTv8Y=
+      - 5ZKgLgPJXN9MbQSUnnpyU8/RUD2wZxxpPiJi9WtHLxg=
+      - Fra9bxi/pFYgYAFgC35nuoh0nUDIf6+lSTK85k/mkVs=
+      - RQtCy0+3S+OdBRvR2QiT2dHhjMzFimF70Wlfwd33pBY=
+    accounts:
+      - 0:2681FA1135CDB32B5B96981E60BB7E453960F33541237DD7167CB6AEBA21F69F
+      - 0:73B3C1B14F2AA24D378D10FA2F758EADD6EC0551CF33EA1E910F471DE649201B
+      - 0:A70628DD7CE4FBF4AB2492C419A7ABA95DDD82E8C088A46482AF835C6EEE517E
+    start_lt: 68027425000002
+    end_lt: 68027425000007
+    start_utime: 1773672725
+    end_utime: 1773672725
+    mc_seqno_end: 58364911

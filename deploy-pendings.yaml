@@ -77,7 +77,7 @@
             recursive: yes
             delete: no
 
-        - name: Build ton-trace-emulator and ton-trace-ttl-tracker
+        - name: Build ton-trace-emulator and ton-streaming-go
           ansible.builtin.shell: |
             set -e
             cmake -DCMAKE_BUILD_TYPE=Release \
@@ -87,7 +87,7 @@
                   -DCMAKE_CXX_COMPILER_LAUNCHER=ccache 
             cmake --build "{{ builddir.path }}/build" \
                   --parallel {{ ansible_facts.processor_vcpus | default(2) }} \
-                  --target ton-trace-emulator ton-trace-ttl-tracker
+                  --target ton-trace-emulator ton-streaming-go
           args:
             chdir: "{{ builddir.path }}"
           environment:
@@ -105,7 +105,8 @@
             flat: true
           loop:
             - "ton-index-worker/ton-trace-emulator/ton-trace-emulator"
-            - "ton-trace-ttl-tracker/ton-trace-ttl-tracker"
+            - "ton-streaming-go/ton-streaming-go"
+            - "ton-index-worker/ton-marker/libton-marker.so"
       always:
         - name: Cleanup workspace
           ansible.builtin.file:
@@ -126,8 +127,6 @@
     - name: Install requirements
       ansible.builtin.apt:
         name:
-          - python3-pip
-          - python3-venv
           - dnsutils
           - libpq-dev
           - libsecp256k1-dev
@@ -145,26 +144,47 @@
       with_items:
         - src: "artifacts/ton-trace-emulator"
           dest: "{{ deploy_path }}/{{ stack_name }}__trace_emulator"
-        - src: "artifacts/ton-trace-ttl-tracker"
-          dest: "{{ deploy_path }}/{{ stack_name }}__trace_ttl_tracker"
+        - src: "artifacts/ton-streaming-go"
+          dest: "{{ deploy_path }}/{{ stack_name }}__streaming_api"
+
+    - name: Install libton-marker.so
+      ansible.builtin.copy:
+        src: "artifacts/libton-marker.so"
+        dest: "/usr/lib/libton-marker.so"
+        mode: "0644"
 
     - name: Refresh linker cache
       ansible.builtin.command: ldconfig
       changed_when: false
 
-    - name: Copy python module
-      ansible.builtin.copy:
-        src: indexer
-        dest: "{{ deploy_path }}"
+    - name: Stop and disable legacy trace_ttl_tracker service
+      ansible.builtin.systemd:
+        name: "{{ stack_name }}__trace_ttl_tracker"
+        state: stopped
+        enabled: false
+      failed_when: false
 
-    - name: Setup venv
-      ansible.builtin.pip:
-        requirements: "{{ deploy_path }}/indexer/requirements.txt"
-        virtualenv: "{{ deploy_path }}/venv"
-        virtualenv_command: "python3 -m venv"
-        extra_args: "--no-cache-dir"
-    
-    - name: Setup trace_emulator and trace_ttl_tracker service
+    - name: Remove legacy trace_ttl_tracker files
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - "{{ systemd_service_path }}/{{ stack_name }}__trace_ttl_tracker.service"
+        - "{{ deploy_path }}/{{ stack_name }}__trace_ttl_tracker"
+
+    - name: Stop and disable legacy pending action classifier service
+      ansible.builtin.systemd:
+        name: "{{ stack_name }}__pendings_action_classifier"
+        state: stopped
+        enabled: false
+      failed_when: false
+
+    - name: Remove legacy pending action classifier service
+      ansible.builtin.file:
+        path: "{{ systemd_service_path }}/{{ stack_name }}__pendings_action_classifier.service"
+        state: absent
+
+    - name: Setup pendings services
       ansible.builtin.template:
         src: "ansible/systemd.service.j2"
         dest: "{{ systemd_service_path }}/{{ service_name }}.service"
@@ -176,20 +196,19 @@
         start_cmd: "{{ deploy_path }}/{{ service_name }} {{ service.additional_args }}"
       with_items:
         - trace_emulator
-        - trace_ttl_tracker
+        - streaming_api
     
-    - name: Setup action classifier service
-      ansible.builtin.template:
-        src: "ansible/systemd.service.j2"
-        dest: "{{ systemd_service_path }}/{{ service_name }}.service"
-        mode: "0644"
-        force: true
-      vars:
-        service: "{{ services[item] }}"
-        service_name: "{{ stack_name }}__{{ item }}"
-        start_cmd: "{{ deploy_path }}/venv/bin/python3 {{ deploy_path }}/indexer/event_classifier.py {{ service.additional_args }}"
-      with_items:
-        - pendings_action_classifier
+    # Keep the emulator down until Redis configuration and every notified
+    # handler have finished. Its startup FLUSHDB must run last.
+    - name: Stop pendings services before configuring Redis
+      ansible.builtin.systemd:
+        name: "{{ stack_name }}__{{ item }}"
+        state: stopped
+        daemon_reload: true
+      throttle: 1
+      loop:
+        - trace_emulator
+        - streaming_api
 
     - name: Install and configure Redis
       ansible.builtin.include_role:
@@ -197,61 +216,15 @@
       vars:
         redis_bind_interface: '0.0.0.0'
         redis_requirepass: "{{ pendings_redis_password }}"
+        # Render an explicit save "": omitting save directives can leave
+        # Redis's built-in snapshot schedule enabled.
+        redis_save: ['""']
+        redis_appendonly: "no"
+        redis_extra_config: |
+          maxclients 100000
 
-    - name: Configure Redis max clients
-      ansible.builtin.lineinfile:
-        path: /etc/redis/redis.conf
-        regexp: '^\s*#?\s*maxclients\s+'
-        line: "maxclients 100000"
-      register: redis_maxclients_config
-
-    - name: Comment Redis RDB save rules
-      ansible.builtin.replace:
-        path: /etc/redis/redis.conf
-        regexp: '^(?!\s*#)(\s*save\s+(?!""\s*(?:#.*)?$).*)$'
-        replace: '# \1'
-      register: redis_save_rules_commented
-
-    - name: Disable Redis RDB snapshots
-      ansible.builtin.lineinfile:
-        path: /etc/redis/redis.conf
-        regexp: '^\s*#?\s*save\s+""\s*(?:#.*)?$'
-        line: 'save ""'
-        insertafter: '^#?\s*save\s+'
-      register: redis_save_disabled
-
-    - name: Restart Redis after config change
-      ansible.builtin.systemd:
-        name: redis-server
-        state: restarted
-      when: redis_maxclients_config.changed or redis_save_rules_commented.changed or redis_save_disabled.changed
-
-    - name: Stop pendings services before Redis flush
-      ansible.builtin.systemd:
-        name: "{{ service_name }}"
-        state: stopped
-        daemon_reload: true
-      vars:
-        service_name: "{{ stack_name }}__{{ item }}"
-      throttle: 1
-      with_items:
-       - trace_emulator
-       - pendings_action_classifier
-       - trace_ttl_tracker
-
-    - name: Flush pendings Redis database
-      ansible.builtin.command:
-        argv:
-          - redis-cli
-          - -h
-          - "127.0.0.1"
-          - -p
-          - "6379"
-          - FLUSHDB
-      environment:
-        REDISCLI_AUTH: "{{ pendings_redis_password }}"
-      changed_when: true
-      no_log: true
+    - name: Finish Redis handlers before starting pendings services
+      ansible.builtin.meta: flush_handlers
 
     - name: Restart and enable pendings services
       ansible.builtin.systemd:
@@ -264,6 +237,5 @@
         service_name: "{{ stack_name }}__{{ item }}"
       throttle: 1
       with_items:
-       - trace_emulator
-       - pendings_action_classifier
-       - trace_ttl_tracker
+        - trace_emulator
+        - streaming_api

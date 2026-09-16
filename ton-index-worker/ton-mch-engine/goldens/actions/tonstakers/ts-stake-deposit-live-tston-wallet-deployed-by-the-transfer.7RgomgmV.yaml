@@ -1,0 +1,65 @@
+# tonstakers / TS Stake deposit (live, tsTON wallet deployed by the transfer)
+# trace: 7RgomgmV3Hc3KQTnkKtSOzAGW7v61-cacwv5vouskSA=
+actions:
+  - type: contract_deploy
+    anchor: contract_deploy#178d4519@93609326000006
+    id: 29tLbhisN9ef+JOarwNdoeBuDkMvWU/4jbAfffTUSI4=
+    success: true
+    source: 0:BDF3FA8098D129B54B4F73B5BAC5D1E1FD91EB054169C3916DFC8CCD536D1000
+    source_secondary: null
+    destination: 0:FF8F5EA71D72637991021497198AD29235800FD20EFAD0B4649B397078709815
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: 998006064
+    opcode: 0x178d4519
+    tx_hashes:
+      - KSHAYkQ5X57IwsQpcan8DhzQq9WCxRdiVJQ9kUua9Nw=
+      - jOlN1raji4FANnz4xR4wk4CIu97qZs8X9iou2sKEvU4=
+    accounts:
+      - 0:BDF3FA8098D129B54B4F73B5BAC5D1E1FD91EB054169C3916DFC8CCD536D1000
+      - 0:FF8F5EA71D72637991021497198AD29235800FD20EFAD0B4649B397078709815
+    start_lt: 93609326000006
+    end_lt: 93609326000007
+    start_utime: 1785456532
+    end_utime: 1785456532
+    mc_seqno_end: 83025649
+  - type: stake_deposit
+    matcher: tonstakers_deposit
+    anchor: tonstakers_deposit@93609326000002
+    id: nZV8xshAWx9Mw6sdvZTnIb01rQAuNkY7IuhTUVZd6cA=
+    success: true
+    source: 0:74CBFCE65AB783BAAE56545D6A9F83E93004BC7FD1E49ECB551C1895DE14AD68
+    source_secondary: null
+    destination: 0:A45B17F28409229B78360E3290420F13E4FE20F90D7E2BF8C4AC6703259E22FA
+    destination_secondary: null
+    asset: 0:BDF3FA8098D129B54B4F73B5BAC5D1E1FD91EB054169C3916DFC8CCD536D1000
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: 10840772261
+    value: null
+    opcode: null
+    staking_data:
+      provider: liquid_staking
+      tokens_minted: 9508974323
+    tx_hashes:
+      - 7RgomgmV3Hc3KQTnkKtSOzAGW7v61+cacwv5vouskSA=
+      - KSHAYkQ5X57IwsQpcan8DhzQq9WCxRdiVJQ9kUua9Nw=
+      - fb98RP0d7SeTkXg8AYP3Rn2pzH7PdzkquYRJXTr58Rc=
+      - jOlN1raji4FANnz4xR4wk4CIu97qZs8X9iou2sKEvU4=
+      - ql/gHPTEnRGAAwVAZJ6i3borydelkpkBqmrnneiYBz8=
+      - xBjrhLSlZre5NhyVvEW61MxvARGtFHdgqsIY6faFZA4=
+    accounts:
+      - 0:74CBFCE65AB783BAAE56545D6A9F83E93004BC7FD1E49ECB551C1895DE14AD68
+      - 0:A45B17F28409229B78360E3290420F13E4FE20F90D7E2BF8C4AC6703259E22FA
+      - 0:BDF3FA8098D129B54B4F73B5BAC5D1E1FD91EB054169C3916DFC8CCD536D1000
+      - 0:FF8F5EA71D72637991021497198AD29235800FD20EFAD0B4649B397078709815
+    start_lt: 93609326000002
+    end_lt: 93609326000010
+    start_utime: 1785456532
+    end_utime: 1785456532
+    mc_seqno_end: 83025649

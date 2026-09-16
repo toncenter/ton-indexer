@@ -1,0 +1,122 @@
+# cocoon / Cocoon Proxy Payout
+# trace: 2c8XSjnlpuxjOu3ixrdO0m_W1fiikVWZQB6h5sJe7U4=
+actions:
+  - type: call_contract
+    anchor: call_contract#2565934c@64540878000005
+    id: o/ws/iGZgd8OCd/3M8ls2EvTNepSrkvRHzegk3walrU=
+    success: true
+    source: 0:B94C23C25E82509C6834B6C513FA7B4F5B8A924694C579ADED8CD0079E646A50
+    source_secondary: null
+    destination: 0:3C02D2FAE2B263048DA2C03AAF0C2BEB208F6828C3547D4A86E19A98F1BFAABA
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: 195580000
+    opcode: 0x2565934c
+    tx_hashes:
+      - by8mKI17j9RWFhX2ERiLip/UYpopfkbgvOam6c2x+bY=
+      - pLXKxKAgCyyQ63jheDhKYE2f6NVH3nvcx72U4hLO7Qk=
+    accounts:
+      - 0:3C02D2FAE2B263048DA2C03AAF0C2BEB208F6828C3547D4A86E19A98F1BFAABA
+      - 0:B94C23C25E82509C6834B6C513FA7B4F5B8A924694C579ADED8CD0079E646A50
+    start_lt: 64540878000005
+    end_lt: 64540878000006
+    start_utime: 1765460983
+    end_utime: 1765460983
+    mc_seqno_end: 54899991
+    parent_action_id: sfaTtgL1qiFJG1i3wsiQMaCAKAJSOCXBsAGQHghn8vs=
+    ancestor_type:
+      - cocoon_proxy_payout
+  - type: call_contract
+    anchor: call_contract#7610e6eb@64540878000002
+    id: uiv72wH0o8zcclXXVxC3xxM2djZjc6xgMvPr75k21EQ=
+    success: true
+    source: 0:3C02D2FAE2B263048DA2C03AAF0C2BEB208F6828C3547D4A86E19A98F1BFAABA
+    source_secondary: null
+    destination: 0:B94C23C25E82509C6834B6C513FA7B4F5B8A924694C579ADED8CD0079E646A50
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: 199414800
+    opcode: 0x7610e6eb
+    tx_hashes:
+      - 2c8XSjnlpuxjOu3ixrdO0m/W1fiikVWZQB6h5sJe7U4=
+      - by8mKI17j9RWFhX2ERiLip/UYpopfkbgvOam6c2x+bY=
+    accounts:
+      - 0:3C02D2FAE2B263048DA2C03AAF0C2BEB208F6828C3547D4A86E19A98F1BFAABA
+      - 0:B94C23C25E82509C6834B6C513FA7B4F5B8A924694C579ADED8CD0079E646A50
+    start_lt: 64540878000002
+    end_lt: 64540878000003
+    start_utime: 1765460983
+    end_utime: 1765460983
+    mc_seqno_end: 54899991
+    parent_action_id: sfaTtgL1qiFJG1i3wsiQMaCAKAJSOCXBsAGQHghn8vs=
+    ancestor_type:
+      - cocoon_proxy_payout
+  - type: call_contract
+    anchor: call_contract#c59a7cd3@64540878000004
+    id: ixeTAqBuLu7t6LBR+K7Ha/DsbSDn+08P3zsGLKHbrAs=
+    success: true
+    source: 0:B94C23C25E82509C6834B6C513FA7B4F5B8A924694C579ADED8CD0079E646A50
+    source_secondary: null
+    destination: 0:E796C95723646D2355A12E6B5E9646F8095406C6BF04FF14888E5D0783BF6336
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: 10125756041
+    opcode: 0xc59a7cd3
+    tx_hashes:
+      - +XieAoUd1LYjV+4sjZO2O6XNwUnnmztyqWjgGVEKK0A=
+      - by8mKI17j9RWFhX2ERiLip/UYpopfkbgvOam6c2x+bY=
+    accounts:
+      - 0:B94C23C25E82509C6834B6C513FA7B4F5B8A924694C579ADED8CD0079E646A50
+      - 0:E796C95723646D2355A12E6B5E9646F8095406C6BF04FF14888E5D0783BF6336
+    start_lt: 64540878000004
+    end_lt: 64540878000005
+    start_utime: 1765460983
+    end_utime: 1765460983
+    mc_seqno_end: 54899991
+    parent_action_id: sfaTtgL1qiFJG1i3wsiQMaCAKAJSOCXBsAGQHghn8vs=
+    ancestor_type:
+      - cocoon_proxy_payout
+  - type: cocoon_proxy_payout
+    matcher: cocoon_proxy_payout
+    anchor: cocoon_proxy_payout@64540878000002
+    id: sfaTtgL1qiFJG1i3wsiQMaCAKAJSOCXBsAGQHghn8vs=
+    success: true
+    source: 0:B94C23C25E82509C6834B6C513FA7B4F5B8A924694C579ADED8CD0079E646A50
+    source_secondary: null
+    destination: 0:E796C95723646D2355A12E6B5E9646F8095406C6BF04FF14888E5D0783BF6336
+    destination_secondary: 0:3C02D2FAE2B263048DA2C03AAF0C2BEB208F6828C3547D4A86E19A98F1BFAABA
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: null
+    opcode: null
+    cocoon_proxy_payout_data:
+      query_id: 12731543016903973642
+    tx_hashes:
+      - +XieAoUd1LYjV+4sjZO2O6XNwUnnmztyqWjgGVEKK0A=
+      - 2c8XSjnlpuxjOu3ixrdO0m/W1fiikVWZQB6h5sJe7U4=
+      - by8mKI17j9RWFhX2ERiLip/UYpopfkbgvOam6c2x+bY=
+      - pLXKxKAgCyyQ63jheDhKYE2f6NVH3nvcx72U4hLO7Qk=
+    accounts:
+      - 0:3C02D2FAE2B263048DA2C03AAF0C2BEB208F6828C3547D4A86E19A98F1BFAABA
+      - 0:B94C23C25E82509C6834B6C513FA7B4F5B8A924694C579ADED8CD0079E646A50
+      - 0:E796C95723646D2355A12E6B5E9646F8095406C6BF04FF14888E5D0783BF6336
+    start_lt: 64540878000002
+    end_lt: 64540878000006
+    start_utime: 1765460983
+    end_utime: 1765460983
+    mc_seqno_end: 54899991

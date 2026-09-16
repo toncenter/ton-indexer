@@ -1,0 +1,56 @@
+# tonco / Tonco withdraw liquidity (one side)
+# trace: 0Jzh0p9LKCaM7xi4yiGWOJEnn9WZ8xKUkTzY30DDQ3Q=
+actions:
+  - type: dex_withdraw_liquidity
+    matcher: tonco_withdraw_liquidity
+    anchor: tonco_withdraw_liquidity@54353121000002
+    id: 4aOwo/quMS8Ie3SiuoH7YMr6+EuztGtATqI4lu1SyPI=
+    success: true
+    source: 0:16604175CDC32DFD20A7C11675D292642AB0FF432DF13551861782D97123627E
+    source_secondary: null
+    destination: 0:F6E6F4AD13073E875413D6A96C60F430A94E4888E868C79208D02FF1B0336931
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: null
+    opcode: null
+    dex_withdraw_liquidity_data:
+      amount1: 402668702340
+      amount2: 0
+      asset1_out: null
+      asset2_out: 0:B113A994B5024A16719F69139328EB759596C38A25F59028B146FECDC3621DFE
+      burned_nft_address: 0:D45327FD7064DE916ECA997075D099B5BAA9547C16EC920E0385B068923E2A4D
+      burned_nft_index: 3069
+      dex: tonco
+      dex_jetton_wallet_1: null
+      dex_jetton_wallet_2: 0:ACAD45796724B3F00AD42A4311B20667DA4BE28A43951587A381F73AA9552209
+      dex_wallet_1: 0:BFFADD270A738531DA7B13BA8FC403826C2586173F9EDE9C316FAB53BC59AC86
+      dex_wallet_2: 0:F6E6F4AD13073E875413D6A96C60F430A94E4888E868C79208D02FF1B0336931
+      is_refund: false
+      lp_tokens_burnt: 152272971461
+      tick_lower: -56460
+      tick_upper: -53040
+      user_jetton_wallet_1: null
+      user_jetton_wallet_2: 0:16604175CDC32DFD20A7C11675D292642AB0FF432DF13551861782D97123627E
+    tx_hashes:
+      - +DFaA/ef79G9Tx7cYpz2CWRfVr7aNEti2E5vrM6R2mc=
+      - 0Jzh0p9LKCaM7xi4yiGWOJEnn9WZ8xKUkTzY30DDQ3Q=
+      - Kl03BqEkuNXPmL6V2HYwOqM4s9lMu8vzUJzS11oV4zk=
+      - KoxuySQmEzk/jeesRlF4MQ+mZ9WoFoZSdRCSuIbtlso=
+      - L72+0MYOlCG3Igun6gUs7qo0OwoHylcsSrA0j52TWXw=
+      - lI9NfOdo5mB/4caGViO5Uqf7v1jPlcg/RVNsbmF1/YE=
+      - rlaH2AzX5v5Lq4evoP8E4EXto94Hg67BrnxTN5k9atg=
+    accounts:
+      - 0:16604175CDC32DFD20A7C11675D292642AB0FF432DF13551861782D97123627E
+      - 0:871DA9215B14902166F0EA2A16DB56278D528108377F8158C5F4CCFDFDD22E17
+      - 0:BFFADD270A738531DA7B13BA8FC403826C2586173F9EDE9C316FAB53BC59AC86
+      - 0:D45327FD7064DE916ECA997075D099B5BAA9547C16EC920E0385B068923E2A4D
+      - 0:F6E6F4AD13073E875413D6A96C60F430A94E4888E868C79208D02FF1B0336931
+    start_lt: 54353121000002
+    end_lt: 54353136000001
+    start_utime: 1740493489
+    end_utime: 1740493532
+    mc_seqno_end: 45293219

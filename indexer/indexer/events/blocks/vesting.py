@@ -87,6 +87,27 @@ class VestingAddWhiteListBlock(Block):
         return f"vesting_add_whitelist {self.data}"
 
 
+def build_vesting_send_message_core(block: Block) -> VestingSendMessageBlock:
+    """Shared build core for vesting_send_message. Does NOT merge consumed
+    blocks — the caller (legacy build_block or the mch synthesized wrapper) is
+    responsible for merge_blocks."""
+    msg = block.get_message()
+    request_data = VestingSendMessage(block.get_body())
+    return VestingSendMessageBlock(
+        data=VestingSendMessageData(
+            sender=AccountId(msg.source),
+            vesting=AccountId(msg.destination),
+            query_id=request_data.query_id,
+            message_boc_str=base64.b64encode(
+                request_data.message_cell.to_boc()
+            ).decode(),
+            message_destination=AccountId(request_data.message_destination),
+            message_value=Amount(request_data.message_value),
+            success=_vesting_message_was_sent(msg.transaction, request_data),
+        )
+    )
+
+
 class VestingSendMessageBlockMatcher(BlockMatcher):
     def __init__(self):
         super().__init__(
@@ -106,31 +127,13 @@ class VestingSendMessageBlockMatcher(BlockMatcher):
         )
 
     async def build_block(self, block: Block, other_blocks: list[Block]) -> list[Block]:
-        msg = block.get_message()
-        request_data = VestingSendMessage(block.get_body())
-        sender = AccountId(msg.source)
-        vesting = AccountId(msg.destination)
-
-        success = _vesting_message_was_sent(msg.transaction, request_data)
+        new_block = build_vesting_send_message_core(block)
 
         include = [block]
         resp = get_labeled("response", other_blocks, CallContractBlock)
         if resp:
             include.append(resp)
 
-        new_block = VestingSendMessageBlock(
-            data=VestingSendMessageData(
-                sender=sender,
-                vesting=vesting,
-                query_id=request_data.query_id,
-                message_boc_str=base64.b64encode(
-                    request_data.message_cell.to_boc()
-                ).decode(),
-                message_destination=AccountId(request_data.message_destination),
-                message_value=Amount(request_data.message_value),
-                success=success,
-            )
-        )
         new_block.merge_blocks(include)
         return [new_block]
 

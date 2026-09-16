@@ -1,0 +1,29 @@
+# tg-wallet / Change wallet key requested by external message
+# note: named from the v1.3-only yaml; trace file is untracked and no longer in the working tree, and it has no action golden
+# trace: QilH-V1kzvOH8jquiL-36pCaUWypDuKINlUHbE3j79s=
+actions:
+  - type: change_wallet_key
+    matcher: change_wallet_key
+    anchor: change_wallet_key@92608467000001
+    id: JhthEovbKDhesG5u46Vl6FpKZxWgEtYXjCrMEP+Y/RY=
+    success: true
+    source: null
+    source_secondary: null
+    destination: 0:E55E63B850B71B8FF5AD44E1B8271237AFAF31900B2B6D41233707BB585B8091
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: null
+    opcode: null
+    tx_hashes:
+      - QilH+V1kzvOH8jquiL+36pCaUWypDuKINlUHbE3j79s=
+    accounts:
+      - 0:E55E63B850B71B8FF5AD44E1B8271237AFAF31900B2B6D41233707BB585B8091
+    start_lt: 92608467000001
+    end_lt: 92608467000001
+    start_utime: 1787826150
+    end_utime: 1787826150
+    mc_seqno_end: 80852793

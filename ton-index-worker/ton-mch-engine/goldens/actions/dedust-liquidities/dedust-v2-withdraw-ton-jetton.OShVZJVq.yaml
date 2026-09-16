@@ -1,0 +1,53 @@
+# dedust-liquidities / DeDust V2 withdraw TON/jetton
+# trace: OShVZJVqIFxR94PEc48lwzt71eue2H7RgrzMi5zs7Hc=
+actions:
+  - type: dex_withdraw_liquidity
+    matcher: dedust_v2_withdraw
+    anchor: dex_withdraw_liquidity@80950375000004
+    id: MrJjRm8eXGqWVn/+ERpCYC8qsuf2QjPIsjr11E2MKYc=
+    success: true
+    source: 0:8ECD8E7F5FC89C75437D56D7E0D96256FBF595449DB7F0086AF64B15F919A263
+    source_secondary: null
+    destination: 0:00BA322D6C069ED0D84529DDF63643C5F31909137B68E7BC692EA2B34286FA7A
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: null
+    opcode: null
+    dex_withdraw_liquidity_data:
+      amount1: 46543920065400
+      amount2: 151756020743
+      asset1_out: 0:EE1A0A9953BFC012088EC047BE69BA3321E7EEA1A8AB4D62CEC9DEDCFDFF0687
+      asset2_out: null
+      dex: dedust_v2
+      dex_jetton_wallet_1: 0:9E1F5D31F32AE04F01D7D0B88C6540D8C6CDD6CF5FB2C618AABB91D9B55F9170
+      dex_jetton_wallet_2: null
+      dex_wallet_1: 0:00BA322D6C069ED0D84529DDF63643C5F31909137B68E7BC692EA2B34286FA7A
+      dex_wallet_2: 0:00BA322D6C069ED0D84529DDF63643C5F31909137B68E7BC692EA2B34286FA7A
+      is_refund: false
+      lp_tokens_burnt: 2657690739975
+      user_jetton_wallet_1: 0:FDF41673C4E371BCA254E621BD92BA7EC5089DF1D5D719E31114AB46AA6BFA2C
+      user_jetton_wallet_2: null
+    tx_hashes:
+      - 4l1eihqHwaXKW6IYjmiBHo+IBWPv6tSwzr74wpCvyCo=
+      - BXfYPgC6OWlY59gS9IlmGkK62kVRo7K7H4S1rydACVw=
+      - BhoM1LKTJeHW0LJbnx2UEAOL6HChS1lqvdszij4qwKY=
+      - O/crbtfNDzebfCL3jedYmFXsyOEN2M+vxyuv5OJv0YU=
+      - OQu+cajN0iD18XqDUXum42vv0ZIjPXaI0CIGmvwAH2M=
+      - OShVZJVqIFxR94PEc48lwzt71eue2H7RgrzMi5zs7Hc=
+      - fFV2Qu2bZvnxjOMq7stJzk6VZ8eNfiVGsfOnLx5vquQ=
+      - sad7BJQlpD5YSZJ3iLzBZFosJz/HJYiWeNCQVOWVJYY=
+    accounts:
+      - 0:001AF15D22ED5C36E5655F8EC516E01EE0B6E778763B169F742EBBFDFE106481
+      - 0:00BA322D6C069ED0D84529DDF63643C5F31909137B68E7BC692EA2B34286FA7A
+      - 0:8ECD8E7F5FC89C75437D56D7E0D96256FBF595449DB7F0086AF64B15F919A263
+      - 0:9E1F5D31F32AE04F01D7D0B88C6540D8C6CDD6CF5FB2C618AABB91D9B55F9170
+      - 0:FDF41673C4E371BCA254E621BD92BA7EC5089DF1D5D719E31114AB46AA6BFA2C
+    start_lt: 80950375000004
+    end_lt: 80950375000014
+    start_utime: 1780359076
+    end_utime: 1780359076
+    mc_seqno_end: 70630643

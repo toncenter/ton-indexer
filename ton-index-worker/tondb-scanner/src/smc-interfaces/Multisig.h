@@ -58,9 +58,16 @@ public:
 
     void start_up() override;
 
-    void got_multisig(Result item_data, td::Ref<vm::Cell> multisig_code, td::Ref<vm::Cell> multisig_data);
-    td::Status verify_multisig_order(block::StdAddress multisig_address, td::Ref<vm::Cell> multisig_code,
-        td::Ref<vm::Cell> multisig_data, td::RefInt256 order_seqno);
+    static td::Result<Result> detect(const block::StdAddress& address,
+                                     const td::Ref<vm::Cell>& code_cell,
+                                     const td::Ref<vm::Cell>& data_cell,
+                                     const AllShardStates& shard_states,
+                                     const std::shared_ptr<block::ConfigInfo>& config);
+
+    static td::Status verify_multisig_order(const block::StdAddress& order_address,
+        block::StdAddress multisig_address, td::Ref<vm::Cell> multisig_code,
+        td::Ref<vm::Cell> multisig_data, td::RefInt256 order_seqno,
+        const std::shared_ptr<block::ConfigInfo>& config);
 
 private:
     block::StdAddress address_;

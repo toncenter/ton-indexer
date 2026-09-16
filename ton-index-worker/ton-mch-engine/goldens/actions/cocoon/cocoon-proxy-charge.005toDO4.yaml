@@ -1,0 +1,124 @@
+# cocoon / Cocoon Proxy Charge
+# trace: 005toDO4Q3z9WP4LSihK9uVPDH-ygXgGSEDNnT9h3oc=
+actions:
+  - type: call_contract
+    anchor: call_contract#2565934c@64397848000005
+    id: Zl3LfsGtblxI3BVRdxurjEvCXnu5yZGFpl6zr/VfO+U=
+    success: true
+    source: 0:20A3E6577F7EE23A43FD0BDB835EF01E86FC2FA3290421E2CAB05132AFEC09B0
+    source_secondary: null
+    destination: 0:3C02D2FAE2B263048DA2C03AAF0C2BEB208F6828C3547D4A86E19A98F1BFAABA
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: 691434799
+    opcode: 0x2565934c
+    tx_hashes:
+      - TYjL21EYfyfTKA+QrwK+F/Cmw4L9wD5gKbr0tL76gXw=
+      - omdgleB6vV23tZEXUJFcDODiEXUPJSqsN/IW2lqjSss=
+    accounts:
+      - 0:20A3E6577F7EE23A43FD0BDB835EF01E86FC2FA3290421E2CAB05132AFEC09B0
+      - 0:3C02D2FAE2B263048DA2C03AAF0C2BEB208F6828C3547D4A86E19A98F1BFAABA
+    start_lt: 64397848000005
+    end_lt: 64397848000006
+    start_utime: 1765106435
+    end_utime: 1765106435
+    mc_seqno_end: 54759009
+    parent_action_id: JfbVLRCZOp+nt09GRQR+zjJCUH1Dfh2m3m47JqEcB+o=
+    ancestor_type:
+      - cocoon_proxy_charge
+  - type: call_contract
+    anchor: call_contract#65448ff4@64397848000004
+    id: osiPVGjfuyMw2ryPfr8dqxlZ9kMTfTCe7xstnocfs1M=
+    success: false
+    source: 0:20A3E6577F7EE23A43FD0BDB835EF01E86FC2FA3290421E2CAB05132AFEC09B0
+    source_secondary: null
+    destination: 0:B94C23C25E82509C6834B6C513FA7B4F5B8A924694C579ADED8CD0079E646A50
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: 1
+    opcode: 0x65448ff4
+    tx_hashes:
+      - TYjL21EYfyfTKA+QrwK+F/Cmw4L9wD5gKbr0tL76gXw=
+      - zaxZWY4bAby0lPHXCg0gROCvEKvY6LBY6XOU7QARbtc=
+    accounts:
+      - 0:20A3E6577F7EE23A43FD0BDB835EF01E86FC2FA3290421E2CAB05132AFEC09B0
+      - 0:B94C23C25E82509C6834B6C513FA7B4F5B8A924694C579ADED8CD0079E646A50
+    start_lt: 64397848000004
+    end_lt: 64397848000005
+    start_utime: 1765106435
+    end_utime: 1765106435
+    mc_seqno_end: 54759009
+    parent_action_id: JfbVLRCZOp+nt09GRQR+zjJCUH1Dfh2m3m47JqEcB+o=
+    ancestor_type:
+      - cocoon_proxy_charge
+  - type: call_contract
+    anchor: call_contract#bb63ff93@64397848000002
+    id: lNWvRjnxzKoY/uOY6JSwCEuD6dcLZvbvzWhhE013FCE=
+    success: true
+    source: 0:3C02D2FAE2B263048DA2C03AAF0C2BEB208F6828C3547D4A86E19A98F1BFAABA
+    source_secondary: null
+    destination: 0:20A3E6577F7EE23A43FD0BDB835EF01E86FC2FA3290421E2CAB05132AFEC09B0
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: 698999200
+    opcode: 0xbb63ff93
+    tx_hashes:
+      - 005toDO4Q3z9WP4LSihK9uVPDH+ygXgGSEDNnT9h3oc=
+      - TYjL21EYfyfTKA+QrwK+F/Cmw4L9wD5gKbr0tL76gXw=
+    accounts:
+      - 0:20A3E6577F7EE23A43FD0BDB835EF01E86FC2FA3290421E2CAB05132AFEC09B0
+      - 0:3C02D2FAE2B263048DA2C03AAF0C2BEB208F6828C3547D4A86E19A98F1BFAABA
+    start_lt: 64397848000002
+    end_lt: 64397848000003
+    start_utime: 1765106435
+    end_utime: 1765106435
+    mc_seqno_end: 54759009
+    parent_action_id: JfbVLRCZOp+nt09GRQR+zjJCUH1Dfh2m3m47JqEcB+o=
+    ancestor_type:
+      - cocoon_proxy_charge
+  - type: cocoon_proxy_charge
+    matcher: cocoon_proxy_charge
+    anchor: cocoon_proxy_charge@64397848000002
+    id: JfbVLRCZOp+nt09GRQR+zjJCUH1Dfh2m3m47JqEcB+o=
+    success: true
+    source: 0:20A3E6577F7EE23A43FD0BDB835EF01E86FC2FA3290421E2CAB05132AFEC09B0
+    source_secondary: null
+    destination: 0:B94C23C25E82509C6834B6C513FA7B4F5B8A924694C579ADED8CD0079E646A50
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: 0
+    value: null
+    opcode: null
+    cocoon_proxy_charge_data:
+      expected_address: 260;8da2c03aaf0c2beb208f6828c3547d4a86e19a98f1bfaaba09bcd727438138bfc
+      new_tokens_used: 9225483487327049292
+      query_id: 3340233008295500229
+    tx_hashes:
+      - 005toDO4Q3z9WP4LSihK9uVPDH+ygXgGSEDNnT9h3oc=
+      - TYjL21EYfyfTKA+QrwK+F/Cmw4L9wD5gKbr0tL76gXw=
+      - omdgleB6vV23tZEXUJFcDODiEXUPJSqsN/IW2lqjSss=
+      - zaxZWY4bAby0lPHXCg0gROCvEKvY6LBY6XOU7QARbtc=
+    accounts:
+      - 0:20A3E6577F7EE23A43FD0BDB835EF01E86FC2FA3290421E2CAB05132AFEC09B0
+      - 0:3C02D2FAE2B263048DA2C03AAF0C2BEB208F6828C3547D4A86E19A98F1BFAABA
+      - 0:B94C23C25E82509C6834B6C513FA7B4F5B8A924694C579ADED8CD0079E646A50
+    start_lt: 64397848000002
+    end_lt: 64397848000006
+    start_utime: 1765106435
+    end_utime: 1765106435
+    mc_seqno_end: 54759009

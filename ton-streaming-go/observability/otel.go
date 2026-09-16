@@ -6,12 +6,14 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"log"
+	"math"
 	"os"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
+	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/baggage"
 	"go.opentelemetry.io/otel/codes"
@@ -29,6 +31,7 @@ const (
 	otelDataField         = "otel_data"
 	streamingServiceName  = "ton-streaming-api"
 	streamingServiceStage = "streaming_api"
+	otelErrorLogInterval  = 10 * time.Second
 )
 
 var (
@@ -47,9 +50,62 @@ var (
 
 	tracerOnce    sync.Once
 	processTracer trace.Tracer
+	otelErrorOnce sync.Once
 	hostnameOnce  sync.Once
 	hostnameValue string
 )
+
+type rateLimitedErrorHandler struct {
+	mu         sync.Mutex
+	interval   time.Duration
+	nextLog    time.Time
+	suppressed uint64
+	now        func() time.Time
+	logf       func(string, ...any)
+}
+
+func newRateLimitedErrorHandler(
+	interval time.Duration,
+	now func() time.Time,
+	logf func(string, ...any),
+) *rateLimitedErrorHandler {
+	return &rateLimitedErrorHandler{
+		interval: interval,
+		nextLog:  time.Time{},
+		now:      now,
+		logf:     logf,
+	}
+}
+
+func (h *rateLimitedErrorHandler) Handle(err error) {
+	if err == nil {
+		return
+	}
+
+	h.mu.Lock()
+	now := h.now()
+	if now.Before(h.nextLog) {
+		h.suppressed++
+		h.mu.Unlock()
+		return
+	}
+	suppressed := h.suppressed
+	h.suppressed = 0
+	h.nextLog = now.Add(h.interval)
+	h.mu.Unlock()
+
+	if suppressed == 0 {
+		h.logf("[otel] %v", err)
+		return
+	}
+	h.logf("[otel] %v (%d OpenTelemetry errors suppressed since previous log)", err, suppressed)
+}
+
+func configureOtelErrorHandler() {
+	otelErrorOnce.Do(func() {
+		otel.SetErrorHandler(newRateLimitedErrorHandler(otelErrorLogInterval, time.Now, log.Printf))
+	})
+}
 
 type otelData struct {
 	Traceparent string `json:"traceparent"`
@@ -285,6 +341,8 @@ func currentTracer() trace.Tracer {
 }
 
 func buildTracer() trace.Tracer {
+	configureOtelErrorHandler()
+
 	exporter := buildExporter()
 	if exporter == nil {
 		return nil
@@ -450,6 +508,14 @@ func attributesToKeyValues(attributes map[string]any) []attribute.KeyValue {
 			items = append(items, attribute.Int(key, typed))
 		case int64:
 			items = append(items, attribute.Int64(key, typed))
+		case uint64:
+			if typed <= math.MaxInt64 {
+				items = append(items, attribute.Int64(key, int64(typed)))
+			} else {
+				items = append(items, attribute.String(key, strconv.FormatUint(typed, 10)))
+			}
+		case float64:
+			items = append(items, attribute.Float64(key, typed))
 		default:
 			text := asString(value)
 			if text != "" {

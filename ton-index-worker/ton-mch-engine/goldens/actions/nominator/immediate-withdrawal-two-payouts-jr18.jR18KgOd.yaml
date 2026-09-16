@@ -1,0 +1,33 @@
+# nominator / Immediate withdrawal, two payouts (jR18)
+# trace: jR18KgOd7Bmlhja1EmBRM_b-bPrdMuJwvsnfwhdYPiY=
+actions:
+  - type: stake_withdrawal
+    matcher: nominator_pool_withdraw_request
+    anchor: nominator_pool_withdraw_request@88919210000013
+    id: J9LZodoXGZaj4dmIwbnLL2j21DOc1F5XjqqvBE/H31c=
+    success: true
+    source: 0:CC09E575D78B7575E33B600B1BB328BED2D70F6DB9275AC86CD3FFBF8D370BF7
+    source_secondary: null
+    destination: "-1:86EAF966B35A5DB101955021A482233EF3E95E98809E24FB573DF9150B107508"
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: 2079869145287964
+    value: null
+    opcode: null
+    staking_data:
+      provider: nominator
+    tx_hashes:
+      - EzPKY80NWHDsaJ0dYNAl4gGVYF33Xolml1qm8akwWIs=
+      - iRGU3GQQXzbdnokGQKEQpWlJp4teDUpUJxuTaGPVdAo=
+      - oTTc1TMUtOscTbHYv2x3Nn/T8sTSw6wvGIXl+NcHh6A=
+    accounts:
+      - "-1:86EAF966B35A5DB101955021A482233EF3E95E98809E24FB573DF9150B107508"
+      - 0:CC09E575D78B7575E33B600B1BB328BED2D70F6DB9275AC86CD3FFBF8D370BF7
+    start_lt: 88919210000013
+    end_lt: 88919213000002
+    start_utime: 1783560233
+    end_utime: 1783560234
+    mc_seqno_end: 78448663

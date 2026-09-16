@@ -1,0 +1,123 @@
+# cocoon / Cocoon Client Increase Stake
+# trace: 9ASdFVnxka3wXQIY-czQvwSDLxTxHxbloVgZUhWAH-4=
+actions:
+  - type: call_contract
+    anchor: call_contract#2565934c@64261473000005
+    id: JYtHSADCP/+Ji3/mfp8Y7dxWXBB4AJdWKOk+A3fLSjM=
+    success: true
+    source: 0:92F4468997A5839A274A00F452DA447608C5A7EF7DDE19083041620598B390E1
+    source_secondary: null
+    destination: 0:29DE6F2E63A467C5C32C2D35C6D4BE5E0F192A6464AE288686EEBA6A0F5C2340
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: 94067599
+    opcode: 0x2565934c
+    tx_hashes:
+      - 9Zg3LUQvui7kwPRO8J6j5bn9sNgRyFkIpWMQF4mTAj4=
+      - um7gMmogBIQa6sCz8cTU75teBC6y0wifRaOFU6QV+QY=
+    accounts:
+      - 0:29DE6F2E63A467C5C32C2D35C6D4BE5E0F192A6464AE288686EEBA6A0F5C2340
+      - 0:92F4468997A5839A274A00F452DA447608C5A7EF7DDE19083041620598B390E1
+    start_lt: 64261473000005
+    end_lt: 64261473000006
+    start_utime: 1764766935
+    end_utime: 1764766935
+    mc_seqno_end: 54625321
+    parent_action_id: Cuob+lAxaqpQXq4aF+JoP86mRKwR9jFHj3UBKO2OxNY=
+    ancestor_type:
+      - cocoon_client_increase_stake
+  - type: call_contract
+    anchor: call_contract#65448ff4@64261473000004
+    id: UyDhLBlPqBbkpwyhmL5BW7VrKJlPcxGNq9FqRnuGqDk=
+    success: false
+    source: 0:92F4468997A5839A274A00F452DA447608C5A7EF7DDE19083041620598B390E1
+    source_secondary: null
+    destination: 0:F2CE0160EA9E7028155C58705E0E828B457C46465FCB75B029E9CC6370408074
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: 1
+    opcode: 0x65448ff4
+    tx_hashes:
+      - +dmj92BFx4glM6ieoOhbzjKfW5jT5k15aAiBnBZmCYM=
+      - um7gMmogBIQa6sCz8cTU75teBC6y0wifRaOFU6QV+QY=
+    accounts:
+      - 0:92F4468997A5839A274A00F452DA447608C5A7EF7DDE19083041620598B390E1
+      - 0:F2CE0160EA9E7028155C58705E0E828B457C46465FCB75B029E9CC6370408074
+    start_lt: 64261473000004
+    end_lt: 64261473000005
+    start_utime: 1764766935
+    end_utime: 1764766935
+    mc_seqno_end: 54625321
+    parent_action_id: Cuob+lAxaqpQXq4aF+JoP86mRKwR9jFHj3UBKO2OxNY=
+    ancestor_type:
+      - cocoon_client_increase_stake
+  - type: call_contract
+    anchor: call_contract#6a1f6a60@64261473000002
+    id: XhksSsXqBbZUV47vKfISTjHGQtXJlMzWgzXBId9dP3c=
+    success: true
+    source: 0:29DE6F2E63A467C5C32C2D35C6D4BE5E0F192A6464AE288686EEBA6A0F5C2340
+    source_secondary: null
+    destination: 0:92F4468997A5839A274A00F452DA447608C5A7EF7DDE19083041620598B390E1
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: 100000000
+    opcode: 0x6a1f6a60
+    tx_hashes:
+      - 9ASdFVnxka3wXQIY+czQvwSDLxTxHxbloVgZUhWAH+4=
+      - um7gMmogBIQa6sCz8cTU75teBC6y0wifRaOFU6QV+QY=
+    accounts:
+      - 0:29DE6F2E63A467C5C32C2D35C6D4BE5E0F192A6464AE288686EEBA6A0F5C2340
+      - 0:92F4468997A5839A274A00F452DA447608C5A7EF7DDE19083041620598B390E1
+    start_lt: 64261473000002
+    end_lt: 64261473000003
+    start_utime: 1764766935
+    end_utime: 1764766935
+    mc_seqno_end: 54625321
+    parent_action_id: Cuob+lAxaqpQXq4aF+JoP86mRKwR9jFHj3UBKO2OxNY=
+    ancestor_type:
+      - cocoon_client_increase_stake
+  - type: cocoon_client_increase_stake
+    matcher: cocoon_client_increase_stake
+    anchor: cocoon_client_increase_stake@64261473000002
+    id: Cuob+lAxaqpQXq4aF+JoP86mRKwR9jFHj3UBKO2OxNY=
+    success: true
+    source: 0:29DE6F2E63A467C5C32C2D35C6D4BE5E0F192A6464AE288686EEBA6A0F5C2340
+    source_secondary: null
+    destination: 0:92F4468997A5839A274A00F452DA447608C5A7EF7DDE19083041620598B390E1
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: 18000000000
+    value: null
+    opcode: null
+    cocoon_client_increase_stake_data:
+      new_stake: 18000000000
+      query_id: 0
+    tx_hashes:
+      - +dmj92BFx4glM6ieoOhbzjKfW5jT5k15aAiBnBZmCYM=
+      - 9ASdFVnxka3wXQIY+czQvwSDLxTxHxbloVgZUhWAH+4=
+      - 9Zg3LUQvui7kwPRO8J6j5bn9sNgRyFkIpWMQF4mTAj4=
+      - um7gMmogBIQa6sCz8cTU75teBC6y0wifRaOFU6QV+QY=
+    accounts:
+      - 0:29DE6F2E63A467C5C32C2D35C6D4BE5E0F192A6464AE288686EEBA6A0F5C2340
+      - 0:92F4468997A5839A274A00F452DA447608C5A7EF7DDE19083041620598B390E1
+      - 0:F2CE0160EA9E7028155C58705E0E828B457C46465FCB75B029E9CC6370408074
+    start_lt: 64261473000002
+    end_lt: 64261473000006
+    start_utime: 1764766935
+    end_utime: 1764766935
+    mc_seqno_end: 54625321

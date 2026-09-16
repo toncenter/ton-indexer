@@ -1,0 +1,33 @@
+# nominator / Deposit bounced (awhk)
+# trace: awhk7c9wvvH3jR3PrLJbd4sqrfpRlHRwjvlwuIGtPXk=
+actions:
+  - type: stake_deposit
+    matcher: nominator_pool_deposit
+    anchor: nominator_pool_deposit@68156957000002
+    id: tWiL6/IItxr5vfuAC0m3exzROz6Lxhn4dpc1U80b7OQ=
+    success: false
+    source: 0:A2D33F07E1F8F3124F60D0FE6A7883BCB855D05291E102C1727E3B37A5DC88BB
+    source_secondary: null
+    destination: "-1:811CED271F8F449CB51EB5920090B92CB200B20F07170676E9DB6FBE9DA516CF"
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: 170000000
+    value: null
+    opcode: null
+    staking_data:
+      provider: nominator
+    tx_hashes:
+      - awhk7c9wvvH3jR3PrLJbd4sqrfpRlHRwjvlwuIGtPXk=
+      - mwQVkioUgxKDAgoCGJDfcpVW8uFeJge1yMWOaDj+YeI=
+      - yDEQwPygl8zlVd0a0eqaG0GAnYFogGcnIxNoe2zyOP8=
+    accounts:
+      - "-1:811CED271F8F449CB51EB5920090B92CB200B20F07170676E9DB6FBE9DA516CF"
+      - 0:A2D33F07E1F8F3124F60D0FE6A7883BCB855D05291E102C1727E3B37A5DC88BB
+    start_lt: 68156957000002
+    end_lt: 68156960000001
+    start_utime: 1773974311
+    end_utime: 1773974318
+    mc_seqno_end: 58493982

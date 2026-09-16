@@ -1,0 +1,84 @@
+cases:
+  Multisig create order with uint256 seqno:
+    trace-id: t61lSZfcbGpUXopnXap7RxoC9kEJw2mqo19H3lHr-fg=
+    expected-actions:
+      - type: multisig_create_order
+        values:
+          source: 0:9F093F004D235B3D321AC05032E2B1DDA64C7683583FA41304E864DD0D596637
+          destination: 0:FA58F4F3D5DBADD373535D67E8BDCAAB36DCF782DDDABCF7EE2E0835BEC5DD20
+          destination_secondary: 0:667577D024C414F2CAD8699B122EC72F5C0D974CF93E7D4E00FF51F8D4F0469E
+          success: true
+          multisig_create_order_data:
+            query_id: 6083770387609145679
+            order_seqno: 115792089237316195423570985008687907853269984665640564039457584007913129639935
+            is_created_by_signer: true
+            is_signed_by_creator: false
+            creator_index: 2
+            expiration_date: 1785595662
+            order_boc: te6ccgEBBQEAdgACAc0BBAIBIAIDAEMgBxHfCW4o+YM9Ec2Qc+QDhE8ctptfhiabXhDgYVWZknb0AEMgA24uYo/+mypAtS2A1FMwRTEN8KX74gpwWDpooWuOlyGkAENIAT4SfgCaRrZ6ZDWAoGXFY7tMmO0GsH9IJgnQyboassxv
+
+  Multisig create and immediate execute:
+    trace-id: 1Ds6qKAk8J_Im5l6iszbO2Rt3Iq1FeIL3AyFxoyFfUY=
+    expected-actions:
+      - type: multisig_create_order
+        values:
+          source: 0:783E31DC981459AA84762984A03E8D75C320435C00AC5B66B3DB64B3BB371C71
+          destination: 0:1E733E535DC78BC7A8F3BAA2D5BBBFEB1D7EC7A81F2E4DDAF6203314FAA3A8A0
+          destination_secondary: 0:CAF1E084340A46BE6011AED1B153A793351895C17C993BEB413F276259239B50
+          success: true
+          multisig_create_order_data:
+            query_id: 0
+            order_seqno: 5156066503429701095
+            is_created_by_signer: true
+            is_signed_by_creator: false
+            creator_index: 1
+            expiration_date: 1785517110
+            order_boc: te6ccgEBAwEATQACAc8BAgBDIAbEjmmb3404ecB7CBdYJTxKsKuTymc/PwOFspzJnU+EZABDIAPB8Y7kwKLNVCOxTCUB9GuuGQIa4AVi2zWe2yWd2bjjjA==
+      - type: multisig_execute
+        values:
+          source: 0:CAF1E084340A46BE6011AED1B153A793351895C17C993BEB413F276259239B50
+          destination: 0:1E733E535DC78BC7A8F3BAA2D5BBBFEB1D7EC7A81F2E4DDAF6203314FAA3A8A0
+          success: true
+          multisig_execute_data:
+            query_id: 0
+            order_seqno: 5156066503429701095
+            expiration_date: 1785517110
+            approvals_num: 1
+            signers_hash: sdoMblEhWASMSJunLxPdmT7B8z67R5IsFwMhjXTQpvI=
+            order_boc: te6ccgECDwEAAfoAAgHNAQwCASACBgEBIAMBCvE4HlsRBAFoIgAIBJ9U3mvRzHT9/xTEQKKUggUOBiRfIj6zZpnUqZNyG6BamVwAAAAAAAAAAAAAAAAAAQUC6yJGtfzrzZKG9fMCxlATG/H2GAA85nymu48Xj1HndUWrd3/WOv2PUD5cm7XsQGYp9UdRQQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACADdfgLFEWSZsVp+OdsaDwwN+VPDKYxuOMgu3nKcBoZj7QKCwEBIAcBCvE4HlsRCAFoIgAIBJ9U3mvRzHT9/xTEQKKUggUOBiRfIj6zZpnUqZNyG6BamVwAAAAAAAAAAAAAAAAAAQkC7SJGtfzrzZKG9fMCxmFNrfoP6igAPOZ8pruPF49R53VFq3d/1jr9j1A+XJu17EBmKfVHUUEALVZX3Qa3J2/7YXYicup2mbN43CI4bVBsemyzoWjhEr9gA3X4CxRFkmbFafjnbGg8MDflTwymMbjjILt5ynAaGY+0CgsACUCFg7AIAEOAA85nymu48Xj1HndUWrd3/WOv2PUD5cm7XsQGYp9UdRQQAQFIDQEK8TgeW0IOAHgiADwfGO5MCizVQjsUwlAfRrrhkCGuAFYts1ntslndm444gAAAAAAAAAAAAAAAAADVMnbb682ShvXzAsY=
+
+  Multisig approve opcode arm accepted:
+    trace-id: NbEnt36XgsN-t3PduVYXBz3WRhYM6RGDAgja56FUGjY=
+    expected-actions:
+      - type: multisig_approve
+        values:
+          source: 0:9D2C15CB9FEA1077B6F1C040C662D00AEE7D3D0C88E0B029189D418BA806383F
+          destination: 0:6CA4809C8EAC9EB91E400F14B41497529BB19FABC55840B225458E6E57732EF8
+          success: true
+          multisig_approve_data:
+            signer_index: 3
+            exit_code: 0
+
+  Multisig approve comment arm and execute:
+    trace-id: oN0zmyAm2HKIwSTaTdo45Mu4tgvHf7uFSBwIvv0gEig=
+    expected-actions:
+      - type: multisig_approve
+        values:
+          source: 0:91BB0203A603C4F1F96EAF386F72847C542756B826658E3723001D084CFDF982
+          destination: 0:08F1B20B3C0461FE7006F7692835CE71600A936F369F306379DC8195CC2B33B0
+          success: true
+          multisig_approve_data:
+            signer_index: -1
+            exit_code: 0
+      - type: multisig_execute
+        values:
+          source: 0:08F1B20B3C0461FE7006F7692835CE71600A936F369F306379DC8195CC2B33B0
+          destination: 0:3F08EFD760953FBE9D7A3A1EB23A67769DE7B54E41DAC4150AEF70FBFCBED8D1
+          success: true
+          multisig_execute_data:
+            query_id: 93734614000003
+            order_seqno: 899
+            expiration_date: 1788095979
+            approvals_num: 1
+            signers_hash: C32M4/TYDdcDTvMVw09kw5jnsfQJaZGrLCsRJuShiZQ=
+            order_boc: te6ccgEBBwEArQACAc8BBAEBIAIBCvE4HlsBAwCMIgBm4QBgjBJpPrAKToOUA6guxsqNMk2yhaLZNETCJkVXaSAvrwgAAAAAAAAAAAAAAAAAAGvcvrgAAAAAAAAAAAfQAB4AHgEBIAUBCvE4HlsBBgCMIgAnppFtTWU5gF2WBSPXgN1JbE7jWj9ics6WzdLkaBtH5KAvrwgAAAAAAAAAAAAAAAAAAGvcvrgAAAAAAAAAAAfQAB4AHg==

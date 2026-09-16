@@ -33,6 +33,89 @@ cases:
           staking_data:
             provider: liquid_staking
             tokens_minted: 9439323796
+  # The three live A/B fixtures fetched for cycle-10 (2026-07-31). Structurally
+  # IDENTICAL to "TS Stake deposit" above — DepositRequest 0x47d54391 one hop
+  # under an external-in wallet op, then MintJettons -> InternalTransfer ->
+  # Notify + excess — and all three already classified correctly. They are kept
+  # as regression coverage for the deposit shape at three different wallet
+  # versions (root ops 0x9fb53633 / 0x7369676e / 0x339d6469) and, in 7Rgomg…,
+  # with the user's tsTON wallet being DEPLOYED by the internal transfer.
+  "TS Stake deposit (live, wallet 0x9fb53633)":
+    trace-id: fyrdkfqB6iMQu9vl78M5x1IMBSrPCziFyFEJTAPFKoA=
+    expected-blocks:
+      - type: tonstakers_deposit
+        values:
+          data:
+            source: 0:7008B6BB35219B1B748C2C345BA5F09DB66287BE228886B4FC5EAEE60BBF7A46
+            user_jetton_wallet: 0:0C91F58874FE13AD8C9DC9818482D72CB453FD0F71B4DB3A1DFEEDEA53D9843C
+            pool: 0:A45B17F28409229B78360E3290420F13E4FE20F90D7E2BF8C4AC6703259E22FA
+            value: 54000000000
+            tokens_minted: 47366054846
+    expected-actions:
+      - type: stake_deposit
+        values:
+          success: true
+          source: 0:7008B6BB35219B1B748C2C345BA5F09DB66287BE228886B4FC5EAEE60BBF7A46
+          destination: 0:A45B17F28409229B78360E3290420F13E4FE20F90D7E2BF8C4AC6703259E22FA
+          asset: 0:BDF3FA8098D129B54B4F73B5BAC5D1E1FD91EB054169C3916DFC8CCD536D1000
+          amount: 54000000000
+          staking_data:
+            provider: liquid_staking
+            tokens_minted: 47366054846
+
+  "TS Stake deposit (live, tsTON wallet deployed by the transfer)":
+    trace-id: 7RgomgmV3Hc3KQTnkKtSOzAGW7v61-cacwv5vouskSA=
+    expected-blocks:
+      - type: tonstakers_deposit
+        values:
+          data:
+            source: 0:74CBFCE65AB783BAAE56545D6A9F83E93004BC7FD1E49ECB551C1895DE14AD68
+            user_jetton_wallet: 0:FF8F5EA71D72637991021497198AD29235800FD20EFAD0B4649B397078709815
+            pool: 0:A45B17F28409229B78360E3290420F13E4FE20F90D7E2BF8C4AC6703259E22FA
+            # the request carried 11840772261; the 1 TON deposit fee comes off
+            value: 10840772261
+            tokens_minted: 9508974323
+    expected-actions:
+      - type: stake_deposit
+        values:
+          success: true
+          source: 0:74CBFCE65AB783BAAE56545D6A9F83E93004BC7FD1E49ECB551C1895DE14AD68
+          destination: 0:A45B17F28409229B78360E3290420F13E4FE20F90D7E2BF8C4AC6703259E22FA
+          asset: 0:BDF3FA8098D129B54B4F73B5BAC5D1E1FD91EB054169C3916DFC8CCD536D1000
+          amount: 10840772261
+          staking_data:
+            provider: liquid_staking
+            tokens_minted: 9508974323
+      # the internal transfer deploys the user's tsTON wallet, so the deployment
+      # unwind adds a row the other two deposits do not have
+      - type: contract_deploy
+        values:
+          success: true
+          destination: 0:FF8F5EA71D72637991021497198AD29235800FD20EFAD0B4649B397078709815
+
+  "TS Stake deposit (live, wallet 0x339d6469)":
+    trace-id: rU8BN41CoPsfmLPpLrucPQX8v8lJnwob39gp5yKBdko=
+    expected-blocks:
+      - type: tonstakers_deposit
+        values:
+          data:
+            source: 0:3071A81AFB17CE8592A98C4EB5B68FCA819FD371BA26F732FA027E826D2E2D96
+            user_jetton_wallet: 0:FE4EF433C045814CAAD5AF6CD2696528F4C85AA361A057B14402790F55913409
+            pool: 0:A45B17F28409229B78360E3290420F13E4FE20F90D7E2BF8C4AC6703259E22FA
+            value: 10000000000
+            tokens_minted: 8771491638
+    expected-actions:
+      - type: stake_deposit
+        values:
+          success: true
+          source: 0:3071A81AFB17CE8592A98C4EB5B68FCA819FD371BA26F732FA027E826D2E2D96
+          destination: 0:A45B17F28409229B78360E3290420F13E4FE20F90D7E2BF8C4AC6703259E22FA
+          asset: 0:BDF3FA8098D129B54B4F73B5BAC5D1E1FD91EB054169C3916DFC8CCD536D1000
+          amount: 10000000000
+          staking_data:
+            provider: liquid_staking
+            tokens_minted: 8771491638
+
   "TS Withdrawal request":
     trace-id: GO-NI0EjOuhj1z4YzHK-VDAAOJsLm710DvyRRRMXhoY=
     expected-blocks:

@@ -1,0 +1,58 @@
+# jetton-mints / Jetton mint(0x15) 2
+# trace: I8W6RKYLE-NJPAComfUWhsG7_L5VvFxNEzizt5N8AAc=
+actions:
+  - type: contract_deploy
+    anchor: contract_deploy#178d4519@26717862000004
+    id: lQcuIviUd4jYnbMqvylZOZ1iNV/E9JVAvisjca7ynkw=
+    success: true
+    source: 0:F791C89405D4F0D146E10320523604E730FBCB5B6493D3FC3BCE80D8B9A54280
+    source_secondary: null
+    destination: 0:AFE292518AC8C439C149141AD470F119A0A879376AEC65D8DFD7EFAF97DEF7CF
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: 40000000
+    opcode: 0x178d4519
+    tx_hashes:
+      - 4nDqS3SRwrmlY04qCoEx2J2Vcb8iBy9o0pP/uyHwdbQ=
+      - JxultinQBQiJEM0Sa9iNKKU13PoG24nGcdnysUS+7g4=
+    accounts:
+      - 0:AFE292518AC8C439C149141AD470F119A0A879376AEC65D8DFD7EFAF97DEF7CF
+      - 0:F791C89405D4F0D146E10320523604E730FBCB5B6493D3FC3BCE80D8B9A54280
+    start_lt: 26717862000004
+    end_lt: 26717862000005
+    start_utime: 1648740542
+    end_utime: 1648740542
+    mc_seqno_end: 19465186
+  - type: jetton_mint
+    matcher: jetton_mint
+    anchor: jetton_mint@26717862000002
+    id: LvnpXr3TnAb7/6jSb/FsJYaM635mwC4FTIDdjakmNYI=
+    success: true
+    source: null
+    source_secondary: null
+    destination: 0:6F2346852E7C3641B6608CC3C22D176D447C615328A742E760EAC762A2123083
+    destination_secondary: 0:AFE292518AC8C439C149141AD470F119A0A879376AEC65D8DFD7EFAF97DEF7CF
+    asset: 0:F791C89405D4F0D146E10320523604E730FBCB5B6493D3FC3BCE80D8B9A54280
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: 100500000000000
+    value: 40000000
+    opcode: null
+    tx_hashes:
+      - 4nDqS3SRwrmlY04qCoEx2J2Vcb8iBy9o0pP/uyHwdbQ=
+      - I8W6RKYLE+NJPAComfUWhsG7/L5VvFxNEzizt5N8AAc=
+      - JxultinQBQiJEM0Sa9iNKKU13PoG24nGcdnysUS+7g4=
+    accounts:
+      - 0:6F2346852E7C3641B6608CC3C22D176D447C615328A742E760EAC762A2123083
+      - 0:AFE292518AC8C439C149141AD470F119A0A879376AEC65D8DFD7EFAF97DEF7CF
+      - 0:F791C89405D4F0D146E10320523604E730FBCB5B6493D3FC3BCE80D8B9A54280
+    start_lt: 26717862000002
+    end_lt: 26717862000005
+    start_utime: 1648740542
+    end_utime: 1648740542
+    mc_seqno_end: 19465186

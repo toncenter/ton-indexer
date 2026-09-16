@@ -1,0 +1,36 @@
+# jetton-transfer / Failed jetton transfer (external only)
+# trace: PAP4CeUFvg7ixzz5-0eFHrR2vahRZh8wPqAIZdV-c5g=
+actions:
+  - type: jetton_transfer
+    anchor: jetton_transfer@53779698000001
+    id: GrNHVoOdB05Ob3WayDu5f9ugIrsPfe+0d9Xyam5Xsh0=
+    success: false
+    source: 0:61F9E8981E541E31DAD7D3A9CFD7CF01C5E0FA669055A5E5B2F1F7825621AAAD
+    source_secondary: 0:3DADD520F445F934CF15BA4008A5FD2286A3A8217ABF112637308BB49BD3732B
+    destination: 0:EDD4C1585170B73A8F9AB495AE126E10F2BF26B0C3C27C0D466D111AE30BFAB8
+    destination_secondary: null
+    asset: 0:B609442A309B9590EFE2A1713D32F5BD724341BB1A8507B5DC7BB060C059D66A
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: 1311493434000
+    value: null
+    opcode: null
+    jetton_transfer_data:
+      comment: "47611365"
+      custom_payload: null
+      forward_amount: 1
+      forward_payload: cellhash:D466E48F636C3ABB39E80ED25FCD67E1FEAA28960C52F662EECEF2C776BCF4DC
+      is_encrypted_comment: false
+      query_id: 17286061480328215667
+      response_destination: 0:61F9E8981E541E31DAD7D3A9CFD7CF01C5E0FA669055A5E5B2F1F7825621AAAD
+    tx_hashes:
+      - PAP4CeUFvg7ixzz5+0eFHrR2vahRZh8wPqAIZdV+c5g=
+    accounts:
+      - 0:3DADD520F445F934CF15BA4008A5FD2286A3A8217ABF112637308BB49BD3732B
+      - 0:61F9E8981E541E31DAD7D3A9CFD7CF01C5E0FA669055A5E5B2F1F7825621AAAD
+    start_lt: 53779698000001
+    end_lt: 53779698000001
+    start_utime: 1739064928
+    end_utime: 1739064928
+    mc_seqno_end: 44763475

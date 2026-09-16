@@ -90,6 +90,7 @@ enum Ticker : uint32_t {
   SEQNO_FETCH_ERROR = 0,
   INSERT_CONFLICT,
   EMULATE_TRACE_ERROR,
+  TRACE_PROCESSOR_QUEUE_FULL,
 
   DB_EVENT_MC_BLOCK_APPLIED,
   DB_EVENT_CATCH_UP,
@@ -129,6 +130,7 @@ enum Histogram : uint32_t {
   INSERT_BATCH_COMMIT,
 
   EMULATE_TRACE,
+  CLASSIFY_TRACE,
   INSERT_TRACE,
   
   HISTOGRAMS_COUNT
@@ -138,6 +140,7 @@ const std::unordered_map<uint32_t, std::string_view> ticker_names = {
     {SEQNO_FETCH_ERROR, "indexer.seqno.fetch.error"},
     {INSERT_CONFLICT, "indexer.insert.conflict"},
     {EMULATE_TRACE_ERROR, "emulator.emulate.trace.error"},
+    {TRACE_PROCESSOR_QUEUE_FULL, "emulator.trace_processor.queue_full"},
     {DB_EVENT_MC_BLOCK_APPLIED, "indexer.db_event.mc_block_applied"},
     {DB_EVENT_CATCH_UP, "indexer.db_event.catch_up"},
     {EMULATE_SRC_REDIS, "emulator.source.redis"},
@@ -167,6 +170,7 @@ const std::unordered_map<uint32_t, std::string_view> histogram_names = {
     {INSERT_BATCH_EXEC_STATES, "indexer.insert.batch.exec_states.millis"},
     {INSERT_BATCH_COMMIT, "indexer.insert.batch.commit.millis"},
     {EMULATE_TRACE, "emulator.emulate.trace.millis"},
+    {CLASSIFY_TRACE, "emulator.classify.trace.micros"},
     {INSERT_TRACE, "emulator.insert.trace.millis"},
 };
 

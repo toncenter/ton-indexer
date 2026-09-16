@@ -1,0 +1,92 @@
+# vesting / Vesting send message dropped
+# trace: 1NL0tCMrxYE_fu-V-gJvUR_ioFsSPT7HVFGWZIB627A=
+actions:
+  - type: call_contract
+    anchor: call_contract#a7733acd@86195523000002
+    id: KXFQGRHIdI4zb8mNmzA6xNdS5Mp9Xd5ZhLwkC4XeVmk=
+    success: true
+    source: 0:74DDD0211F5AD8DA314C1C796905F7FBFE937E608B0AAE6B34F3EF804F6C8743
+    source_secondary: null
+    destination: 0:9A347A64C17280DE13431138A8D7712BBA0CF43674CA94D3AD940B617EDA15B9
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: 50000000
+    opcode: 0xa7733acd
+    tx_hashes:
+      - 1NL0tCMrxYE/fu+V+gJvUR/ioFsSPT7HVFGWZIB627A=
+      - YBeUige0mZTPzA1nO8K7YYe6zaLHBlo/V63puEwAazU=
+    accounts:
+      - 0:74DDD0211F5AD8DA314C1C796905F7FBFE937E608B0AAE6B34F3EF804F6C8743
+      - 0:9A347A64C17280DE13431138A8D7712BBA0CF43674CA94D3AD940B617EDA15B9
+    start_lt: 86195523000002
+    end_lt: 86195523000003
+    start_utime: 1782466514
+    end_utime: 1782466514
+    mc_seqno_end: 75768622
+    parent_action_id: wmdMvLV52zAYPw/o1ji93t5V5a5rjH6I7pcGep6hjD4=
+    ancestor_type:
+      - vesting_send_message
+  - type: call_contract
+    anchor: call_contract#f7733acd@86195523000004
+    id: iWEIacTeZ+6fBpYeb/xCkh+dUtBix6uBrKdzO6Unnto=
+    success: true
+    source: 0:9A347A64C17280DE13431138A8D7712BBA0CF43674CA94D3AD940B617EDA15B9
+    source_secondary: null
+    destination: 0:74DDD0211F5AD8DA314C1C796905F7FBFE937E608B0AAE6B34F3EF804F6C8743
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: 49403199
+    opcode: 0xf7733acd
+    tx_hashes:
+      - AwZRzTtUBtX7zgtWSUV917AZwh5SEJS6inPW34tILgM=
+      - YBeUige0mZTPzA1nO8K7YYe6zaLHBlo/V63puEwAazU=
+    accounts:
+      - 0:74DDD0211F5AD8DA314C1C796905F7FBFE937E608B0AAE6B34F3EF804F6C8743
+      - 0:9A347A64C17280DE13431138A8D7712BBA0CF43674CA94D3AD940B617EDA15B9
+    start_lt: 86195523000004
+    end_lt: 86195523000005
+    start_utime: 1782466514
+    end_utime: 1782466514
+    mc_seqno_end: 75768622
+    parent_action_id: wmdMvLV52zAYPw/o1ji93t5V5a5rjH6I7pcGep6hjD4=
+    ancestor_type:
+      - vesting_send_message
+  - type: vesting_send_message
+    matcher: vesting_send_message
+    anchor: vesting_send_message@86195523000002
+    id: wmdMvLV52zAYPw/o1ji93t5V5a5rjH6I7pcGep6hjD4=
+    success: false
+    source: 0:74DDD0211F5AD8DA314C1C796905F7FBFE937E608B0AAE6B34F3EF804F6C8743
+    source_secondary: null
+    destination: 0:9A347A64C17280DE13431138A8D7712BBA0CF43674CA94D3AD940B617EDA15B9
+    destination_secondary: 0:74DDD0211F5AD8DA314C1C796905F7FBFE937E608B0AAE6B34F3EF804F6C8743
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: 138886000000000
+    value: null
+    opcode: null
+    vesting_send_message_data:
+      message_boc: cellhash:6728C5BB19FD90BFDEF6D2D1AC4D4739DDF2B3AF66D77C962944BEDFBFC82D75
+      query_id: 0
+    tx_hashes:
+      - 1NL0tCMrxYE/fu+V+gJvUR/ioFsSPT7HVFGWZIB627A=
+      - AwZRzTtUBtX7zgtWSUV917AZwh5SEJS6inPW34tILgM=
+      - YBeUige0mZTPzA1nO8K7YYe6zaLHBlo/V63puEwAazU=
+    accounts:
+      - 0:74DDD0211F5AD8DA314C1C796905F7FBFE937E608B0AAE6B34F3EF804F6C8743
+      - 0:9A347A64C17280DE13431138A8D7712BBA0CF43674CA94D3AD940B617EDA15B9
+    start_lt: 86195523000002
+    end_lt: 86195523000005
+    start_utime: 1782466514
+    end_utime: 1782466514
+    mc_seqno_end: 75768622

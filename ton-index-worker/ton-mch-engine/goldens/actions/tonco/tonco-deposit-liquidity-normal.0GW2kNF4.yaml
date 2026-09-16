@@ -1,0 +1,148 @@
+# tonco / Tonco deposit liquidity (normal)
+# trace: 0GW2kNF4nRhw5xA3b5E35-EhF9H25H3Nvm5MJJo2VD0=
+actions:
+  - type: contract_deploy
+    anchor: contract_deploy#d5ecca2a@53641072000002
+    id: j2nobG9ZIByDB4/MVVq45dKaGNhdk/LhBtEPxhEoGnw=
+    success: true
+    source: 0:F6E6F4AD13073E875413D6A96C60F430A94E4888E868C79208D02FF1B0336931
+    source_secondary: null
+    destination: 0:A74CC446A0805F61AF677B3754167DFC5CBB37D94488F9B3D9FA04C91262A06F
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: 27800000
+    opcode: 0xd5ecca2a
+    tx_hashes:
+      - EEg5MQDZN/PLB4O0RQYBwzZAK7uEMc24/bdKbqipWWw=
+      - tUt2Ylm2B/luXafVyneQiIOqdoctF7Wy0/D34igTua4=
+    accounts:
+      - 0:A74CC446A0805F61AF677B3754167DFC5CBB37D94488F9B3D9FA04C91262A06F
+      - 0:F6E6F4AD13073E875413D6A96C60F430A94E4888E868C79208D02FF1B0336931
+    start_lt: 53641072000002
+    end_lt: 53641076000001
+    start_utime: 1738715632
+    end_utime: 1738715640
+    mc_seqno_end: 44634948
+  - type: dex_deposit_liquidity
+    matcher: tonco_deposit_liquidity
+    anchor: tonco_deposit_liquidity@53641055000002
+    id: +inJaxngjFb4T/RII2kIOG6VONp3hIlDnU5o5/pFdzw=
+    success: true
+    source: 0:400FC42F5A69D0B901DCDF210E4FC03D6FB6DF4DF785EF76D997E3A0DDE9511C
+    source_secondary: null
+    destination: 0:F6E6F4AD13073E875413D6A96C60F430A94E4888E868C79208D02FF1B0336931
+    destination_secondary: 0:554E29AE7BE927BE21C5B59BFEBBD5F744618E72C3221DDB3E5D3845EADAA65A
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: null
+    opcode: null
+    dex_deposit_liquidity_data:
+      amount1: 3029999999827
+      amount2: null
+      asset1: null
+      asset2: null
+      dex: tonco
+      lp_tokens_minted: null
+      nft_address: null
+      nft_index: null
+      target_amount_1: 2999999999829
+      target_amount_2: 5708578661
+      target_asset_1: null
+      target_asset_2: 0:B113A994B5024A16719F69139328EB759596C38A25F59028B146FECDC3621DFE
+      tick_lower: -57180
+      tick_upper: -52980
+      user_jetton_wallet_1: null
+      user_jetton_wallet_2: null
+      vault_excesses: []
+    tx_hashes:
+      - 0GW2kNF4nRhw5xA3b5E35+EhF9H25H3Nvm5MJJo2VD0=
+      - EnTz5H6YC0FTIpVf9R0+b4z4qOyaOGn/d4WKp/GhRIU=
+      - MMJVV2ArsfUQwC8IvF8aXH9upZuP4Ty8GpUDyG9njas=
+      - Pfn04+xtvY7xATe7uwtgFV4N4G9FWiZxv2H01IlwPJs=
+      - ZyroiBUSRTCUcKDfIlb6Tjuf1EJ4gq5eaBKBqJPk1DU=
+    accounts:
+      - 0:400FC42F5A69D0B901DCDF210E4FC03D6FB6DF4DF785EF76D997E3A0DDE9511C
+      - 0:554E29AE7BE927BE21C5B59BFEBBD5F744618E72C3221DDB3E5D3845EADAA65A
+      - 0:871DA9215B14902166F0EA2A16DB56278D528108377F8158C5F4CCFDFDD22E17
+      - 0:BFFADD270A738531DA7B13BA8FC403826C2586173F9EDE9C316FAB53BC59AC86
+      - 0:F6E6F4AD13073E875413D6A96C60F430A94E4888E868C79208D02FF1B0336931
+    start_lt: 53641055000002
+    end_lt: 53641064000001
+    start_utime: 1738715592
+    end_utime: 1738715615
+    mc_seqno_end: 44634939
+  - type: dex_deposit_liquidity
+    matcher: tonco_deposit_liquidity
+    anchor: tonco_deposit_liquidity@53641055000003
+    id: 4CyaYAAWUVty/cYh6iFsVZp13ICkcECrdUMZZL891Pw=
+    success: true
+    source: 0:400FC42F5A69D0B901DCDF210E4FC03D6FB6DF4DF785EF76D997E3A0DDE9511C
+    source_secondary: 0:2BC21F6C2C85ECCF0DFC7FC5CAEC8A124799E6BB47E37206D014322F0DE33EFA
+    destination: 0:F6E6F4AD13073E875413D6A96C60F430A94E4888E868C79208D02FF1B0336931
+    destination_secondary: 0:554E29AE7BE927BE21C5B59BFEBBD5F744618E72C3221DDB3E5D3845EADAA65A
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: null
+    opcode: null
+    dex_deposit_liquidity_data:
+      amount1: 5765664447
+      amount2: null
+      asset1: 0:B113A994B5024A16719F69139328EB759596C38A25F59028B146FECDC3621DFE
+      asset2: null
+      dex: tonco
+      lp_tokens_minted: 1398855824493
+      nft_address: 0:A74CC446A0805F61AF677B3754167DFC5CBB37D94488F9B3D9FA04C91262A06F
+      nft_index: 3086
+      target_amount_1: 2999999999829
+      target_amount_2: 5708578661
+      target_asset_1: null
+      target_asset_2: 0:B113A994B5024A16719F69139328EB759596C38A25F59028B146FECDC3621DFE
+      tick_lower: -57180
+      tick_upper: -52980
+      user_jetton_wallet_1: null
+      user_jetton_wallet_2: 0:2BC21F6C2C85ECCF0DFC7FC5CAEC8A124799E6BB47E37206D014322F0DE33EFA
+      vault_excesses:
+        - amount: 29999999998
+          asset: null
+        - amount: 57085786
+          asset: 0:B113A994B5024A16719F69139328EB759596C38A25F59028B146FECDC3621DFE
+    tx_hashes:
+      - 05FySquQjWLMhKiYPdAZBbm275vwF/WoH9QW7Oa1Lvg=
+      - 0GW2kNF4nRhw5xA3b5E35+EhF9H25H3Nvm5MJJo2VD0=
+      - 4GapwjeG9SDeFzTrhpGJPAhkXSpRAM4Wd9CbqH9YAO8=
+      - EEg5MQDZN/PLB4O0RQYBwzZAK7uEMc24/bdKbqipWWw=
+      - LiocA4LJfk9DE8Cnx3BWQ/kOI3l9zyJnj3Ae5dejzlo=
+      - VbPxk0asZF92Pb8dVy/ObodoJlzLkYG1cZx27y9F8LM=
+      - bCJ/+sb6ENsfy81WmsbDxiMqPpMJciGWqMU6dSZghGM=
+      - bjBJRXNpcW+yBrIxA/SOIq69krAr91GSfTPWwS8QoSs=
+      - ecV6dqEYJAos6bYgY8aGHMylPrq1+SdaWUFYEKJHwis=
+      - ffAW0DJy3iWLapIz+lK8jsXlvAOPQ4YRZ3qdmU/UWYc=
+      - o8UFNEIaWSHclsnf3LYB0BO+3H2EVf+kpR/9WqBrFqo=
+      - rG4Kw+REZnj1GpXqHuZzFULetdUHK70lorYK7IBpDZ4=
+      - tUt2Ylm2B/luXafVyneQiIOqdoctF7Wy0/D34igTua4=
+      - taqF3OZNnY2Pm/og8IzAOO0e3BEkwuEOoJlgIcPkHGY=
+      - uYBYuviL/tiaxLUQNUdDw25LLA/E9PjjGt5ROZFxpYA=
+    accounts:
+      - 0:2BC21F6C2C85ECCF0DFC7FC5CAEC8A124799E6BB47E37206D014322F0DE33EFA
+      - 0:400FC42F5A69D0B901DCDF210E4FC03D6FB6DF4DF785EF76D997E3A0DDE9511C
+      - 0:554E29AE7BE927BE21C5B59BFEBBD5F744618E72C3221DDB3E5D3845EADAA65A
+      - 0:871DA9215B14902166F0EA2A16DB56278D528108377F8158C5F4CCFDFDD22E17
+      - 0:A74CC446A0805F61AF677B3754167DFC5CBB37D94488F9B3D9FA04C91262A06F
+      - 0:ACAD45796724B3F00AD42A4311B20667DA4BE28A43951587A381F73AA9552209
+      - 0:BFFADD270A738531DA7B13BA8FC403826C2586173F9EDE9C316FAB53BC59AC86
+      - 0:F6E6F4AD13073E875413D6A96C60F430A94E4888E868C79208D02FF1B0336931
+    start_lt: 53641055000003
+    end_lt: 53641083000001
+    start_utime: 1738715592
+    end_utime: 1738715658
+    mc_seqno_end: 44634954

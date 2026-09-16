@@ -1,0 +1,87 @@
+# nominator / Op-0x2 double-payout withdrawal (DAL_)
+# trace: DAL_tL08iL0GO1ZqDkqd6kpl4NNmFurhegqjrKiW0sc=
+actions:
+  - type: call_contract
+    anchor: call_contract#00000002@93281571000002
+    id: n9O0Yzo3yczrrXnkyi2vE9HW0cwnsjZWOhAxiVroJx4=
+    success: true
+    source: "-1:28A30058F860E1073DC5ABC4E4A4D409148F90446990DD6E8DEDFF07A12615AA"
+    source_secondary: null
+    destination: "-1:4C7F32D719FE1537CED974C66E145FCFFC496C94A3B4BA9910202C0B048F667F"
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: 10000000000
+    opcode: 0x00000002
+    tx_hashes:
+      - DAL/tL08iL0GO1ZqDkqd6kpl4NNmFurhegqjrKiW0sc=
+      - GRnTXhmQRkop+lAfHT2MxA4/6BOpi9AdQJSPlSYDJpA=
+    accounts:
+      - "-1:28A30058F860E1073DC5ABC4E4A4D409148F90446990DD6E8DEDFF07A12615AA"
+      - "-1:4C7F32D719FE1537CED974C66E145FCFFC496C94A3B4BA9910202C0B048F667F"
+    start_lt: 93281571000002
+    end_lt: 93281571000003
+    start_utime: 1785319986
+    end_utime: 1785319986
+    mc_seqno_end: 82720339
+  - type: stake_withdrawal
+    matcher: nominator_pool_withdraw
+    anchor: nominator_pool_withdraw_request@93281571000004
+    id: WFhU0CnGzt7sRfvB6c5xl4bS7h5LHl/0BGxn1ZSBphk=
+    success: true
+    source: 0:BBA456CF2383A18B01406B3DCC512C7983160F778D3FD4C2D44DC5601D441F90
+    source_secondary: null
+    destination: "-1:4C7F32D719FE1537CED974C66E145FCFFC496C94A3B4BA9910202C0B048F667F"
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: 1134857510640934
+    value: null
+    opcode: null
+    staking_data:
+      provider: nominator
+    tx_hashes:
+      - GRnTXhmQRkop+lAfHT2MxA4/6BOpi9AdQJSPlSYDJpA=
+      - c05l30PCNGTzQ+GYxRqLM8uMVVKk4v6jqVnXU4u+vuY=
+    accounts:
+      - "-1:4C7F32D719FE1537CED974C66E145FCFFC496C94A3B4BA9910202C0B048F667F"
+      - 0:BBA456CF2383A18B01406B3DCC512C7983160F778D3FD4C2D44DC5601D441F90
+    start_lt: 93281571000004
+    end_lt: 93281573000001
+    start_utime: 1785319986
+    end_utime: 1785319986
+    mc_seqno_end: 82720342
+  - type: stake_withdrawal
+    matcher: nominator_pool_withdraw
+    anchor: nominator_pool_withdraw_request@93281571000005
+    id: fewBUspMxBiv0VrutfphsysHePA5eJtxBtZ6pe9JUIQ=
+    success: true
+    source: "-1:28A30058F860E1073DC5ABC4E4A4D409148F90446990DD6E8DEDFF07A12615AA"
+    source_secondary: null
+    destination: "-1:4C7F32D719FE1537CED974C66E145FCFFC496C94A3B4BA9910202C0B048F667F"
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: 9829610000
+    value: null
+    opcode: null
+    staking_data:
+      provider: nominator
+    tx_hashes:
+      - GRnTXhmQRkop+lAfHT2MxA4/6BOpi9AdQJSPlSYDJpA=
+      - NK4kfqJYZCj1LcBL8TrJ1camUoQxvDdC2J7xstQg+ng=
+    accounts:
+      - "-1:28A30058F860E1073DC5ABC4E4A4D409148F90446990DD6E8DEDFF07A12615AA"
+      - "-1:4C7F32D719FE1537CED974C66E145FCFFC496C94A3B4BA9910202C0B048F667F"
+    start_lt: 93281571000005
+    end_lt: 93281571000006
+    start_utime: 1785319986
+    end_utime: 1785319986
+    mc_seqno_end: 82720339

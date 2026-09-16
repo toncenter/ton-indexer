@@ -21,14 +21,19 @@ public:
     td::RefInt256 royalty_amount;
   };
 
-  GetGemsNftFixPriceSale(block::StdAddress address, 
+  GetGemsNftFixPriceSale(block::StdAddress address,
                        td::Ref<vm::Cell> code_cell,
-                       td::Ref<vm::Cell> data_cell, 
+                       td::Ref<vm::Cell> data_cell,
                        AllShardStates shard_states,
                        std::shared_ptr<block::ConfigInfo> config,
                        td::Promise<Result> promise);
 
   void start_up() override;
+
+  static td::Result<Result> detect(const block::StdAddress& address,
+                                   const td::Ref<vm::Cell>& code_cell,
+                                   const td::Ref<vm::Cell>& data_cell,
+                                   const std::shared_ptr<block::ConfigInfo>& config);
 
 private:
   block::StdAddress address_;
@@ -77,6 +82,11 @@ public:
                        td::Promise<Result> promise);
 
   void start_up() override;
+
+  static td::Result<Result> detect(const block::StdAddress& address,
+                                   const td::Ref<vm::Cell>& code_cell,
+                                   const td::Ref<vm::Cell>& data_cell,
+                                   const std::shared_ptr<block::ConfigInfo>& config);
 
 private:
   block::StdAddress address_;

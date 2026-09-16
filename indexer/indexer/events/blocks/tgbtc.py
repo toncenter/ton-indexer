@@ -51,6 +51,73 @@ class TgBTCMintBlock(Block):
         return f"tgbtc_mint {self.data.__dict__}"
 
 
+def build_tgbtc_mint_core(
+    head_block: Block | None,
+    success_log_block: Block | None,
+    jetton_mint_block: Block | None,
+) -> TgBTCMintBlock | None:
+    """Shared build core for tgbtc_mint. Does NOT merge consumed blocks.
+
+    Returns the produced block, or None to signal rejection (missing pieces or
+    an unparseable log) — the caller turns None into an empty match result.
+
+    Byte-identical to the data-building half of the legacy
+    TgBTCMintBlockMatcher.build_block (the tree navigation that locates these
+    three blocks stays with each caller): the legacy `success` flag is set
+    early inside the try, so a failure that lands AFTER it still builds a block
+    with whatever fields were already assigned — preserved here verbatim.
+    """
+    if (
+        not head_block
+        or not success_log_block
+        or not jetton_mint_block
+        or jetton_mint_block.btype != "jetton_mint"
+    ):
+        return None
+
+    sender = AccountId(head_block.get_message().source)
+    recipient = None
+    amount = None
+    minted_asset = None
+    bitcoin_txid = None
+    recipient_wallet = None
+    teleport_contract = None
+    success = False
+
+    try:
+        log_data = TgBTCMintEvent(success_log_block.get_body())
+        parsed_amount = log_data.amount
+        success = True
+        recipient = log_data.recipient_address
+        teleport_contract = AccountId(success_log_block.get_message().source)
+        amount = parsed_amount
+        bitcoin_txid_bytes_big_endian = log_data.bitcoin_txid.to_bytes(
+            32, byteorder="little"
+        )
+        bitcoin_txid = bitcoin_txid_bytes_big_endian.hex()
+        minted_asset = jetton_mint_block.data["asset"]
+        recipient_wallet = AccountId(jetton_mint_block.data["to_jetton_wallet"])
+    except Exception as e:
+        logger.warning(
+            f"TgBTCMint: Failed to parse TgBTCMintEvent log or process jetton_mint: {e}"
+        )
+
+    if not success:
+        return None
+
+    mint_data = TgBTCMintData(
+        sender=sender,
+        recipient=recipient,
+        amount=amount,
+        asset=minted_asset,
+        bitcoin_txid=bitcoin_txid,
+        success=success,
+        recipient_wallet=recipient_wallet,
+        teleport_contract=teleport_contract,
+    )
+    return TgBTCMintBlock(data=mint_data)
+
+
 class TgBTCMintBlockMatcher(BlockMatcher):
     def __init__(self):
         # we will actually include all the parent blocks until the first one (0x3F781D24), but later
@@ -110,48 +177,12 @@ class TgBTCMintBlockMatcher(BlockMatcher):
 
         collected_intermediate_blocks.add(head_block)
 
-        sender = AccountId(head_block.get_message().source)
-        recipient = None
-        amount = None
-        minted_asset = None
-        bitcoin_txid = None
-        recipient_wallet = None
-        teleport_contract = None
-        success = False
-
-        try:
-            log_data = TgBTCMintEvent(success_log_block.get_body())
-            parsed_amount = log_data.amount
-            success = True
-            recipient = log_data.recipient_address
-            teleport_contract = AccountId(success_log_block.get_message().source)
-            amount = parsed_amount
-            bitcoin_txid_bytes_big_endian = log_data.bitcoin_txid.to_bytes(
-                32, byteorder="little"
-            )
-            bitcoin_txid = bitcoin_txid_bytes_big_endian.hex()
-            minted_asset = jetton_mint_block.data["asset"]
-            recipient_wallet = AccountId(jetton_mint_block.data["to_jetton_wallet"])
-        except Exception as e:
-            logger.warning(
-                f"TgBTCMint: Failed to parse TgBTCMintEvent log or process jetton_mint: {e}"
-            )
-
-        if not success:
+        new_logical_block = build_tgbtc_mint_core(
+            head_block, success_log_block, jetton_mint_block
+        )
+        if new_logical_block is None:
             return []
 
-        mint_data = TgBTCMintData(
-            sender=sender,
-            recipient=recipient,
-            amount=amount,
-            asset=minted_asset,
-            bitcoin_txid=bitcoin_txid,
-            success=success,
-            recipient_wallet=recipient_wallet,
-            teleport_contract=teleport_contract,
-        )
-
-        new_logical_block = TgBTCMintBlock(data=mint_data)
         new_logical_block.merge_blocks(list(collected_intermediate_blocks))
         return [new_logical_block]
 

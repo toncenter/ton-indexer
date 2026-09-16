@@ -68,6 +68,11 @@ public:
 
   void start_up() override;
 
+  // Synchronous detection uses only the code hash and data cell.
+  static td::Result<Result> detect(const block::StdAddress& address,
+                                   const td::Ref<vm::Cell>& code_cell,
+                                   const td::Ref<vm::Cell>& data_cell);
+
 private:
   block::StdAddress address_;
   td::Ref<vm::Cell> code_cell_;

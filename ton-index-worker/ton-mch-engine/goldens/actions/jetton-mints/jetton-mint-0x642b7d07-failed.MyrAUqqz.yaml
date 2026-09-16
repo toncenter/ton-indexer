@@ -1,0 +1,59 @@
+# jetton-mints / Jetton mint(0x642b7d07) failed
+# trace: MyrAUqqz_XH2D5bUdRd-YYCVo7JEEzjWX00gGXRFLLY=
+actions:
+  - type: contract_deploy
+    anchor: contract_deploy#178d4519@45647281000002
+    id: NeldIsT15u0F8n0j0PDxeRT2goue36MBqUdwJSk0IRM=
+    success: false
+    source: 0:C6240AEE065A0961B0A7CBAEA903E70D2D1C9BD3F30F0AC7CBAE4289E79CDE14
+    source_secondary: null
+    destination: 0:FAB4D5C3F99550CF6F244BDE50235E364F59F399BE7F5579886B1B7F70F1987C
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: 100000000
+    opcode: 0x178d4519
+    tx_hashes:
+      - AzRp6IFKlo7AMTRuna9B9B0XH0U86Ep+HH/Os6VPE8E=
+      - NLybl0hgp3z9BroxMAzUWF7a9LZuyliM39azaBM93SU=
+    accounts:
+      - 0:C6240AEE065A0961B0A7CBAEA903E70D2D1C9BD3F30F0AC7CBAE4289E79CDE14
+      - 0:FAB4D5C3F99550CF6F244BDE50235E364F59F399BE7F5579886B1B7F70F1987C
+    start_lt: 45647281000002
+    end_lt: 45647281000003
+    start_utime: 1712140929
+    end_utime: 1712140929
+    mc_seqno_end: 37084036
+  - type: jetton_mint
+    matcher: jetton_mint
+    anchor: jetton_mint@45647277000002
+    id: MvK9WFMORTEB1kzsAixpR7GUK43srtBN3fI9tsmnSXI=
+    success: false
+    source: null
+    source_secondary: null
+    destination: 0:3D6497F533E6771EFA6B09D9672F4A6E1708893FAC76CFB2525E1A8F31D1CE2A
+    destination_secondary: 0:FAB4D5C3F99550CF6F244BDE50235E364F59F399BE7F5579886B1B7F70F1987C
+    asset: 0:C6240AEE065A0961B0A7CBAEA903E70D2D1C9BD3F30F0AC7CBAE4289E79CDE14
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: 1000000000000000
+    value: 100000000
+    opcode: null
+    tx_hashes:
+      - AzRp6IFKlo7AMTRuna9B9B0XH0U86Ep+HH/Os6VPE8E=
+      - MyrAUqqz/XH2D5bUdRd+YYCVo7JEEzjWX00gGXRFLLY=
+      - NLybl0hgp3z9BroxMAzUWF7a9LZuyliM39azaBM93SU=
+      - Z3B+7GjeZYFpjuT5QL00JsxjHIUl4Fy8yd8E0tMLRV0=
+    accounts:
+      - 0:3D6497F533E6771EFA6B09D9672F4A6E1708893FAC76CFB2525E1A8F31D1CE2A
+      - 0:C6240AEE065A0961B0A7CBAEA903E70D2D1C9BD3F30F0AC7CBAE4289E79CDE14
+      - 0:FAB4D5C3F99550CF6F244BDE50235E364F59F399BE7F5579886B1B7F70F1987C
+    start_lt: 45647277000002
+    end_lt: 45647281000005
+    start_utime: 1712140911
+    end_utime: 1712140929
+    mc_seqno_end: 37084036

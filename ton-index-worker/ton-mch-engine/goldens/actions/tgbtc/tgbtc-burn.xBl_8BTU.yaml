@@ -1,0 +1,216 @@
+# tgbtc / tgBTC burn
+# trace: xBl_8BTUqSv52IWAzrmg54-V0YR_WQsV1buJxKBq4vE=
+actions:
+  - type: call_contract
+    anchor: call_contract#1a84c0e0@35188178000002
+    id: VWyJZnEZeT/pBcLtOMeNZv1AYeRj3iINd4WhNbh9CDI=
+    success: true
+    source: 0:AFCEC6CCE463D696DDBDF9469CE1CEDEEA02CA47F665BCEB99A8A2F2C5D45731
+    source_secondary: null
+    destination: 0:F8DD1B5D010FD8F2797CE92AB3C6394BFFEAC0BDD66204393FB3B39317EA11C6
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: 10000000
+    opcode: 0x1a84c0e0
+    tx_hashes:
+      - TqXTPyRduyxiK5QnkHiDN5WoMBsCie7HrNvAGA/GZfY=
+      - nHpSvQFpFOIuaqsJTJ9rtDYH6VNRqRsYIIp/Ez5AJdg=
+    accounts:
+      - 0:AFCEC6CCE463D696DDBDF9469CE1CEDEEA02CA47F665BCEB99A8A2F2C5D45731
+      - 0:F8DD1B5D010FD8F2797CE92AB3C6394BFFEAC0BDD66204393FB3B39317EA11C6
+    start_lt: 35188178000002
+    end_lt: 35188180000001
+    start_utime: 1748611326
+    end_utime: 1748611333
+    mc_seqno_end: 31692429
+    parent_action_id: OWTWiCzms/eimg122ALAqv6YFvvLvwiZcQyPvYXUIM4=
+    ancestor_type:
+      - tgbtc_burn
+  - type: call_contract
+    anchor: call_contract#7bdd97de@35188172000004
+    id: mzi9yDVR58pOdoGLwtb317D5MNG6cGi9N0O0dHq5YE8=
+    success: true
+    source: 0:AD9E0A84E13EFB6D37634044F7B49820FD121E900057BF6E71DED212378D7C05
+    source_secondary: null
+    destination: 0:E1177970B722A9422D8EF674B85CDCB2C88295EE397D7150A4A382F91921409C
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: 593282400
+    opcode: 0x7bdd97de
+    tx_hashes:
+      - 7vd2vnxSdN9UAY8nV1AvNzWWX4D5AuXVXqu+2/Fnbrk=
+      - qfc7rbl0z5dhsr95Znhul1F/gaQf6GnBluggfMJcAjY=
+    accounts:
+      - 0:AD9E0A84E13EFB6D37634044F7B49820FD121E900057BF6E71DED212378D7C05
+      - 0:E1177970B722A9422D8EF674B85CDCB2C88295EE397D7150A4A382F91921409C
+    start_lt: 35188172000004
+    end_lt: 35188174000001
+    start_utime: 1748611313
+    end_utime: 1748611319
+    mc_seqno_end: 31692423
+    parent_action_id: OWTWiCzms/eimg122ALAqv6YFvvLvwiZcQyPvYXUIM4=
+    ancestor_type:
+      - tgbtc_burn
+  - type: call_contract
+    anchor: call_contract#be44e7a6@35188174000003
+    id: qx6ECJdMfeWkPDc/f6xEINkXiNSeCMFU3AK2UQKpJw4=
+    success: true
+    source: 0:E1177970B722A9422D8EF674B85CDCB2C88295EE397D7150A4A382F91921409C
+    source_secondary: null
+    destination: 0:AFCEC6CCE463D696DDBDF9469CE1CEDEEA02CA47F665BCEB99A8A2F2C5D45731
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: 564977956
+    opcode: 0xbe44e7a6
+    tx_hashes:
+      - nHpSvQFpFOIuaqsJTJ9rtDYH6VNRqRsYIIp/Ez5AJdg=
+      - qfc7rbl0z5dhsr95Znhul1F/gaQf6GnBluggfMJcAjY=
+    accounts:
+      - 0:AFCEC6CCE463D696DDBDF9469CE1CEDEEA02CA47F665BCEB99A8A2F2C5D45731
+      - 0:E1177970B722A9422D8EF674B85CDCB2C88295EE397D7150A4A382F91921409C
+    start_lt: 35188174000003
+    end_lt: 35188178000001
+    start_utime: 1748611319
+    end_utime: 1748611326
+    mc_seqno_end: 31692426
+    parent_action_id: OWTWiCzms/eimg122ALAqv6YFvvLvwiZcQyPvYXUIM4=
+    ancestor_type:
+      - tgbtc_burn
+  - type: contract_deploy
+    anchor: contract_deploy#be44e7a6@35188174000003
+    id: Jp1Jibp/oA8MiY233vDKowFYOTVwbRsNUlMgNhA+n20=
+    success: true
+    source: 0:E1177970B722A9422D8EF674B85CDCB2C88295EE397D7150A4A382F91921409C
+    source_secondary: null
+    destination: 0:AFCEC6CCE463D696DDBDF9469CE1CEDEEA02CA47F665BCEB99A8A2F2C5D45731
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: 564977956
+    opcode: 0xbe44e7a6
+    tx_hashes:
+      - nHpSvQFpFOIuaqsJTJ9rtDYH6VNRqRsYIIp/Ez5AJdg=
+      - qfc7rbl0z5dhsr95Znhul1F/gaQf6GnBluggfMJcAjY=
+    accounts:
+      - 0:AFCEC6CCE463D696DDBDF9469CE1CEDEEA02CA47F665BCEB99A8A2F2C5D45731
+      - 0:E1177970B722A9422D8EF674B85CDCB2C88295EE397D7150A4A382F91921409C
+    start_lt: 35188174000003
+    end_lt: 35188178000001
+    start_utime: 1748611319
+    end_utime: 1748611326
+    mc_seqno_end: 31692426
+  - type: jetton_burn
+    matcher: jetton_burn
+    anchor: jetton_burn@35188168000002
+    id: tMtvJxfhKqa5L8dZ80/Maj+2CfGnwwVr0GZOUhHtf58=
+    success: true
+    source: 0:219F19946DDAA7ED0923267A89FA39A82BA5D9B631ABB0F15BA61241830C92EA
+    source_secondary: 0:AE519BA51E0D8FB640308A7BD0FB398FEE0C5151426DB6423B11BF15D3A0E39F
+    destination: null
+    destination_secondary: null
+    asset: 0:AD9E0A84E13EFB6D37634044F7B49820FD121E900057BF6E71DED212378D7C05
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: 9850
+    value: null
+    opcode: null
+    tx_hashes:
+      - 7vd2vnxSdN9UAY8nV1AvNzWWX4D5AuXVXqu+2/Fnbrk=
+      - CrI/IkL3ea8uFgZ8ymj808tauWBoP3N+SBJFtoOc4s8=
+      - xBl/8BTUqSv52IWAzrmg54+V0YR/WQsV1buJxKBq4vE=
+    accounts:
+      - 0:219F19946DDAA7ED0923267A89FA39A82BA5D9B631ABB0F15BA61241830C92EA
+      - 0:AD9E0A84E13EFB6D37634044F7B49820FD121E900057BF6E71DED212378D7C05
+      - 0:AE519BA51E0D8FB640308A7BD0FB398FEE0C5151426DB6423B11BF15D3A0E39F
+    start_lt: 35188168000002
+    end_lt: 35188172000003
+    start_utime: 1748611305
+    end_utime: 1748611313
+    mc_seqno_end: 31692420
+    parent_action_id: OWTWiCzms/eimg122ALAqv6YFvvLvwiZcQyPvYXUIM4=
+    ancestor_type:
+      - tgbtc_burn
+  - type: tgbtc_burn
+    matcher: tgbtc_burn
+    anchor: tgbtc_burn@35188168000002
+    id: OWTWiCzms/eimg122ALAqv6YFvvLvwiZcQyPvYXUIM4=
+    success: true
+    source: 0:219F19946DDAA7ED0923267A89FA39A82BA5D9B631ABB0F15BA61241830C92EA
+    source_secondary: 0:AE519BA51E0D8FB640308A7BD0FB398FEE0C5151426DB6423B11BF15D3A0E39F
+    destination: 0:AFCEC6CCE463D696DDBDF9469CE1CEDEEA02CA47F665BCEB99A8A2F2C5D45731
+    destination_secondary: null
+    asset: 0:AD9E0A84E13EFB6D37634044F7B49820FD121E900057BF6E71DED212378D7C05
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: 9637
+    value: null
+    opcode: null
+    tx_hashes:
+      - 7vd2vnxSdN9UAY8nV1AvNzWWX4D5AuXVXqu+2/Fnbrk=
+      - An7bZlhNuL9S8CqbDmGzzjB16a+j96WDpoZUZvtDmTE=
+      - CrI/IkL3ea8uFgZ8ymj808tauWBoP3N+SBJFtoOc4s8=
+      - TqXTPyRduyxiK5QnkHiDN5WoMBsCie7HrNvAGA/GZfY=
+      - nHpSvQFpFOIuaqsJTJ9rtDYH6VNRqRsYIIp/Ez5AJdg=
+      - qfc7rbl0z5dhsr95Znhul1F/gaQf6GnBluggfMJcAjY=
+      - xBl/8BTUqSv52IWAzrmg54+V0YR/WQsV1buJxKBq4vE=
+    accounts:
+      - 0:219F19946DDAA7ED0923267A89FA39A82BA5D9B631ABB0F15BA61241830C92EA
+      - 0:AD9E0A84E13EFB6D37634044F7B49820FD121E900057BF6E71DED212378D7C05
+      - 0:AE519BA51E0D8FB640308A7BD0FB398FEE0C5151426DB6423B11BF15D3A0E39F
+      - 0:AFCEC6CCE463D696DDBDF9469CE1CEDEEA02CA47F665BCEB99A8A2F2C5D45731
+      - 0:E1177970B722A9422D8EF674B85CDCB2C88295EE397D7150A4A382F91921409C
+      - 0:F8DD1B5D010FD8F2797CE92AB3C6394BFFEAC0BDD66204393FB3B39317EA11C6
+    start_lt: 35188168000002
+    end_lt: 35188180000001
+    start_utime: 1748611305
+    end_utime: 1748611333
+    mc_seqno_end: 31692429
+  - type: ton_transfer
+    anchor: ton_transfer@35188178000003
+    id: kGZrqtLxn1duUH6aEEX4YZ8b15kmMn+964bKfTyX09E=
+    success: true
+    source: 0:AFCEC6CCE463D696DDBDF9469CE1CEDEEA02CA47F665BCEB99A8A2F2C5D45731
+    source_secondary: null
+    destination: 0:219F19946DDAA7ED0923267A89FA39A82BA5D9B631ABB0F15BA61241830C92EA
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: 539257156
+    opcode: null
+    ton_transfer_data:
+      content: null
+      encrypted: false
+    tx_hashes:
+      - An7bZlhNuL9S8CqbDmGzzjB16a+j96WDpoZUZvtDmTE=
+      - nHpSvQFpFOIuaqsJTJ9rtDYH6VNRqRsYIIp/Ez5AJdg=
+    accounts:
+      - 0:219F19946DDAA7ED0923267A89FA39A82BA5D9B631ABB0F15BA61241830C92EA
+      - 0:AFCEC6CCE463D696DDBDF9469CE1CEDEEA02CA47F665BCEB99A8A2F2C5D45731
+    start_lt: 35188178000003
+    end_lt: 35188180000001
+    start_utime: 1748611326
+    end_utime: 1748611332
+    mc_seqno_end: 31692429
+    parent_action_id: OWTWiCzms/eimg122ALAqv6YFvvLvwiZcQyPvYXUIM4=
+    ancestor_type:
+      - tgbtc_burn

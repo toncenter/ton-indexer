@@ -1,0 +1,96 @@
+#pragma once
+
+#include <compare>
+#include <cstdint>
+#include <map>
+#include <memory>
+#include <string>
+#include <string_view>
+#include <vector>
+
+enum class TraceStateFinality : std::uint8_t {
+    Emulated = 0,
+    Confirmed = 1,
+    Finalized = 2,
+};
+
+struct TraceStateIndexRef {
+    std::string index_key;
+    std::string member;
+    std::uint64_t score{0};
+
+    auto operator<=>(const TraceStateIndexRef&) const = default;
+};
+
+struct TraceStateNode {
+    std::string key;
+    TraceStateFinality finality{TraceStateFinality::Emulated};
+    std::string fingerprint;
+    std::shared_ptr<const std::string> serialized;
+    // Standalone transaction BOC used to build immutable classifier snapshots.
+    // Unlike transaction cells from BlockData, these bytes remain valid after
+    // the source block and its lazy cell database have been released.
+    std::shared_ptr<const std::string> transaction_boc;
+    std::int32_t workchain{0};
+    std::uint32_t mc_seqno{0};
+    std::vector<std::string> child_keys;
+    std::vector<TraceStateIndexRef> index_refs;
+
+    // The transaction hash is the first component of the serialization fingerprint;
+    // finality and block metadata may change without changing the execution.
+    std::string_view transaction_hash() const {
+        return std::string_view(fingerprint).substr(0, fingerprint.find(':'));
+    }
+
+    bool operator==(const TraceStateNode&) const = default;
+};
+
+// Nodes are a flat representation of one incoming trace subtree. child_keys may
+// refer to messages which have no node in this update.
+struct TraceStateUpdate {
+    std::string root_key;
+    std::vector<TraceStateNode> nodes;
+};
+
+struct TraceStateDelta {
+    // All collections are sorted, making Redis writes and tests deterministic.
+    std::vector<std::string> removed_node_keys;
+    std::vector<TraceStateNode> upserted_nodes;
+    std::vector<TraceStateIndexRef> removed_index_refs;
+    std::vector<TraceStateIndexRef> added_index_refs;
+
+    bool empty() const;
+};
+
+// One prepared update contains both the small Redis delta and the complete
+// state which becomes current after Redis accepts that delta.
+struct TraceStateChange {
+    TraceStateDelta delta;
+    std::map<std::string, TraceStateNode> resulting_nodes;
+};
+
+class TraceState {
+public:
+    // Applies a fragment to an exclusively owned working copy, without
+    // copying the graph or computing a delta. Compare with the original state
+    // using delta_to() after all fragments have been applied.
+    // previous_root_key is supplied only when replacing the canonical root,
+    // whose raw message hash may differ from update.root_key.
+    void apply_update(const TraceStateUpdate& update, const std::string& previous_root_key = {});
+
+    // Inserts/replaces already accepted nodes without pruning. Promotion
+    // validates that only finality changes before calling this method.
+    TraceStateChange upsert_nodes(std::vector<TraceStateNode> nodes) const;
+
+    // Replaces this object with the resulting state of a prepared change.
+    void apply(TraceStateChange&& change) noexcept;
+
+    // Computes the exact Redis-facing delta from this state to resulting.
+    TraceStateDelta delta_to(const TraceState& resulting) const;
+
+    const TraceStateNode* find(const std::string& key) const;
+    const std::map<std::string, TraceStateNode>& nodes() const;
+
+private:
+    std::map<std::string, TraceStateNode> nodes_;
+};

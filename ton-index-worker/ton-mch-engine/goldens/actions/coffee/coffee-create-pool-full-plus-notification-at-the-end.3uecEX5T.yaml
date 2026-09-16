@@ -1,0 +1,644 @@
+# coffee / Coffee create pool (full + notification at the end)
+# trace: 3uecEX5TvThuugPaMO4MqlOxGGHRQpNRErwAP7fL7J4=
+actions:
+  - type: call_contract
+    anchor: call_contract#178d4519@57972970000004
+    id: EH3j560/TJIaBOEqw4Ty2luq+Bkl/55zRmYtWsjS3+w=
+    success: true
+    source: 0:8FE5F74378278AB42C80772AF2551A0ECE02C599DACB115BA1C1F2F9678521ED
+    source_secondary: null
+    destination: 0:5CAD886ACD43EDE8D4E4BC3487BA2C6EB2D8CA3E5D4B1A6F037B7661CD82AD8C
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: 138187420
+    opcode: 0x178d4519
+    tx_hashes:
+      - 8WPJWZT7NjQl5MrdGE6Dv1CPBirwO1pv99uah+s6OeM=
+      - ASxwSeYAcYl26hVs2h9HkYIh2rD1YetJ5qvpv2PgcLI=
+    accounts:
+      - 0:5CAD886ACD43EDE8D4E4BC3487BA2C6EB2D8CA3E5D4B1A6F037B7661CD82AD8C
+      - 0:8FE5F74378278AB42C80772AF2551A0ECE02C599DACB115BA1C1F2F9678521ED
+    start_lt: 57972970000004
+    end_lt: 57972974000001
+    start_utime: 1749137962
+    end_utime: 1749137971
+    mc_seqno_end: 48535853
+    parent_action_id: Jew+9cMsqmcCptusT1Ymdl5hT3ofNTmMJew/DQ3kNXw=
+    ancestor_type:
+      - coffee_create_pool
+  - type: call_contract
+    anchor: call_contract#3e36e18c@57972943000002
+    id: jbx0j6GLvlT9YfEYx8Z7q8oKIN+oj86byaEpfqXGHkc=
+    success: true
+    source: 0:F6B3F3AEE6FCBA3E3BC7EA361F3240C444BA5283A8733A36E75232C3951841CB
+    source_secondary: null
+    destination: 0:8A12D34E4800BA0EBC687A83FA3C86C2E29640E20F6B7BB8D178866843239B1F
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: 288890000
+    opcode: 0x3e36e18c
+    tx_hashes:
+      - 3uecEX5TvThuugPaMO4MqlOxGGHRQpNRErwAP7fL7J4=
+      - pgToDERqWQMcv1CiZG/Hl9vfjAKB9B0OtNMvvP2aY4E=
+    accounts:
+      - 0:8A12D34E4800BA0EBC687A83FA3C86C2E29640E20F6B7BB8D178866843239B1F
+      - 0:F6B3F3AEE6FCBA3E3BC7EA361F3240C444BA5283A8733A36E75232C3951841CB
+    start_lt: 57972943000002
+    end_lt: 57972948000001
+    start_utime: 1749137902
+    end_utime: 1749137912
+    mc_seqno_end: 48535830
+  - type: call_contract
+    anchor: call_contract#8295735f@57972948000003
+    id: /dD8lsPs5aiaTJXz6ONKMJn0CWjebVG5JmksylJFHDQ=
+    success: true
+    source: 0:8A12D34E4800BA0EBC687A83FA3C86C2E29640E20F6B7BB8D178866843239B1F
+    source_secondary: null
+    destination: 0:A15CA5461477CC4B92CF5BCCC137097270CADC692B5443DB7D74C0BF7E285363
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: 283169152
+    opcode: 0x8295735f
+    tx_hashes:
+      - HdLX+Kdu9xBCbpdf/3SGdN3D57v4tLfYKISsRSCZEaA=
+      - pgToDERqWQMcv1CiZG/Hl9vfjAKB9B0OtNMvvP2aY4E=
+    accounts:
+      - 0:8A12D34E4800BA0EBC687A83FA3C86C2E29640E20F6B7BB8D178866843239B1F
+      - 0:A15CA5461477CC4B92CF5BCCC137097270CADC692B5443DB7D74C0BF7E285363
+    start_lt: 57972948000003
+    end_lt: 57972948000004
+    start_utime: 1749137912
+    end_utime: 1749137912
+    mc_seqno_end: 48535830
+  - type: call_contract
+    anchor: call_contract#c0ffee02@57972948000005
+    id: Effah2xHUWltWVzWYEu9uBGrW81h1cY/3unJYqQTOq8=
+    success: true
+    source: 0:A15CA5461477CC4B92CF5BCCC137097270CADC692B5443DB7D74C0BF7E285363
+    source_secondary: null
+    destination: 0:DB2EA4FFCE1C691118F41275C6DA2AABD60EF53836FF5E873BE11F11CD448494
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: 171349719718
+    opcode: 0xc0ffee02
+    tx_hashes:
+      - DF1D0ptlBrLr+1L4y+wsprQE98PmJhcUgRVpb1a5aqA=
+      - HdLX+Kdu9xBCbpdf/3SGdN3D57v4tLfYKISsRSCZEaA=
+    accounts:
+      - 0:A15CA5461477CC4B92CF5BCCC137097270CADC692B5443DB7D74C0BF7E285363
+      - 0:DB2EA4FFCE1C691118F41275C6DA2AABD60EF53836FF5E873BE11F11CD448494
+    start_lt: 57972948000005
+    end_lt: 57972950000001
+    start_utime: 1749137912
+    end_utime: 1749137918
+    mc_seqno_end: 48535833
+    parent_action_id: nk/uwy/up2nFRVl64gpxEdHkqy0zTAvxO5ixblnmwVE=
+    ancestor_type:
+      - coffee_create_pool_creator
+  - type: call_contract
+    anchor: call_contract#c0ffee22@57972955000002
+    id: YARDbuQtCTzpVICzYn8OFudfT0wJThpYsHIfmETjq7s=
+    success: true
+    source: 0:2C7F6B033DFA28FB42239D103B97F809041F63CA8E33A9F086FF520508223F41
+    source_secondary: null
+    destination: 0:EB7B7155CEE154FAB8EAB90E3234D5EB6B3E659F2A2FE86E4B88516D261EDF7A
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: 129404831
+    opcode: 0xc0ffee22
+    tx_hashes:
+      - LihmXMdkWIDgkzGL8WkaryxAiw3Cc/79pkyTWQkvF4g=
+      - enkTnecV3i12a1sFrBzjvgb9NxrifQJCOBmSE9LcAYM=
+    accounts:
+      - 0:2C7F6B033DFA28FB42239D103B97F809041F63CA8E33A9F086FF520508223F41
+      - 0:EB7B7155CEE154FAB8EAB90E3234D5EB6B3E659F2A2FE86E4B88516D261EDF7A
+    start_lt: 57972955000002
+    end_lt: 57972957000001
+    start_utime: 1749137926
+    end_utime: 1749137934
+    mc_seqno_end: 48535839
+    parent_action_id: nk/uwy/up2nFRVl64gpxEdHkqy0zTAvxO5ixblnmwVE=
+    ancestor_type:
+      - coffee_create_pool_creator
+  - type: call_contract
+    anchor: call_contract#c0ffee22@57972961000002
+    id: 9SNb8t0G/DvfhzAtpmgNH4UUcg6iZzmcisKLngJojJ4=
+    success: true
+    source: 0:2C7F6B033DFA28FB42239D103B97F809041F63CA8E33A9F086FF520508223F41
+    source_secondary: null
+    destination: 0:EB7B7155CEE154FAB8EAB90E3234D5EB6B3E659F2A2FE86E4B88516D261EDF7A
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: 74438253
+    opcode: 0xc0ffee22
+    tx_hashes:
+      - Vq+seBeZ7L3uuPVnmEiglUcmjz6b9hKt03E7Aml79nY=
+      - c6ynA+xKzD/mhCYdBXYHId+BwXqk7G1q3k0NLCN8Usk=
+    accounts:
+      - 0:2C7F6B033DFA28FB42239D103B97F809041F63CA8E33A9F086FF520508223F41
+      - 0:EB7B7155CEE154FAB8EAB90E3234D5EB6B3E659F2A2FE86E4B88516D261EDF7A
+    start_lt: 57972961000002
+    end_lt: 57972963000001
+    start_utime: 1749137940
+    end_utime: 1749137947
+    mc_seqno_end: 48535844
+    parent_action_id: 3/wH5Prjq5Cojc2zlHEu/28pZtdScQrZF+J5x/LOxBY=
+    ancestor_type:
+      - coffee_create_pool
+      - coffee_create_pool_creator
+  - type: call_contract
+    anchor: call_contract#c0ffee22@57972967000002
+    id: WRxxeDODe52kKFsEXoZQbnNAWCCWl66n9gwR69guTn0=
+    success: true
+    source: 0:2C7F6B033DFA28FB42239D103B97F809041F63CA8E33A9F086FF520508223F41
+    source_secondary: null
+    destination: 0:8FE5F74378278AB42C80772AF2551A0ECE02C599DACB115BA1C1F2F9678521ED
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: 166521020
+    opcode: 0xc0ffee22
+    tx_hashes:
+      - ASxwSeYAcYl26hVs2h9HkYIh2rD1YetJ5qvpv2PgcLI=
+      - rC41hVemiGLUhMxLNu/ID3CSb2ZroGqO5dz0pCUbkzE=
+    accounts:
+      - 0:2C7F6B033DFA28FB42239D103B97F809041F63CA8E33A9F086FF520508223F41
+      - 0:8FE5F74378278AB42C80772AF2551A0ECE02C599DACB115BA1C1F2F9678521ED
+    start_lt: 57972967000002
+    end_lt: 57972970000001
+    start_utime: 1749137954
+    end_utime: 1749137962
+    mc_seqno_end: 48535850
+    parent_action_id: Jew+9cMsqmcCptusT1Ymdl5hT3ofNTmMJew/DQ3kNXw=
+    ancestor_type:
+      - coffee_create_pool
+  - type: call_contract
+    anchor: call_contract#c0ffee23@57972950000002
+    id: mgK1JxB/IXNNdGuJJGsVUGtRUuNaiK27v9jr2rzaH6o=
+    success: true
+    source: 0:DB2EA4FFCE1C691118F41275C6DA2AABD60EF53836FF5E873BE11F11CD448494
+    source_secondary: null
+    destination: 0:2C7F6B033DFA28FB42239D103B97F809041F63CA8E33A9F086FF520508223F41
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: 139593586
+    opcode: 0xc0ffee23
+    tx_hashes:
+      - DF1D0ptlBrLr+1L4y+wsprQE98PmJhcUgRVpb1a5aqA=
+      - enkTnecV3i12a1sFrBzjvgb9NxrifQJCOBmSE9LcAYM=
+    accounts:
+      - 0:2C7F6B033DFA28FB42239D103B97F809041F63CA8E33A9F086FF520508223F41
+      - 0:DB2EA4FFCE1C691118F41275C6DA2AABD60EF53836FF5E873BE11F11CD448494
+    start_lt: 57972950000002
+    end_lt: 57972955000001
+    start_utime: 1749137918
+    end_utime: 1749137926
+    mc_seqno_end: 48535836
+    parent_action_id: nk/uwy/up2nFRVl64gpxEdHkqy0zTAvxO5ixblnmwVE=
+    ancestor_type:
+      - coffee_create_pool_creator
+  - type: call_contract
+    anchor: call_contract#c0ffee23@57972958000002
+    id: cBoxrRY1fdvSt8qhmsGiXUnhvCNnRuNzMXfoiq7UolQ=
+    success: true
+    source: 0:BBDEDCA3656542CAC928DD2C2A086E77E5C92E77EC52BA4880740E888E5E1F3E
+    source_secondary: null
+    destination: 0:2C7F6B033DFA28FB42239D103B97F809041F63CA8E33A9F086FF520508223F41
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: 84789913
+    opcode: 0xc0ffee23
+    tx_hashes:
+      - HfjidxHZ5a3n/6VI2uXjnxP63LV9HEDglefItX4+jSw=
+      - c6ynA+xKzD/mhCYdBXYHId+BwXqk7G1q3k0NLCN8Usk=
+    accounts:
+      - 0:2C7F6B033DFA28FB42239D103B97F809041F63CA8E33A9F086FF520508223F41
+      - 0:BBDEDCA3656542CAC928DD2C2A086E77E5C92E77EC52BA4880740E888E5E1F3E
+    start_lt: 57972958000002
+    end_lt: 57972961000001
+    start_utime: 1749137935
+    end_utime: 1749137940
+    mc_seqno_end: 48535841
+    parent_action_id: 3/wH5Prjq5Cojc2zlHEu/28pZtdScQrZF+J5x/LOxBY=
+    ancestor_type:
+      - coffee_create_pool
+      - coffee_create_pool_creator
+  - type: call_contract
+    anchor: call_contract#c0ffee25@57972963000002
+    id: jQzjEEez0gNs2Sed4zJaOzeA7v3ykIhtpfe4Xsg8EEg=
+    success: true
+    source: 0:EB7B7155CEE154FAB8EAB90E3234D5EB6B3E659F2A2FE86E4B88516D261EDF7A
+    source_secondary: null
+    destination: 0:2C7F6B033DFA28FB42239D103B97F809041F63CA8E33A9F086FF520508223F41
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: 196218280
+    opcode: 0xc0ffee25
+    tx_hashes:
+      - Vq+seBeZ7L3uuPVnmEiglUcmjz6b9hKt03E7Aml79nY=
+      - rC41hVemiGLUhMxLNu/ID3CSb2ZroGqO5dz0pCUbkzE=
+    accounts:
+      - 0:2C7F6B033DFA28FB42239D103B97F809041F63CA8E33A9F086FF520508223F41
+      - 0:EB7B7155CEE154FAB8EAB90E3234D5EB6B3E659F2A2FE86E4B88516D261EDF7A
+    start_lt: 57972963000002
+    end_lt: 57972967000001
+    start_utime: 1749137947
+    end_utime: 1749137954
+    mc_seqno_end: 48535847
+    parent_action_id: Jew+9cMsqmcCptusT1Ymdl5hT3ofNTmMJew/DQ3kNXw=
+    ancestor_type:
+      - coffee_create_pool
+  - type: call_contract
+    anchor: call_contract#c0ffee36@57972970000003
+    id: YZ4XNITzZTOoEORgugjiEmwmYr1q3jLNaOYQjVmggc0=
+    success: true
+    source: 0:8FE5F74378278AB42C80772AF2551A0ECE02C599DACB115BA1C1F2F9678521ED
+    source_secondary: null
+    destination: 0:8A12D34E4800BA0EBC687A83FA3C86C2E29640E20F6B7BB8D178866843239B1F
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: 4559200
+    opcode: 0xc0ffee36
+    tx_hashes:
+      - 0sluQqvKoN5pdFFCZjm2GuBPsIaSwXA9XQjltI77D2w=
+      - ASxwSeYAcYl26hVs2h9HkYIh2rD1YetJ5qvpv2PgcLI=
+    accounts:
+      - 0:8A12D34E4800BA0EBC687A83FA3C86C2E29640E20F6B7BB8D178866843239B1F
+      - 0:8FE5F74378278AB42C80772AF2551A0ECE02C599DACB115BA1C1F2F9678521ED
+    start_lt: 57972970000003
+    end_lt: 57972970000004
+    start_utime: 1749137962
+    end_utime: 1749137962
+    mc_seqno_end: 48535850
+    parent_action_id: Jew+9cMsqmcCptusT1Ymdl5hT3ofNTmMJew/DQ3kNXw=
+    ancestor_type:
+      - coffee_create_pool
+  - type: call_contract
+    anchor: call_contract#d53276db@57972974000002
+    id: wXgKWaKnkHbSX5V60eREKqMJxrvCzTLLGVmpg9kk7HU=
+    success: true
+    source: 0:5CAD886ACD43EDE8D4E4BC3487BA2C6EB2D8CA3E5D4B1A6F037B7661CD82AD8C
+    source_secondary: null
+    destination: 0:3E4650563C85FEE7F2D676DADBF2715B363EEDF4E0E1A5D2E76B7480278E4685
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: 112787420
+    opcode: 0xd53276db
+    tx_hashes:
+      - 8WPJWZT7NjQl5MrdGE6Dv1CPBirwO1pv99uah+s6OeM=
+      - cpiP9FBucmB5T1kb1REY1nNjSifQMqo9HeUZ0l9ISyQ=
+    accounts:
+      - 0:3E4650563C85FEE7F2D676DADBF2715B363EEDF4E0E1A5D2E76B7480278E4685
+      - 0:5CAD886ACD43EDE8D4E4BC3487BA2C6EB2D8CA3E5D4B1A6F037B7661CD82AD8C
+    start_lt: 57972974000002
+    end_lt: 57972978000001
+    start_utime: 1749137971
+    end_utime: 1749137980
+    mc_seqno_end: 48535856
+    parent_action_id: Jew+9cMsqmcCptusT1Ymdl5hT3ofNTmMJew/DQ3kNXw=
+    ancestor_type:
+      - coffee_create_pool
+  - type: coffee_create_pool
+    matcher: coffee_create_pool
+    anchor: coffee_create_pool@57972948000006
+    id: Jew+9cMsqmcCptusT1Ymdl5hT3ofNTmMJew/DQ3kNXw=
+    success: true
+    source: 0:A15CA5461477CC4B92CF5BCCC137097270CADC692B5443DB7D74C0BF7E285363
+    source_secondary: 0:EB174AD0A061F4E97B4FD32A52585061D48AE46A7EBDF6966302C6CA37D8B6DE
+    destination: 0:8FE5F74378278AB42C80772AF2551A0ECE02C599DACB115BA1C1F2F9678521ED
+    destination_secondary: 0:EB7B7155CEE154FAB8EAB90E3234D5EB6B3E659F2A2FE86E4B88516D261EDF7A
+    asset: 0:67D4C65E197C2FAB68ADBADF4116E82D29200327152B6C8055F265009E8D2A7F
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: 2345368713954
+    value: null
+    opcode: null
+    coffee_create_pool_data:
+      amount_1: 2345368713954
+      amount_2: 171205371318
+      initiator_1: 0:A15CA5461477CC4B92CF5BCCC137097270CADC692B5443DB7D74C0BF7E285363
+      initiator_2: 0:A15CA5461477CC4B92CF5BCCC137097270CADC692B5443DB7D74C0BF7E285363
+      lp_tokens_minted: 633671618650
+      provided_asset: 0:67D4C65E197C2FAB68ADBADF4116E82D29200327152B6C8055F265009E8D2A7F
+    tx_hashes:
+      - 0sluQqvKoN5pdFFCZjm2GuBPsIaSwXA9XQjltI77D2w=
+      - 8WPJWZT7NjQl5MrdGE6Dv1CPBirwO1pv99uah+s6OeM=
+      - ASxwSeYAcYl26hVs2h9HkYIh2rD1YetJ5qvpv2PgcLI=
+      - HdLX+Kdu9xBCbpdf/3SGdN3D57v4tLfYKISsRSCZEaA=
+      - HfjidxHZ5a3n/6VI2uXjnxP63LV9HEDglefItX4+jSw=
+      - M3AT2/Ly79m4OpeipMBQyr809YXdGOwVStGvnqqYsds=
+      - Vq+seBeZ7L3uuPVnmEiglUcmjz6b9hKt03E7Aml79nY=
+      - WOMkUNGcBepXafgqBVnoq+dekuLUiMg0L1dX4NcA8Q0=
+      - ausXs/qsteqkoI2UppVLiCd8hBOnN57I4uwl7rug59c=
+      - c6ynA+xKzD/mhCYdBXYHId+BwXqk7G1q3k0NLCN8Usk=
+      - cpiP9FBucmB5T1kb1REY1nNjSifQMqo9HeUZ0l9ISyQ=
+      - rC41hVemiGLUhMxLNu/ID3CSb2ZroGqO5dz0pCUbkzE=
+    accounts:
+      - 0:2C7F6B033DFA28FB42239D103B97F809041F63CA8E33A9F086FF520508223F41
+      - 0:3E4650563C85FEE7F2D676DADBF2715B363EEDF4E0E1A5D2E76B7480278E4685
+      - 0:4647C5A887FD93BA6A37293EBBBC3CB8F4CE8F2E69203B380F51F46ACCB2C286
+      - 0:5CAD886ACD43EDE8D4E4BC3487BA2C6EB2D8CA3E5D4B1A6F037B7661CD82AD8C
+      - 0:8A12D34E4800BA0EBC687A83FA3C86C2E29640E20F6B7BB8D178866843239B1F
+      - 0:8FE5F74378278AB42C80772AF2551A0ECE02C599DACB115BA1C1F2F9678521ED
+      - 0:A15CA5461477CC4B92CF5BCCC137097270CADC692B5443DB7D74C0BF7E285363
+      - 0:BBDEDCA3656542CAC928DD2C2A086E77E5C92E77EC52BA4880740E888E5E1F3E
+      - 0:EB174AD0A061F4E97B4FD32A52585061D48AE46A7EBDF6966302C6CA37D8B6DE
+      - 0:EB7B7155CEE154FAB8EAB90E3234D5EB6B3E659F2A2FE86E4B88516D261EDF7A
+    start_lt: 57972948000006
+    end_lt: 57972978000001
+    start_utime: 1749137912
+    end_utime: 1749137980
+    mc_seqno_end: 48535856
+  - type: coffee_create_pool_creator
+    matcher: coffee_create_pool_creator
+    anchor: coffee_create_pool_creator@57972948000005
+    id: nk/uwy/up2nFRVl64gpxEdHkqy0zTAvxO5ixblnmwVE=
+    success: true
+    source: 0:A15CA5461477CC4B92CF5BCCC137097270CADC692B5443DB7D74C0BF7E285363
+    source_secondary: null
+    destination: 0:3E4650563C85FEE7F2D676DADBF2715B363EEDF4E0E1A5D2E76B7480278E4685
+    destination_secondary: 0:EB7B7155CEE154FAB8EAB90E3234D5EB6B3E659F2A2FE86E4B88516D261EDF7A
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: 0:67D4C65E197C2FAB68ADBADF4116E82D29200327152B6C8055F265009E8D2A7F
+    amount: 171205371318
+    value: null
+    opcode: null
+    tx_hashes:
+      - DF1D0ptlBrLr+1L4y+wsprQE98PmJhcUgRVpb1a5aqA=
+      - HdLX+Kdu9xBCbpdf/3SGdN3D57v4tLfYKISsRSCZEaA=
+      - LihmXMdkWIDgkzGL8WkaryxAiw3Cc/79pkyTWQkvF4g=
+      - enkTnecV3i12a1sFrBzjvgb9NxrifQJCOBmSE9LcAYM=
+    accounts:
+      - 0:2C7F6B033DFA28FB42239D103B97F809041F63CA8E33A9F086FF520508223F41
+      - 0:3E4650563C85FEE7F2D676DADBF2715B363EEDF4E0E1A5D2E76B7480278E4685
+      - 0:A15CA5461477CC4B92CF5BCCC137097270CADC692B5443DB7D74C0BF7E285363
+      - 0:DB2EA4FFCE1C691118F41275C6DA2AABD60EF53836FF5E873BE11F11CD448494
+      - 0:EB7B7155CEE154FAB8EAB90E3234D5EB6B3E659F2A2FE86E4B88516D261EDF7A
+    start_lt: 57972948000005
+    end_lt: 57972957000001
+    start_utime: 1749137912
+    end_utime: 1749137934
+    mc_seqno_end: 48535839
+  - type: coffee_create_pool_creator
+    matcher: coffee_create_pool_creator
+    anchor: coffee_create_pool_creator@57972948000006
+    id: 3/wH5Prjq5Cojc2zlHEu/28pZtdScQrZF+J5x/LOxBY=
+    success: true
+    source: 0:A15CA5461477CC4B92CF5BCCC137097270CADC692B5443DB7D74C0BF7E285363
+    source_secondary: 0:EB174AD0A061F4E97B4FD32A52585061D48AE46A7EBDF6966302C6CA37D8B6DE
+    destination: 0:3E4650563C85FEE7F2D676DADBF2715B363EEDF4E0E1A5D2E76B7480278E4685
+    destination_secondary: 0:EB7B7155CEE154FAB8EAB90E3234D5EB6B3E659F2A2FE86E4B88516D261EDF7A
+    asset: 0:67D4C65E197C2FAB68ADBADF4116E82D29200327152B6C8055F265009E8D2A7F
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: 0:67D4C65E197C2FAB68ADBADF4116E82D29200327152B6C8055F265009E8D2A7F
+    amount: 2345368713954
+    value: null
+    opcode: null
+    tx_hashes:
+      - HdLX+Kdu9xBCbpdf/3SGdN3D57v4tLfYKISsRSCZEaA=
+      - HfjidxHZ5a3n/6VI2uXjnxP63LV9HEDglefItX4+jSw=
+      - M3AT2/Ly79m4OpeipMBQyr809YXdGOwVStGvnqqYsds=
+      - Vq+seBeZ7L3uuPVnmEiglUcmjz6b9hKt03E7Aml79nY=
+      - WOMkUNGcBepXafgqBVnoq+dekuLUiMg0L1dX4NcA8Q0=
+      - ausXs/qsteqkoI2UppVLiCd8hBOnN57I4uwl7rug59c=
+      - c6ynA+xKzD/mhCYdBXYHId+BwXqk7G1q3k0NLCN8Usk=
+    accounts:
+      - 0:2C7F6B033DFA28FB42239D103B97F809041F63CA8E33A9F086FF520508223F41
+      - 0:3E4650563C85FEE7F2D676DADBF2715B363EEDF4E0E1A5D2E76B7480278E4685
+      - 0:4647C5A887FD93BA6A37293EBBBC3CB8F4CE8F2E69203B380F51F46ACCB2C286
+      - 0:A15CA5461477CC4B92CF5BCCC137097270CADC692B5443DB7D74C0BF7E285363
+      - 0:BBDEDCA3656542CAC928DD2C2A086E77E5C92E77EC52BA4880740E888E5E1F3E
+      - 0:EB174AD0A061F4E97B4FD32A52585061D48AE46A7EBDF6966302C6CA37D8B6DE
+      - 0:EB7B7155CEE154FAB8EAB90E3234D5EB6B3E659F2A2FE86E4B88516D261EDF7A
+    start_lt: 57972948000006
+    end_lt: 57972963000001
+    start_utime: 1749137912
+    end_utime: 1749137947
+    mc_seqno_end: 48535844
+    parent_action_id: Jew+9cMsqmcCptusT1Ymdl5hT3ofNTmMJew/DQ3kNXw=
+    ancestor_type:
+      - coffee_create_pool
+  - type: contract_deploy
+    anchor: contract_deploy#178d4519@57972950000002
+    id: eDabZw0NsKnUaiUgPvPcac2K5W5Z3EKNeV8DhLMz+k0=
+    success: true
+    source: 0:EB174AD0A061F4E97B4FD32A52585061D48AE46A7EBDF6966302C6CA37D8B6DE
+    source_secondary: null
+    destination: 0:4647C5A887FD93BA6A37293EBBBC3CB8F4CE8F2E69203B380F51F46ACCB2C286
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: 647120754
+    opcode: 0x178d4519
+    tx_hashes:
+      - M3AT2/Ly79m4OpeipMBQyr809YXdGOwVStGvnqqYsds=
+      - ausXs/qsteqkoI2UppVLiCd8hBOnN57I4uwl7rug59c=
+    accounts:
+      - 0:4647C5A887FD93BA6A37293EBBBC3CB8F4CE8F2E69203B380F51F46ACCB2C286
+      - 0:EB174AD0A061F4E97B4FD32A52585061D48AE46A7EBDF6966302C6CA37D8B6DE
+    start_lt: 57972950000002
+    end_lt: 57972954000001
+    start_utime: 1749137918
+    end_utime: 1749137926
+    mc_seqno_end: 48535836
+  - type: contract_deploy
+    anchor: contract_deploy#178d4519@57972970000004
+    id: CMexw5lXbHUEoZDsXkm9oeXLCnKfLInHygo20A/TTCE=
+    success: true
+    source: 0:8FE5F74378278AB42C80772AF2551A0ECE02C599DACB115BA1C1F2F9678521ED
+    source_secondary: null
+    destination: 0:5CAD886ACD43EDE8D4E4BC3487BA2C6EB2D8CA3E5D4B1A6F037B7661CD82AD8C
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: 138187420
+    opcode: 0x178d4519
+    tx_hashes:
+      - 8WPJWZT7NjQl5MrdGE6Dv1CPBirwO1pv99uah+s6OeM=
+      - ASxwSeYAcYl26hVs2h9HkYIh2rD1YetJ5qvpv2PgcLI=
+    accounts:
+      - 0:5CAD886ACD43EDE8D4E4BC3487BA2C6EB2D8CA3E5D4B1A6F037B7661CD82AD8C
+      - 0:8FE5F74378278AB42C80772AF2551A0ECE02C599DACB115BA1C1F2F9678521ED
+    start_lt: 57972970000004
+    end_lt: 57972974000001
+    start_utime: 1749137962
+    end_utime: 1749137971
+    mc_seqno_end: 48535853
+  - type: contract_deploy
+    anchor: contract_deploy#c0ffee22@57972955000002
+    id: 7a7JbfEAWIjZQHCDNF3c17hWxttYLxbZSngy2LZ2roI=
+    success: true
+    source: 0:2C7F6B033DFA28FB42239D103B97F809041F63CA8E33A9F086FF520508223F41
+    source_secondary: null
+    destination: 0:EB7B7155CEE154FAB8EAB90E3234D5EB6B3E659F2A2FE86E4B88516D261EDF7A
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: 129404831
+    opcode: 0xc0ffee22
+    tx_hashes:
+      - LihmXMdkWIDgkzGL8WkaryxAiw3Cc/79pkyTWQkvF4g=
+      - enkTnecV3i12a1sFrBzjvgb9NxrifQJCOBmSE9LcAYM=
+    accounts:
+      - 0:2C7F6B033DFA28FB42239D103B97F809041F63CA8E33A9F086FF520508223F41
+      - 0:EB7B7155CEE154FAB8EAB90E3234D5EB6B3E659F2A2FE86E4B88516D261EDF7A
+    start_lt: 57972955000002
+    end_lt: 57972957000001
+    start_utime: 1749137926
+    end_utime: 1749137934
+    mc_seqno_end: 48535839
+  - type: contract_deploy
+    anchor: contract_deploy#c0ffee22@57972967000002
+    id: n9IG3pUw3JpDVssYFoWTNjqXs9RYbG9JZQOD6jih53g=
+    success: true
+    source: 0:2C7F6B033DFA28FB42239D103B97F809041F63CA8E33A9F086FF520508223F41
+    source_secondary: null
+    destination: 0:8FE5F74378278AB42C80772AF2551A0ECE02C599DACB115BA1C1F2F9678521ED
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: 166521020
+    opcode: 0xc0ffee22
+    tx_hashes:
+      - ASxwSeYAcYl26hVs2h9HkYIh2rD1YetJ5qvpv2PgcLI=
+      - rC41hVemiGLUhMxLNu/ID3CSb2ZroGqO5dz0pCUbkzE=
+    accounts:
+      - 0:2C7F6B033DFA28FB42239D103B97F809041F63CA8E33A9F086FF520508223F41
+      - 0:8FE5F74378278AB42C80772AF2551A0ECE02C599DACB115BA1C1F2F9678521ED
+    start_lt: 57972967000002
+    end_lt: 57972970000001
+    start_utime: 1749137954
+    end_utime: 1749137962
+    mc_seqno_end: 48535850
+  - type: contract_deploy
+    anchor: contract_deploy#c0ffee33@57972970000002
+    id: G/NLfXFln2+GvHqaw2qH9h8ZH5uy9CgHMlsTurA/av0=
+    success: true
+    source: 0:8FE5F74378278AB42C80772AF2551A0ECE02C599DACB115BA1C1F2F9678521ED
+    source_secondary: null
+    destination: null
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: null
+    opcode: 0xc0ffee33
+    tx_hashes:
+      - ASxwSeYAcYl26hVs2h9HkYIh2rD1YetJ5qvpv2PgcLI=
+    accounts:
+      - 0:8FE5F74378278AB42C80772AF2551A0ECE02C599DACB115BA1C1F2F9678521ED
+    start_lt: 57972970000002
+    end_lt: 57972970000001
+    start_utime: 1749137962
+    end_utime: 1749137962
+    mc_seqno_end: 48535850
+  - type: jetton_transfer
+    matcher: jetton_transfer
+    anchor: jetton_transfer@57972948000006
+    id: dIHuvoUHawnkrzi8LK4JvMLwEj5WhnwS0VP/NshjkdA=
+    success: true
+    source: 0:A15CA5461477CC4B92CF5BCCC137097270CADC692B5443DB7D74C0BF7E285363
+    source_secondary: 0:EB174AD0A061F4E97B4FD32A52585061D48AE46A7EBDF6966302C6CA37D8B6DE
+    destination: 0:BBDEDCA3656542CAC928DD2C2A086E77E5C92E77EC52BA4880740E888E5E1F3E
+    destination_secondary: 0:4647C5A887FD93BA6A37293EBBBC3CB8F4CE8F2E69203B380F51F46ACCB2C286
+    asset: 0:67D4C65E197C2FAB68ADBADF4116E82D29200327152B6C8055F265009E8D2A7F
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: 2345368713954
+    value: null
+    opcode: null
+    jetton_transfer_data:
+      comment: null
+      custom_payload: null
+      forward_amount: 90000000
+      forward_payload: cellhash:1DD396A1CBBEAF548CF2C16F7082B906726CE9B61D764B2F98D0F68F61142EA9
+      is_encrypted_comment: false
+      query_id: 21
+      response_destination: 0:3E4650563C85FEE7F2D676DADBF2715B363EEDF4E0E1A5D2E76B7480278E4685
+    tx_hashes:
+      - HdLX+Kdu9xBCbpdf/3SGdN3D57v4tLfYKISsRSCZEaA=
+      - HfjidxHZ5a3n/6VI2uXjnxP63LV9HEDglefItX4+jSw=
+      - M3AT2/Ly79m4OpeipMBQyr809YXdGOwVStGvnqqYsds=
+      - WOMkUNGcBepXafgqBVnoq+dekuLUiMg0L1dX4NcA8Q0=
+      - ausXs/qsteqkoI2UppVLiCd8hBOnN57I4uwl7rug59c=
+    accounts:
+      - 0:3E4650563C85FEE7F2D676DADBF2715B363EEDF4E0E1A5D2E76B7480278E4685
+      - 0:4647C5A887FD93BA6A37293EBBBC3CB8F4CE8F2E69203B380F51F46ACCB2C286
+      - 0:A15CA5461477CC4B92CF5BCCC137097270CADC692B5443DB7D74C0BF7E285363
+      - 0:BBDEDCA3656542CAC928DD2C2A086E77E5C92E77EC52BA4880740E888E5E1F3E
+      - 0:EB174AD0A061F4E97B4FD32A52585061D48AE46A7EBDF6966302C6CA37D8B6DE
+    start_lt: 57972948000006
+    end_lt: 57972958000001
+    start_utime: 1749137912
+    end_utime: 1749137935
+    mc_seqno_end: 48535839
+    parent_action_id: 3/wH5Prjq5Cojc2zlHEu/28pZtdScQrZF+J5x/LOxBY=
+    ancestor_type:
+      - coffee_create_pool
+      - coffee_create_pool_creator

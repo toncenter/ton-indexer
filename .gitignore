@@ -312,9 +312,40 @@ _deps
 
 # custom
 [Bb][Uu][Ii][Ll][Dd]*
+# ...which also swallows the mch host-builder package, whose directory name
+# starts with "build". Git never descends into an excluded directory, so the
+# directory itself has to be re-included (a negation on the files alone would
+# not fire). Without this, a NEW builders/*.py is silently untracked, breaking
+# the twins and pytest on a clean checkout.
+!indexer/indexer/events/mch/builders/
 sandbox/
 indexer/dedust_pools.json
 .vscode/
 .DS_Store
 ton-index-worker/tondb-scanner/src/tokens-tlb.cpp
 ton-index-worker/tondb-scanner/src/tokens-tlb.h
+
+# ── GSD baseline (auto-generated) ──
+.gsd
+.gsd-id
+.mcp.json
+.bg-shell/
+Thumbs.db
+*.swp
+*.swo
+*~
+*.code-workspace
+node_modules/
+.next/
+*.pyc
+.venv/
+vendor/
+coverage/
+.cache/
+tmp/
+
+# code-atlas content/output may legitimately start with "build" (build-programs chapter)
+!code-atlas/**
+
+**/ton-mch-engine/generated/
+**/ton-abi/generated/

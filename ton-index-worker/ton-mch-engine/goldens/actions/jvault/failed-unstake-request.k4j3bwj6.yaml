@@ -1,0 +1,86 @@
+# jvault / Failed unstake request
+# trace: k4j3bwj6FjSeLcdN8t4usf2Dq4qWpHkNDm2WH8_qeq4=
+actions:
+  - type: call_contract
+    anchor: call_contract#0168d4b7@56850346000002
+    id: z7ryxxY8WKic+PjALDOABymSX4l8Ji6aBcum3rbpe/g=
+    success: false
+    source: 0:3EEAEF410E152045D1888349A6D59DBFA1D854950C255FD83E35D95E411BC347
+    source_secondary: null
+    destination: 0:1BEC198536F26D764F5B26CF305F44EFF1DE28204F09581E51FF938E435CD220
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: 340000000
+    opcode: 0x0168d4b7
+    tx_hashes:
+      - /Ghcpbhc+RclAhGy9VgNPjeS/NOvySGjN/NDwCW/Vt4=
+      - k4j3bwj6FjSeLcdN8t4usf2Dq4qWpHkNDm2WH8/qeq4=
+    accounts:
+      - 0:1BEC198536F26D764F5B26CF305F44EFF1DE28204F09581E51FF938E435CD220
+      - 0:3EEAEF410E152045D1888349A6D59DBFA1D854950C255FD83E35D95E411BC347
+    start_lt: 56850346000002
+    end_lt: 56850346000003
+    start_utime: 1746523714
+    end_utime: 1746523714
+    mc_seqno_end: 47519767
+    parent_action_id: PdBvafUvyNlpMxX044KDtZENQ1yKNARnw8Q2fMLFgQ4=
+    ancestor_type:
+      - jvault_unstake_request
+  - type: call_contract
+    anchor: call_contract#ffffffff@56850346000004
+    id: dMMQxmGOXFM1rFN1xsNmS8tfTtW5VbK6VH67yiQgHoM=
+    success: true
+    source: 0:1BEC198536F26D764F5B26CF305F44EFF1DE28204F09581E51FF938E435CD220
+    source_secondary: null
+    destination: 0:3EEAEF410E152045D1888349A6D59DBFA1D854950C255FD83E35D95E411BC347
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: 336234800
+    opcode: 0xffffffff
+    tx_hashes:
+      - /Ghcpbhc+RclAhGy9VgNPjeS/NOvySGjN/NDwCW/Vt4=
+      - 2O1uY3l4qOwa4F0R+umaoeU/bns8MMRq3JTa3ouHSi4=
+    accounts:
+      - 0:1BEC198536F26D764F5B26CF305F44EFF1DE28204F09581E51FF938E435CD220
+      - 0:3EEAEF410E152045D1888349A6D59DBFA1D854950C255FD83E35D95E411BC347
+    start_lt: 56850346000004
+    end_lt: 56850346000005
+    start_utime: 1746523714
+    end_utime: 1746523714
+    mc_seqno_end: 47519767
+  - type: jvault_unstake_request
+    matcher: jvault_unstake_request
+    anchor: jvault_unstake_request@56850346000002
+    id: PdBvafUvyNlpMxX044KDtZENQ1yKNARnw8Q2fMLFgQ4=
+    success: false
+    source: 0:3EEAEF410E152045D1888349A6D59DBFA1D854950C255FD83E35D95E411BC347
+    source_secondary: 0:1BEC198536F26D764F5B26CF305F44EFF1DE28204F09581E51FF938E435CD220
+    destination: 0:DA0BEB83E10D069139C6F655EA3DBE472A0C94865CDC41524E1C90E70F254D51
+    destination_secondary: null
+    asset: 0:6CA2C99C66B0FA1478A303BA9618BC39C28FDA1FC50DE37E618BDDF98C9FD24C
+    asset_secondary: null
+    asset2: 0:B902CB5F4E7CBFBA9027079E6C82D63B0FC6A81E1E0FF8E4AB61A91FDA66274B
+    asset2_secondary: null
+    amount: 52940708489332
+    value: null
+    opcode: 0x0000002e
+    tx_hashes:
+      - /Ghcpbhc+RclAhGy9VgNPjeS/NOvySGjN/NDwCW/Vt4=
+      - k4j3bwj6FjSeLcdN8t4usf2Dq4qWpHkNDm2WH8/qeq4=
+    accounts:
+      - 0:1BEC198536F26D764F5B26CF305F44EFF1DE28204F09581E51FF938E435CD220
+      - 0:3EEAEF410E152045D1888349A6D59DBFA1D854950C255FD83E35D95E411BC347
+      - 0:DA0BEB83E10D069139C6F655EA3DBE472A0C94865CDC41524E1C90E70F254D51
+    start_lt: 56850346000002
+    end_lt: 56850346000003
+    start_utime: 1746523714
+    end_utime: 1746523714
+    mc_seqno_end: 47519767

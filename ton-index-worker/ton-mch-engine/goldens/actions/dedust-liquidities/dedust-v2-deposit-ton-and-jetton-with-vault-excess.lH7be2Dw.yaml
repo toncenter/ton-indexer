@@ -1,0 +1,93 @@
+# dedust-liquidities / DeDust v2 deposit TON and jetton with vault excess
+# note: target amounts exceed the credited amounts, excess returned
+# trace: lH7be2DwnwVSo6D3ZZL0xAI7F-vNk4bZ7KXCDpO4Zfo=
+actions:
+  - type: contract_deploy
+    anchor: contract_deploy#dc5ddba1@81382711000004
+    id: FuJpuGADPXtyrPFF8NQeVQoGckYisa+8OJvh+rAXQPI=
+    success: true
+    source: 0:8F5DFA5CFD6660DB32E870B20DD3E63226E4B07BA57C18FB0F704957DB78F508
+    source_secondary: null
+    destination: 0:8FACF5D2127C2982A9D08D4CB8850E04BA040C138C561657895225AADFBFAF8D
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: 248676863
+    opcode: 0xdc5ddba1
+    tx_hashes:
+      - BHJsFslupF9LNPzXEkS564jvNA1U+KBnTv9k0WpA/Zk=
+      - NDSec83hw+E8yqV7eKNH+VJzzwir1lekbyAxK0VuQ8U=
+    accounts:
+      - 0:8F5DFA5CFD6660DB32E870B20DD3E63226E4B07BA57C18FB0F704957DB78F508
+      - 0:8FACF5D2127C2982A9D08D4CB8850E04BA040C138C561657895225AADFBFAF8D
+    start_lt: 81382711000004
+    end_lt: 81382711000005
+    start_utime: 1780531061
+    end_utime: 1780531061
+    mc_seqno_end: 71051997
+  - type: dex_deposit_liquidity
+    matcher: dedust_v2_deposit_final
+    anchor: dedust_v2_deposit_liquidity@81382711000002
+    id: iSuIUMFHSeYD9kwv4TEPCF/vX640WF/YKwaCIPMBxkY=
+    success: true
+    source: 0:1FC686C809C8C1061696E55D241E8BE65AD9B0AF483B5DF9BD98412FE7BDD1E9
+    source_secondary: null
+    destination: 0:8F5DFA5CFD6660DB32E870B20DD3E63226E4B07BA57C18FB0F704957DB78F508
+    destination_secondary: 0:8FACF5D2127C2982A9D08D4CB8850E04BA040C138C561657895225AADFBFAF8D
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: null
+    opcode: null
+    dex_deposit_liquidity_data:
+      amount1: 4867482854
+      amount2: 311334565016609
+      asset1: null
+      asset2: 0:0EFED6292DB3EAF863977A061362D15A434B4C9312C1C73605F1C5021865808F
+      dex: dedust_v2
+      lp_tokens_minted: 1231022199765
+      target_amount_1: 4867482855
+      target_amount_2: 311334565044060
+      target_asset_1: null
+      target_asset_2: 0:0EFED6292DB3EAF863977A061362D15A434B4C9312C1C73605F1C5021865808F
+      user_jetton_wallet_1: null
+      user_jetton_wallet_2: 0:1F96163ADB8E8CB22481F7B67843AD5C32139E1E04A780627EE862821515D5C6
+      vault_excesses:
+        - amount: 27451
+          asset: 0:0EFED6292DB3EAF863977A061362D15A434B4C9312C1C73605F1C5021865808F
+        - amount: 1
+          asset: null
+    tx_hashes:
+      - BHJsFslupF9LNPzXEkS564jvNA1U+KBnTv9k0WpA/Zk=
+      - CxI9H7M6qGyUFewfJv7ZUS9Clgn9RqLbz98czXfpfHs=
+      - LT6eJrdlJNG3wc2jGhrMbJiDCpWJ4/+nMay0f70XpOE=
+      - M+1EnO20YBihPYBzusXzWCAThoXQUaGmkR8xgQ7JAho=
+      - NDSec83hw+E8yqV7eKNH+VJzzwir1lekbyAxK0VuQ8U=
+      - O0C3eSePiCNgh81/uN7xN/p9R4rfp250rKYIA4tuH1Q=
+      - Pt94WNmXZMMYwl8diuh1nUeXcFdb684Bs6C1JHAvQnU=
+      - Q0xcm2T6dmgth5XE4y9KEYWjSUpctqqU27l+ZT9JOZM=
+      - QrV/tSy4fTZdmVv80G/SHhUq8QYmqfpeyFbu/HtUGZ8=
+      - TO9b7LmuFInsCUQjaXgcxfx6KZ0UfpBAmxORmnD8gF4=
+      - Y544GkuIedNmUlu78Y6KoJ/kDcKA15V+PScQFn3aPLM=
+      - cTdIrlc//6IFIUx5CYrZCY/r/KQAUhT9OJrAtKF51Mk=
+      - gpiDg252UnkstsWxYubxTekTcTJRJkUNlUMiNLnikXc=
+      - lH7be2DwnwVSo6D3ZZL0xAI7F+vNk4bZ7KXCDpO4Zfo=
+      - njDAO2AwO/pQOHdY/ptUtebEM1q26WWKBm8ImkTXwjw=
+      - r0xDHKpSxn2wAkh+6w9rIIvhC5+FbhZ27Y9ad1b0eqg=
+    accounts:
+      - 0:1F96163ADB8E8CB22481F7B67843AD5C32139E1E04A780627EE862821515D5C6
+      - 0:1FC686C809C8C1061696E55D241E8BE65AD9B0AF483B5DF9BD98412FE7BDD1E9
+      - 0:8F04D8667F622BDF6010DA39757C50CA916AD03CF8A8FADA6A874574580727BC
+      - 0:8F201472B62B4A94D0C8B7B818125E45CBEE8ED2A963599690EA54E62E534DE5
+      - 0:8F5DFA5CFD6660DB32E870B20DD3E63226E4B07BA57C18FB0F704957DB78F508
+      - 0:8FACF5D2127C2982A9D08D4CB8850E04BA040C138C561657895225AADFBFAF8D
+    start_lt: 81382711000002
+    end_lt: 81382711000020
+    start_utime: 1780531061
+    end_utime: 1780531061
+    mc_seqno_end: 71051997

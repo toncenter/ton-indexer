@@ -1,0 +1,107 @@
+# coffee / Coffee staking claim rewards
+# trace: 013-itRDy37A4DNurC-pFIfagpvLEqH3q_7NU5IGDic=
+actions:
+  - type: call_contract
+    anchor: call_contract#b30c7310@54593896000002
+    id: KB/swzTyWOA6QM5HxzfFZHVQqdHZvjl+hmlArHDuj64=
+    success: true
+    source: 0:3EA123EEE8027B61ECAEB694A088D49EC48AA36699B9B9EDD7A682B1E1B1DA44
+    source_secondary: null
+    destination: 0:B6725D7A23D406ED2008A537236E5F607D084EA9EFEEBFCA53BF3156B491C8CC
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: 59286800
+    opcode: 0xb30c7310
+    tx_hashes:
+      - 013+itRDy37A4DNurC+pFIfagpvLEqH3q/7NU5IGDic=
+      - s0baLhSJmpksN858LtB50sfAAnaEEgb06WPbKy6QH4k=
+    accounts:
+      - 0:3EA123EEE8027B61ECAEB694A088D49EC48AA36699B9B9EDD7A682B1E1B1DA44
+      - 0:B6725D7A23D406ED2008A537236E5F607D084EA9EFEEBFCA53BF3156B491C8CC
+    start_lt: 54593896000002
+    end_lt: 54593899000001
+    start_utime: 1741087518
+    end_utime: 1741087525
+    mc_seqno_end: 45514134
+    parent_action_id: LXU0xmouBs2btg21R2Hm+x4xXLtwh7Up3ij5V3J5FWc=
+    ancestor_type:
+      - coffee_staking_claim_rewards
+  - type: coffee_staking_claim_rewards
+    matcher: coffee_staking_claim_rewards
+    anchor: coffee_staking_claim_rewards@54593896000002
+    id: LXU0xmouBs2btg21R2Hm+x4xXLtwh7Up3ij5V3J5FWc=
+    success: true
+    source: 0:B6725D7A23D406ED2008A537236E5F607D084EA9EFEEBFCA53BF3156B491C8CC
+    source_secondary: 0:0E1F5140AAA6F35F147432FA2AAB8C0FFB66572FDC3B2249A824BD5EEBA8ED7A
+    destination: 0:712CB2B613EDEAFCAC9E7B79B188E3D387EA21C415D6E4E4C0CFBFFA6AB7031D
+    destination_secondary: 0:C33F0AA6D3646D9BE133FCA3B716192309BC0D825CD720D1B5E4F34A4D528247
+    asset: 0:157C463688A4A91245218052C5580807792CF6347D9757E32F0EE88A179A6549
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: 3998849373083
+    value: null
+    opcode: null
+    tx_hashes:
+      - 013+itRDy37A4DNurC+pFIfagpvLEqH3q/7NU5IGDic=
+      - OZ1xiTKTH7tm63Gv0lejQ1kUSV/qBGl6IxTnaXlRnH4=
+      - gaPa/TambbKHCEfekr7ZojlQt1OQGnr5PGPaivfY9MI=
+      - s0baLhSJmpksN858LtB50sfAAnaEEgb06WPbKy6QH4k=
+      - wC4djeb4IXT5zPFDGiYf7aPi5HDgQz0S4+nqEBEJMko=
+    accounts:
+      - 0:0E1F5140AAA6F35F147432FA2AAB8C0FFB66572FDC3B2249A824BD5EEBA8ED7A
+      - 0:3EA123EEE8027B61ECAEB694A088D49EC48AA36699B9B9EDD7A682B1E1B1DA44
+      - 0:712CB2B613EDEAFCAC9E7B79B188E3D387EA21C415D6E4E4C0CFBFFA6AB7031D
+      - 0:B6725D7A23D406ED2008A537236E5F607D084EA9EFEEBFCA53BF3156B491C8CC
+      - 0:C33F0AA6D3646D9BE133FCA3B716192309BC0D825CD720D1B5E4F34A4D528247
+    start_lt: 54593896000002
+    end_lt: 54593909000001
+    start_utime: 1741087518
+    end_utime: 1741087549
+    mc_seqno_end: 45514143
+  - type: jetton_transfer
+    matcher: jetton_transfer
+    anchor: jetton_transfer@54593899000003
+    id: 6+4/RXw9DqevJzQ2e6aL6NCItumOpEP6VeLwEIwKffA=
+    success: true
+    source: 0:B6725D7A23D406ED2008A537236E5F607D084EA9EFEEBFCA53BF3156B491C8CC
+    source_secondary: 0:0E1F5140AAA6F35F147432FA2AAB8C0FFB66572FDC3B2249A824BD5EEBA8ED7A
+    destination: 0:712CB2B613EDEAFCAC9E7B79B188E3D387EA21C415D6E4E4C0CFBFFA6AB7031D
+    destination_secondary: 0:C33F0AA6D3646D9BE133FCA3B716192309BC0D825CD720D1B5E4F34A4D528247
+    asset: 0:157C463688A4A91245218052C5580807792CF6347D9757E32F0EE88A179A6549
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: 3998849373083
+    value: null
+    opcode: null
+    jetton_transfer_data:
+      comment: null
+      custom_payload: null
+      forward_amount: 0
+      forward_payload: null
+      is_encrypted_comment: false
+      query_id: 21721
+      response_destination: 0:712CB2B613EDEAFCAC9E7B79B188E3D387EA21C415D6E4E4C0CFBFFA6AB7031D
+    tx_hashes:
+      - OZ1xiTKTH7tm63Gv0lejQ1kUSV/qBGl6IxTnaXlRnH4=
+      - gaPa/TambbKHCEfekr7ZojlQt1OQGnr5PGPaivfY9MI=
+      - s0baLhSJmpksN858LtB50sfAAnaEEgb06WPbKy6QH4k=
+      - wC4djeb4IXT5zPFDGiYf7aPi5HDgQz0S4+nqEBEJMko=
+    accounts:
+      - 0:0E1F5140AAA6F35F147432FA2AAB8C0FFB66572FDC3B2249A824BD5EEBA8ED7A
+      - 0:712CB2B613EDEAFCAC9E7B79B188E3D387EA21C415D6E4E4C0CFBFFA6AB7031D
+      - 0:B6725D7A23D406ED2008A537236E5F607D084EA9EFEEBFCA53BF3156B491C8CC
+      - 0:C33F0AA6D3646D9BE133FCA3B716192309BC0D825CD720D1B5E4F34A4D528247
+    start_lt: 54593899000003
+    end_lt: 54593909000001
+    start_utime: 1741087525
+    end_utime: 1741087549
+    mc_seqno_end: 45514143
+    parent_action_id: LXU0xmouBs2btg21R2Hm+x4xXLtwh7Up3ij5V3J5FWc=
+    ancestor_type:
+      - coffee_staking_claim_rewards

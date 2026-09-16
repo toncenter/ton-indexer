@@ -1,0 +1,108 @@
+# dedust-liquidities / DeDust v2 payout chain with no protocol action
+# note: opcodes 0x3db5f13a, 0x0d299e12 and DeDust payout 0x3216ca09 are present but no matcher fires
+# trace: 8AaLEkhKD60VBcYev2St_S8O0n3E6pIJDFzA14GfDPE=
+actions:
+  - type: call_contract
+    anchor: call_contract#0d299e12@76063041000026
+    id: oJkhareixBPB6qEMx8xOj4PKZrhSchcKSASv4nPuYjg=
+    success: true
+    source: 0:42760416177B9891FDA93252B20658C389AB78EBF832B6C7A7834B05B64F6CD4
+    source_secondary: null
+    destination: 0:4200E8EDBDDF027687F5D833187A3465BD577EFB8835C515BF1F3799343A92E5
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: 149396598
+    opcode: 0x0d299e12
+    tx_hashes:
+      - 4zq2HGxjNHwIj9cAp885vHx3KFAHb58aX/SMPQRunds=
+      - MB7wfq8l0Ys1IIRjWLZHCsfkYZlGH8+cC+Yx11DlE4Q=
+    accounts:
+      - 0:4200E8EDBDDF027687F5D833187A3465BD577EFB8835C515BF1F3799343A92E5
+      - 0:42760416177B9891FDA93252B20658C389AB78EBF832B6C7A7834B05B64F6CD4
+    start_lt: 76063041000026
+    end_lt: 76063041000027
+    start_utime: 1778414865
+    end_utime: 1778414865
+    mc_seqno_end: 65867003
+  - type: call_contract
+    anchor: call_contract#3216ca09@76063041000028
+    id: OHlo7tPR9K/dkWObpjKvVAoS/a90SkGOCwrOJGe4bfU=
+    success: true
+    source: 0:4200E8EDBDDF027687F5D833187A3465BD577EFB8835C515BF1F3799343A92E5
+    source_secondary: null
+    destination: 0:41769587290F3D61FFBACDFD5522758ADAAA9D8049406D009E079A7CC66C48CB
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: 800000000000
+    opcode: 0x3216ca09
+    tx_hashes:
+      - MB7wfq8l0Ys1IIRjWLZHCsfkYZlGH8+cC+Yx11DlE4Q=
+      - kZ7Ki2Or5uwT+wzMqCcQOOQKoNIWU1AujhP7xNQ5M/c=
+    accounts:
+      - 0:41769587290F3D61FFBACDFD5522758ADAAA9D8049406D009E079A7CC66C48CB
+      - 0:4200E8EDBDDF027687F5D833187A3465BD577EFB8835C515BF1F3799343A92E5
+    start_lt: 76063041000028
+    end_lt: 76063041000029
+    start_utime: 1778414865
+    end_utime: 1778414865
+    mc_seqno_end: 65867003
+  - type: call_contract
+    anchor: call_contract#3db5f13a@76063041000024
+    id: qGeT3x3rBYwuDHaHWlBggor1uB7kXEfgkttRRL62uCI=
+    success: true
+    source: 0:41769587290F3D61FFBACDFD5522758ADAAA9D8049406D009E079A7CC66C48CB
+    source_secondary: null
+    destination: 0:42760416177B9891FDA93252B20658C389AB78EBF832B6C7A7834B05B64F6CD4
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: 150000000
+    opcode: 0x3db5f13a
+    tx_hashes:
+      - 4zq2HGxjNHwIj9cAp885vHx3KFAHb58aX/SMPQRunds=
+      - 8AaLEkhKD60VBcYev2St/S8O0n3E6pIJDFzA14GfDPE=
+    accounts:
+      - 0:41769587290F3D61FFBACDFD5522758ADAAA9D8049406D009E079A7CC66C48CB
+      - 0:42760416177B9891FDA93252B20658C389AB78EBF832B6C7A7834B05B64F6CD4
+    start_lt: 76063041000024
+    end_lt: 76063041000025
+    start_utime: 1778414865
+    end_utime: 1778414865
+    mc_seqno_end: 65867003
+  - type: call_contract
+    anchor: call_contract#d53276db@76063041000029
+    id: iG+2ROuRblDe4QsVyiOY3bElEtYhP8HOcb5AHM5t7Qw=
+    success: true
+    source: 0:4200E8EDBDDF027687F5D833187A3465BD577EFB8835C515BF1F3799343A92E5
+    source_secondary: null
+    destination: 0:41769587290F3D61FFBACDFD5522758ADAAA9D8049406D009E079A7CC66C48CB
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: 148248518
+    opcode: 0xd53276db
+    tx_hashes:
+      - MB7wfq8l0Ys1IIRjWLZHCsfkYZlGH8+cC+Yx11DlE4Q=
+      - Q/B5Gun4VFwF6U8WCJGJHh68Tk4VwAJJNIfBDKJ2TiY=
+    accounts:
+      - 0:41769587290F3D61FFBACDFD5522758ADAAA9D8049406D009E079A7CC66C48CB
+      - 0:4200E8EDBDDF027687F5D833187A3465BD577EFB8835C515BF1F3799343A92E5
+    start_lt: 76063041000029
+    end_lt: 76063041000030
+    start_utime: 1778414865
+    end_utime: 1778414865
+    mc_seqno_end: 65867003

@@ -1,0 +1,157 @@
+# cocoon / Cocoon Worker Last Payout
+# trace: 1gnDaOa5Fh8ZglQELMgsywJaevp2NfPSDg5AmW8jNP8=
+actions:
+  - type: call_contract
+    anchor: call_contract#2565934c@64160898000007
+    id: ejiXTCV4k79lmShMZ8JW0WHJHLoFquq8Eb2qjoAauBY=
+    success: true
+    source: 0:25B0047E004FE87781C2D5D221C4D1D39695A866E9F8BEC2746351F8B8C9FB89
+    source_secondary: null
+    destination: 0:3C02D2FAE2B263048DA2C03AAF0C2BEB208F6828C3547D4A86E19A98F1BFAABA
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: 1274081454
+    opcode: 0x2565934c
+    tx_hashes:
+      - 3Uz24zYiBMmgqr6jACajrDTXieOgGj32k0h8yL4+f7Y=
+      - XKJrQGHAb7uzcLhjg64Ax2s6Zw3EUUCObMZb9T6DWtc=
+    accounts:
+      - 0:25B0047E004FE87781C2D5D221C4D1D39695A866E9F8BEC2746351F8B8C9FB89
+      - 0:3C02D2FAE2B263048DA2C03AAF0C2BEB208F6828C3547D4A86E19A98F1BFAABA
+    start_lt: 64160898000007
+    end_lt: 64160898000008
+    start_utime: 1764516079
+    end_utime: 1764516079
+    mc_seqno_end: 54526505
+    parent_action_id: ng5GXLFju47cHXkHORyZhiFmZwjr+kOcDF+4VfPHy+Y=
+    ancestor_type:
+      - cocoon_worker_payout
+  - type: call_contract
+    anchor: call_contract#4d725d2c@64160898000004
+    id: vEcIWkhQbZH2fACb9/MtmOBDoi5+BYU1r1eZejE/A9M=
+    success: true
+    source: 0:5B453E7E9A1FA44C3D19033DF75686096097B4F0DCF26D23BC00CE2E8E74EFAA
+    source_secondary: null
+    destination: 0:25B0047E004FE87781C2D5D221C4D1D39695A866E9F8BEC2746351F8B8C9FB89
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: 1280141054
+    opcode: 0x4d725d2c
+    tx_hashes:
+      - XKJrQGHAb7uzcLhjg64Ax2s6Zw3EUUCObMZb9T6DWtc=
+      - mJ/VNUQXTxsNiRgB0DlNq/7Hoh3XM28s1MZz73WW5JA=
+    accounts:
+      - 0:25B0047E004FE87781C2D5D221C4D1D39695A866E9F8BEC2746351F8B8C9FB89
+      - 0:5B453E7E9A1FA44C3D19033DF75686096097B4F0DCF26D23BC00CE2E8E74EFAA
+    start_lt: 64160898000004
+    end_lt: 64160898000005
+    start_utime: 1764516079
+    end_utime: 1764516079
+    mc_seqno_end: 54526505
+    parent_action_id: ng5GXLFju47cHXkHORyZhiFmZwjr+kOcDF+4VfPHy+Y=
+    ancestor_type:
+      - cocoon_worker_payout
+  - type: call_contract
+    anchor: call_contract#c59a7cd3@64160898000006
+    id: DXIbaaGLf81RJ5/6hM+k8dXWmPBwY0/N9ltcdYvUKA0=
+    success: true
+    source: 0:25B0047E004FE87781C2D5D221C4D1D39695A866E9F8BEC2746351F8B8C9FB89
+    source_secondary: null
+    destination: 0:E572BD4E31B098C7E1AA8BB779D48EAF01D279831502C4029C7B522614873BCA
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: 3792979671
+    opcode: 0xc59a7cd3
+    tx_hashes:
+      - W2Yfd1pcXanUS1/bSV9JZxpWOCs6rnDfQARLMrckh7E=
+      - XKJrQGHAb7uzcLhjg64Ax2s6Zw3EUUCObMZb9T6DWtc=
+    accounts:
+      - 0:25B0047E004FE87781C2D5D221C4D1D39695A866E9F8BEC2746351F8B8C9FB89
+      - 0:E572BD4E31B098C7E1AA8BB779D48EAF01D279831502C4029C7B522614873BCA
+    start_lt: 64160898000006
+    end_lt: 64160898000007
+    start_utime: 1764516079
+    end_utime: 1764516079
+    mc_seqno_end: 54526505
+    parent_action_id: ng5GXLFju47cHXkHORyZhiFmZwjr+kOcDF+4VfPHy+Y=
+    ancestor_type:
+      - cocoon_worker_payout
+  - type: call_contract
+    anchor: call_contract#f5f26a36@64160898000002
+    id: osocRyyUacB4V45jQCBpiWmiUqaSEBaLMRqdiHJbW1M=
+    success: true
+    source: 0:3C02D2FAE2B263048DA2C03AAF0C2BEB208F6828C3547D4A86E19A98F1BFAABA
+    source_secondary: null
+    destination: 0:5B453E7E9A1FA44C3D19033DF75686096097B4F0DCF26D23BC00CE2E8E74EFAA
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: 998999200
+    opcode: 0xf5f26a36
+    tx_hashes:
+      - 1gnDaOa5Fh8ZglQELMgsywJaevp2NfPSDg5AmW8jNP8=
+      - mJ/VNUQXTxsNiRgB0DlNq/7Hoh3XM28s1MZz73WW5JA=
+    accounts:
+      - 0:3C02D2FAE2B263048DA2C03AAF0C2BEB208F6828C3547D4A86E19A98F1BFAABA
+      - 0:5B453E7E9A1FA44C3D19033DF75686096097B4F0DCF26D23BC00CE2E8E74EFAA
+    start_lt: 64160898000002
+    end_lt: 64160898000003
+    start_utime: 1764516079
+    end_utime: 1764516079
+    mc_seqno_end: 54526505
+    parent_action_id: ng5GXLFju47cHXkHORyZhiFmZwjr+kOcDF+4VfPHy+Y=
+    ancestor_type:
+      - cocoon_worker_payout
+  - type: cocoon_worker_payout
+    matcher: cocoon_worker_payout
+    anchor: cocoon_worker_payout@64160898000002
+    id: ng5GXLFju47cHXkHORyZhiFmZwjr+kOcDF+4VfPHy+Y=
+    success: true
+    source: 0:3C02D2FAE2B263048DA2C03AAF0C2BEB208F6828C3547D4A86E19A98F1BFAABA
+    source_secondary: 0:5B453E7E9A1FA44C3D19033DF75686096097B4F0DCF26D23BC00CE2E8E74EFAA
+    destination: 0:E572BD4E31B098C7E1AA8BB779D48EAF01D279831502C4029C7B522614873BCA
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: 3792979671
+    value: null
+    opcode: null
+    cocoon_worker_payout_data:
+      new_tokens: 9225483487327049292
+      payout_type: last
+      query_id: 2073831913118480719
+      worker_state: 2
+      worker_tokens: 199630509
+    tx_hashes:
+      - 1gnDaOa5Fh8ZglQELMgsywJaevp2NfPSDg5AmW8jNP8=
+      - 3Uz24zYiBMmgqr6jACajrDTXieOgGj32k0h8yL4+f7Y=
+      - W2Yfd1pcXanUS1/bSV9JZxpWOCs6rnDfQARLMrckh7E=
+      - XKJrQGHAb7uzcLhjg64Ax2s6Zw3EUUCObMZb9T6DWtc=
+      - mJ/VNUQXTxsNiRgB0DlNq/7Hoh3XM28s1MZz73WW5JA=
+    accounts:
+      - 0:25B0047E004FE87781C2D5D221C4D1D39695A866E9F8BEC2746351F8B8C9FB89
+      - 0:3C02D2FAE2B263048DA2C03AAF0C2BEB208F6828C3547D4A86E19A98F1BFAABA
+      - 0:5B453E7E9A1FA44C3D19033DF75686096097B4F0DCF26D23BC00CE2E8E74EFAA
+      - 0:E572BD4E31B098C7E1AA8BB779D48EAF01D279831502C4029C7B522614873BCA
+    start_lt: 64160898000002
+    end_lt: 64160898000008
+    start_utime: 1764516079
+    end_utime: 1764516079
+    mc_seqno_end: 54526505

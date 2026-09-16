@@ -1,0 +1,32 @@
+# subscriptions / Unsubscribe 2
+# trace: _McWId7Sb4on1WxdqubL3wt_wJAhI_c92ZVTk2sNQ8k=
+actions:
+  - type: unsubscribe
+    matcher: unsubscribe
+    anchor: unsubscribe@92527013000002
+    id: HIEgdpVXPK6ly3sAUxVoKtBeRjGw193HRPz6+8tmu+0=
+    success: true
+    source: 0:2DEF514C1CE6B44DB45A7AC6E1BF08E9974C552B1008E1BB7D567AA9054BD3BF
+    source_secondary: null
+    destination: 0:8DC8470783923B611FCF86DB8FC9EEF20CCB3D2269E6DB6318E428993F20802C
+    destination_secondary: 0:FD1B1C1DA4BDF8D1E44ADCD736F17520604FFC1A87E2DC1EB907BFCF49A02C06
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: null
+    opcode: null
+    tx_hashes:
+      - /McWId7Sb4on1WxdqubL3wt/wJAhI/c92ZVTk2sNQ8k=
+      - Jq7Zpr/YPPw+xw95+X2T03h+F5k9SPTiPNdSkdwV37A=
+      - s2BKZVzb+rW48bmx9XqUng/kDfexI8gxGTUr3dXqbvk=
+    accounts:
+      - 0:2DEF514C1CE6B44DB45A7AC6E1BF08E9974C552B1008E1BB7D567AA9054BD3BF
+      - 0:8DC8470783923B611FCF86DB8FC9EEF20CCB3D2269E6DB6318E428993F20802C
+      - 0:FD1B1C1DA4BDF8D1E44ADCD736F17520604FFC1A87E2DC1EB907BFCF49A02C06
+    start_lt: 92527013000002
+    end_lt: 92527013000005
+    start_utime: 1785009415
+    end_utime: 1785009415
+    mc_seqno_end: 82000814

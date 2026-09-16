@@ -19,6 +19,7 @@ target_link_libraries(
     tondb-scanner
     ton-kvrocks-state
     ton-observability
+    mch-classify
     pqxx
     redis++_static
 )

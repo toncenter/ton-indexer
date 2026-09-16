@@ -1,0 +1,49 @@
+cases:
+  Subscribe 1:
+    trace-id: 9kXcFtmZgBDVZgMv14V-vJ2qY4oDWgzV1HP7w1nYaew=
+    expected-actions:
+      - type: subscribe
+        values:
+          success: true
+          source: 0:D24DA03450E6B3D1AB6A4C1EA6D42D5D18EAE053022ABAD5A7D129D0A753D177
+          destination: 0:0D2BCC9F810BB3383345B9220C8D83AC808356019694FF956D419592B89B29E0
+          destination_secondary: 0:7FAC5493F4E484000CB19652D731F59F31E8F74A3EE7F9EB65D198B48E914C91
+          amount: 2000000000
+  Subscribe 2:
+    trace-id: ayytTEXiuVWQfFcCWi7sCrdOrt9jzIMFCPHJZbzUl_Y=
+    expected-actions:
+      - type: subscribe
+        values:
+          success: true
+          source: 0:E9274D6358A2FF43239DD9D0EA16CF7D402687349F45FFD0C411FD2292B49838
+          destination: 0:0D2BCC9F810BB3383345B9220C8D83AC808356019694FF956D419592B89B29E0
+          destination_secondary: 0:FD7487820935BE01E7AB2FA36578D4078F46582865F0B0630224716FEDD61B42
+          amount: 2000000000
+  Subscribe 3:
+    trace-id: FhwMKeBugwmrUMHFRwumUY1Klw5XVO3wPJqGBVhqM68=
+    expected-actions:
+      - type: subscribe
+        values:
+          success: true
+          source: 0:069F42740B3E95DD67492FD4632CA84038A21CA2BF9D3BDE54AAFF7611AAD71A
+          destination: 0:0D2BCC9F810BB3383345B9220C8D83AC808356019694FF956D419592B89B29E0
+          destination_secondary: 0:2A2839EECC2D56BED665D7211C44019BD19E3F424C2F63FB74720F2B38939128
+          amount: 2000000000
+  Unsubscribe 1:
+    trace-id: AwXnEQjcWDNvRs6aowUK6IkypsQuX8-EyhUzFowCNuk=
+    expected-actions:
+      - type: unsubscribe
+        values:
+          success: true
+          source: 0:FE9D3EB1781529EFD84C06BF62CF3ED559C69238990BEC0D913DE3C42270747B
+          destination: 0:450047F18BE76B6ACCC761107A9ECED2E554C2D550B12DA140F903E393594BB2
+          destination_secondary: 0:3F4F36CA406FB49FCE8D6A1D359AA77E828E6C0E5372F90FBAEBBBE40760A685
+  Unsubscribe 2:
+    trace-id: _McWId7Sb4on1WxdqubL3wt_wJAhI_c92ZVTk2sNQ8k=
+    expected-actions:
+      - type: unsubscribe
+        values:
+          success: true
+          source: 0:2DEF514C1CE6B44DB45A7AC6E1BF08E9974C552B1008E1BB7D567AA9054BD3BF
+          destination: 0:8DC8470783923B611FCF86DB8FC9EEF20CCB3D2269E6DB6318E428993F20802C
+          destination_secondary: 0:FD1B1C1DA4BDF8D1E44ADCD736F17520604FFC1A87E2DC1EB907BFCF49A02C06

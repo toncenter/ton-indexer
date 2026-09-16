@@ -1,0 +1,54 @@
+# dedust-liquidities / DeDust v2 withdraw with TON and jetton payouts
+# trace: GsBbieLdkLAm022pIvZNnUuMmz71FQvMP6TIZLHpWlg=
+actions:
+  - type: dex_withdraw_liquidity
+    matcher: dedust_v2_withdraw
+    anchor: dex_withdraw_liquidity@75866474000002
+    id: UhpJiBG6UUKdNW9s+9NRfSvv9gdtTQ4a10xKdwjkjWA=
+    success: true
+    source: 0:B2C1EAE1705695DCC7143F5A12675E0FB082A56340C6AE038BCC9840266F618D
+    source_secondary: null
+    destination: 0:1309FE836D986792A1AF59F560E168E02E84B4276191498EFF0C1C78C877A7C5
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: null
+    opcode: null
+    dex_withdraw_liquidity_data:
+      amount1: 5110916580
+      amount2: 2499662672
+      asset1_out: 0:65AAC9B5E380EAE928DB3C8E238D9BC0D61A9320FDC2BC7A2F6C87D6FEDF9208
+      asset2_out: null
+      dex: dedust_v2
+      dex_jetton_wallet_1: 0:6D60409E49DB85AE2C3096A714ECAA00766F1D2E725E94D98E2F3BC5734248C3
+      dex_jetton_wallet_2: null
+      dex_wallet_1: 0:1309FE836D986792A1AF59F560E168E02E84B4276191498EFF0C1C78C877A7C5
+      dex_wallet_2: 0:1309FE836D986792A1AF59F560E168E02E84B4276191498EFF0C1C78C877A7C5
+      is_refund: false
+      lp_tokens_burnt: 3574292573
+      user_jetton_wallet_1: 0:8E4499C900841D7583D9559A2F1F0BA229330240C156A198B57611D5F1017C02
+      user_jetton_wallet_2: null
+    tx_hashes:
+      - 0y/BuoWnhG7gQu31mymPPLE5KZLjm3Jv3ir/p/hsva8=
+      - Byqy3Yam8WOmGo85mHpnBNURhtezFr3vYW9TZRA3nxI=
+      - GsBbieLdkLAm022pIvZNnUuMmz71FQvMP6TIZLHpWlg=
+      - OtlsqBkR9bbm3ac6EofWVn+p9nosBVJ2WtbxGH3VXhc=
+      - T/a6nJNzqp/0YpYQ72zN15eMGKksoQ9kCxQ80OUfvl0=
+      - oRLH5nxor+02gFpnILtPjMq8096/ZwuOy/tgTeS60ZY=
+      - pB9FSciW1FDOwTKN1XriHFLDBc87ESiGpXjyCys04s0=
+      - qx+oesrooTJCKYydYCKAGzzv8bTwxrWOT1IXRu5de0M=
+      - sw7mu6QSlW/BcxIN3yaTGf6iqN5i1FgrooWH2n4XRaE=
+    accounts:
+      - 0:1309FE836D986792A1AF59F560E168E02E84B4276191498EFF0C1C78C877A7C5
+      - 0:13ADB153D654DE541615E574149747224E75A445A93E15C07CB476EA798C74C6
+      - 0:6D60409E49DB85AE2C3096A714ECAA00766F1D2E725E94D98E2F3BC5734248C3
+      - 0:8E4499C900841D7583D9559A2F1F0BA229330240C156A198B57611D5F1017C02
+      - 0:B2C1EAE1705695DCC7143F5A12675E0FB082A56340C6AE038BCC9840266F618D
+    start_lt: 75866474000002
+    end_lt: 75866474000014
+    start_utime: 1778336683
+    end_utime: 1778336683
+    mc_seqno_end: 65675880

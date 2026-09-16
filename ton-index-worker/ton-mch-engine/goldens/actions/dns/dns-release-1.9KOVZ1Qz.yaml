@@ -1,0 +1,102 @@
+# dns / DNS release 1
+# trace: 9KOVZ1QzXhyT1yO6OsUTvBwkV9pZoG2YVBkCCKN6zi0=
+actions:
+  - type: call_contract
+    anchor: call_contract#4ed14b65@93595427000011
+    id: Jz0PZ4skn4SmwRdl7I8oQtu7QY3uqtrOKtme6jBxebc=
+    success: true
+    source: 0:D4E26CD9935EC8F42D5A4218C35680F65DC5EB7F7995ACF1FA6073FBB3C4D415
+    source_secondary: null
+    destination: 0:8967297A3F7FD14D0AF321B4E1C91A15879D87E299E4CC172D4E04C3D820896C
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: 1000000000
+    opcode: 0x4ed14b65
+    tx_hashes:
+      - 9KOVZ1QzXhyT1yO6OsUTvBwkV9pZoG2YVBkCCKN6zi0=
+      - DtBf9VjAp7R66eT0DRaX6hqnjkhKdJUd8F4UDziLh+Y=
+    accounts:
+      - 0:8967297A3F7FD14D0AF321B4E1C91A15879D87E299E4CC172D4E04C3D820896C
+      - 0:D4E26CD9935EC8F42D5A4218C35680F65DC5EB7F7995ACF1FA6073FBB3C4D415
+    start_lt: 93595427000011
+    end_lt: 93595427000012
+    start_utime: 1785450804
+    end_utime: 1785450804
+    mc_seqno_end: 83012461
+    parent_action_id: Z4CeDV2VaWH5QmoI1ZWVeiJH9eBbQdqIWAdRm7qVaa4=
+    ancestor_type:
+      - dns_release
+  - type: call_contract
+    anchor: call_contract#4ed14b65@93595427000013
+    id: q5W+jn3sbLH/7qLDpz5klndu+LVxIxqcnVsLSNTlE/k=
+    success: true
+    source: 0:8967297A3F7FD14D0AF321B4E1C91A15879D87E299E4CC172D4E04C3D820896C
+    source_secondary: null
+    destination: 0:1B33B862C1A3FAFE9B676350AE40FED6C451D1185FE4389C0C834A5D05D22CCA
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: 24456081
+    opcode: 0x4ed14b65
+    tx_hashes:
+      - AMEaf0birGUgUHlMrImxwLeYqfDzBzuNWSUx1nP71l0=
+      - DtBf9VjAp7R66eT0DRaX6hqnjkhKdJUd8F4UDziLh+Y=
+    accounts:
+      - 0:1B33B862C1A3FAFE9B676350AE40FED6C451D1185FE4389C0C834A5D05D22CCA
+      - 0:8967297A3F7FD14D0AF321B4E1C91A15879D87E299E4CC172D4E04C3D820896C
+    start_lt: 93595427000013
+    end_lt: 93595427000014
+    start_utime: 1785450804
+    end_utime: 1785450804
+    mc_seqno_end: 83012461
+  - type: dns_release
+    matcher: dns_release
+    anchor: dns_release@93595427000011
+    id: Z4CeDV2VaWH5QmoI1ZWVeiJH9eBbQdqIWAdRm7qVaa4=
+    success: true
+    source: 0:D4E26CD9935EC8F42D5A4218C35680F65DC5EB7F7995ACF1FA6073FBB3C4D415
+    source_secondary: null
+    destination: 0:8967297A3F7FD14D0AF321B4E1C91A15879D87E299E4CC172D4E04C3D820896C
+    destination_secondary: null
+    asset: 0:B774D95EB20543F186C06B371AB88AD704F7E256130CAF96189368A7D0CB6CCF
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: 1000000000
+    opcode: null
+    nft_transfer_data:
+      custom_payload: null
+      forward_amount: null
+      forward_payload: null
+      is_purchase: null
+      marketplace: null
+      marketplace_address: null
+      nft_item_index: 76359553714204298836367978451999958273959253463034392790126697222337078493184
+      payout_amount: null
+      payout_comment: null
+      payout_comment_encoded: null
+      payout_comment_encrypted: null
+      price: null
+      query_id: 0
+      real_prev_owner: null
+      response_destination: null
+      royalty_amount: null
+    tx_hashes:
+      - 9KOVZ1QzXhyT1yO6OsUTvBwkV9pZoG2YVBkCCKN6zi0=
+      - DtBf9VjAp7R66eT0DRaX6hqnjkhKdJUd8F4UDziLh+Y=
+    accounts:
+      - 0:8967297A3F7FD14D0AF321B4E1C91A15879D87E299E4CC172D4E04C3D820896C
+      - 0:D4E26CD9935EC8F42D5A4218C35680F65DC5EB7F7995ACF1FA6073FBB3C4D415
+    start_lt: 93595427000011
+    end_lt: 93595427000012
+    start_utime: 1785450804
+    end_utime: 1785450804
+    mc_seqno_end: 83012461

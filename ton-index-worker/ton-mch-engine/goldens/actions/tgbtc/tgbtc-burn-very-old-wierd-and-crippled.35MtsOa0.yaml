@@ -1,0 +1,106 @@
+# tgbtc / tgBTC burn (very old wierd and crippled)
+# trace: 35MtsOa0weeyUpH8_9pk58WhIrOuyB6ycEH9lY-KhUY=
+actions:
+  - type: call_contract
+    anchor: call_contract#587643a2@19943160000002
+    id: HWo6zz0pJn5tsIOOxlWiRlG73UifVxlYCDV9Sa7f7n4=
+    success: true
+    source: 0:0F06DD725549DD60A6CA3743AC532DB52789CB15AF1F943FE96ADBB4C1A86155
+    source_secondary: null
+    destination: 0:D6C837B455A4CE6E67E265F2BB4EC4743C96982275FB616383467D5737080845
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: 100000000
+    opcode: 0x587643a2
+    tx_hashes:
+      - 35MtsOa0weeyUpH8/9pk58WhIrOuyB6ycEH9lY+KhUY=
+      - auzoEK+OXWwlMVieU217LSm10lcKjc1mMAuEqZ7CXIc=
+    accounts:
+      - 0:0F06DD725549DD60A6CA3743AC532DB52789CB15AF1F943FE96ADBB4C1A86155
+      - 0:D6C837B455A4CE6E67E265F2BB4EC4743C96982275FB616383467D5737080845
+    start_lt: 19943160000002
+    end_lt: 19943160000003
+    start_utime: 1710522863
+    end_utime: 1710522863
+    mc_seqno_end: 17670990
+  - type: call_contract
+    anchor: call_contract#be44e7a6@19943160000004
+    id: xPb5dxK3CES2o5pxEwoamlIDauFcMJxBR3aZ22lcZdE=
+    success: true
+    source: 0:D6C837B455A4CE6E67E265F2BB4EC4743C96982275FB616383467D5737080845
+    source_secondary: null
+    destination: 0:0B38EBD54B78307CFC63C1561870E32A5419553BFD3DA84E3733430DBA8A7890
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: 156958000
+    opcode: 0xbe44e7a6
+    tx_hashes:
+      - INdxN1hlTEVMrCyM4z1IwpLXkwQhRWC+0iMCo7V8P6s=
+      - auzoEK+OXWwlMVieU217LSm10lcKjc1mMAuEqZ7CXIc=
+    accounts:
+      - 0:0B38EBD54B78307CFC63C1561870E32A5419553BFD3DA84E3733430DBA8A7890
+      - 0:D6C837B455A4CE6E67E265F2BB4EC4743C96982275FB616383467D5737080845
+    start_lt: 19943160000004
+    end_lt: 19943160000005
+    start_utime: 1710522863
+    end_utime: 1710522863
+    mc_seqno_end: 17670990
+  - type: contract_deploy
+    anchor: contract_deploy#be44e7a6@19943160000004
+    id: FN/ydjzYHq4P0TxnMfVR4IIsmxHNb84wuMWFeVHhUjs=
+    success: true
+    source: 0:D6C837B455A4CE6E67E265F2BB4EC4743C96982275FB616383467D5737080845
+    source_secondary: null
+    destination: 0:0B38EBD54B78307CFC63C1561870E32A5419553BFD3DA84E3733430DBA8A7890
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: 156958000
+    opcode: 0xbe44e7a6
+    tx_hashes:
+      - INdxN1hlTEVMrCyM4z1IwpLXkwQhRWC+0iMCo7V8P6s=
+      - auzoEK+OXWwlMVieU217LSm10lcKjc1mMAuEqZ7CXIc=
+    accounts:
+      - 0:0B38EBD54B78307CFC63C1561870E32A5419553BFD3DA84E3733430DBA8A7890
+      - 0:D6C837B455A4CE6E67E265F2BB4EC4743C96982275FB616383467D5737080845
+    start_lt: 19943160000004
+    end_lt: 19943160000005
+    start_utime: 1710522863
+    end_utime: 1710522863
+    mc_seqno_end: 17670990
+  - type: tgbtc_burn_fallback
+    matcher: tgbtc_burn_log_only
+    anchor: tgbtc_burn@19943160000005
+    id: UOTce/a4QHp1+09lR5ubJxRim5j1awJ0TKWe8W694Ao=
+    success: true
+    source: null
+    source_secondary: null
+    destination: null
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: 2108539095393251256237182
+    value: null
+    opcode: null
+    tx_hashes:
+      - auzoEK+OXWwlMVieU217LSm10lcKjc1mMAuEqZ7CXIc=
+    accounts:
+      - 0:D6C837B455A4CE6E67E265F2BB4EC4743C96982275FB616383467D5737080845
+    start_lt: 19943160000005
+    end_lt: 19943160000003
+    start_utime: 1710522863
+    end_utime: 1710522863
+    mc_seqno_end: 17670990
