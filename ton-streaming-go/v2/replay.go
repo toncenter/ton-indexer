@@ -26,21 +26,19 @@ type notificationKey struct {
 	finality indexModels.FinalityState // account states have independent confirmed/finalized keys
 }
 
-const maxReplayBufferBytes = 16 << 20
 const maxReplayBufferEvents = 4096
 
 // After replay, only the finite set of snapshot identities remains. Live
 // delivery may advance these watermarks but cannot add new identities.
 type replaySession struct {
-	manager      *ClientManager
-	client       *Client
-	ctx          context.Context
-	cancel       context.CancelFunc
-	active       bool
-	again        bool
-	pending      []Notification // all mutable fields below are guarded by client.mu
-	pendingBytes int
-	snapshots    map[notificationKey]deliveryVersion
+	manager   *ClientManager
+	client    *Client
+	ctx       context.Context
+	cancel    context.CancelFunc
+	active    bool
+	again     bool
+	pending   []Notification // all mutable fields below are guarded by client.mu
+	snapshots map[notificationKey]deliveryVersion
 }
 
 // Repeated requests share one worker. The next pass reads the then-current
@@ -121,15 +119,10 @@ func (s *replaySession) accept(n Notification, snapshot bool) bool {
 }
 
 func (s *replaySession) buffer(n Notification) error {
-	data, err := json.Marshal(n)
-	if err != nil {
-		return err
-	}
-	if len(s.pending) >= maxReplayBufferEvents || s.pendingBytes+len(data) > maxReplayBufferBytes {
+	if len(s.pending) >= maxReplayBufferEvents {
 		return fmt.Errorf("%w: live buffer overflow during replay", errSlowConsumer)
 	}
 	s.pending = append(s.pending, n)
-	s.pendingBytes += len(data)
 	return nil
 }
 
@@ -192,7 +185,6 @@ func (s *replaySession) run(existing bool) {
 		}
 		pending := s.pending
 		s.pending = nil
-		s.pendingBytes = 0
 		if len(pending) == 0 {
 			s.client.mu.Unlock()
 			if err = s.waitForDelivery(); err != nil {

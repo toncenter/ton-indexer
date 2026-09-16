@@ -305,8 +305,9 @@ Trace invalidations are applied in delivery order and reset the remembered trace
 version. Replay assumes a recreated trace with the same hash is delivered after
 its previous invalidation; recreation while that invalidation is still pending
 is not reconciled.
-Connections that exceed the buffer while replay is active or cannot finish replay
-within one minute are closed instead of silently dropping the initial events.
+During replay, up to 4096 live notifications can wait in the buffer.
+Connections that exceed this limit or cannot finish replay within one minute
+are closed instead of silently dropping the initial events.
 If the client's live output queue fills, the connection is closed instead of continuing
 with silently dropped events. The server logs `slow consumer`. For WebSocket it
 attempts a close frame with code `1013` and reason `slow consumer`; if the socket

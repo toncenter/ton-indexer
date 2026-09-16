@@ -522,8 +522,11 @@ func TestReplayBufferOverflowIsExplicit(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if err := c.acceptNotificationLocked(replayTransaction(9999)); err == nil {
-		t.Fatal("overflow silently accepted")
+	if err := c.acceptNotificationLocked(replayTransaction(9999)); !errors.Is(err, errSlowConsumer) {
+		t.Fatalf("overflow did not report a slow consumer: %v", err)
+	}
+	if len(s.pending) != maxReplayBufferEvents {
+		t.Fatal("overflow changed the buffered event count")
 	}
 }
 
@@ -676,7 +679,7 @@ func TestReplayHistoryIsLimitedToInitialEntities(t *testing.T) {
 		t.Fatal(err)
 	}
 	runReplay(t, s, false)
-	if s.active || len(s.pending) != 0 || s.pendingBytes != 0 {
+	if s.active || len(s.pending) != 0 {
 		t.Fatal("temporary replay state was retained")
 	}
 	c.mu.Lock()
