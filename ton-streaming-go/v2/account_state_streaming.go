@@ -71,42 +71,48 @@ func ProcessAccountStateHint(ctx context.Context, rdb *redis.Client, hint accoun
 		return
 	}
 
-	var accountState models.AccountState
-	if err := msgpack.Unmarshal([]byte(rawState["state"]), &accountState); err != nil {
+	withJettons := len(manager.subscribersForEvent(EventJettonsChange, hint.Finality)) > 0
+	state, jetton, err := buildAccountNotifications(rawState, hint, withJettons)
+	if err != nil {
 		log.Printf("[v2] Error unmarshalling account state for %s: %v", hint.Account, err)
 		return
 	}
-
-	stateTargets := manager.subscribersForAddresses(EventAccountStateChange, []indexModels.AccountAddress{hint.Account}, hint.Finality)
-	manager.sendNotification(&AccountStateNotification{
-		Type:     EventAccountStateChange,
-		Finality: hint.Finality,
-		Account:  hint.Account,
-		State:    models.MsgPackAccountStateToIndexAccountState(accountState),
-	}, stateTargets)
-
-	if len(manager.subscribersForEvent(EventJettonsChange, hint.Finality)) == 0 {
+	targets := manager.subscribersForAddresses(EventAccountStateChange, []indexModels.AccountAddress{hint.Account}, hint.Finality)
+	manager.sendNotification(state, targets)
+	if jetton == nil {
 		return
 	}
-	notification := jettonNotificationFromAccountState(hint, accountState, rawState["interfaces"])
-	if notification == nil {
+	targets = manager.subscribersForAddresses(EventJettonsChange, []indexModels.AccountAddress{jetton.Jetton.Address, jetton.Jetton.Owner}, hint.Finality)
+	book, metadata := manager.enrichmentNeeds(targets)
+	enrichJettonNotification(ctx, jetton, book, metadata)
+	manager.sendNotification(jetton, targets)
+}
+
+func buildAccountNotifications(raw map[string]string, hint accountStateHint, withJettons bool) (*AccountStateNotification, *JettonsNotification, error) {
+	var accountState models.AccountState
+	if err := msgpack.Unmarshal([]byte(raw["state"]), &accountState); err != nil {
+		return nil, nil, err
+	}
+	version := deliveryVersion{seq: hint.Lt}
+	state := &AccountStateNotification{version: version, Type: EventAccountStateChange, Finality: hint.Finality,
+		Account: hint.Account, State: models.MsgPackAccountStateToIndexAccountState(accountState)}
+	var jetton *JettonsNotification
+	if withJettons {
+		jetton = jettonNotificationFromAccountState(hint, accountState, raw["interfaces"])
+		if jetton != nil {
+			jetton.version = version
+		}
+	}
+	return state, jetton, nil
+}
+
+func enrichJettonNotification(ctx context.Context, n *JettonsNotification, book, metadata bool) {
+	if !book && !metadata {
 		return
 	}
-
-	targets := manager.subscribersForAddresses(EventJettonsChange,
-		[]indexModels.AccountAddress{notification.Jetton.Address, notification.Jetton.Owner}, hint.Finality)
-	if len(targets) == 0 {
-		return
-	}
-
-	addressBookAddresses := []indexModels.AccountAddress{notification.Jetton.Address, notification.Jetton.Owner, notification.Jetton.Jetton}
-	metadataAddresses := []indexModels.AccountAddress{notification.Jetton.Owner, notification.Jetton.Jetton}
-	shouldFetchAddressBook, shouldFetchMetadata := manager.enrichmentNeeds(targets)
-	if shouldFetchAddressBook || shouldFetchMetadata {
-		notification.AddressBook, notification.Metadata = fetchAddressBookAndMetadata(
-			ctx, addressBookAddresses, metadataAddresses, shouldFetchAddressBook, shouldFetchMetadata)
-	}
-	manager.sendNotification(notification, targets)
+	n.AddressBook, n.Metadata = fetchAddressBookAndMetadata(ctx,
+		[]indexModels.AccountAddress{n.Jetton.Address, n.Jetton.Owner, n.Jetton.Jetton},
+		[]indexModels.AccountAddress{n.Jetton.Owner, n.Jetton.Jetton}, book, metadata)
 }
 
 func accountStateRedisKey(hint accountStateHint) string {

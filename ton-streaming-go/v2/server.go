@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"strconv"
@@ -97,6 +98,32 @@ func (s *TraceProcessingStage) EmitOtelError(errorType, message string) {
 	}
 	s.Span.MarkError(errorType, message)
 	s.Span.Emit()
+}
+
+func decodeTraceSnapshot(raw map[string]string, key indexModels.HashType) (*crud.EmulatedTracesContext, error) {
+	traceContext := crud.NewEmptyContext(false)
+	if err := traceContext.FillFromRawData(map[string]map[string]string{string(key): raw}); err != nil {
+		return nil, err
+	}
+	if traceContext.GetTraceCount() != 1 {
+		return nil, fmt.Errorf("expected one trace, got %d", traceContext.GetTraceCount())
+	}
+	return traceContext, nil
+}
+
+func enrichTraceNotification(ctx context.Context, n Notification, addresses []indexModels.AccountAddress, book, metadata bool) {
+	if !book && !metadata {
+		return
+	}
+	addressBook, meta := fetchAddressBookAndMetadata(ctx, addresses, addresses, book, metadata)
+	switch n := n.(type) {
+	case *TransactionsNotification:
+		n.AddressBook, n.Metadata = addressBook, meta
+	case *ActionsNotification:
+		n.AddressBook, n.Metadata = addressBook, meta
+	case *TraceNotification:
+		n.AddressBook, n.Metadata = addressBook, meta
+	}
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -239,6 +266,7 @@ type Subscription struct {
 	IncludeAddressBook   bool
 	IncludeMetadata      bool
 	MinFinality          indexModels.FinalityState
+	MsgBodyHash          *indexModels.HashType
 }
 
 func makeEventSet(types []EventType) eventSet {
@@ -329,21 +357,26 @@ type notificationDelivery struct {
 	targets      clientSet // nil means all connected clients
 }
 
+var errSlowConsumer = errors.New("slow consumer")
+
+const slowConsumerCloseTimeout = 100 * time.Millisecond
+
 type Client struct {
 	ID                             string
 	LimitingKey                    string
 	Connected                      bool
 	Subscription                   Subscription
 	TracesForPotentialInvalidation map[indexModels.HashType]bool // traceExternalHashNorm -> true
-	SendEvent                      func([]byte) error
-	sendChan                       chan []byte
+	SendEvent                      func(clientMessage) error
+	sendChan                       chan clientMessage
 	done                           chan struct{}
-	closeTransport                 func() error
+	closeTransport                 func(error) error
 	mu                             sync.Mutex
 	writeMu                        sync.Mutex
+	replay                         *replaySession
 }
 
-func disconnectClient(manager *ClientManager, client *Client) {
+func disconnectClient(manager *ClientManager, client *Client, reason error) {
 	// Quota release must not wait for subscription cleanup in the manager loop.
 	manager.rateLimiter.UnregisterConnection(client.LimitingKey, client.ID)
 
@@ -353,13 +386,19 @@ func disconnectClient(manager *ClientManager, client *Client) {
 		return
 	}
 	client.Connected = false
+	if client.replay != nil {
+		client.replay.cancel()
+	}
 	if client.done != nil {
 		close(client.done)
 	}
 	client.mu.Unlock()
 
+	if reason != nil {
+		log.Printf("[v2] Disconnecting client %s: %v", client.ID, reason)
+	}
 	if client.closeTransport != nil {
-		_ = client.closeTransport()
+		_ = client.closeTransport(reason)
 	}
 	manager.unregister <- client
 }
@@ -367,7 +406,7 @@ func disconnectClient(manager *ClientManager, client *Client) {
 func (c *Client) startSender(manager *ClientManager) {
 	go func() {
 		for {
-			var msg []byte
+			var msg clientMessage
 			select {
 			case <-c.done:
 				return
@@ -382,61 +421,83 @@ func (c *Client) startSender(manager *ClientManager) {
 			if !c.Connected {
 				c.mu.Unlock()
 				c.writeMu.Unlock()
-				break
+				return
 			}
 			c.mu.Unlock()
 
 			err := c.SendEvent(msg)
 			c.writeMu.Unlock()
 			if err != nil {
-				disconnectClient(manager, c)
+				disconnectClient(manager, c, err)
 				break
 			}
 		}
 	}()
 }
 
+// Live delivery never waits in the shared manager loop. A full client queue
+// closes that connection; replay uses its own bounded buffer and blocking sender.
+func (c *Client) acceptNotificationLocked(n Notification) error {
+	if s := c.replay; s != nil {
+		if s.active {
+			return s.buffer(n)
+		}
+		if !s.accept(n, false) {
+			return nil
+		}
+	}
+	event := n.AdjustForClient(c)
+	if event == nil {
+		return nil
+	}
+	data, err := json.Marshal(event)
+	if err != nil {
+		log.Printf("[v2] Error marshalling event: %v", err)
+		return nil
+	}
+	select {
+	case c.sendChan <- clientMessage{data: data}:
+	default:
+		return fmt.Errorf("%w: client send queue full", errSlowConsumer)
+	}
+	return nil
+}
+
+type clientRegistration struct {
+	client *Client
+	ready  chan struct{}
+	replay bool
+}
+
 type ClientManager struct {
+	rdb                *redis.Client
 	clients            map[string]*Client
 	eventSubscribers   map[EventType]clientSet
 	addressSubscribers map[EventType]map[indexModels.AccountAddress]clientSet
 	traceSubscribers   map[indexModels.HashType]clientSet
-	register           chan *Client
+	register           chan clientRegistration
 	unregister         chan *Client
 	broadcast          chan notificationDelivery
 	rateLimiter        *RateLimiter
 	mu                 sync.RWMutex
 }
 
-func NewClientManager() *ClientManager {
+func NewClientManager(clients ...*redis.Client) *ClientManager {
+	var rdb *redis.Client
+	if len(clients) > 0 {
+		rdb = clients[0]
+	}
 	return &ClientManager{
+		rdb:                rdb,
 		clients:            make(map[string]*Client),
 		eventSubscribers:   make(map[EventType]clientSet),
 		addressSubscribers: make(map[EventType]map[indexModels.AccountAddress]clientSet),
 		traceSubscribers:   make(map[indexModels.HashType]clientSet),
-		register:           make(chan *Client, 128),
+		register:           make(chan clientRegistration, 128),
 		unregister:         make(chan *Client, 128),
 		broadcast:          make(chan notificationDelivery),
 		rateLimiter:        NewRateLimiter(),
 	}
-}
-
-// shouldFetchAddressBookAndMetadata figures out if at least one client
-// - is interested in any of the given event types for given addresses
-// - AND has IncludeAddressBook / IncludeMetadata true
-// AND will actually receive this event with given finality.
-func (manager *ClientManager) shouldFetchAddressBookAndMetadata(eventTypes []EventType, eventFinality indexModels.FinalityState, addressesToNotify []indexModels.AccountAddress) (bool, bool) {
-	targets := make(clientSet)
-	for _, eventType := range eventTypes {
-		mergeClientSets(targets, manager.subscribersForAddresses(eventType, addressesToNotify, eventFinality))
-	}
-	return manager.enrichmentNeeds(targets)
-}
-
-// shouldFetchAddressBookAndMetadataForTrace checks if any connected client
-// subscribed to the trace will receive this event and needs address book or metadata.
-func (manager *ClientManager) shouldFetchAddressBookAndMetadataForTrace(eventFinality indexModels.FinalityState, traceExternalHashNorm indexModels.HashType) (bool, bool) {
-	return manager.enrichmentNeeds(manager.subscribersForTrace(traceExternalHashNorm, eventFinality))
 }
 
 func (manager *ClientManager) sendNotification(notification Notification, targets clientSet) {
@@ -452,7 +513,8 @@ func (manager *ClientManager) sendNotification(notification Notification, target
 func (manager *ClientManager) Run() {
 	for {
 		select {
-		case client := <-manager.register:
+		case request := <-manager.register:
+			client := request.client
 			manager.mu.Lock()
 			client.mu.Lock()
 			if !client.Connected {
@@ -461,12 +523,25 @@ func (manager *ClientManager) Run() {
 				manager.mu.Unlock()
 				continue
 			}
-			client.sendChan = make(chan []byte, 64)
+			client.sendChan = make(chan clientMessage, 64)
+			if client.TracesForPotentialInvalidation == nil {
+				client.TracesForPotentialInvalidation = make(map[indexModels.HashType]bool)
+			}
+			var replay *replaySession
+			if request.replay {
+				replay = manager.requestReplayLocked(client)
+			}
 			manager.clients[client.ID] = client
 			manager.addSubscriptionToIndexesLocked(client.ID, &client.Subscription)
+			if request.ready != nil {
+				close(request.ready)
+			}
 			client.mu.Unlock()
 			manager.mu.Unlock()
 			client.startSender(manager)
+			if replay != nil {
+				go replay.run(true)
+			}
 			log.Printf("[v2] Client %s connected", client.ID)
 
 		case client := <-manager.unregister:
@@ -474,9 +549,6 @@ func (manager *ClientManager) Run() {
 			if _, ok := manager.clients[client.ID]; ok {
 				client.mu.Lock()
 				manager.removeSubscriptionFromIndexesLocked(client.ID, &client.Subscription)
-				if client.sendChan != nil {
-					close(client.sendChan)
-				}
 				client.mu.Unlock()
 				delete(manager.clients, client.ID)
 				log.Printf("[v2] Client %s disconnected", client.ID)
@@ -501,23 +573,16 @@ func (manager *ClientManager) Run() {
 
 			for _, client := range clients {
 				client.mu.Lock()
+				var err error
 				if client.Connected {
-					if event := delivery.notification.AdjustForClient(client); event != nil {
-						msgBytes, err := json.Marshal(event)
-						if err != nil {
-							log.Printf("[v2] Error marshalling event: %v", err)
-							client.mu.Unlock()
-							continue
-						}
-						select {
-						case client.sendChan <- msgBytes:
-						default:
-							log.Printf("[v2] Client %s send buffer full, dropping event", client.ID)
-						}
-					}
+					err = client.acceptNotificationLocked(delivery.notification)
 				}
 				client.mu.Unlock()
+				if err != nil {
+					go disconnectClient(manager, client, err)
+				}
 			}
+
 		}
 	}
 }
@@ -583,6 +648,7 @@ func (n *TraceInvalidatedNotification) AdjustForClient(client *Client) any {
 }
 
 type ActionsNotification struct {
+	version               deliveryVersion
 	Type                  EventType                      `json:"type"` // always "actions"
 	Finality              indexModels.FinalityState      `json:"finality,string"`
 	TraceExternalHashNorm indexModels.HashType           `json:"trace_external_hash_norm"`
@@ -672,6 +738,7 @@ func (n *ActionsNotification) AdjustForClient(client *Client) any {
 }
 
 type TransactionsNotification struct {
+	version               deliveryVersion
 	Type                  EventType                 `json:"type"` // always "transactions"
 	Finality              indexModels.FinalityState `json:"finality"`
 	TraceExternalHashNorm indexModels.HashType      `json:"trace_external_hash_norm"`
@@ -703,6 +770,11 @@ func (n *TransactionsNotification) AdjustForClient(client *Client) any {
 		account := tx.Account
 
 		if client.Subscription.InterestedIn(EventTransactions, []indexModels.AccountAddress{account}) {
+			if wanted := client.Subscription.MsgBodyHash; wanted != nil {
+				if tx.InMsg == nil || tx.InMsg.BodyHash == nil || *tx.InMsg.BodyHash != *wanted {
+					continue
+				}
+			}
 			adjustedTransactions = append(adjustedTransactions, tx)
 			allAddresses[account] = true
 
@@ -751,6 +823,7 @@ func (n *TransactionsNotification) AdjustForClient(client *Client) any {
 }
 
 type TraceNotification struct {
+	version               deliveryVersion
 	Type                  EventType                                         `json:"type"` // always "trace"
 	Finality              indexModels.FinalityState                         `json:"finality"`
 	TraceExternalHashNorm indexModels.HashType                              `json:"trace_external_hash_norm"`
@@ -819,6 +892,7 @@ func (n *TraceNotification) AdjustForClient(client *Client) any {
 }
 
 type AccountStateNotification struct {
+	version  deliveryVersion
 	Type     EventType                  `json:"type"`
 	Finality indexModels.FinalityState  `json:"finality"` // confirmed / finalized
 	Account  indexModels.AccountAddress `json:"account"`
@@ -838,6 +912,7 @@ func (n *AccountStateNotification) AdjustForClient(client *Client) any {
 }
 
 type JettonsNotification struct {
+	version     deliveryVersion
 	Type        EventType                 `json:"type"`
 	Finality    indexModels.FinalityState `json:"finality"` // confirmed / finalized
 	Jetton      indexModels.JettonWallet  `json:"jetton"`
@@ -1095,7 +1170,7 @@ func writeWSMessage(c *websocket.Conn, client *Client, msg []byte) error {
 		return nil
 	}
 	client.mu.Unlock()
-	return client.SendEvent(msg)
+	return client.SendEvent(clientMessage{data: msg})
 }
 
 func sendWSJSONErr(c *websocket.Conn, client *Client, id *string, err error) {
@@ -1133,6 +1208,8 @@ func checkAddressLimit(client *Client, newAddresses int, rateLimiter *RateLimite
 ////////////////////////////////////////////////////////////////////////////////
 
 type SSERequest struct {
+	ReplayExisting         bool                       `json:"replay_existing"`
+	MsgBodyHash            *string                    `json:"msg_body_hash,omitempty"`
 	Id                     *string                    `json:"id"`
 	Addresses              []string                   `json:"addresses"`
 	TraceExternalHashNorms []string                   `json:"trace_external_hash_norms,omitempty"`
@@ -1142,6 +1219,20 @@ type SSERequest struct {
 	SupportedActionTypes   []string                   `json:"supported_action_types"`
 	IncludeAddressBook     *bool                      `json:"include_address_book"`
 	IncludeMetadata        *bool                      `json:"include_metadata"`
+}
+
+func validateMessageBodyHash(raw *string, addresses []indexModels.AccountAddress, types []EventType) (*indexModels.HashType, error) {
+	if raw == nil {
+		return nil, nil
+	}
+	if len(addresses) == 0 || !hasEventType(types, EventTransactions) {
+		return nil, fmt.Errorf("msg_body_hash requires addresses and type \"transactions\"")
+	}
+	hash, err := indexModels.ParseHashType(*raw)
+	if err != nil || hash == nil {
+		return nil, fmt.Errorf("invalid msg_body_hash")
+	}
+	return hash, nil
 }
 
 func ValidateSSERequest(req *SSERequest) ([]indexModels.AccountAddress, []indexModels.HashType, indexModels.FinalityState, error) {
@@ -1172,6 +1263,9 @@ func ValidateSSERequest(req *SSERequest) ([]indexModels.AccountAddress, []indexM
 		return nil, nil, defaultMinFinality(), fmt.Errorf("addresses are required for subscription")
 	}
 
+	if _, err := validateMessageBodyHash(req.MsgBodyHash, uniqueAddrs, req.Types); err != nil {
+		return nil, nil, defaultMinFinality(), err
+	}
 	minFin := defaultMinFinality()
 	if req.MinFinality != nil {
 		minFin = *req.MinFinality
@@ -1191,6 +1285,10 @@ func SSEHandler(manager *ClientManager) fiber.Handler {
 			return c.Status(fiber.StatusBadRequest).JSON(ErrorResponse{Id: req.Id, Error: err.Error()})
 		}
 
+		if req.ReplayExisting && manager.rdb == nil {
+			return c.Status(fiber.StatusServiceUnavailable).JSON(ErrorResponse{Id: req.Id, Error: "replay is not configured"})
+		}
+		bodyHash, _ := validateMessageBodyHash(req.MsgBodyHash, addresses, req.Types)
 		if len(req.SupportedActionTypes) == 0 {
 			if val, ok := c.GetReqHeaders()["X-Actions-Version"]; ok && len(val) > 0 {
 				req.SupportedActionTypes = make([]string, len(val))
@@ -1222,27 +1320,37 @@ func SSEHandler(manager *ClientManager) fiber.Handler {
 			}
 		}
 
-		eventCh := make(chan []byte, 16)
+		eventCh := make(chan clientMessage, 16)
+		clientDone := make(chan struct{})
 
 		client := &Client{
 			ID:          clientID,
 			LimitingKey: limitingKey,
 			Connected:   true,
-			done:        make(chan struct{}),
+			done:        clientDone,
 			Subscription: Subscription{
 				IncludeAddressBook:   req.IncludeAddressBook != nil && *req.IncludeAddressBook,
 				IncludeMetadata:      req.IncludeMetadata != nil && *req.IncludeMetadata,
 				ActionTypes:          req.ActionTypes,
 				SupportedActionTypes: indexModels.ExpandActionTypeShortcuts(req.SupportedActionTypes),
 				MinFinality:          minFinality,
+				MsgBodyHash:          bodyHash,
 			},
 			TracesForPotentialInvalidation: make(map[indexModels.HashType]bool),
-			SendEvent: func(b []byte) error {
+			SendEvent: func(msg clientMessage) error {
+				if !msg.reliable {
+					select {
+					case eventCh <- msg:
+						return nil
+					default:
+						return fmt.Errorf("%w: SSE send queue full", errSlowConsumer)
+					}
+				}
 				select {
-				case eventCh <- b:
+				case eventCh <- msg:
 					return nil
-				default:
-					return nil
+				case <-clientDone:
+					return context.Canceled
 				}
 			},
 		}
@@ -1263,8 +1371,16 @@ func SSEHandler(manager *ClientManager) fiber.Handler {
 				select {
 				case <-client.done:
 					return
-				case data := <-eventCh:
-					if err := writeSSEBytes(w, "event", data); err != nil {
+				case msg := <-eventCh:
+					if msg.flushed != nil {
+						if err := w.Flush(); err != nil {
+							log.Printf("[v2] SSE flush failed for client %s: %v", clientID, err)
+							return
+						}
+						close(msg.flushed)
+						continue
+					}
+					if err := writeSSEBytes(w, "event", msg.data); err != nil {
 						log.Printf("[v2] SSE event write failed for client %s: %v", clientID, err)
 						return
 					}
@@ -1276,7 +1392,7 @@ func SSEHandler(manager *ClientManager) fiber.Handler {
 				}
 			}
 		})
-		manager.register <- client
+		manager.register <- clientRegistration{client: client, replay: req.ReplayExisting}
 
 		c.Set("Content-Type", "text/event-stream")
 		c.Set("Cache-Control", "no-cache")
@@ -1305,6 +1421,8 @@ type Envelope struct {
 }
 
 type SubscribeRequest struct {
+	ReplayExisting         bool                       `json:"replay_existing"`
+	MsgBodyHash            *string                    `json:"msg_body_hash,omitempty"`
 	Addresses              []string                   `json:"addresses"`
 	TraceExternalHashNorms []string                   `json:"trace_external_hash_norms,omitempty"`
 	Types                  []EventType                `json:"types"`
@@ -1344,11 +1462,20 @@ func WebSocketHandler(manager *ClientManager) func(*websocket.Conn) {
 		}
 
 		client := &Client{
-			ID:             clientID,
-			LimitingKey:    limitingKey,
-			Connected:      true,
-			done:           make(chan struct{}),
-			closeTransport: conn.Close,
+			ID:          clientID,
+			LimitingKey: limitingKey,
+			Connected:   true,
+			done:        make(chan struct{}),
+			closeTransport: func(reason error) error {
+				if errors.Is(reason, errSlowConsumer) {
+					// WriteControl is safe alongside WriteMessage. Do not take
+					// client.writeMu: a slow socket writer may already hold it.
+					_ = conn.WriteControl(websocket.CloseMessage,
+						websocket.FormatCloseMessage(websocket.CloseTryAgainLater, errSlowConsumer.Error()),
+						time.Now().Add(slowConsumerCloseTimeout))
+				}
+				return conn.Close()
+			},
 			Subscription: Subscription{
 				SubscribedAddresses:  make(AddressSet),
 				SubscribedTraces:     make(TraceSet),
@@ -1359,7 +1486,17 @@ func WebSocketHandler(manager *ClientManager) func(*websocket.Conn) {
 				MinFinality:          defaultMinFinality(),
 			},
 			TracesForPotentialInvalidation: make(map[indexModels.HashType]bool),
-			SendEvent:                      func(b []byte) error { return conn.WriteMessage(websocket.TextMessage, b) },
+			SendEvent: func(msg clientMessage) error {
+				if msg.flushed != nil {
+					close(msg.flushed)
+					return nil
+				}
+				if msg.reliable {
+					_ = conn.SetWriteDeadline(time.Now().Add(15 * time.Second))
+					defer conn.SetWriteDeadline(time.Time{})
+				}
+				return conn.WriteMessage(websocket.TextMessage, msg.data)
+			},
 		}
 		closeHandler := conn.CloseHandler()
 		conn.SetCloseHandler(func(code int, text string) error {
@@ -1367,8 +1504,9 @@ func WebSocketHandler(manager *ClientManager) func(*websocket.Conn) {
 			manager.rateLimiter.UnregisterConnection(client.LimitingKey, client.ID)
 			return closeHandler(code, text)
 		})
-		manager.register <- client
-		defer disconnectClient(manager, client)
+		registered := make(chan struct{})
+		manager.register <- clientRegistration{client: client, ready: registered}
+		defer disconnectClient(manager, client, nil)
 
 		for {
 			_, msg, err := conn.ReadMessage()
@@ -1389,6 +1527,11 @@ func WebSocketHandler(manager *ClientManager) func(*websocket.Conn) {
 				_ = writeWSMessage(c, client, ack)
 
 			case OpUnsubscribe:
+				select {
+				case <-registered:
+				case <-client.done:
+					return
+				}
 				var req UnsubscribeRequest
 				if err := json.Unmarshal(msg, &req); err != nil {
 					sendWSJSONErr(c, client, env.Id, fmt.Errorf("invalid unsubscribe request: %v", err))
@@ -1445,6 +1588,11 @@ func WebSocketHandler(manager *ClientManager) func(*websocket.Conn) {
 				_ = writeWSMessage(c, client, ack)
 
 			case OpSubscribe:
+				select {
+				case <-registered:
+				case <-client.done:
+					return
+				}
 				var req SubscribeRequest
 				if err := json.Unmarshal(msg, &req); err != nil {
 					sendWSJSONErr(c, client, env.Id, fmt.Errorf("invalid subscribe request: %v", err))
@@ -1482,7 +1630,18 @@ func WebSocketHandler(manager *ClientManager) func(*websocket.Conn) {
 					continue
 				}
 
+				bodyHash, err := validateMessageBodyHash(req.MsgBodyHash, cnvAddrs, req.Types)
+				if err != nil {
+					sendWSJSONErr(c, client, env.Id, err)
+					continue
+				}
+				if req.ReplayExisting && manager.rdb == nil {
+					sendWSJSONErr(c, client, env.Id, fmt.Errorf("replay is not configured"))
+					continue
+				}
+				var replay *replaySession
 				err = manager.updateSubscription(client, func(subscription *Subscription) error {
+
 					if err := checkAddressLimit(client, len(cnvAddrs), manager.rateLimiter, true); err != nil {
 						return err
 					}
@@ -1495,6 +1654,7 @@ func WebSocketHandler(manager *ClientManager) func(*websocket.Conn) {
 					subscription.Replace(cnvAddrs, req.Types)
 					subscription.ReplaceTraces(traceExternalHashNorms)
 					subscription.MinFinality = minFinality
+					subscription.MsgBodyHash = bodyHash
 
 					if req.IncludeAddressBook != nil {
 						subscription.IncludeAddressBook = *req.IncludeAddressBook
@@ -1508,6 +1668,9 @@ func WebSocketHandler(manager *ClientManager) func(*websocket.Conn) {
 					if len(req.ActionTypes) > 0 {
 						subscription.ActionTypes = req.ActionTypes
 					}
+					if req.ReplayExisting {
+						replay = manager.requestReplayLocked(client)
+					}
 					return nil
 				})
 				if err != nil {
@@ -1516,7 +1679,12 @@ func WebSocketHandler(manager *ClientManager) func(*websocket.Conn) {
 				}
 
 				ack, _ := json.Marshal(StatusResponse{Id: env.Id, Status: "subscribed"})
-				_ = writeWSMessage(c, client, ack)
+				if err := writeWSMessage(c, client, ack); err != nil {
+					return
+				}
+				if replay != nil {
+					go replay.run(req.ReplayExisting)
+				}
 
 			default:
 				sendWSJSONErr(c, client, env.Id, fmt.Errorf("unknown operation: %s", env.Operation))

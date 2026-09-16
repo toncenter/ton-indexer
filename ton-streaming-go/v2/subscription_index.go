@@ -92,14 +92,11 @@ func (manager *ClientManager) removeSubscriptionFromIndexesLocked(clientID strin
 func (manager *ClientManager) updateSubscription(client *Client, update func(*Subscription) error) error {
 	manager.mu.Lock()
 	defer manager.mu.Unlock()
-
 	client.mu.Lock()
 	defer client.mu.Unlock()
-
 	if !client.Connected {
 		return nil
 	}
-
 	manager.removeSubscriptionFromIndexesLocked(client.ID, &client.Subscription)
 	err := update(&client.Subscription)
 	manager.addSubscriptionToIndexesLocked(client.ID, &client.Subscription)

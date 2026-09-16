@@ -108,7 +108,7 @@ func main() {
 		ImgProxyBaseURL:  *imgProxyBaseUrl,
 	})
 
-	v2Manager := streamingv2.NewClientManager()
+	v2Manager := streamingv2.NewClientManager(rdb)
 	go v2Manager.Run()
 
 	go streamingv2.SubscribeToTransactionHints(ctx, rdb, v2Manager, *transactionHintsChannel)

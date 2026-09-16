@@ -2,7 +2,9 @@ package v2
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net"
 	"strings"
@@ -41,7 +43,7 @@ func TestDisconnectReleasesQuotaBeforeCleanupAndIsIdempotent(t *testing.T) {
 		t.Fatal(err)
 	}
 	var transportCloses atomic.Int32
-	client.closeTransport = func() error { transportCloses.Add(1); return nil }
+	client.closeTransport = func(_ error) error { transportCloses.Add(1); return nil }
 
 	// No manager loop runs: queued subscription cleanup cannot release quota.
 	var calls sync.WaitGroup
@@ -49,7 +51,7 @@ func TestDisconnectReleasesQuotaBeforeCleanupAndIsIdempotent(t *testing.T) {
 		calls.Add(1)
 		go func() {
 			defer calls.Done()
-			disconnectClient(manager, client)
+			disconnectClient(manager, client, nil)
 		}()
 	}
 	calls.Wait()
@@ -69,7 +71,7 @@ func TestDisconnectReleasesQuotaBeforeCleanupAndIsIdempotent(t *testing.T) {
 	}
 
 	// A late cleanup must not affect the replacement connection.
-	disconnectClient(manager, client)
+	disconnectClient(manager, client, nil)
 	if err := manager.rateLimiter.RegisterConnection("key", "extra", limits); err == nil {
 		t.Fatal("late cleanup released the replacement's quota")
 	}
@@ -228,4 +230,117 @@ func TestWSCloseReplyReleasesQuotaBeforeManagerCleanup(t *testing.T) {
 	}
 	replacement := dial()
 	defer replacement.Close()
+}
+
+func TestSlowConsumerDisconnectDoesNotBlockOtherClients(t *testing.T) {
+	manager := NewClientManager()
+	go manager.Run()
+	limits := RateLimitConfig{MaxParallelConnections: 1}
+	slow := &Client{ID: "slow", LimitingKey: "slow-key", Connected: true, done: make(chan struct{}), Subscription: Subscription{SubscribedAddresses: AddressSet{replayAddress(1): {}}, EventTypes: makeEventSet([]EventType{EventTransactions})}}
+	if err := manager.rateLimiter.RegisterConnection(slow.LimitingKey, slow.ID, limits); err != nil {
+		t.Fatal(err)
+	}
+	writing := make(chan struct{})
+	var once sync.Once
+	slow.SendEvent = func(clientMessage) error { once.Do(func() { close(writing) }); <-slow.done; return context.Canceled }
+	closing := make(chan error, 1)
+	releaseClose := make(chan struct{})
+	slow.closeTransport = func(reason error) error { closing <- reason; <-releaseClose; return nil }
+	received := make(chan []byte, 1)
+	fast := &Client{ID: "fast", Connected: true, done: make(chan struct{}), Subscription: Subscription{SubscribedAddresses: AddressSet{replayAddress(1): {}}, EventTypes: makeEventSet([]EventType{EventTransactions})}, SendEvent: func(msg clientMessage) error { received <- msg.data; return nil }}
+	t.Cleanup(func() {
+		close(releaseClose)
+		disconnectClient(manager, slow, nil)
+		disconnectClient(manager, fast, nil)
+	})
+	for _, client := range []*Client{slow, fast} {
+		ready := make(chan struct{})
+		manager.register <- clientRegistration{client: client, ready: ready}
+		select {
+		case <-ready:
+		case <-time.After(time.Second):
+			t.Fatal("client registration stalled")
+		}
+	}
+	manager.sendNotification(replayTransaction(1), clientSet{slow.ID: {}})
+	select {
+	case <-writing:
+	case <-time.After(time.Second):
+		t.Fatal("slow sender did not start")
+	}
+	for i := 0; i < 65; i++ {
+		manager.sendNotification(replayTransaction(uint64(i+2)), clientSet{slow.ID: {}})
+	}
+	select {
+	case reason := <-closing:
+		if !errors.Is(reason, errSlowConsumer) {
+			t.Fatalf("wrong close reason: %v", reason)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("slow client was not disconnected")
+	}
+	// The transport close is still blocked, but quota and the broadcast loop
+	// must already be available to everyone else.
+	if err := manager.rateLimiter.RegisterConnection("slow-key", "replacement", limits); err != nil {
+		t.Fatalf("quota still occupied: %v", err)
+	}
+	manager.sendNotification(replayTransaction(100), clientSet{fast.ID: {}})
+	select {
+	case <-received:
+	case <-time.After(time.Second):
+		t.Fatal("one slow close blocked delivery to another client")
+	}
+}
+
+func TestWebSocketSlowConsumerCloseFrame(t *testing.T) {
+	manager := NewClientManager()
+	go manager.Run()
+	app := fiber.New(fiber.Config{DisableStartupMessage: true})
+	app.Get("/ws", websocket.New(WebSocketHandler(manager)))
+	listener := fasthttputil.NewInmemoryListener()
+	serverDone := make(chan error, 1)
+	go func() { serverDone <- app.Listener(listener) }()
+	defer func() { _ = listener.Close(); _ = app.ShutdownWithTimeout(time.Second); <-serverDone }()
+	dialer := wsclient.Dialer{NetDial: func(_, _ string) (net.Conn, error) { return listener.Dial() }, HandshakeTimeout: time.Second}
+	conn, _, err := dialer.Dial("ws://localhost/ws", map[string][]string{"X-Limiting-Key": {"ws-slow"}, "X-Max-Parallel-Connections": {"1"}, "X-Max-Subscribed-Addr": {"1"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	_ = conn.SetReadDeadline(time.Now().Add(3 * time.Second))
+	if err := conn.WriteJSON(map[string]any{"operation": "subscribe", "types": []string{"transactions"}, "addresses": []string{string(replayAddress(1))}, "min_finality": "pending"}); err != nil {
+		t.Fatal(err)
+	}
+	_, ack, err := conn.ReadMessage()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var status StatusResponse
+	if err := json.Unmarshal(ack, &status); err != nil || status.Status != "subscribed" {
+		t.Fatalf("subscribe failed: %s", ack)
+	}
+	manager.mu.RLock()
+	var client *Client
+	for _, candidate := range manager.clients {
+		client = candidate
+	}
+	manager.mu.RUnlock()
+	if client == nil {
+		t.Fatal("WebSocket client was not registered")
+	}
+	// Stop application writes while leaving the WebSocket control-frame path
+	// available. Closing must not acquire this mutex or use the full send queue.
+	client.writeMu.Lock()
+	defer client.writeMu.Unlock()
+	for i := 0; i < 67; i++ {
+		manager.sendNotification(replayTransaction(uint64(i+1)), clientSet{client.ID: {}})
+	}
+	_, _, err = conn.ReadMessage()
+	var closeError *wsclient.CloseError
+	if !errors.As(err, &closeError) || closeError.Code != wsclient.CloseTryAgainLater || closeError.Text != "slow consumer" {
+		t.Fatalf("expected 1013 slow consumer, got %v", err)
+	}
+	if err := manager.rateLimiter.RegisterConnection("ws-slow", "replacement", RateLimitConfig{MaxParallelConnections: 1}); err != nil {
+		t.Fatalf("quota was not released before the Close frame: %v", err)
+	}
 }

@@ -73,63 +73,47 @@ func ProcessTransactionHint(ctx context.Context, rdb *redis.Client, hint transac
 	}
 
 	stage := NewTraceProcessingStage(startTimeUnix, rawTraceSpanName, rawTrace, hint.TraceKey.String(), channel)
-	rawTraces := map[string]map[string]string{
-		hint.TraceKey.String(): rawTrace,
-	}
-	emulatedContext := crud.NewEmptyContext(false)
-	if err := emulatedContext.FillFromRawData(rawTraces); err != nil {
-		log.Printf("[v2] Error filling transaction trace %s (%s update): %v", hint.TraceKey, hint.UpdateFinality, err)
+	traceContext, err := decodeTraceSnapshot(rawTrace, hint.TraceKey)
+	if err != nil {
 		stage.EmitOtelError("streaming_api.fill_context_error", err.Error())
 		return
 	}
-	if emulatedContext.GetTraceCount() != 1 {
-		err := fmt.Errorf("expected one trace, got %d", emulatedContext.GetTraceCount())
-		stage.EmitOtelError("streaming_api.invalid_trace_count", err.Error())
-		return
-	}
-
-	txs, txIndexes, transactionAccounts, traceFinality := transactionsForHint(emulatedContext, hint, stage)
-	if len(txs) == 0 {
-		stage.Span.AddAttr("ton.streaming.skipped", true)
-		stage.Span.AddAttr("ton.streaming.skip_reason", "no_matching_transactions")
-		stage.Emit()
-		return
-	}
-	if traceFinality != hint.TraceFinality {
-		err := fmt.Errorf("hint trace_finality is %s, Redis snapshot finality is %s", hint.TraceFinality, traceFinality)
-		log.Printf("[v2] Transaction hint finality mismatch for %s: %v", hint.TraceKey, err)
+	notification, addresses, err := buildTransactionNotification(traceContext, hint, stage)
+	if err != nil {
 		stage.EmitOtelError("streaming_api.finality_mismatch", err.Error())
 		return
 	}
-
-	targets := manager.subscribersForAddresses(EventTransactions, transactionAccounts, traceFinality)
-	if len(targets) == 0 {
-		stage.Span.AddAttr("ton.streaming.skipped", true)
-		stage.Span.AddAttr("ton.streaming.skip_reason", "subscription_disappeared")
-		stage.Emit()
-		return
+	if notification != nil {
+		accounts := make([]indexModels.AccountAddress, 0, len(notification.Transactions))
+		for _, tx := range notification.Transactions {
+			accounts = append(accounts, tx.Account)
+		}
+		targets := manager.subscribersForAddresses(EventTransactions, accounts, notification.Finality)
+		book, metadata := manager.enrichmentNeeds(targets)
+		enrichTraceNotification(ctx, notification, addresses, book, metadata)
+		manager.sendNotification(notification, targets)
 	}
-
-	allAddresses := attachTransactionMessages(emulatedContext, hint, txs, txIndexes)
-	var addressBook *indexModels.AddressBook
-	var metadata *indexModels.Metadata
-	shouldFetchAddressBook, shouldFetchMetadata := manager.enrichmentNeeds(targets)
-	if shouldFetchAddressBook || shouldFetchMetadata {
-		addressBook, metadata = fetchAddressBookAndMetadata(ctx, allAddresses, allAddresses, shouldFetchAddressBook, shouldFetchMetadata)
-	}
-
-	sortTransactions(txs)
-	stage.Span.AddAttr("ton.trace.finality", traceFinality.String())
-	stage.Span.AddAttr("ton.transactions.count", len(txs))
-	manager.sendNotification(&TransactionsNotification{
-		Type:                  EventTransactions,
-		Finality:              traceFinality,
-		TraceExternalHashNorm: hint.TraceKey,
-		Transactions:          txs,
-		AddressBook:           addressBook,
-		Metadata:              metadata,
-	}, targets)
 	stage.Emit()
+}
+
+// Building a snapshot does not route it or mutate any client state.
+func buildTransactionNotification(traceContext *crud.EmulatedTracesContext, hint transactionHint,
+	stage *TraceProcessingStage) (*TransactionsNotification, []indexModels.AccountAddress, error) {
+	txs, txIndexes, finality := transactionsForHint(traceContext, hint, stage)
+	if len(txs) == 0 {
+		return nil, nil, nil
+	}
+	if finality != hint.TraceFinality {
+		return nil, nil, fmt.Errorf("hint trace_finality is %s, Redis snapshot finality is %s", hint.TraceFinality, finality)
+	}
+	addresses := attachTransactionMessages(traceContext, hint, txs, txIndexes)
+	sortTransactions(txs)
+	stage.Span.AddAttr("ton.trace.finality", finality.String())
+	stage.Span.AddAttr("ton.transactions.count", len(txs))
+	return &TransactionsNotification{
+		version: deliveryVersion{seq: hint.UpdateSeq, partial: hint.UpdateFinality == indexModels.FinalityStatePending},
+		Type:    EventTransactions, Finality: finality, TraceExternalHashNorm: hint.TraceKey, Transactions: txs,
+	}, addresses, nil
 }
 
 func transactionsForHint(
@@ -139,12 +123,10 @@ func transactionsForHint(
 ) (
 	[]indexModels.Transaction,
 	map[indexModels.HashType]int,
-	[]indexModels.AccountAddress,
 	indexModels.FinalityState,
 ) {
 	txs := make([]indexModels.Transaction, 0)
 	txIndexes := make(map[indexModels.HashType]int)
-	accounts := make([]indexModels.AccountAddress, 0)
 	finality := indexModels.FinalityStateFinalized
 
 	for _, tx := range emulatedContext.GetTransactions() {
@@ -153,7 +135,6 @@ func transactionsForHint(
 		}
 		txs = append(txs, *tx)
 		txIndexes[tx.Hash] = len(txs) - 1
-		accounts = append(accounts, tx.Account)
 		if tx.Finality < finality {
 			finality = tx.Finality
 		}
@@ -161,7 +142,7 @@ func transactionsForHint(
 			stage.SetRootTxHash(*tx.TraceId)
 		}
 	}
-	return txs, txIndexes, accounts, finality
+	return txs, txIndexes, finality
 }
 
 func attachTransactionMessages(emulatedContext *crud.EmulatedTracesContext, hint transactionHint, txs []indexModels.Transaction,

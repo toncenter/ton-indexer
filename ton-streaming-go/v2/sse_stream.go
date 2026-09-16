@@ -27,10 +27,10 @@ func newSSEStream(manager *ClientManager, client *Client, write func(*bufio.Writ
 	// initializing the transport closer before starting the writer goroutine.
 	pipe := fasthttputil.NewPipeConns()
 	reader, writer := pipe.Conn2(), pipe.Conn1()
-	client.closeTransport = reader.Close
+	client.closeTransport = func(_ error) error { return reader.Close() }
 	stream := &sseStream{
 		ReadCloser: reader,
-		onClose:    func() { disconnectClient(manager, client) },
+		onClose:    func() { disconnectClient(manager, client, nil) },
 	}
 	go func() {
 		defer writer.Close()
