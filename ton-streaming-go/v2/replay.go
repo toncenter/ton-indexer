@@ -15,9 +15,9 @@ type deliveryVersion struct {
 }
 
 type clientMessage struct {
-	data     []byte
-	reliable bool          // replay waits for transport capacity; ordinary live delivery does not
-	flushed  chan struct{} // internal marker, acknowledged after preceding transport writes
+	data    []byte
+	replay  bool          // replay messages use a write deadline on WebSocket
+	flushed chan struct{} // internal marker, acknowledged after preceding transport writes
 }
 
 type notificationKey struct {
@@ -159,7 +159,7 @@ func (s *replaySession) send(n Notification, snapshot bool) error {
 		return s.ctx.Err()
 	case <-c.done:
 		return context.Canceled
-	case c.sendChan <- clientMessage{data: data, reliable: true}:
+	case c.sendChan <- clientMessage{data: data, replay: true}:
 		return nil
 	}
 }
@@ -232,11 +232,11 @@ func (s *replaySession) run(existing bool) {
 }
 
 // Do not hold client.mu while waiting: both the sender and live buffering
-// must keep running. SSE forwards this marker to its HTTP stream writer.
+// must keep running. Each transport writer acknowledges this marker in order.
 func (s *replaySession) waitForDelivery() error {
 	flushed := make(chan struct{})
 	select {
-	case s.client.sendChan <- clientMessage{reliable: true, flushed: flushed}:
+	case s.client.sendChan <- clientMessage{flushed: flushed}:
 	case <-s.ctx.Done():
 		return s.ctx.Err()
 	case <-s.client.done:

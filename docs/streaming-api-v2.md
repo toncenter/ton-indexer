@@ -307,16 +307,16 @@ its previous invalidation; recreation while that invalidation is still pending
 is not reconciled.
 Connections that exceed the buffer while replay is active or cannot finish replay
 within one minute are closed instead of silently dropping the initial events.
-If either live output queue fills, the connection is closed instead of continuing
+If the client's live output queue fills, the connection is closed instead of continuing
 with silently dropped events. The server logs `slow consumer`. For WebSocket it
 attempts a close frame with code `1013` and reason `slow consumer`; if the socket
 cannot accept that frame promptly, it is closed directly. SSE ends the stream.
 During replay, the sender waits for output capacity within its existing limits.
 Replay switches to ordinary live delivery only after the sender has processed all
 preceding events, including the SSE writer's flush. Live events arriving during
-that wait remain buffered and are drained before the switch. This is server-side
-write completion, not an acknowledgement that the client application processed
-the events.
+that wait remain buffered and are drained before the switch. For SSE, completion
+means the SSE writer has flushed to the internal stream read by the HTTP server.
+It does not acknowledge network delivery or processing by the client application.
 Clients can reconnect with `replay_existing: true`, subject to the retention window.
 
 ---

@@ -743,9 +743,6 @@ func TestLiveOverflowReportsSlowConsumer(t *testing.T) {
 	if len(c.sendChan) != 1 {
 		t.Fatal("queue grew past its bound")
 	}
-	if (<-c.sendChan).reliable {
-		t.Fatal("live delivery became blocking")
-	}
 }
 
 func TestSSELiveOverflowDisconnectsAndReleasesQuota(t *testing.T) {
@@ -769,32 +766,29 @@ func TestSSELiveOverflowDisconnectsAndReleasesQuota(t *testing.T) {
 	}
 	stream := request.Response.BodyStream().(io.ReadCloser)
 	defer stream.Close()
-	client := (<-manager.register).client
-	// Leave the HTTP reader idle and fill its small SSE queue.
-	for i := 0; i < 1024; i++ {
-		err = client.SendEvent(clientMessage{data: []byte(`{}`)})
-		if err != nil {
-			break
-		}
+	registration := <-manager.register
+	client := registration.client
+	registration.ready = make(chan struct{})
+	manager.register <- registration
+	go manager.Run()
+	select {
+	case <-registration.ready:
+	case <-time.After(time.Second):
+		t.Fatal("SSE client registration stalled")
 	}
-	if !errors.Is(err, errSlowConsumer) {
-		t.Fatalf("SSE overflow was hidden: %v", err)
+	// Leave the HTTP reader idle and fill the shared queue through live delivery.
+	for i := 0; i < clientSendQueueSize+16; i++ {
+		manager.sendNotification(&AccountStateNotification{
+			Type: EventAccountStateChange, Finality: models.FinalityStateFinalized, Account: replayAddress(1),
+		}, clientSet{client.ID: {}})
 	}
-	client.sendChan = make(chan clientMessage, 1)
-	client.startSender(manager)
-	deadline := time.NewTimer(time.Second)
-	defer deadline.Stop()
-	for {
-		select {
-		case <-client.done:
-			if err := manager.rateLimiter.RegisterConnection("sse-slow", "replacement", RateLimitConfig{MaxParallelConnections: 1}); err != nil {
-				t.Fatalf("slow SSE still occupies its quota: %v", err)
-			}
-			return
-		case client.sendChan <- clientMessage{data: []byte(`{}`)}:
-		case <-deadline.C:
-			t.Fatal("SSE sender did not disconnect on overflow")
-		}
+	select {
+	case <-client.done:
+	case <-time.After(time.Second):
+		t.Fatal("SSE client did not disconnect on overflow")
+	}
+	if err := manager.rateLimiter.RegisterConnection("sse-slow", "replacement", RateLimitConfig{MaxParallelConnections: 1}); err != nil {
+		t.Fatalf("slow SSE still occupies its quota: %v", err)
 	}
 }
 

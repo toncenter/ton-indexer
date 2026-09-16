@@ -148,39 +148,32 @@ func TestReplaySSEWaitsForHTTPWriter(t *testing.T) {
 	}
 	stream := request.Response.BodyStream().(io.ReadCloser)
 	defer stream.Close()
-	registration := <-manager.register
-	client := registration.client
-	markers := make(chan chan struct{}, 4)
-	send := client.SendEvent
-	client.SendEvent = func(msg clientMessage) error {
-		err := send(msg)
-		if err == nil && msg.flushed != nil {
-			markers <- msg.flushed
-		}
-		return err
+	client := (<-manager.register).client
+	client.mu.Lock()
+	s := manager.requestReplayLocked(client)
+	client.mu.Unlock()
+	defer s.cancel()
+	// Load synchronously before starting the replay delivery barrier.
+	if err := s.load(); err != nil {
+		t.Fatal(err)
 	}
-	manager.register <- registration
-	go manager.Run()
-	var marker chan struct{}
-	select {
-	case marker = <-markers:
-	case <-time.After(2 * time.Second):
-		t.Fatal("delivery marker did not reach the SSE queue")
-	}
+	finished := make(chan struct{})
+	go func() { defer close(finished); s.run(false) }()
 	// The HTTP reader has consumed nothing; the pipe contains at most four
 	// writes. Ten events therefore cannot have passed the SSE writer yet.
 	select {
-	case <-marker:
-		t.Fatal("SSE acknowledged before writing the queued events")
-	default:
+	case <-finished:
+		t.Fatal("replay finished while the SSE writer was blocked")
+	case <-time.After(20 * time.Millisecond):
 	}
 	client.mu.Lock()
 	active := client.replay.active
 	queued := len(client.sendChan)
-	live := &AccountStateNotification{Type: EventAccountStateChange, Finality: models.FinalityStateFinalized, Account: replayAddress(1), version: deliveryVersion{seq: 100}}
+	live := &AccountStateNotification{Type: EventAccountStateChange, Finality: models.FinalityStateFinalized, Account: replayAddress(1),
+		State: models.AccountState{Hash: replayHash(100)}, version: deliveryVersion{seq: 100}}
 	err = client.acceptNotificationLocked(live)
 	client.mu.Unlock()
-	if !active || queued != 0 || err != nil {
+	if !active || queued == 0 || err != nil {
 		t.Fatalf("premature SSE handoff: active=%v queued=%d err=%v", active, queued, err)
 	}
 	readDone := make(chan error, 1)
@@ -207,6 +200,11 @@ func TestReplaySSEWaitsForHTTPWriter(t *testing.T) {
 				readDone <- fmt.Errorf("internal marker leaked into SSE: %v", event)
 				return
 			}
+			isLive := event["state"].(map[string]any)["hash"] == string(replayHash(100))
+			if isLive != (count == 10) {
+				readDone <- fmt.Errorf("buffered live event arrived out of order: %v", event)
+				return
+			}
 			count++
 		}
 		readDone <- nil
@@ -219,22 +217,16 @@ func TestReplaySSEWaitsForHTTPWriter(t *testing.T) {
 	case <-time.After(3 * time.Second):
 		t.Fatal("SSE lost events or stalled at handoff")
 	}
-	deadline := time.Now().Add(time.Second)
-	for {
-		client.mu.Lock()
-		active = client.replay != nil && client.replay.active
-		connected := client.Connected
-		client.mu.Unlock()
-		if !connected {
-			t.Fatal("healthy SSE client was disconnected")
-		}
-		if !active {
-			break
-		}
-		if time.Now().After(deadline) {
-			t.Fatal("SSE replay did not finish after its writer drained")
-		}
-		time.Sleep(time.Millisecond)
+	select {
+	case <-finished:
+	case <-time.After(time.Second):
+		t.Fatal("SSE replay did not finish after its writer drained")
+	}
+	client.mu.Lock()
+	connected, active := client.Connected, s.active
+	client.mu.Unlock()
+	if !connected || active {
+		t.Fatalf("invalid final state: connected=%v active=%v", connected, active)
 	}
 }
 

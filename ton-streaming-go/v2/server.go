@@ -359,7 +359,10 @@ type notificationDelivery struct {
 
 var errSlowConsumer = errors.New("slow consumer")
 
-const slowConsumerCloseTimeout = 100 * time.Millisecond
+const (
+	clientSendQueueSize      = 64
+	slowConsumerCloseTimeout = 100 * time.Millisecond
+)
 
 type Client struct {
 	ID                             string
@@ -367,7 +370,7 @@ type Client struct {
 	Connected                      bool
 	Subscription                   Subscription
 	TracesForPotentialInvalidation map[indexModels.HashType]bool // traceExternalHashNorm -> true
-	SendEvent                      func(clientMessage) error
+	SendEvent                      func(clientMessage) error     // nil when the SSE writer consumes sendChan directly
 	sendChan                       chan clientMessage
 	done                           chan struct{}
 	closeTransport                 func(error) error
@@ -523,7 +526,9 @@ func (manager *ClientManager) Run() {
 				manager.mu.Unlock()
 				continue
 			}
-			client.sendChan = make(chan clientMessage, 64)
+			if client.sendChan == nil {
+				client.sendChan = make(chan clientMessage, clientSendQueueSize)
+			}
 			if client.TracesForPotentialInvalidation == nil {
 				client.TracesForPotentialInvalidation = make(map[indexModels.HashType]bool)
 			}
@@ -538,7 +543,9 @@ func (manager *ClientManager) Run() {
 			}
 			client.mu.Unlock()
 			manager.mu.Unlock()
-			client.startSender(manager)
+			if client.SendEvent != nil {
+				client.startSender(manager)
+			}
 			if replay != nil {
 				go replay.run(true)
 			}
@@ -1320,14 +1327,13 @@ func SSEHandler(manager *ClientManager) fiber.Handler {
 			}
 		}
 
-		eventCh := make(chan clientMessage, 16)
-		clientDone := make(chan struct{})
-
 		client := &Client{
 			ID:          clientID,
 			LimitingKey: limitingKey,
 			Connected:   true,
-			done:        clientDone,
+			done:        make(chan struct{}),
+			// Initialize before starting the SSE writer, which owns this queue.
+			sendChan: make(chan clientMessage, clientSendQueueSize),
 			Subscription: Subscription{
 				IncludeAddressBook:   req.IncludeAddressBook != nil && *req.IncludeAddressBook,
 				IncludeMetadata:      req.IncludeMetadata != nil && *req.IncludeMetadata,
@@ -1337,22 +1343,6 @@ func SSEHandler(manager *ClientManager) fiber.Handler {
 				MsgBodyHash:          bodyHash,
 			},
 			TracesForPotentialInvalidation: make(map[indexModels.HashType]bool),
-			SendEvent: func(msg clientMessage) error {
-				if !msg.reliable {
-					select {
-					case eventCh <- msg:
-						return nil
-					default:
-						return fmt.Errorf("%w: SSE send queue full", errSlowConsumer)
-					}
-				}
-				select {
-				case eventCh <- msg:
-					return nil
-				case <-clientDone:
-					return context.Canceled
-				}
-			},
 		}
 		client.Subscription.Replace(addresses, req.Types)
 		client.Subscription.ReplaceTraces(traceExternalHashNorms)
@@ -1371,12 +1361,9 @@ func SSEHandler(manager *ClientManager) fiber.Handler {
 				select {
 				case <-client.done:
 					return
-				case msg := <-eventCh:
+				case msg := <-client.sendChan:
 					if msg.flushed != nil {
-						if err := w.Flush(); err != nil {
-							log.Printf("[v2] SSE flush failed for client %s: %v", clientID, err)
-							return
-						}
+						// Each preceding writeSSEBytes call has already flushed.
 						close(msg.flushed)
 						continue
 					}
@@ -1491,7 +1478,7 @@ func WebSocketHandler(manager *ClientManager) func(*websocket.Conn) {
 					close(msg.flushed)
 					return nil
 				}
-				if msg.reliable {
+				if msg.replay {
 					_ = conn.SetWriteDeadline(time.Now().Add(15 * time.Second))
 					defer conn.SetWriteDeadline(time.Time{})
 				}
