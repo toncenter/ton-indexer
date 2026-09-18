@@ -68,8 +68,7 @@ docker compose --profile emulate up -d
 Once the stack is running, the REST API and interactive Swagger are available at `localhost:8081/`.
 
 The Acton endpoints (`/api/v3/acton/*`) identify contracts against a pinned ABI
-catalog and decode storage, messages and getter results. See
-[Acton API](docs/acton-api.md).
+catalog and decode storage, messages and getter results.
 
 > **Production Tip:** PostgreSQL, Kvrocks, the API, and other indexer services
 > may run on separate machines. The index worker itself must run on the same
