@@ -266,10 +266,11 @@ func TestActonProxyLibraryReferenceSnapshot(t *testing.T) {
 }
 
 func TestActonProxyDeadlineCoversChainAndBody(t *testing.T) {
-	calls := 0
+	// fasthttp serves each request on its own goroutine, so the counter the test
+	// asserts on must be written and read atomically.
+	var calls atomic.Int32
 	actonUpstream(t, func(c *fasthttp.RequestCtx) {
-		calls++
-		if calls == 1 {
+		if calls.Add(1) == 1 {
 			c.SetBodyString(`{"ok":true,"result":{"last":{"seqno":1}}}`)
 			return
 		}
@@ -281,7 +282,7 @@ func TestActonProxyDeadlineCoversChainAndBody(t *testing.T) {
 	settings.Timeout = 50 * time.Millisecond
 	_, err := NewActonExecutor(settings).Snapshot(context.Background(), "0:"+strings.Repeat("00", 32), nil)
 	var apiError models.IndexError
-	if !errors.As(err, &apiError) || apiError.Code != 504 || calls != 2 {
-		t.Fatalf("chain deadline lost: calls=%d err=%v", calls, err)
+	if !errors.As(err, &apiError) || apiError.Code != 504 || calls.Load() != 2 {
+		t.Fatalf("chain deadline lost: calls=%d err=%v", calls.Load(), err)
 	}
 }
