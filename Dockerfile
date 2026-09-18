@@ -58,7 +58,7 @@ RUN . index/acton/catalog/catalog.lock \
 RUN CGO_ENABLED=0 go tool tolk-abi-to-go --catalog index/acton/catalog/catalog.json --output-dir index/acton/catalog --package catalog
 COPY --from=core-builder /app/build/ton-marker/libton-marker* /usr/lib/
 COPY --from=core-builder /app/ton-marker/src/wrapper.h /usr/local/include/wrapper.h
-RUN swag init && go build -o ton-index-go ./main.go
+RUN swag init --parseDependency && go build -o ton-index-go ./main.go
 
 
 ## build emulate api service ton-emulate-go
