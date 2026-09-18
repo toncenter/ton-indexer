@@ -186,6 +186,8 @@ void append_streaming_transaction_hint(RedisWritePlan& plan, const ActiveTrace& 
 
 void append_streaming_actions_hint(RedisWritePlan& plan, const ActiveTrace& trace, const std::string& trace_key,
                                    StreamingUpdateFinality update_finality, bool actions_updated) {
+  // Replay must not expose a retained action blob from a failed classification.
+  plan.fields_to_set.emplace_back("streaming_actions_updated", actions_updated ? "1" : "0");
   StreamingActionsHint hint{
       .trace_key = trace_key,
       .update_seq = trace.update_seq,

@@ -85,109 +85,71 @@ func ProcessActionHint(ctx context.Context, rdb *redis.Client, hint actionsHint,
 		return
 	}
 
-	// A failed classifier leaves the last good blob in Redis for the pending
-	// API, but it is not a result for this update_seq and must not be streamed.
+	// A retained blob from a failed classification is not a result for this version.
 	if !hint.ActionsUpdated {
 		delete(rawTrace, "actions")
 	}
-
 	stage := NewTraceProcessingStage(startedAt, actionHintSpanName, rawTrace, hint.TraceKey.String(), channel)
-	traceRootHash := indexModels.HashType(rawTrace["root_node"])
-	stage.Span.AddAttr("ton.trace.external_message_hash", string(traceRootHash))
-
-	rawTraces := map[string]map[string]string{hint.TraceKey.String(): rawTrace}
-	emulatedContext := crud.NewEmptyContext(false)
-	if err := emulatedContext.FillFromRawData(rawTraces); err != nil {
-		log.Printf("[v2] Error filling action trace %s: %v", hint.TraceKey, err)
+	stage.Span.AddAttr("ton.trace.external_message_hash", rawTrace["root_node"])
+	traceContext, err := decodeTraceSnapshot(rawTrace, hint.TraceKey)
+	if err != nil {
 		stage.EmitOtelError("streaming_api.fill_context_error", err.Error())
 		return
 	}
-	if emulatedContext.GetTraceCount() != 1 {
-		err := fmt.Errorf("expected one trace, got %d", emulatedContext.GetTraceCount())
-		stage.EmitOtelError("streaming_api.invalid_trace_count", err.Error())
-		return
+	actions, addresses := buildActionNotification(traceContext, hint, stage)
+	if hint.ActionsUpdated && len(actions.Actions) > 0 {
+		targets := manager.subscribersForAddresses(EventActions, addresses, actions.Finality)
+		book, metadata := manager.enrichmentNeeds(targets)
+		enrichTraceNotification(ctx, actions, addresses, book, metadata)
+		manager.sendNotification(actions, targets)
 	}
+	targets := manager.subscribersForTrace(hint.TraceKey, actions.Finality)
+	if len(targets) > 0 {
+		notification, addresses, err := buildTraceNotification(traceContext, actions)
+		if err != nil {
+			stage.EmitOtelError("streaming_api.build_trace_error", err.Error())
+			return
+		}
+		book, metadata := manager.enrichmentNeeds(targets)
+		enrichTraceNotification(ctx, notification, addresses, book, metadata)
+		manager.sendNotification(notification, targets)
+	}
+	stage.Emit()
+}
 
-	traceFinality := actionTraceFinality(emulatedContext, stage)
-	actions, actionsAddresses := actionsFromContext(emulatedContext)
+func buildActionNotification(traceContext *crud.EmulatedTracesContext, hint actionsHint,
+	stage *TraceProcessingStage) (*ActionsNotification, []indexModels.AccountAddress) {
+	finality := actionTraceFinality(traceContext, stage)
+	actions, addresses := actionsFromContext(traceContext)
 	stage.Span.AddAttr("ton.actions.count", len(actions))
 	stage.Span.AddAttr("ton.actions.has_actions", len(actions) > 0)
 	stage.Span.AddAttr("ton.actions.updated", hint.ActionsUpdated)
-	stage.Span.AddAttr("ton.trace.finality", traceFinality.String())
+	stage.Span.AddAttr("ton.trace.finality", finality.String())
+	return &ActionsNotification{version: deliveryVersion{seq: hint.UpdateSeq},
+		Type: EventActions, Finality: finality, TraceExternalHashNorm: hint.TraceKey, Actions: actions, ActionAddresses: addresses,
+	}, flattenActionAddresses(addresses)
+}
 
-	allActionAddresses := flattenActionAddresses(actionsAddresses)
-	if hint.ActionsUpdated && len(actions) != 0 {
-		var addressBook *indexModels.AddressBook
-		var metadata *indexModels.Metadata
-		shouldFetchAddressBook, shouldFetchMetadata := manager.shouldFetchAddressBookAndMetadata(
-			[]EventType{EventActions}, traceFinality, allActionAddresses)
-		if shouldFetchAddressBook || shouldFetchMetadata {
-			addressBook, metadata = fetchAddressBookAndMetadata(
-				ctx, allActionAddresses, allActionAddresses, shouldFetchAddressBook, shouldFetchMetadata)
-		}
-		actionTargets := manager.subscribersForAddresses(EventActions, allActionAddresses, traceFinality)
-		manager.sendNotification(&ActionsNotification{
-			Type:                  EventActions,
-			Finality:              traceFinality,
-			TraceExternalHashNorm: hint.TraceKey,
-			Actions:               actions,
-			ActionAddresses:       actionsAddresses,
-			AddressBook:           addressBook,
-			Metadata:              metadata,
-		}, actionTargets)
-	}
-
-	traceTargets := manager.subscribersForTrace(hint.TraceKey, traceFinality)
-	if len(traceTargets) == 0 {
-		stage.Emit()
-		return
-	}
-
-	txs, err := crud.QueryPendingTransactionsImpl(emulatedContext, nil, indexModels.RequestSettings{}, false)
+func buildTraceNotification(traceContext *crud.EmulatedTracesContext, actions *ActionsNotification) (*TraceNotification, []indexModels.AccountAddress, error) {
+	txs, err := crud.QueryPendingTransactionsImpl(traceContext, nil, indexModels.RequestSettings{}, false)
 	if err != nil {
-		log.Printf("[v2] Error querying action trace transactions: %v", err)
-		stage.EmitOtelError("streaming_api.query_transactions_error", err.Error())
-		return
+		return nil, nil, err
 	}
-
-	txOrder := make([]indexModels.HashType, 0, len(txs))
-	for index := range txs {
-		txOrder = append(txOrder, txs[index].Hash)
+	order := make([]indexModels.HashType, 0, len(txs))
+	for _, tx := range txs {
+		order = append(order, tx.Hash)
 	}
-	traceRoot, traceTxMap, err := buildTraceFromTransactions(txOrder, txs)
+	root, txMap, err := buildTraceFromTransactions(order, txs)
 	if err != nil {
-		log.Printf("[v2] Error assembling action trace %s: %v", hint.TraceKey, err)
-		stage.EmitOtelError("streaming_api.build_trace_error", err.Error())
-		return
+		return nil, nil, err
 	}
-	if traceRoot == nil {
-		stage.EmitOtelError("streaming_api.build_trace_error", "action trace root is nil")
-		return
+	if root == nil {
+		return nil, nil, fmt.Errorf("trace root is nil")
 	}
-
-	traceAddresses := traceNotificationAddresses(txs, actionsAddresses)
-	var traceAddressBook *indexModels.AddressBook
-	var traceMetadata *indexModels.Metadata
-	shouldFetchAddressBook, shouldFetchMetadata := manager.shouldFetchAddressBookAndMetadataForTrace(
-		traceFinality, hint.TraceKey)
-	if shouldFetchAddressBook || shouldFetchMetadata {
-		traceAddressBook, traceMetadata = fetchAddressBookAndMetadata(
-			ctx, traceAddresses, traceAddresses, shouldFetchAddressBook, shouldFetchMetadata)
-	}
-
-	// A non-nil empty slice deliberately serializes as `actions: []`. This is
-	// how a trace subscriber learns that classification failed or found nothing.
-	manager.sendNotification(&TraceNotification{
-		Type:                  EventTrace,
-		Finality:              traceFinality,
-		TraceExternalHashNorm: hint.TraceKey,
-		Trace:                 *traceRoot,
-		Transactions:          traceTxMap,
-		Actions:               &actions,
-		AddressBook:           traceAddressBook,
-		Metadata:              traceMetadata,
-	}, traceTargets)
-	stage.Emit()
+	// Keep an explicit empty actions array when classification failed or found nothing.
+	return &TraceNotification{version: actions.version, Type: EventTrace, Finality: actions.Finality,
+		TraceExternalHashNorm: actions.TraceExternalHashNorm, Trace: *root, Transactions: txMap, Actions: &actions.Actions,
+	}, traceNotificationAddresses(txs, actions.ActionAddresses), nil
 }
 
 func actionTraceFinality(emulatedContext *crud.EmulatedTracesContext, stage *TraceProcessingStage) indexModels.FinalityState {
