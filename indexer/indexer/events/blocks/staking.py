@@ -728,6 +728,13 @@ class CoffeeStakingClaimRewardsMatcher(BlockMatcher):
 #                        parent -> tokens_minted -> hGRAM wallet -> transfer_notification
 #   stake, deferred      deposit_coins -> treasury -> {proxy_save_coins -> save_coins}
 #                        + {mint_bill -> collection -> assign_bill -> bill}
+#   stake, by comment    a plain GRAM transfer whose body is the text comment "d" (or "D")
+#                        routes into the very same deposit handler with coins = 0, meaning
+#                        "stake everything after fees". Hipo documents this for senders that
+#                        cannot attach a custom payload - multisigs above all - and real
+#                        seven-figure deposits have used it, so it is not a curiosity.
+#                        The message carries op-code 0, which means it never becomes a
+#                        CallContractBlock at all; it has to be matched on the comment.
 #   unstake, instant     unstake_tokens (TEP-74 burn) -> hGRAM wallet ->
 #                        proxy_reserve_tokens -> parent -> reserve_tokens -> treasury ->
 #                        proxy_tokens_burned -> parent -> tokens_burned -> hGRAM wallet ->
@@ -736,6 +743,10 @@ class CoffeeStakingClaimRewardsMatcher(BlockMatcher):
 #                        assign_bill -> bill
 #   unstake, rolled back ... -> reserve_tokens -> treasury -> proxy_rollback_unstake ->
 #                        parent -> rollback_unstake  (nothing was staked or unstaked)
+#   unstake, by comment  the comment "w" on the treasury, or on the hGRAM wallet, unstakes
+#                        the whole balance. Both end in the ordinary TEP-74 burn above
+#                        (op::unstake_tokens *is* 0x595f07bc), so HipoUnstakeMatcher already
+#                        covers them and no extra matcher is needed.
 #   round end            burn_bill -> bill -> bill_burned -> collection ->
 #                        {mint_tokens | burn_tokens} -> treasury -> ... -> hGRAM wallet
 #
@@ -743,6 +754,34 @@ class CoffeeStakingClaimRewardsMatcher(BlockMatcher):
 # reported as `ts_nft` on both the request action and the completing action, so consumers
 # can join the two halves of a deferred deposit/withdrawal (this mirrors how Tonstakers
 # uses `ts_nft` to join stake_withdrawal_request with the later stake_withdrawal).
+#
+# Two halves, one amount. A deferred deposit is reported twice, once when the GRAM arrives
+# and once when the hGRAM is finally minted, and both actions serialize to type
+# `stake_deposit`. They must not both carry the GRAM: `proxy_save_coins.coins` and the
+# later `proxy_tokens_minted.coins` are the same number, so anyone summing
+# `stake_deposit.amount` over the treasury - a TVL feed, an inflow dashboard - would count
+# every deferred deposit twice, and a wallet history would show the same "Deposit 5 GRAM"
+# twice with nothing marking the second as the settlement of the first. The settlement half
+# therefore reports `amount = null` and carries only what is new at settlement: the hGRAM in
+# `tokens_minted`, joined back to the request through `ts_nft`. The unstake side never had
+# this problem because its two halves are different action types in different units
+# (`stake_withdrawal_request` in hGRAM, `stake_withdrawal` in GRAM).
+#
+# Anchoring. Every matcher below names the holder whose hGRAM balance moves, and it takes
+# that name out of a message body. The op-codes that carry it are public and some are
+# genuinely accepted from strangers: `reserve_tokens` has no access check in treasury.fc at
+# all - the treasury answers a sender that is not the parent with `proxy_rollback_unstake`
+# straight back to that sender - so an attacker can stage a chain of look-alike messages
+# between contracts they own and, if a matcher keys on op-codes alone, have it reported as
+# hGRAM arriving in or leaving an address they picked. toncenter never serializes
+# `value_flow`, so the worst case here is a misleading action rather than a corrupted
+# balance, but a misleading action is still worth refusing. Two rules keep that shut:
+#   * an action is only built from a chain that reached the treasury address, and
+#   * every leg that carries a balance change must have been *sent by* the treasury
+#     (`_hipo_from_treasury`), which is the one thing an attacker cannot forge.
+# Today the block tree gives the second rule for free, because these legs are matched as
+# children of a block whose destination is the treasury; the checks are written out anyway
+# so the guarantee survives being re-expressed in a matcher language that does not.
 # ---------------------------------------------------------------------------
 
 
@@ -751,7 +790,9 @@ class HipoStakeDepositData:
     source: AccountId
     pool: AccountId
     user_jetton_wallet: AccountId | None
-    value: Amount
+    # None on the settlement half of a deferred deposit: the GRAM inflow was already
+    # reported when the deposit was made, and repeating it here would double count it.
+    value: Amount | None
     tokens_minted: Amount | None
     asset: Asset
     bill: AccountId | None
@@ -775,6 +816,13 @@ class HipoStakeWithdrawalRequestData:
     tokens_burnt: Amount
     asset: Asset
     bill: AccountId | None
+    # Only set when a round end could not fund an unstake and re-minted it against the next
+    # round: the bill that has just burned, i.e. the `ts_nft` of the request this one
+    # continues. It is not serialized - the `staking_details` composite has a single nft
+    # slot and `ts_nft` has to hold the *new* bill so the request still joins to whatever
+    # settles it - but the burned bill stays reachable through the action's `accounts`, and
+    # keeping it on the block makes the chain explicit for anything reading these blocks.
+    previous_bill: AccountId | None = None
 
 
 class HipoStakeWithdrawalRequestBlock(Block):
@@ -792,7 +840,10 @@ class HipoStakeWithdrawalData:
     source: AccountId
     pool: AccountId
     user_jetton_wallet: AccountId | None
-    amount: Amount
+    # None when the unstake ended without a payout: the round end had no later round to
+    # postpone the bill to, so the treasury handed the hGRAM back instead. Such a block is
+    # marked failed, which serializes to success = false.
+    amount: Amount | None
     tokens_burnt: Amount | None
     asset: Asset
     bill: AccountId | None
@@ -812,6 +863,15 @@ def _hipo_is_treasury(address: str | None) -> bool:
     return address is not None and address.upper() == HIPO_TREASURY_ADDRESS
 
 
+def _hipo_from_treasury(block: Block | None) -> bool:
+    """True when `block` is a message the treasury itself sent.
+
+    See the anchoring note above: this is what stops a look-alike chain assembled by an
+    attacker's own contracts from being reported as somebody's hGRAM moving.
+    """
+    return block is not None and _hipo_is_treasury(block.get_message().source)
+
+
 def _hipo_find_bill(mint_bill_block: Block | None) -> AccountId | None:
     """Address of the bill SBT deployed by a mint_bill -> assign_bill pair.
 
@@ -829,39 +889,96 @@ def _hipo_find_bill(mint_bill_block: Block | None) -> AccountId | None:
     return None
 
 
+def _hipo_deposit_children_matchers() -> list[BlockMatcher]:
+    """The fan-out the treasury produces for a deposit, however the deposit was phrased.
+
+    `deposit_coins` and the bare "d" comment route into the same handler, so both matchers
+    below wait for the same children.
+    """
+    instant = labeled(
+        "proxy_tokens_minted",
+        ContractMatcher(
+            opcode=HipoProxyTokensMinted.opcode,
+            child_matcher=labeled(
+                "tokens_minted",
+                ContractMatcher(
+                    opcode=HipoTokensMinted.opcode,
+                    child_matcher=ContractMatcher(opcode=JettonNotify.opcode, optional=True),
+                ),
+            ),
+        ),
+    )
+    deferred = labeled(
+        "proxy_save_coins",
+        ContractMatcher(
+            opcode=HipoProxySaveCoins.opcode,
+            child_matcher=labeled(
+                "save_coins",
+                ContractMatcher(opcode=HipoSaveCoins.opcode, optional=True),
+            ),
+        ),
+    )
+    return [
+        OrMatcher([instant, deferred], optional=True),
+        labeled("mint_bill", ContractMatcher(opcode=HipoMintBill.opcode, optional=True)),
+    ]
+
+
+def _hipo_build_deposit(
+    block: Block, other_blocks: list[Block], staker: AccountId, fallback_coins: int
+) -> list[Block]:
+    """Turn a deposit landing on the treasury into a hipo_stake_deposit block."""
+    proxy_tokens_minted = get_labeled("proxy_tokens_minted", other_blocks, CallContractBlock)
+    proxy_save_coins = get_labeled("proxy_save_coins", other_blocks, CallContractBlock)
+    tokens_minted = get_labeled("tokens_minted", other_blocks, CallContractBlock)
+    save_coins = get_labeled("save_coins", other_blocks, CallContractBlock)
+    mint_bill = get_labeled("mint_bill", other_blocks, CallContractBlock)
+
+    for leg in (proxy_tokens_minted, proxy_save_coins, mint_bill):
+        if leg is not None and not _hipo_from_treasury(leg):
+            return []
+
+    tokens = None
+    parent = None
+    if proxy_tokens_minted is not None:
+        minted = HipoProxyTokensMinted(proxy_tokens_minted.get_body())
+        coins = minted.coins
+        tokens = Amount(minted.tokens)
+        parent = proxy_tokens_minted.get_message().destination
+    elif proxy_save_coins is not None:
+        saved = HipoProxySaveCoins(proxy_save_coins.get_body())
+        coins = saved.coins
+        parent = proxy_save_coins.get_message().destination
+    else:
+        coins = fallback_coins
+
+    wallet = None
+    for leg in (tokens_minted, save_coins):
+        if leg is not None:
+            wallet = AccountId(leg.get_message().destination)
+            break
+
+    new_block = HipoStakeDepositBlock(
+        data=HipoStakeDepositData(
+            source=staker,
+            pool=AccountId(block.get_message().destination),
+            user_jetton_wallet=wallet,
+            value=Amount(coins),
+            tokens_minted=tokens,
+            asset=Asset(False, parent if parent is not None else HIPO_PARENT_ADDRESS),
+            bill=_hipo_find_bill(mint_bill),
+        )
+    )
+    new_block.failed = block.failed or (proxy_tokens_minted is None and proxy_save_coins is None)
+    new_block.merge_blocks([block] + other_blocks)
+    return [new_block]
+
+
 class HipoDepositMatcher(BlockMatcher):
     """deposit_coins -> treasury: instant mint, or a deposit pending until round end."""
 
     def __init__(self):
-        instant = labeled(
-            "proxy_tokens_minted",
-            ContractMatcher(
-                opcode=HipoProxyTokensMinted.opcode,
-                child_matcher=labeled(
-                    "tokens_minted",
-                    ContractMatcher(
-                        opcode=HipoTokensMinted.opcode,
-                        child_matcher=ContractMatcher(opcode=JettonNotify.opcode, optional=True),
-                    ),
-                ),
-            ),
-        )
-        deferred = labeled(
-            "proxy_save_coins",
-            ContractMatcher(
-                opcode=HipoProxySaveCoins.opcode,
-                child_matcher=labeled(
-                    "save_coins",
-                    ContractMatcher(opcode=HipoSaveCoins.opcode, optional=True),
-                ),
-            ),
-        )
-        super().__init__(
-            children_matchers=[
-                OrMatcher([instant, deferred], optional=True),
-                labeled("mint_bill", ContractMatcher(opcode=HipoMintBill.opcode, optional=True)),
-            ]
-        )
+        super().__init__(children_matchers=_hipo_deposit_children_matchers())
 
     def test_self(self, block: Block):
         return (
@@ -873,51 +990,45 @@ class HipoDepositMatcher(BlockMatcher):
     async def build_block(self, block: Block, other_blocks: list[Block]) -> list[Block]:
         msg = block.get_message()
         deposit = HipoDepositCoins(block.get_body())
-
-        proxy_tokens_minted = get_labeled("proxy_tokens_minted", other_blocks, CallContractBlock)
-        proxy_save_coins = get_labeled("proxy_save_coins", other_blocks, CallContractBlock)
-        tokens_minted = get_labeled("tokens_minted", other_blocks, CallContractBlock)
-        save_coins = get_labeled("save_coins", other_blocks, CallContractBlock)
-        mint_bill = get_labeled("mint_bill", other_blocks, CallContractBlock)
-
         # `owner` is addr_none when the sender stakes for itself.
         staker = AccountId(deposit.owner) if deposit.owner is not None else AccountId(msg.source)
+        # `coins == 0` means "stake everything that is left after fees".
+        fallback = deposit.coins if deposit.coins else msg.value
+        return _hipo_build_deposit(block, other_blocks, staker, fallback)
 
-        tokens = None
-        parent = None
-        if proxy_tokens_minted is not None:
-            minted = HipoProxyTokensMinted(proxy_tokens_minted.get_body())
-            coins = minted.coins
-            tokens = Amount(minted.tokens)
-            parent = proxy_tokens_minted.get_message().destination
-        elif proxy_save_coins is not None:
-            saved = HipoProxySaveCoins(proxy_save_coins.get_body())
-            coins = saved.coins
-            parent = proxy_save_coins.get_message().destination
-        else:
-            # `coins == 0` means "stake everything that is left after fees".
-            coins = deposit.coins if deposit.coins else msg.value
 
-        wallet = None
-        for leg in (tokens_minted, save_coins):
-            if leg is not None:
-                wallet = AccountId(leg.get_message().destination)
-                break
+class HipoCommentDepositMatcher(BlockMatcher):
+    """A GRAM transfer to the treasury whose whole body is the comment "d".
 
-        new_block = HipoStakeDepositBlock(
-            data=HipoStakeDepositData(
-                source=staker,
-                pool=AccountId(msg.destination),
-                user_jetton_wallet=wallet,
-                value=Amount(coins),
-                tokens_minted=tokens,
-                asset=Asset(False, parent if parent is not None else HIPO_PARENT_ADDRESS),
-                bill=_hipo_find_bill(mint_bill),
-            )
+    treasury.fc accepts op-code 0 with a one-byte body and routes "d"/"D" into
+    `deposit_coins` with coins = 0, so the trace below this transfer is exactly the one
+    `HipoDepositMatcher` handles. What differs is the root: a text comment is op-code 0,
+    which `init_block` turns into a TonTransferBlock rather than a CallContractBlock, so a
+    matcher keyed on the `deposit_coins` op-code never sees it and the whole deposit is
+    reported as a bare ton_transfer plus an unexplained jetton mint.
+
+    NominatorPoolDepositMatcher claims the same comment - Hipo chose "d" and "w" precisely
+    so nominator-pool front ends would work against it - but it bails out on anything whose
+    destination is not a NominatorPool, and a matcher that returns no blocks leaves the tree
+    untouched, so the two do not collide.
+    """
+
+    def __init__(self):
+        super().__init__(children_matchers=_hipo_deposit_children_matchers())
+
+    def test_self(self, block: Block):
+        return (
+            isinstance(block, TonTransferBlock)
+            # treasury.fc reads exactly one byte and then end_parse()s, and lowercases it,
+            # so "d" and "D" are accepted and "deposit" or "d " are not.
+            and block.comment in ("d", "D")
+            and _hipo_is_treasury(block.get_message().destination)
         )
-        new_block.failed = block.failed or (proxy_tokens_minted is None and proxy_save_coins is None)
-        new_block.merge_blocks([block] + other_blocks)
-        return [new_block]
+
+    async def build_block(self, block: Block, other_blocks: list[Block]) -> list[Block]:
+        msg = block.get_message()
+        # The comment form has no `owner` field, so the sender always stakes for itself.
+        return _hipo_build_deposit(block, other_blocks, AccountId(msg.source), msg.value)
 
 
 class HipoUnstakeMatcher(BlockMatcher):
@@ -982,7 +1093,9 @@ class HipoUnstakeMatcher(BlockMatcher):
         if rollback is not None:
             # The treasury could not serve the unstake and gave the hGRAM back. Nothing was
             # withdrawn, so this must not become a stake_withdrawal; leave it to the generic
-            # jetton classifier.
+            # jetton classifier. This is also the branch an attacker's forged chain always
+            # lands in, because `reserve_tokens` from anyone other than the parent is
+            # rolled straight back - so refusing it here is the anchoring check as well.
             return []
 
         burn = JettonBurn(block.get_body())
@@ -994,6 +1107,12 @@ class HipoUnstakeMatcher(BlockMatcher):
 
         proxy_tokens_burned = get_labeled("proxy_tokens_burned", other_blocks, CallContractBlock)
         mint_bill = get_labeled("mint_bill", other_blocks, CallContractBlock)
+
+        # Only the treasury can answer a reserve_tokens with either of these; see the
+        # anchoring note above.
+        for leg in (proxy_tokens_burned, mint_bill):
+            if leg is not None and not _hipo_from_treasury(leg):
+                return []
 
         if proxy_tokens_burned is not None:
             burned = HipoProxyTokensBurned(proxy_tokens_burned.get_body())
@@ -1029,7 +1148,12 @@ class HipoUnstakeMatcher(BlockMatcher):
 
 
 class HipoRoundEndDepositMatcher(BlockMatcher):
-    """Round end: a pending deposit is settled and the hGRAM is finally minted."""
+    """Round end: a pending deposit is settled and the hGRAM is finally minted.
+
+    This is the settlement half of a deferred deposit, not a new deposit, so it reports no
+    GRAM - see the "two halves, one amount" note above. What it does report is the hGRAM
+    that has just come into existence, plus the bill that joins it to the request.
+    """
 
     def __init__(self):
         super().__init__(
@@ -1066,7 +1190,7 @@ class HipoRoundEndDepositMatcher(BlockMatcher):
     async def build_block(self, block: Block, other_blocks: list[Block]) -> list[Block]:
         mint_tokens = HipoMintTokens(block.get_body())
         proxy_tokens_minted = get_labeled("proxy_tokens_minted", other_blocks, CallContractBlock)
-        if proxy_tokens_minted is None:
+        if proxy_tokens_minted is None or not _hipo_from_treasury(proxy_tokens_minted):
             return []
         minted = HipoProxyTokensMinted(proxy_tokens_minted.get_body())
         tokens_minted = get_labeled("tokens_minted", other_blocks, CallContractBlock)
@@ -1080,7 +1204,9 @@ class HipoRoundEndDepositMatcher(BlockMatcher):
                 user_jetton_wallet=(
                     AccountId(tokens_minted.get_message().destination) if tokens_minted is not None else None
                 ),
-                value=Amount(minted.coins),
+                # Deliberately not minted.coins: that is the same GRAM the deposit half
+                # already reported, and both halves serialize to type stake_deposit.
+                value=None,
                 tokens_minted=Amount(minted.tokens),
                 asset=Asset(False, proxy_tokens_minted.get_message().destination),
                 bill=AccountId(bill_burned.get_message().source) if bill_burned is not None else None,
@@ -1092,9 +1218,55 @@ class HipoRoundEndDepositMatcher(BlockMatcher):
 
 
 class HipoRoundEndWithdrawalMatcher(BlockMatcher):
-    """Round end: a pending unstake is settled and the GRAM is paid out."""
+    """Round end: a pending unstake is settled.
+
+    `burn_tokens` in treasury.fc has three outcomes, not one:
+
+      (a) the treasury can fund the payout -> proxy_tokens_burned -> tokens_burned ->
+          withdrawal_notification. The GRAM goes out and the unstake is done.
+      (b) it cannot, but a later round still holds bills -> mint_bill against that round.
+          Bill A has already burned and bill B now tracks the same unstake.
+      (c) it cannot and there is no round left to postpone to -> proxy_rollback_unstake ->
+          rollback_unstake. The hGRAM goes back onto the owner's wallet (wallet.fc does
+          `tokens += amount`) and the unstake is abandoned.
+
+    Only (a) used to be handled, and the other two were dropped silently. For (b) that is
+    worse than a missing action: the user's stake_withdrawal_request names bill A, the
+    settlement that eventually arrives names bill B, and with nothing emitted in between the
+    two can never be paired on the NFT key the whole deferred design rests on. So (b) emits
+    a fresh stake_withdrawal_request carrying bill B, keeping the chain joinable, and (c)
+    emits an unsuccessful stake_withdrawal so the request stops dangling for ever and the
+    returned hGRAM is at least visible as `tokens_burnt`.
+    """
 
     def __init__(self):
+        paid = labeled(
+            "proxy_tokens_burned",
+            ContractMatcher(
+                opcode=HipoProxyTokensBurned.opcode,
+                child_matcher=labeled(
+                    "tokens_burned",
+                    ContractMatcher(
+                        opcode=HipoTokensBurned.opcode,
+                        child_matcher=labeled(
+                            "withdrawal_notification",
+                            ContractMatcher(opcode=HipoWithdrawalNotification.opcode, optional=True),
+                        ),
+                    ),
+                ),
+            ),
+        )
+        postponed = labeled("mint_bill", ContractMatcher(opcode=HipoMintBill.opcode))
+        rolled_back = labeled(
+            "rollback",
+            ContractMatcher(
+                opcode=HipoProxyRollbackUnstake.opcode,
+                child_matcher=labeled(
+                    "rollback_unstake",
+                    ContractMatcher(opcode=HipoRollbackUnstake.opcode, optional=True),
+                ),
+            ),
+        )
         super().__init__(
             parent_matcher=labeled(
                 "bill_burned",
@@ -1104,22 +1276,7 @@ class HipoRoundEndWithdrawalMatcher(BlockMatcher):
                     parent_matcher=ContractMatcher(opcode=HipoBurnBill.opcode, optional=True),
                 ),
             ),
-            child_matcher=labeled(
-                "proxy_tokens_burned",
-                ContractMatcher(
-                    opcode=HipoProxyTokensBurned.opcode,
-                    child_matcher=labeled(
-                        "tokens_burned",
-                        ContractMatcher(
-                            opcode=HipoTokensBurned.opcode,
-                            child_matcher=labeled(
-                                "withdrawal_notification",
-                                ContractMatcher(opcode=HipoWithdrawalNotification.opcode, optional=True),
-                            ),
-                        ),
-                    ),
-                ),
-            ),
+            child_matcher=OrMatcher([paid, postponed, rolled_back]),
         )
 
     def test_self(self, block: Block):
@@ -1131,27 +1288,84 @@ class HipoRoundEndWithdrawalMatcher(BlockMatcher):
 
     async def build_block(self, block: Block, other_blocks: list[Block]) -> list[Block]:
         burn_tokens = HipoBurnTokens(block.get_body())
-        proxy_tokens_burned = get_labeled("proxy_tokens_burned", other_blocks, CallContractBlock)
-        if proxy_tokens_burned is None:
-            return []
-        burned = HipoProxyTokensBurned(proxy_tokens_burned.get_body())
-        tokens_burned = get_labeled("tokens_burned", other_blocks, CallContractBlock)
+        pool = AccountId(block.get_message().destination)
         bill_burned = get_labeled("bill_burned", other_blocks, CallContractBlock)
+        # The bill that has just burned: the `ts_nft` of the request being settled here.
+        settled_bill = AccountId(bill_burned.get_message().source) if bill_burned is not None else None
 
-        owner = burned.owner if burned.owner is not None else burn_tokens.owner
-        new_block = HipoStakeWithdrawalBlock(
-            data=HipoStakeWithdrawalData(
-                source=AccountId(owner),
-                pool=AccountId(block.get_message().destination),
-                user_jetton_wallet=(
-                    AccountId(tokens_burned.get_message().destination) if tokens_burned is not None else None
-                ),
-                amount=Amount(burned.coins),
-                tokens_burnt=Amount(burned.tokens),
-                asset=Asset(False, proxy_tokens_burned.get_message().destination),
-                bill=AccountId(bill_burned.get_message().source) if bill_burned is not None else None,
+        proxy_tokens_burned = get_labeled("proxy_tokens_burned", other_blocks, CallContractBlock)
+        mint_bill = get_labeled("mint_bill", other_blocks, CallContractBlock)
+        rollback = get_labeled("rollback", other_blocks, CallContractBlock)
+
+        for leg in (proxy_tokens_burned, mint_bill, rollback):
+            if leg is not None and not _hipo_from_treasury(leg):
+                return []
+
+        if proxy_tokens_burned is not None:
+            # (a) paid out.
+            burned = HipoProxyTokensBurned(proxy_tokens_burned.get_body())
+            tokens_burned = get_labeled("tokens_burned", other_blocks, CallContractBlock)
+            owner = burned.owner if burned.owner is not None else burn_tokens.owner
+            new_block = HipoStakeWithdrawalBlock(
+                data=HipoStakeWithdrawalData(
+                    source=AccountId(owner),
+                    pool=pool,
+                    user_jetton_wallet=(
+                        AccountId(tokens_burned.get_message().destination) if tokens_burned is not None else None
+                    ),
+                    amount=Amount(burned.coins),
+                    tokens_burnt=Amount(burned.tokens),
+                    asset=Asset(False, proxy_tokens_burned.get_message().destination),
+                    bill=settled_bill,
+                )
             )
-        )
-        new_block.failed = block.failed
+            new_block.failed = block.failed
+        elif mint_bill is not None:
+            # (b) postponed to the next round that holds bills. No hGRAM and no GRAM move:
+            # this is a request again, now tracked by a new bill.
+            request = HipoMintBill(mint_bill.get_body())
+            owner = request.owner if request.owner is not None else burn_tokens.owner
+            new_block = HipoStakeWithdrawalRequestBlock(
+                data=HipoStakeWithdrawalRequestData(
+                    source=AccountId(owner),
+                    pool=pool,
+                    # Nothing reaches the owner's hGRAM wallet on this leg - the tokens were
+                    # burned when the first request was made - so there is no wallet to name.
+                    user_jetton_wallet=None,
+                    tokens_burnt=Amount(request.amount if request.amount is not None else burn_tokens.tokens),
+                    # `parent` travels on the bill, so it is the parent the owner's balances
+                    # live under even if set_parent has replaced the live one since.
+                    asset=Asset(False, request.parent if request.parent is not None else HIPO_PARENT_ADDRESS),
+                    bill=_hipo_find_bill(mint_bill),
+                    previous_bill=settled_bill,
+                )
+            )
+            new_block.failed = block.failed
+        elif rollback is not None:
+            # (c) nowhere left to postpone to, so the hGRAM is handed back and the unstake
+            # ends with no payout. Reported as an unsuccessful withdrawal rather than
+            # silence, so the outstanding request does not dangle for ever.
+            returned = HipoProxyRollbackUnstake(rollback.get_body())
+            rollback_unstake = get_labeled("rollback_unstake", other_blocks, CallContractBlock)
+            owner = returned.owner if returned.owner is not None else burn_tokens.owner
+            new_block = HipoStakeWithdrawalBlock(
+                data=HipoStakeWithdrawalData(
+                    source=AccountId(owner),
+                    pool=pool,
+                    user_jetton_wallet=(
+                        AccountId(rollback_unstake.get_message().destination)
+                        if rollback_unstake is not None
+                        else None
+                    ),
+                    amount=None,
+                    tokens_burnt=Amount(returned.tokens),
+                    asset=Asset(False, rollback.get_message().destination),
+                    bill=settled_bill,
+                )
+            )
+            new_block.failed = True
+        else:
+            return []
+
         new_block.merge_blocks([block] + other_blocks)
         return [new_block]

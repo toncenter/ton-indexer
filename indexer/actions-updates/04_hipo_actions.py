@@ -42,6 +42,11 @@ def schedule_hipo_actions_reclassification():
         HipoMintTokens.opcode,            # 0x42684479
         HipoBurnTokens.opcode,            # 0x7cffe1ee
     ]
+    # A deposit made with the bare "d" comment carries op-code 0 into the treasury, which is
+    # far too generic to select on. It does not need to be: the treasury answers it with
+    # proxy_save_coins or proxy_tokens_minted, both already listed, so its trace is picked up
+    # anyway. The only comment deposits this misses are ones that threw before answering,
+    # which produced no action to reclassify either.
     logger.debug(f"Processing {len(opcodes)} opcodes")
     normalized_opcodes = _normalize_opcodes(opcodes)
 

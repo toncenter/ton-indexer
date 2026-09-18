@@ -662,8 +662,12 @@ type ActionDetailsStakeDeposit struct {
 	TokensMinted *string         `json:"tokens_minted"`
 	Asset        *AccountAddress `json:"asset"`
 	SourceAsset  *AccountAddress `json:"source_asset,omitempty"`
-	// Set by providers that settle deposits at the end of a validation round (hipo):
-	// the SBT that tracks the pending deposit until it is minted.
+	// Set by providers that settle deposits at the end of a validation round (hipo): the
+	// SBT that tracks the pending deposit until it is minted. Such a deposit produces two
+	// stake_deposit actions joined by this field - the one that reports the GRAM arriving
+	// (amount set, tokens_minted null) and the one at round end that reports the tokens
+	// finally minted (amount null, tokens_minted set). Only the first carries the amount,
+	// so that summing stake_deposit.amount over a pool does not count it twice.
 	PayoutNft *AccountAddress `json:"payout_nft,omitempty"`
 }
 

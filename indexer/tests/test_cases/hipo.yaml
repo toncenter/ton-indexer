@@ -172,6 +172,12 @@ cases:
   "Hipo round end deposit completion":
     # One round-end trace settles every pending bill. This selects one of the seven
     # mint_tokens legs: the pending deposit is finally paid out in hGRAM.
+    #
+    # `amount` is deliberately null. This is the settlement half of a deferred deposit and
+    # it serializes to the same action type as the half that reported the GRAM arriving, so
+    # repeating the GRAM here would make every deferred deposit count twice in anything
+    # summing stake_deposit.amount over the pool. What is new at settlement is the hGRAM,
+    # in tokens_minted; ts_nft joins it back to the deposit that paid for it.
     trace-id: Zlryk5_NNI7f11uLLdlzOymfxEWi89UHndlrtFM8118=
     expected-actions:
       - type: stake_deposit
@@ -189,7 +195,7 @@ cases:
           source_secondary: 0:63BBCB4087EE606551DB931E9279B7DED30937B75FB61452056BBABE738FFEC4
           destination: 0:8BC991CFE177BC7E9721433EFA3BEFD199485A55CFFD040A06C89AF026B71BCF
           asset: 0:CF76AF318C0872B58A9F1925FC29C156211782B9FB01F56760D292E56123BF87
-          amount: 10000000000
+          amount: null
           staking_data:
             provider: hipo
             tokens_minted: 8715559109
@@ -235,3 +241,150 @@ cases:
           source_secondary: 0:CAF84127558C94E2B1EAC00FDD065CA290D2FD7CBE5A4A347ACDE0BB23085502
           asset: 0:CF76AF318C0872B58A9F1925FC29C156211782B9FB01F56760D292E56123BF87
           amount: 10332191597
+
+  "Hipo stake by comment":
+    # A plain GRAM transfer whose entire body is the text comment "d". treasury.fc op 0
+    # reads one byte and routes "d"/"D" into the same deposit handler with coins = 0,
+    # meaning "stake everything after fees". Hipo documents this for senders that cannot
+    # attach a custom payload; this is a real 5,717,000 GRAM deposit made that way from a
+    # multisig. The message carries op-code 0, so it never becomes a CallContractBlock and
+    # a matcher keyed on the deposit_coins op-code alone does not see it at all.
+    # This one also happens to land mid-round, so it is deferred and mints a bill.
+    trace-id: BxIeuZBFnwb560C378uM8lJR_PUU27SLKf3FaYvc-_8=
+    expected-blocks:
+      - type: hipo_stake_deposit
+        values:
+          data:
+            source: 0:CCAE1E65877A165DF4B0F8D3DB832E87CDDEA9CCA601F1B07D2DF1DDD29CE6FF
+            pool: 0:8BC991CFE177BC7E9721433EFA3BEFD199485A55CFFD040A06C89AF026B71BCF
+            user_jetton_wallet: 0:E1E8A65874F6DA4CE861390620E7BF523F82B2BE2CAABD7210C6E9CC3134F162
+            value: 5717000091231704
+            tokens_minted: null
+            bill: 0:40C6C9D7BA630D9379D01BE85CC8FAEC7516C9B45AE8DB462269CBF7C7653C18
+    expected-actions:
+      - type: stake_deposit
+        values:
+          success: true
+          accounts:
+            - 0:8BC991CFE177BC7E9721433EFA3BEFD199485A55CFFD040A06C89AF026B71BCF
+            - 0:BBFB86B18B81883668E7F44BCF0C5A8C63DB4CE85C144961991BD4206F630641
+            - 0:CCAE1E65877A165DF4B0F8D3DB832E87CDDEA9CCA601F1B07D2DF1DDD29CE6FF
+            - 0:CF76AF318C0872B58A9F1925FC29C156211782B9FB01F56760D292E56123BF87
+            - 0:E1E8A65874F6DA4CE861390620E7BF523F82B2BE2CAABD7210C6E9CC3134F162
+          tx_hashes:
+            - FYKr1dJX5uUY3+tiO7W08qwhS99uQ19HTRjkcOAPzUM=
+            - Fo8LrJngVhJrzGMO4yHTs/3gOUncS+Df63BPGTGJS+o=
+            - SWIGbXnTTfabFsDSXXsiosuqVq3dIXjHfP+tKZf1VUw=
+            - jAGZq/hrbHWzKtoudlSn89K4s8ogCz8utaNe/bFg/y0=
+            - vAetRIaiOWDKvhh/liWyCiFbNL8vOZgzcn1UjGwF4sE=
+          source: 0:CCAE1E65877A165DF4B0F8D3DB832E87CDDEA9CCA601F1B07D2DF1DDD29CE6FF
+          source_secondary: 0:E1E8A65874F6DA4CE861390620E7BF523F82B2BE2CAABD7210C6E9CC3134F162
+          destination: 0:8BC991CFE177BC7E9721433EFA3BEFD199485A55CFFD040A06C89AF026B71BCF
+          asset: 0:CF76AF318C0872B58A9F1925FC29C156211782B9FB01F56760D292E56123BF87
+          amount: 5717000091231704
+          staking_data:
+            provider: hipo
+            tokens_minted: null
+            ts_nft: 0:40C6C9D7BA630D9379D01BE85CC8FAEC7516C9B45AE8DB462269CBF7C7653C18
+      - type: nft_mint
+        values:
+          success: true
+          source: 0:BBFB86B18B81883668E7F44BCF0C5A8C63DB4CE85C144961991BD4206F630641
+          destination: 0:40C6C9D7BA630D9379D01BE85CC8FAEC7516C9B45AE8DB462269CBF7C7653C18
+
+  "Hipo round end unstake postponed to the next round":
+    # burn_tokens outcome (b): the treasury could not fund the payout, and a later round
+    # still held bills, so it minted a new bill against that round instead. Bill A has
+    # already burned and bill B now tracks the same unstake, so without an action here the
+    # user's original stake_withdrawal_request (ts_nft = bill A) and the settlement that
+    # eventually arrives (ts_nft = bill B) could never be paired.
+    #
+    # `ts_nft` is the NEW bill, so the chain stays joinable forwards; the burned bill is
+    # asserted on the block as `previous_bill` and stays reachable in the action's accounts.
+    # This is the only time this has happened on mainnet (2024-11-22), an 831,854 hGRAM
+    # unstake that did not fit in the round that was settling.
+    trace-id: MgONc939O-iwGw2Y62VJ91ov4za735dAj1eZXSfd-BM=
+    expected-blocks:
+      - type: hipo_stake_withdrawal_request
+        values:
+          data:
+            source: 0:FF1002C654928B0C869521F76E57BADFA088D1DBAADE8ADABE1E7F4EA90F1A06
+            pool: 0:8BC991CFE177BC7E9721433EFA3BEFD199485A55CFFD040A06C89AF026B71BCF
+            user_jetton_wallet: null
+            tokens_burnt: 831854918337295
+            bill: 0:1EB6BED56F2D9BF35DF772E09FE7F3F6D439A5AC3D3C1957910E046E07E1E994
+            previous_bill: 0:1485B2A7BAA65B808E64189429D7FBAF480E511AB328C71ECED69788B0D1FE85
+    expected-actions:
+      - type: stake_withdrawal_request
+        values:
+          success: true
+          accounts:
+            - 0:1485B2A7BAA65B808E64189429D7FBAF480E511AB328C71ECED69788B0D1FE85
+            - 0:8BC991CFE177BC7E9721433EFA3BEFD199485A55CFFD040A06C89AF026B71BCF
+            - 0:CDD3C1AFD95C3F9E5879B933AB709A7723EE2664A4415600C1EFCEECEDF295B3
+            - 0:DF2B0C3DD3BB0E53A59919DB9B0B081C3D0F397705E4B360DC3A5D84313DB42B
+            - 0:FF1002C654928B0C869521F76E57BADFA088D1DBAADE8ADABE1E7F4EA90F1A06
+          tx_hashes:
+            - 5uloA5Bl1rAW97kz0tukxER/SyY5AGpMPZaGT5koUic=
+            - EgrXz9mDmx3gpU3KGkkDAEDjtJG1g8EkDuJIohqSX4o=
+            - GTnV+VEg/pYKx0fuIAuyrQuRkOW32PpPSXuCmwDv9Eg=
+            - kLzda1sf2nQzW8t/eTOPkkpvY3lYNCyspW17uKp0hmg=
+            - nJW2Sj/1FRgnkNfQ/a8l7TJ1UJMWkhEadKwGZB69G0c=
+          source: 0:FF1002C654928B0C869521F76E57BADFA088D1DBAADE8ADABE1E7F4EA90F1A06
+          source_secondary: null
+          destination: 0:8BC991CFE177BC7E9721433EFA3BEFD199485A55CFFD040A06C89AF026B71BCF
+          asset: 0:CF76AF318C0872B58A9F1925FC29C156211782B9FB01F56760D292E56123BF87
+          amount: 831854918337295
+          staking_data:
+            provider: hipo
+            ts_nft: 0:1EB6BED56F2D9BF35DF772E09FE7F3F6D439A5AC3D3C1957910E046E07E1E994
+            tokens_burnt: 831854918337295
+
+  "Hipo round end unstake abandoned (synthetic trace)":
+    # burn_tokens outcome (c): the treasury could not fund the payout and there was no later
+    # round left to postpone the bill to, so it handed the hGRAM back instead
+    # (proxy_rollback_unstake -> rollback_unstake, and wallet.fc does `tokens += amount`).
+    # Left unhandled this is the worst of the three: the user's stake_withdrawal_request
+    # stays outstanding for ever with nothing that ever completes it, and the hGRAM coming
+    # back is invisible.
+    #
+    # THIS TRACE IS SYNTHETIC, unlike every other case in this file. The path has happened
+    # zero times in the protocol's history - all 101 proxy_rollback_unstake messages the
+    # treasury has ever sent answer `reserve_tokens` (a refused instant unstake), never
+    # `burn_tokens` - so there is nothing on mainnet to capture. It is derived from the real
+    # outcome-(b) trace above by replacing the treasury's mint_bill with the rollback the
+    # contract sends on this branch; everything upstream of the treasury is real.
+    #
+    # Reported as an unsuccessful stake_withdrawal: the unstake ended, nothing was paid out,
+    # and tokens_burnt is the hGRAM that went back onto the owner's wallet.
+    trace-id: p98cdzLY-olr_2vZGMJ7kQ4cLLlQnkme-OAFoYF06vA=
+    expected-blocks:
+      - type: hipo_stake_withdrawal
+        values:
+          data:
+            source: 0:FF1002C654928B0C869521F76E57BADFA088D1DBAADE8ADABE1E7F4EA90F1A06
+            pool: 0:8BC991CFE177BC7E9721433EFA3BEFD199485A55CFFD040A06C89AF026B71BCF
+            user_jetton_wallet: 0:37FE077662C35322AE06E52E7A9818ECE767D874513E15F6EAFC6E65ABF6A83C
+            amount: null
+            tokens_burnt: 831854918337295
+            bill: 0:1485B2A7BAA65B808E64189429D7FBAF480E511AB328C71ECED69788B0D1FE85
+    expected-actions:
+      - type: stake_withdrawal
+        values:
+          success: false
+          accounts:
+            - 0:1485B2A7BAA65B808E64189429D7FBAF480E511AB328C71ECED69788B0D1FE85
+            - 0:37FE077662C35322AE06E52E7A9818ECE767D874513E15F6EAFC6E65ABF6A83C
+            - 0:8BC991CFE177BC7E9721433EFA3BEFD199485A55CFFD040A06C89AF026B71BCF
+            - 0:CDD3C1AFD95C3F9E5879B933AB709A7723EE2664A4415600C1EFCEECEDF295B3
+            - 0:CF76AF318C0872B58A9F1925FC29C156211782B9FB01F56760D292E56123BF87
+            - 0:FF1002C654928B0C869521F76E57BADFA088D1DBAADE8ADABE1E7F4EA90F1A06
+          source: 0:FF1002C654928B0C869521F76E57BADFA088D1DBAADE8ADABE1E7F4EA90F1A06
+          source_secondary: 0:37FE077662C35322AE06E52E7A9818ECE767D874513E15F6EAFC6E65ABF6A83C
+          destination: 0:8BC991CFE177BC7E9721433EFA3BEFD199485A55CFFD040A06C89AF026B71BCF
+          asset: 0:CF76AF318C0872B58A9F1925FC29C156211782B9FB01F56760D292E56123BF87
+          amount: null
+          staking_data:
+            provider: hipo
+            ts_nft: 0:1485B2A7BAA65B808E64189429D7FBAF480E511AB328C71ECED69788B0D1FE85
+            tokens_burnt: 831854918337295

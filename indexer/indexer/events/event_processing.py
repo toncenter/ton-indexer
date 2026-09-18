@@ -106,6 +106,7 @@ from indexer.events.blocks.staking import (
     CoffeeStakingClaimRewardsMatcher,
     CoffeeStakingDepositMatcher,
     CoffeeStakingWithdrawMatcher,
+    HipoCommentDepositMatcher,
     HipoDepositMatcher,
     HipoRoundEndDepositMatcher,
     HipoRoundEndWithdrawalMatcher,
@@ -220,6 +221,9 @@ matchers = [
     # Hipo unstakes start with a TEP-74 burn, so they have to be matched before
     # JettonBurnBlockMatcher claims the trace as a plain jetton burn.
     HipoDepositMatcher(),
+    # Deposits can also arrive as a bare "d" comment, which never becomes a
+    # CallContractBlock and so needs its own matcher.
+    HipoCommentDepositMatcher(),
     HipoUnstakeMatcher(),
     HipoRoundEndDepositMatcher(),
     HipoRoundEndWithdrawalMatcher(),

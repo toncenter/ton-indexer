@@ -510,7 +510,13 @@ def _fill_hipo_deposit_action(block: HipoStakeDepositBlock, action: Action):
     action.source = _addr(block.data.source)
     action.source_secondary = _addr(block.data.user_jetton_wallet)
     action.destination = _addr(block.data.pool)
-    action.amount = block.data.value.value
+    # None on the settlement half of a deferred deposit. Both halves of such a deposit
+    # serialize to type stake_deposit, and they would otherwise carry the same GRAM twice
+    # (proxy_save_coins.coins and the later proxy_tokens_minted.coins are one number), so
+    # anything summing stake_deposit.amount over the pool would double count the inflow and
+    # a wallet history would show the same deposit twice. The settlement half reports what
+    # is actually new at settlement - tokens_minted - and joins back through ts_nft.
+    action.amount = _value(block.data.value)
     action.asset = _addr(block.data.asset)
     action.staking_data = {
         'provider': 'hipo',
@@ -526,10 +532,14 @@ def _fill_hipo_withdrawal_request_action(block: HipoStakeWithdrawalRequestBlock,
     action.source = _addr(block.data.source)
     action.source_secondary = _addr(block.data.user_jetton_wallet)
     action.destination = _addr(block.data.pool)
-    action.amount = block.data.tokens_burnt.value
+    action.amount = _value(block.data.tokens_burnt)
     action.asset = _addr(block.data.asset)
     action.staking_data = {
         'provider': 'hipo',
+        # Always the bill that is outstanding *after* this action, so the request joins to
+        # whatever settles it. When a round end could not fund an unstake and re-minted it
+        # against the next round, that is the new bill, not the one that just burned - the
+        # burned one is still reachable through the action's accounts.
         'ts_nft': _addr(block.data.bill),
         'tokens_burnt': _value(block.data.tokens_burnt),
     }
@@ -540,7 +550,10 @@ def _fill_hipo_withdrawal_action(block: HipoStakeWithdrawalBlock, action: Action
     action.source = _addr(block.data.source)
     action.source_secondary = _addr(block.data.user_jetton_wallet)
     action.destination = _addr(block.data.pool)
-    action.amount = block.data.amount.value
+    # None when the unstake ended without a payout because the round end had nowhere left
+    # to postpone the bill to and handed the hGRAM back instead. Such an action is marked
+    # success = false and reports only the hGRAM that returned, in tokens_burnt.
+    action.amount = _value(block.data.amount)
     action.asset = _addr(block.data.asset)
     action.staking_data = {
         'provider': 'hipo',
