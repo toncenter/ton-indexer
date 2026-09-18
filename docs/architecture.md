@@ -136,7 +136,8 @@ Streaming API позволяет подписаться на pending -> confirme
 очищает их временное представление в Redis по настроенной политике хранения.
 Перед запуском обработки emulator очищает выбранную логическую Redis DB через
 `FLUSHDB`; сохранение pending state между рестартами не поддерживается.
-Документация: https://gist.github.com/dungeon-master-666/98db8d73e9cd9a1b7802bc06ded5b155
+Сборка и запуск: [Streaming API procedure](runbooks/procedures/streaming.md).
+Формат подписок и событий: [Streaming API v2](toncenter_streaming_v2.md).
 
 ## Масштабирование и отказоустойчивость
 

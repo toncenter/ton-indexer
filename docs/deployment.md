@@ -73,3 +73,11 @@ cold и hot PostgreSQL clusters. Это дополнительная оптим�
 
 Порядок подготовки databases, logical replication, partitions и API описан в
 [hot/cold procedure](runbooks/procedures/hot-cold.md).
+
+### Streaming API
+
+`ton-trace-emulator` и `ton-streaming-go` передают pending, confirmed и
+finalized updates через SSE и WebSocket. Для них нужен отдельный Redis, а для
+enrichment address book и metadata — Kvrocks работающего индексатора.
+Сборка и запуск через systemd описаны в
+[Streaming API procedure](runbooks/procedures/streaming.md).
