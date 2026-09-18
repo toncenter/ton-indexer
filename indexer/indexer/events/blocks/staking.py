@@ -778,10 +778,21 @@ class CoffeeStakingClaimRewardsMatcher(BlockMatcher):
 # balance, but a misleading action is still worth refusing. Two rules keep that shut:
 #   * an action is only built from a chain that reached the treasury address, and
 #   * every leg that carries a balance change must have been *sent by* the treasury
-#     (`_hipo_from_treasury`), which is the one thing an attacker cannot forge.
+#     (`_hipo_from_treasury`).
 # Today the block tree gives the second rule for free, because these legs are matched as
 # children of a block whose destination is the treasury; the checks are written out anyway
 # so the guarantee survives being re-expressed in a matcher language that does not.
+#
+# Do not read the second rule as "from the treasury, therefore genuine" - it is necessary
+# and nowhere near sufficient. Because `reserve_tokens` accepts anyone, the treasury itself
+# will send `proxy_rollback_unstake` to an address of the attacker's choosing, carrying a
+# victim's address as the owner. That is precisely why the rollback branch of
+# `HipoUnstakeMatcher` returns no blocks: what makes the round-end rollback in
+# `HipoRoundEndWithdrawalMatcher` safe to report is not its sender but `burn_tokens` above
+# it, which treasury.fc does check against the round's collection address. A port that keeps
+# the sender check but drops that distinction would reintroduce the hole. The sibling
+# opentonapi straws had exactly this bug and now pin the rollback to its *destination* - only
+# the real jetton master relays one onward - which is the other way to tell the two apart.
 # ---------------------------------------------------------------------------
 
 
