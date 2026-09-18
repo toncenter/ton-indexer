@@ -169,7 +169,7 @@ func unique(contracts []*tolkabi.Contract) (*tolkabi.Contract, error) {
 // Contracts is the whole catalog when no selector is given, and only the named
 // entries, each with its compiler ABI, when one is.
 // @Summary List Acton contracts
-// @Description Without a selector this is the entire pinned catalog without type tables. With code_hash or catalog_id it is the matching entries, each carrying its full compiler ABI. Results are deduplicated and keep selector order; unknown selectors match nothing. Identification is bytecode-hash matching, not source verification.
+// @Description Without a selector this is the entire pinned catalog without type tables. With code_hash or catalog_id it is the matching entries, each carrying its full compiler ABI. Results are deduplicated and keep selector order; unknown selectors match nothing. Identification is bytecode-hash matching, not source verification. A GET carries a strong ETag; repeating the request with If-None-Match returns 304 while the catalog is unchanged.
 // @Tags acton
 // @Produce json
 // @Param code_hash query []string false "Code hashes; at most 50 selectors in total" collectionFormat(multi)
@@ -177,6 +177,8 @@ func unique(contracts []*tolkabi.Contract) (*tolkabi.Contract, error) {
 // @Param limit query int false "Page size; the whole result by default" minimum(1) maximum(1000)
 // @Param offset query int false "Rows to skip" default(0) minimum(0)
 // @Success 200 {object} ActonContractsResponse
+// @Header 200 {string} X-Acton-Catalog-Revision "SHA-256 of the pinned ABI catalog that produced this response"
+// @Header 200 {string} ETag "Strong validator for the response; send it back in If-None-Match"
 // @Failure 413 {object} models.IndexError
 // @Failure 422 {object} models.IndexError
 // @Router /api/v3/acton/contracts [get]
@@ -240,6 +242,7 @@ func (a *API) Contracts(c *fiber.Ctx) error {
 // @Produce json
 // @Param request body DecodeRequest true "Explicit ABI selector and BOC"
 // @Success 200 {object} DecodeResponse
+// @Header 200 {string} X-Acton-Catalog-Revision "SHA-256 of the pinned ABI catalog that produced this response"
 // @Failure 409 {object} models.IndexError
 // @Failure 422 {object} models.IndexError
 // @Router /api/v3/acton/decode [post]
@@ -301,6 +304,7 @@ func (a *API) Decode(c *fiber.Ctx) error {
 // @Produce json
 // @Param request body RunRequest true "Address, getter name or numeric TVM ID, named args, optional seqno"
 // @Success 200 {object} RunResponse
+// @Header 200 {string} X-Acton-Catalog-Revision "SHA-256 of the pinned ABI catalog that produced this response"
 // @Failure 409 {object} models.IndexError
 // @Failure 422 {object} models.IndexError
 // @Failure 502 {object} models.IndexError
