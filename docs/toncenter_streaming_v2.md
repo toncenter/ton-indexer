@@ -62,6 +62,8 @@ SSE uses a single `POST` request to establish the connection and specify the sub
 | `trace_external_hash_norms` | string[] | *(Optional)* List of trace external hashes to monitor. Required when subscribing to `"trace"` events.                    |
 | `types`                  | string[] | Event types to receive. See [Event Types](#event-types).                                                                   |
 | `min_finality`           | string   | *(Optional)* Minimum finality level to receive: `"pending"`, `"confirmed"`, or `"finalized"`. Default is `"finalized"`.    |
+| `replay_existing`        | boolean  | *(Optional)* Replay retained snapshots before live updates. Default is `false`. See [Replaying Existing Data](#replaying-existing-data). |
+| `msg_body_hash`          | string   | *(Optional)* Filter `"transactions"` by incoming message body hash. Requires `addresses` and `"transactions"` in `types`. Accepts a 32-byte hash in hex, base64, or base64url. |
 | `include_address_book`   | boolean  | *(Optional)* If `true`, includes DNS-resolved names and friendly names for addresses.                                      |
 | `include_metadata`       | boolean  | *(Optional)* If `true`, includes metadata for known token contracts (Jettons, NFTs, etc.).                                 |
 | `action_types`           | string[] | *(Optional)* Filter actions by type (e.g. `["jetton_transfer","ton_transfer"]`). Only applies to `"actions"` events.       |
@@ -151,6 +153,8 @@ Replaces the entire subscription snapshot for this connection.
 | `trace_external_hash_norms` | string[] *(optional)* | Trace external hashes to monitor. Required when subscribing to `"trace"`.              |
 | `types`                  | string[]              | Event types to receive. See [Event Types](#event-types).                                  |
 | `min_finality`           | string *(optional)*   | Minimum finality: `"pending"`, `"confirmed"`, or `"finalized"`. Default is `"finalized"`. |
+| `replay_existing`        | boolean *(optional)*  | Replay retained snapshots before live updates. Default is `false`. See [Replaying Existing Data](#replaying-existing-data). |
+| `msg_body_hash`          | string *(optional)*   | Filter `"transactions"` by incoming message body hash. Requires `addresses` and `"transactions"` in `types`. Accepts a 32-byte hash in hex, base64, or base64url. |
 | `include_address_book`   | boolean *(optional)*  | If `true`, include address book info.                                                     |
 | `include_metadata`       | boolean *(optional)*  | If `true`, include token metadata.                                                        |
 | `action_types`           | string[] *(optional)* | Filter actions by type (e.g. `["jetton_transfer"]`). Only applies to `"actions"` events.  |
@@ -289,6 +293,8 @@ You may receive multiple notifications for the same `trace_external_hash_norm` a
 | `transactions`             | Transaction[]       | List of transactions belonging to this trace (LT descending). Same schema as v3 `Transaction`. |
 | `address_book`             | object *(optional)* | Mapping of addresses to user-friendly address and TON DNS domain.                              |
 | `metadata`                 | object *(optional)* | Mapping of known token addresses to token metadata (Jettons, NFTs, etc.).                      |
+
+`msg_body_hash` matches `in_msg.body_hash` for transactions on the subscribed addresses, including incoming external and internal messages. It applies to both replay and live updates; outgoing messages and other event types are unaffected. Notifications with no matching transactions are omitted, and `min_finality` still applies to the trace as a whole.
 
 ---
 
@@ -451,6 +457,21 @@ Once a trace has been emitted at `finality = "finalized"`, no further `trace_inv
 ---
 
 ## Event Delivery Semantics
+
+### Replaying Existing Data
+
+Set `replay_existing: true` in an SSE request or WebSocket `subscribe` to receive the latest retained snapshots matching the subscription, followed by live updates. It defaults to `false`.
+
+* Replay supports `transactions`, `actions`, `trace`, `account_state_change`, and `jettons_change`, using the same filters and event format as live delivery. Replay covers approximately the last 30 seconds of events. Only cached data is available; expired data and intermediate updates are not replayed.
+* Account and jetton state replay sends the retained `finalized` state, followed by a newer `confirmed` state if allowed by `min_finality`. Jetton replay requires the jetton wallet address; currently an owner-only subscription does not enumerate its wallets.
+* Live events arriving during replay are buffered. Redundant or older live snapshots for replayed entities are suppressed. There is no separate replay-complete event.
+* Each WebSocket `subscribe` with `replay_existing: true` requests another replay and may repeat snapshots. Requests made during an active replay are combined into another pass using the current subscription. Already queued events may still arrive after subscription changes.
+
+### Slow Consumers
+
+If a client's send queue or live buffer during replay fills up, the server closes the connection. WebSocket clients receive close code `1013` with reason `"slow consumer"` when the close frame can be delivered; SSE streams close. Replay errors or timeouts also close the connection. Clients can reconnect with `replay_existing: true` to retrieve snapshots still in the cache.
+
+### Event Finality
 
 Finality and delivery semantics for each event type:
 
