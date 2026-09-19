@@ -1,4 +1,4 @@
 # The ton-blockchain/abis release that CMake, Docker, CI and the catalog test
 # download and verify. Change both lines together.
-ABI_CATALOG_URL=https://github.com/ton-blockchain/abis/releases/download/v0.1.0/abi-catalog.json
-ABI_CATALOG_SHA256=9f023acf918493dfc908c66cfd38200e99d393beaaf27296da4563479638fea5
+ABI_CATALOG_URL=https://github.com/ton-blockchain/abis/releases/download/v0.1.2/abi-catalog.json
+ABI_CATALOG_SHA256=b442556faa253aba85e59cf7372aa90d9701fab684b4ec565480fa74a6efde38
