@@ -42,7 +42,9 @@ type ActonGetMethod struct {
 
 // ActonContract carries abi only when the request named a selector: the whole
 // catalog is 450 KiB of identity and getters against 4.5 MiB of type tables.
-// Links are catalog assertions, not evidence of source verification.
+// Links are catalog assertions, not evidence of source verification. Code hashes
+// are base64 and known addresses are raw, as everywhere else in v3, whatever
+// spelling the catalog stores them in.
 type ActonContract struct {
 	CatalogID      string                `json:"catalog_id"`
 	DisplayName    string                `json:"display_name"`

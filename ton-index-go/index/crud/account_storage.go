@@ -83,7 +83,7 @@ func decodeStorage(budget *tolkabi.Context, binding *tolkabi.Binding, boc *model
 	if err != nil {
 		return nil, err
 	}
-	return json.Marshal(value)
+	return json.Marshal(actonapi.CanonicalizeDecoded(value))
 }
 
 func bocLength(value *models.BytesType) int {

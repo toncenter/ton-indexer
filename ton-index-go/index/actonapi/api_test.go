@@ -309,3 +309,33 @@ func TestRunSnapshotAddressMismatch(t *testing.T) {
 		t.Fatal("mismatched snapshot executed")
 	}
 }
+
+// A codec renders an address as lowercase raw, which v3 does not: it spells every
+// address with uppercase hex so a client can index address_book with what it sees.
+// The rewrite reaches nested values and leaves everything that merely looks close
+// alone, since decoded values also carry BOCs, decimals and bit strings.
+func TestCanonicalizeDecodedRewritesOnlyAddresses(t *testing.T) {
+	const lower = "0:abababababababababababababababababababababababababababababababab"
+	const upper = "0:ABABABABABABABABABABABABABABABABABABABABABABABABABABABABABABABAB"
+	decoded := map[string]any{
+		"owner":    lower,
+		"master":   "-1:" + strings.Repeat("f", 64),
+		"children": []any{map[string]any{"wallet": lower}, "te6cckEBAQEAAgAAAEysuc0=", "12345"},
+		"bits":     map[string]any{"bits": 64, "hex": strings.Repeat("ab", 32)},
+		"short":    "0:abab",
+	}
+	CanonicalizeDecoded(decoded)
+	children := decoded["children"].([]any)
+	if decoded["owner"] != upper || children[0].(map[string]any)["wallet"] != upper {
+		t.Fatalf("addresses were not rewritten: %v", decoded)
+	}
+	if decoded["master"] != "-1:"+strings.Repeat("F", 64) {
+		t.Fatalf("masterchain address was not rewritten: %v", decoded["master"])
+	}
+	if children[1] != "te6cckEBAQEAAgAAAEysuc0=" || children[2] != "12345" || decoded["short"] != "0:abab" {
+		t.Fatalf("a non-address value was rewritten: %v", decoded)
+	}
+	if decoded["bits"].(map[string]any)["hex"] != strings.Repeat("ab", 32) {
+		t.Fatalf("a bit string was rewritten: %v", decoded["bits"])
+	}
+}

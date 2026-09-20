@@ -159,3 +159,22 @@ func TestCatalogIndexFitsOneResponse(t *testing.T) {
 		t.Fatalf("index is %d bytes, over the %d-byte unpaged bound", len(body), bound)
 	}
 }
+
+// One value must not reach a client spelled two ways, so the whole catalog is
+// checked rather than a sample: this fails the moment a release introduces a hash
+// or an address the renderers pass through untouched.
+func TestCatalogSpellsHashesAndAddressesLikeV3(t *testing.T) {
+	for _, contract := range catalog.Contracts {
+		info := contractInfo(contract, false)
+		for _, hash := range info.CodeHashes {
+			if decoded, err := base64.StdEncoding.Strict().DecodeString(hash); err != nil || len(decoded) != 32 {
+				t.Fatalf("%s: code hash %q is not a base64 32-byte hash", contract.ID, hash)
+			}
+		}
+		for _, address := range info.KnownAddresses {
+			if canonical, ok := upperRawAddress(address); !ok || canonical != address {
+				t.Fatalf("%s: known address %q is not raw uppercase", contract.ID, address)
+			}
+		}
+	}
+}

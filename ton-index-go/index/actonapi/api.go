@@ -45,8 +45,8 @@ func New(contracts []*tolkabi.Contract, revision string, deps Dependencies) *API
 // selected entry: it is ten times the size of everything else about a contract.
 func contractInfo(contract *tolkabi.Contract, withABI bool) ActonContract {
 	info := ActonContract{CatalogID: contract.ID, DisplayName: contract.DisplayName,
-		CodeHashes:     append([]string{}, contract.CodeHashes...),
-		KnownAddresses: append([]string{}, contract.KnownAddresses...),
+		CodeHashes:     canonicalHashes(contract.CodeHashes),
+		KnownAddresses: canonicalAddresses(contract.KnownAddresses),
 		Links:          []models.ContractLink{}, GetMethods: []ActonGetMethod{}}
 	for _, link := range contract.Links {
 		info.Links = append(info.Links, models.ContractLink{Kind: link.Kind, Title: link.Title, URL: link.URL})
@@ -275,10 +275,11 @@ func (a *API) Decode(c *fiber.Ctx) error {
 		}
 		response.Type = binding.Type
 		// One caller-supplied BOC, so a per-call budget rather than a shared one.
-		response.Decoded, err = decodeBinding(binding, req.Body)
+		decoded, err := decodeBinding(binding, req.Body)
 		if err != nil {
 			return Fail(422, err.Error())
 		}
+		response.Decoded = CanonicalizeDecoded(decoded)
 	} else {
 		if req.Direction == "" || len(contract.Messages[req.Direction]) == 0 {
 			return Fail(422, "message direction is not in the selected ABI")
@@ -290,7 +291,7 @@ func (a *API) Decode(c *fiber.Ctx) error {
 		if decoded == nil {
 			return Fail(422, "no matching message binding")
 		}
-		response.Type, response.Decoded = decoded.Type, decoded.Value
+		response.Type, response.Decoded = decoded.Type, CanonicalizeDecoded(decoded.Value)
 	}
 	return a.sendBounded(c, response)
 }
@@ -440,11 +441,12 @@ func (a *API) RunGetMethod(c *fiber.Ctx) error {
 	case method.DecodeResult == nil:
 		response.DecodeError = "native result decoder unavailable"
 	default:
-		response.Decoded, err = method.DecodeResult(execution.Stack)
+		decoded, err := method.DecodeResult(execution.Stack)
 		if err != nil {
-			response.Decoded = nil
 			response.DecodeError = err.Error()
+			break
 		}
+		response.Decoded = CanonicalizeDecoded(decoded)
 	}
 	return a.sendBounded(c, response)
 }
