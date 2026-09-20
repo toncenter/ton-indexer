@@ -132,7 +132,8 @@ func TestWalletTgGenericBulk(t *testing.T) {
 	check(t, err)
 	same(t, decoded.Value, want)
 	// Independent layout checks catch a bug that breaks encode and decode alike.
-	s := root.BeginParse()
+	s, err := root.BeginParse()
+	check(t, err)
 	_, err = s.LoadSlice(512)
 	check(t, err)
 	op, err := s.LoadUInt(32)

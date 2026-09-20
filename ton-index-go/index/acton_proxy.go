@@ -157,7 +157,10 @@ func (e *actonExecutor) Snapshot(ctx context.Context, address string, seqno *int
 	if code.GetType() == cell.LibraryCellType {
 		// ActonScan codeCell.ts uses the embedded hash for catalog lookup, but
 		// it is not the account's code-cell hash. Preserve both identities.
-		slice := code.BeginParse()
+		slice, err := code.BeginParse()
+		if err != nil {
+			return nil, actonapi.Fail(502, "invalid library reference")
+		}
 		if _, err := slice.LoadUInt(8); err != nil {
 			return nil, actonapi.Fail(502, "invalid library reference")
 		}

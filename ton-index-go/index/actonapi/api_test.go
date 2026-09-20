@@ -168,7 +168,13 @@ func TestCatalogIndexRevalidates(t *testing.T) {
 
 func TestNativeDecode(t *testing.T) {
 	contract := testContract()
-	decode := func(c *cell.Cell) (any, error) { return c.BeginParse().LoadUInt(8) }
+	decode := func(c *cell.Cell) (any, error) {
+		s, err := c.BeginParse()
+		if err != nil {
+			return nil, err
+		}
+		return s.LoadUInt(8)
+	}
 	binding := tolkabi.Binding{Type: tolkabi.TypeInfo{Index: 1, Name: "Message"}, Decode: decode,
 		DecodeWith: func(_ *tolkabi.Context, c *cell.Cell) (any, error) { return decode(c) }}
 	contract.Messages = map[string][]tolkabi.Binding{"incoming_messages": {binding}}
