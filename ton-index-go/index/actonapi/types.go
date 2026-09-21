@@ -64,8 +64,6 @@ type ActonContractsResponse struct {
 
 type Snapshot struct {
 	Address             string          `json:"address"`
-	AccountStatus       string          `json:"account_status"`
-	AccountStateHash    *string         `json:"account_state_hash"`
 	CodeHash            *string         `json:"code_hash"`
 	ImplementationHash  *string         `json:"implementation_hash,omitempty"`
 	DataHash            *string         `json:"data_hash"`
@@ -98,14 +96,16 @@ type RunRequest struct {
 	Seqno   *int32          `json:"seqno,omitempty"`
 } // @name ActonRunRequest
 
-// Execution retains the untouched standard stack even if conversion or ABI
-// decoding fails. StackError must prevent typed decoding, not hide VM results.
+// Stack is spelled the way /runGetMethod spells one, so one parser reads both.
+// Native is the same stack in the shape the codecs consume, decimal integers
+// and Lisp lists as cons pairs; a client reads the typed answer in `decoded`.
+// StackError must prevent typed decoding, not hide the exit code or the gas.
 type Execution struct {
-	Stack      []tolkabi.StackValue `json:"stack"`
-	RawStack   json.RawMessage      `json:"raw_stack" swaggertype:"array,object"`
-	GasUsed    string               `json:"gas_used"`
-	ExitCode   int32                `json:"exit_code"`
-	StackError string               `json:"stack_error,omitempty"`
+	Stack      []models.V2StackEntity `json:"stack"`
+	GasUsed    int64                  `json:"gas_used"`
+	ExitCode   int64                  `json:"exit_code"`
+	StackError string                 `json:"stack_error,omitempty"`
+	Native     []tolkabi.StackValue   `json:"-"`
 } // @name ActonExecution
 
 type RunResponse struct {

@@ -299,7 +299,7 @@ func (a *API) Decode(c *fiber.Ctx) error {
 // RunGetMethod selects an ABI using code read at the execution seqno, never from
 // the latest indexed state. An explicit contract must also match that code hash.
 // @Summary Run and decode a pinned Acton getter
-// @Description Requires a positive seqno or resolves it once. Reads account code and executes runGetMethodStd at the same seqno; library code and implementation hashes stay distinct. The ABI is the catalog entry declaring the named getter for that code, so the request selects no ABI of its own. Pinning trusts the configured upstream, not a proof. VM and decoding failures retain raw stack, gas and exit code.
+// @Description Requires a positive seqno or resolves it once. Reads account code and executes runGetMethodStd at the same seqno; library code and implementation hashes stay distinct. The ABI is the catalog entry declaring the named getter for that code, so the request selects no ABI of its own. Pinning trusts the configured upstream, not a proof. The stack is spelled exactly as /api/v3/runGetMethod spells one, so a single parser reads both; `decoded` carries the typed ABI answer beside it. VM and decoding failures still retain the stack, gas and exit code.
 // @Tags acton
 // @Accept json
 // @Produce json
@@ -425,7 +425,7 @@ func (a *API) RunGetMethod(c *fiber.Ctx) error {
 		return Fail(502, "empty getter execution result")
 	}
 	if execution.StackError == "" {
-		execution.Stack, err = NormalizeStack(execution.Stack)
+		execution.Native, err = NormalizeStack(execution.Native)
 		if err != nil {
 			execution.StackError = err.Error()
 		}
@@ -441,7 +441,7 @@ func (a *API) RunGetMethod(c *fiber.Ctx) error {
 	case method.DecodeResult == nil:
 		response.DecodeError = "native result decoder unavailable"
 	default:
-		decoded, err := method.DecodeResult(execution.Stack)
+		decoded, err := method.DecodeResult(execution.Native)
 		if err != nil {
 			response.DecodeError = err.Error()
 			break

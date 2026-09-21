@@ -153,7 +153,7 @@ func (e *actonExecutor) Snapshot(ctx context.Context, address string, seqno *int
 		return nil, actonapi.Fail(502, "invalid upstream account code BOC")
 	}
 	hash := base64.StdEncoding.EncodeToString(code.Hash())
-	snapshot := &actonapi.Snapshot{Address: canonical, AccountStatus: state.State, CodeHash: &hash, Seqno: &pinned, BlockID: state.BlockID, LastTransactionHash: state.LastTransactionID.Hash}
+	snapshot := &actonapi.Snapshot{Address: canonical, CodeHash: &hash, Seqno: &pinned, BlockID: state.BlockID, LastTransactionHash: state.LastTransactionID.Hash}
 	if code.GetType() == cell.LibraryCellType {
 		// ActonScan codeCell.ts uses the embedded hash for catalog lookup, but
 		// it is not the account's code-cell hash. Preserve both identities.
@@ -224,11 +224,27 @@ func (e *actonExecutor) Run(ctx context.Context, snapshot *actonapi.Snapshot, me
 		return nil, actonapi.Fail(502, "incomplete "+endpoint+" result")
 	}
 	gas, err := actonapi.Decimal(response.GasUsed)
-	if err != nil || strings.HasPrefix(gas, "-") {
+	if err != nil {
 		return nil, actonapi.Fail(502, "invalid "+endpoint+" gas_used")
 	}
-	result := &actonapi.Execution{GasUsed: gas, ExitCode: *response.ExitCode, RawStack: response.Stack}
-	result.Stack, err = actonapi.DecodeStandardStack(response.Stack)
+	gasUsed, err := strconv.ParseInt(gas, 10, 64)
+	if err != nil || gasUsed < 0 {
+		return nil, actonapi.Fail(502, "invalid "+endpoint+" gas_used")
+	}
+	result := &actonapi.Execution{GasUsed: gasUsed, ExitCode: int64(*response.ExitCode)}
+	// rendered by the decoder /runGetMethod uses; the codecs need their own
+	// shape, and a stack neither can read still leaves the exit code and gas.
+	var upstream any
+	if err := json.Unmarshal(response.Stack, &upstream); err != nil {
+		result.StackError = err.Error()
+		return result, nil
+	}
+	result.Stack, err = DecodeStack(upstream)
+	if err != nil {
+		result.StackError = err.Error()
+		return result, nil
+	}
+	result.Native, err = actonapi.DecodeStandardStack(response.Stack)
 	if err != nil {
 		result.StackError = err.Error()
 	}

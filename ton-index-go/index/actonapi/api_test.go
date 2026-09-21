@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http/httptest"
 	"net/url"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -227,7 +228,10 @@ func (e *fakeExecutor) Run(_ context.Context, snapshot *Snapshot, method int64, 
 func runFixture(t *testing.T) (*fiber.App, *fakeExecutor, *tolkabi.Contract) {
 	contract := testContract()
 	seqno := int32(123)
-	executor := &fakeExecutor{t: t, snapshot: Snapshot{Address: testAddress, CodeHash: &testHash, Seqno: &seqno}, execution: Execution{Stack: []tolkabi.StackValue{{Type: "num", Value: "9007199254740993"}}, RawStack: json.RawMessage(`[{"@type":"tvm.stackEntryNumber","number":{"@type":"tvm.numberDecimal","number":"9007199254740993"}}]`), GasUsed: "9007199254740993", ExitCode: 0}}
+	executor := &fakeExecutor{t: t, snapshot: Snapshot{Address: testAddress, CodeHash: &testHash, Seqno: &seqno}, execution: Execution{
+		Stack:   []models.V2StackEntity{{Type: "num", Value: "0x20000000000001"}},
+		Native:  []tolkabi.StackValue{{Type: "num", Value: "9007199254740993"}},
+		GasUsed: 9007199254740993, ExitCode: 0}}
 	app := testApp(New([]*tolkabi.Contract{contract}, "revision", Dependencies{Executor: func(*fiber.Ctx) GetterExecutor { return executor }}))
 	return app, executor, contract
 }
@@ -267,7 +271,7 @@ func TestRunPreservesVMAndDecodeFailures(t *testing.T) {
 			}
 			var response RunResponse
 			call(t, app, "POST", "/runGetMethod", `{"address":"`+testAddress+`","method":"get_counter"}`, 200, &response)
-			if string(response.RawStack) != string(executor.execution.RawStack) || response.GasUsed != executor.execution.GasUsed || response.ExitCode != executor.execution.ExitCode {
+			if !reflect.DeepEqual(response.Stack, executor.execution.Stack) || response.GasUsed != executor.execution.GasUsed || response.ExitCode != executor.execution.ExitCode {
 				t.Fatal("lost raw VM result")
 			}
 			if mode != "alternative_success" && (response.DecodeError == "" || response.Decoded != nil) {

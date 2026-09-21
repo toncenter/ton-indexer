@@ -104,9 +104,6 @@ func TestActonProxyPinsDiscoveryStateAndExecution(t *testing.T) {
 	if snapshot.Seqno == nil || *snapshot.Seqno != 54321 {
 		t.Fatalf("bad pinning: %+v", snapshot)
 	}
-	if snapshot.AccountStateHash != nil {
-		t.Fatal("fabricated unavailable state hash")
-	}
 	if *snapshot.CodeHash != base64.StdEncoding.EncodeToString(code.Hash()) || *snapshot.DataHash != base64.StdEncoding.EncodeToString(data.Hash()) || *snapshot.LastTransactionLT != "9007199254740993" {
 		t.Fatal("incorrect snapshot hashes or LT")
 	}
@@ -115,8 +112,16 @@ func TestActonProxyPinsDiscoveryStateAndExecution(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.ExitCode != 1 || result.GasUsed != "9007199254740993" || result.Stack[0].Value != "9007199254740993" {
+	// gas above 2^53 must survive, and the stack must be spelled like
+	// /runGetMethod: type "num", hexadecimal value.
+	if result.ExitCode != 1 || result.GasUsed != 9007199254740993 {
 		t.Fatalf("lost exact VM results: %+v", result)
+	}
+	if len(result.Stack) != 1 || result.Stack[0].Type != "num" || result.Stack[0].Value != "0x20000000000001" {
+		t.Fatalf("stack is not spelled like /runGetMethod: %+v", result.Stack)
+	}
+	if len(result.Native) != 1 || result.Native[0].Type != "int" || result.Native[0].Value != "9007199254740993" {
+		t.Fatalf("codec stack lost its exact decimal: %+v", result.Native)
 	}
 	mu.Lock()
 	defer mu.Unlock()
@@ -175,8 +180,9 @@ func TestActonProxyPreservesUnsupportedAndFailedVMResults(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.ExitCode != 11 || result.GasUsed != "456" || result.StackError == "" || !strings.Contains(string(result.RawStack), "Unsupported") {
-		t.Fatalf("raw VM failure was lost: %+v", result)
+	// an unreadable entry must not cost the caller the VM result.
+	if result.ExitCode != 11 || result.GasUsed != 456 || result.StackError == "" || result.Stack != nil {
+		t.Fatalf("VM failure was lost: %+v", result)
 	}
 }
 
