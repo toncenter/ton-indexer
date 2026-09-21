@@ -4,7 +4,6 @@ import (
 	"github.com/ton-blockchain/tolk-abi-to-go"
 	"github.com/toncenter/ton-indexer/ton-index-go/index/acton/catalog"
 	"github.com/toncenter/ton-indexer/ton-index-go/index/actonapi"
-	"github.com/toncenter/ton-indexer/ton-index-go/index/detect"
 	"github.com/toncenter/ton-indexer/ton-index-go/index/models"
 )
 
@@ -42,8 +41,7 @@ func TransactionCodeBook(transactions []models.Transaction) models.CodeBook {
 	return CodeBook(hashes)
 }
 
-// CodeBook resolves what the catalog and the interface table know about each of
-// the given code hashes.
+// CodeBook resolves what the catalog knows about each of the given code hashes.
 func CodeBook(hashes []models.HashType) models.CodeBook {
 	return codeBook(hashes, catalog.ByCodeHash)
 }
@@ -73,7 +71,6 @@ func codeBook(hashes []models.HashType, lookup func(string) []*tolkabi.Contract)
 		}
 		row, cached := resolved[*key]
 		if !cached {
-			row.Interfaces = detect.DetectInterface(string(*key), nil)
 			for _, contract := range actonapi.OrderCandidates(lookup(string(*key))) {
 				entry := models.CodeContract{CatalogID: contract.ID, DisplayName: contract.DisplayName}
 				for _, link := range contract.Links {
@@ -83,7 +80,7 @@ func codeBook(hashes []models.HashType, lookup func(string) []*tolkabi.Contract)
 			}
 			resolved[*key] = row
 		}
-		if len(row.Interfaces) == 0 && len(row.Contracts) == 0 {
+		if len(row.Contracts) == 0 {
 			continue
 		}
 		if book == nil {

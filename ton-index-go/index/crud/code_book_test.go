@@ -19,10 +19,11 @@ func traceState(codeHash string) *models.AccountState {
 	return &models.AccountState{CodeHash: new(models.HashType(codeHash))}
 }
 
-func TestCodeBookCatalogAndInterfaces(t *testing.T) {
+func TestCodeBookResolvesEverySpellingFromTheCatalog(t *testing.T) {
 	unknown := strings.Repeat("0", 64)
-	// The interface table holds walletCodeHash only in padded standard base64. No other spelling of it
-	// may appear here: codeBook resolves a code once for all its spellings, hiding an unnormalized lookup.
+	// The catalog holds walletCodeHash as hex. No other spelling of it may appear
+	// here: codeBook resolves a code once for all its spellings, so an unnormalized
+	// lookup would show up as a miss.
 	rawURLWallet := strings.NewReplacer("+", "-", "/", "_", "=", "").Replace(walletCodeHash)
 	traces := []models.Trace{{Transactions: map[models.HashType]*models.Transaction{
 		"first": {AccountStateBefore: traceState(vestingCodeHash), AccountStateAfter: traceState(rawURLWallet)},
@@ -40,8 +41,11 @@ func TestCodeBookCatalogAndInterfaces(t *testing.T) {
 	}) {
 		t.Fatalf("missing known catalog entry: %+v", vesting)
 	}
-	if wallet := book[models.HashType(rawURLWallet)]; !slices.Contains(wallet.Interfaces, "wallet_v5r1") {
-		t.Fatalf("missing interface match for a non-standard spelling: %+v", wallet)
+	wallet := book[models.HashType(rawURLWallet)]
+	if !slices.ContainsFunc(wallet.Contracts, func(c models.CodeContract) bool {
+		return c.CatalogID == "wallets.WalletV5r1"
+	}) {
+		t.Fatalf("missing catalog entry for a non-standard spelling: %+v", wallet)
 	}
 	if _, present := book[models.HashType(unknown)]; present || len(book) != 2 {
 		t.Fatalf("unknown code must be absent: %+v", book)

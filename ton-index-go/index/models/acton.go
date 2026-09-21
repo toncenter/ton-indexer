@@ -15,10 +15,9 @@ type CodeContract struct {
 
 // CodeBookRow describes one code hash. Contracts are ordered most specific first,
 // so a decoder uses the head; the rest are other catalog entries claiming the same
-// bytecode. A row exists only when the catalog or the interface table knows the code.
+// bytecode. A row exists only for code the catalog knows.
 type CodeBookRow struct {
-	Interfaces []string       `json:"interfaces,omitempty"`
-	Contracts  []CodeContract `json:"contracts,omitempty"`
+	Contracts []CodeContract `json:"contracts,omitempty"`
 } // @name CodeBookRow
 
 // CodeBook maps code hashes to what is known about them. Keys are spelled exactly
