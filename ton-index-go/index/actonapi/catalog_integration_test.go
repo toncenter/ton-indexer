@@ -83,7 +83,13 @@ func TestCatalogSelectorsResistAmplification(t *testing.T) {
 	selectors := strings.Repeat("catalog_id=counter&", MaxSelectors)
 	call(t, app, "GET", "/contracts?"+selectors, "", 200, nil)
 	call(t, app, "GET", "/contracts?"+selectors+"catalog_id=counter", "", 422, nil)
-	call(t, app, "GET", "/contracts?code_hash="+url.QueryEscape(testHash+" "), "", 422, nil)
+	// Spellings of one hash collapse to one selector rather than being refused.
+	both := "code_hash=" + url.QueryEscape(testHash+" ") + "&code_hash=" + url.QueryEscape(testHash)
+	var selected ActonContractsResponse
+	call(t, app, "GET", "/contracts?"+both, "", 200, &selected)
+	if selected.Total != 1 {
+		t.Fatalf("one hash selected %d entries", selected.Total)
+	}
 
 	// A single oversized catalog ABI must fail before it reaches the wire.
 	contract.ABI = json.RawMessage(`{"description":"` + strings.Repeat("a", MaxMetadataBytes) + `"}`)
@@ -94,13 +100,15 @@ func TestCatalogSelectorsResistAmplification(t *testing.T) {
 
 func TestCanonicalAddressFormsAndTags(t *testing.T) {
 	expected := "0:" + strings.Repeat("FF", 32)
-	for _, value := range []string{"EQD__________________________________________0vo", "EQD//////////////////////////////////////////0vo", expected, strings.ToLower(expected)} {
+	// The tag byte says how to send to an address, not which account it is, so a
+	// nonstandard one resolves like every other spelling, as it does elsewhere in v3.
+	for _, value := range []string{"EQD__________________________________________0vo", "EQD//////////////////////////////////////////0vo", "EgD___________________________________________-m", expected, strings.ToLower(expected)} {
 		actual, err := CanonicalAddress(value)
 		if err != nil || actual != expected {
 			t.Fatalf("%s: got %s, %v", value, actual, err)
 		}
 	}
-	for _, value := range []string{"EgD___________________________________________-m", "EQD__________________________________________0vp", "EQD__________________________________________0vo=", "128:" + strings.Repeat("ff", 32), "-129:" + strings.Repeat("ff", 32)} {
+	for _, value := range []string{"EQD__________________________________________0vp", "EQD__________________________________________0vo=", "128:" + strings.Repeat("ff", 32), "-129:" + strings.Repeat("ff", 32)} {
 		if _, err := CanonicalAddress(value); err == nil {
 			t.Fatalf("accepted invalid address: %s", value)
 		}

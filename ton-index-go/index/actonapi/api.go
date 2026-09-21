@@ -3,7 +3,6 @@ package actonapi
 import (
 	"bytes"
 	"crypto/sha256"
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -15,7 +14,6 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/ton-blockchain/tolk-abi-to-go"
 	"github.com/toncenter/ton-indexer/ton-index-go/index/models"
-	"github.com/xssnick/tonutils-go/address"
 )
 
 type API struct {
@@ -32,9 +30,9 @@ func New(contracts []*tolkabi.Contract, revision string, deps Dependencies) *API
 		a.byID[contract.ID] = append(a.byID[contract.ID], contract)
 		seen := map[string]bool{}
 		for _, hash := range contract.CodeHashes {
-			if key, err := tolkabi.NormalizeCodeHash(hash); err == nil && !seen[key] {
-				a.byHash[key] = append(a.byHash[key], contract)
-				seen[key] = true
+			if key, err := models.ParseHashType(hash); err == nil && !seen[string(*key)] {
+				a.byHash[string(*key)] = append(a.byHash[string(*key)], contract)
+				seen[string(*key)] = true
 			}
 		}
 	}
@@ -69,31 +67,15 @@ func methodInfo(method tolkabi.GetMethod) ActonGetMethod {
 	return rendered
 }
 
+// CanonicalAddress accepts every spelling the rest of v3 accepts and returns the
+// raw form it returns. A getter runs on an account, so the other address kinds
+// the parser knows — none, external, variable-length — are refused here.
 func CanonicalAddress(value string) (string, error) {
-	if len(value) > 128 {
-		return "", Fail(422, "invalid address")
-	}
-	value = strings.TrimSpace(value)
-	var addr *address.Address
-	var err error
-	if strings.Contains(value, ":") {
-		addr, err = address.ParseRawAddr(value)
-	} else {
-		// ParseAddr checks CRC but accepts arbitrary tags and only base64url.
-		// TEP-2 requires both alphabets and exactly these four flag bytes.
-		if len(value) != 48 {
-			return "", Fail(422, "invalid friendly address length")
-		}
-		data, decodeErr := base64.RawURLEncoding.Strict().DecodeString(strings.NewReplacer("+", "-", "/", "_").Replace(value))
-		if decodeErr != nil || len(data) != 36 || data[0]&0x7f != 0x11 && data[0]&0x7f != 0x51 {
-			return "", Fail(422, "invalid friendly address encoding or tag")
-		}
-		addr, err = address.ParseAddr(base64.RawURLEncoding.EncodeToString(data))
-	}
-	if err != nil || addr == nil || addr.Type() != address.StdAddress {
+	parsed, err := models.ParseAccountAddress(value)
+	if err != nil || !parsed.IsAddressStd() {
 		return "", Fail(422, "invalid standard account address")
 	}
-	return strings.ToUpper(addr.StringRaw()), nil
+	return string(*parsed), nil
 }
 
 func decodeJSON(data []byte, dst any) error {
@@ -135,17 +117,14 @@ func (a *API) selectContracts(contractType, hash string) ([]*tolkabi.Contract, e
 	return a.byHash[key], nil
 }
 
-// codeHashKey rejects padding the normalizer would otherwise tolerate, so two
-// spellings of one hash cannot arrive as two selectors.
+// codeHashKey spells a hash the way the rest of v3 spells one, so every hex or
+// base64 form of the same code collapses to a single selector.
 func codeHashKey(hash string) (string, error) {
-	if len(hash) > 66 || strings.TrimSpace(hash) != hash || strings.ContainsAny(hash, " \t\r\n\v\f") {
-		return "", Fail(422, "invalid code_hash")
-	}
-	key, err := tolkabi.NormalizeCodeHash(hash)
+	key, err := models.ParseHashType(hash)
 	if err != nil {
 		return "", Fail(422, "invalid code_hash")
 	}
-	return key, nil
+	return string(*key), nil
 }
 
 func unique(contracts []*tolkabi.Contract) (*tolkabi.Contract, error) {
@@ -360,14 +339,14 @@ func (a *API) RunGetMethod(c *fiber.Ctx) error {
 	if snapshot.Address != addr || req.McSeqno != nil && *snapshot.McSeqno != *req.McSeqno {
 		return Fail(502, "upstream snapshot selector mismatch")
 	}
-	key, err := tolkabi.NormalizeCodeHash(*snapshot.CodeHash)
+	key, err := codeHashKey(*snapshot.CodeHash)
 	if err != nil {
 		return Fail(502, "invalid upstream code hash")
 	}
 	contracts := OrderCandidates(a.byHash[key])
 	implementationKey := ""
 	if snapshot.ImplementationHash != nil {
-		implementationKey, err = tolkabi.NormalizeCodeHash(*snapshot.ImplementationHash)
+		implementationKey, err = codeHashKey(*snapshot.ImplementationHash)
 		if err != nil {
 			return Fail(502, "invalid upstream library implementation hash")
 		}
