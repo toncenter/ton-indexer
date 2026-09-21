@@ -619,10 +619,7 @@ func GetAccountStates(c *fiber.Ctx) error {
 	if len(req.AccountAddress) == 0 {
 		return models.IndexError{Code: 422, Message: "address of account is required"}
 	}
-	include_storage, err := strconv.ParseBool(c.Query("include_storage", "false"))
-	if err != nil {
-		return models.IndexError{Code: 422, Message: "include_storage must be a boolean"}
-	}
+	include_storage := req.IncludeStorage != nil && *req.IncludeStorage
 	keep_boc := req.IncludeBOC == nil || *req.IncludeBOC
 	if req.IncludeBOC == nil || include_storage {
 		// Decoding needs the data cell even when the caller does not want it back.
