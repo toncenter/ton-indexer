@@ -394,93 +394,150 @@ func PostRunGetMethod(req models.V2RunGetMethodRequest, settings models.RequestS
 	return &result, nil
 }
 
+// tonlib flattens Lisp lists into one entry, so only genuine nested tuples add
+// depth: the bound is far above any real stack and only caps runaway recursion.
+const maxStackDecodeDepth = 1024
+
+// DecodeStackEntry renders one API v2 stack entry, accepting both the legacy
+// ["num", "0x..."] pairs and the standard tvm.stackEntry* objects.
 func DecodeStackEntry(stack interface{}) (interface{}, error) {
+	return decodeStackEntry(stack, 0)
+}
+
+func decodeStackEntry(stack interface{}, depth int) (interface{}, error) {
+	if depth > maxStackDecodeDepth {
+		return nil, fmt.Errorf("stack entry nested deeper than %d levels", maxStackDecodeDepth)
+	}
 	var stack_row models.V2StackEntity
 	switch val := stack.(type) {
 	case []interface{}:
-		switch val[0].(string) {
+		// only the first two positions carry meaning
+		if len(val) < 2 {
+			return nil, fmt.Errorf("legacy stack entry must be a [type, value] pair")
+		}
+		kind, ok := val[0].(string)
+		if !ok {
+			return nil, fmt.Errorf("legacy stack entry type must be a string, got %T", val[0])
+		}
+		switch kind {
 		case "num":
 			stack_row.Type = "num"
 			stack_row.Value = val[1]
-		case "cell":
-			stack_row.Type = "cell"
-			stack_row.Value = val[1].(map[string]interface{})["bytes"]
-		case "slice":
-			stack_row.Type = "slice"
-			stack_row.Value = val[1].(map[string]interface{})["bytes"]
-		case "tuple", "list":
-			stack_row.Type = val[0].(string)
-			tuple := []interface{}{}
-			for _, item := range val[1].(map[string]interface{})["elements"].([]interface{}) {
-				loc, err := DecodeStackEntry(item)
-				if err != nil {
-					return nil, err
-				}
-				tuple = append(tuple, loc)
+		case "cell", "slice":
+			bytes, err := stackBytes(val[1], kind)
+			if err != nil {
+				return nil, err
 			}
-			stack_row.Value = tuple
+			stack_row.Type, stack_row.Value = kind, bytes
+		case "tuple", "list":
+			elements, err := stackElements(val[1], kind, depth)
+			if err != nil {
+				return nil, err
+			}
+			stack_row.Type, stack_row.Value = kind, elements
 		default:
-			return nil, fmt.Errorf("unsupported stack entry type: %s", val[0].(string))
+			return nil, fmt.Errorf("unsupported stack entry type: %s", kind)
 		}
 	case map[string]interface{}:
-		switch val["@type"].(string) {
+		marker, ok := val["@type"].(string)
+		if !ok {
+			return nil, fmt.Errorf("stack entry is missing its @type marker")
+		}
+		switch marker {
 		case "tvm.stackEntryNumber":
+			payload, err := stackPayload(val["number"], "number")
+			if err != nil {
+				return nil, err
+			}
+			text, ok := payload["number"].(string)
+			if !ok {
+				return nil, fmt.Errorf("unsupported type for number: %T", payload["number"])
+			}
+			i := new(big.Int)
+			if _, ok := i.SetString(text, 10); !ok {
+				return nil, fmt.Errorf("failed to parse decimal %s", text)
+			}
 			stack_row.Type = "num"
-			num := val["number"].(map[string]interface{})["number"]
-			switch nn := num.(type) {
-			case string:
-				i := new(big.Int)
-				if _, ok := i.SetString(nn, 10); !ok {
-					return nil, fmt.Errorf("failed to parse decimal %s", nn)
-				}
-				stack_row.Value = fmt.Sprintf("%#x", i)
-			default:
-				return nil, fmt.Errorf("unsupport type for number: %s", reflect.TypeOf(num).Name())
+			stack_row.Value = fmt.Sprintf("%#x", i)
+		case "tvm.stackEntryCell", "tvm.stackEntrySlice":
+			kind := map[string]string{"tvm.stackEntryCell": "cell", "tvm.stackEntrySlice": "slice"}[marker]
+			bytes, err := stackBytes(val[kind], kind)
+			if err != nil {
+				return nil, err
 			}
-		case "tvm.stackEntryCell":
-			stack_row.Type = "cell"
-			stack_row.Value = val["cell"].(map[string]interface{})["bytes"]
-		case "tvm.stackEntrySlice":
-			stack_row.Type = "slice"
-			stack_row.Value = val["slice"].(map[string]interface{})["bytes"]
+			stack_row.Type, stack_row.Value = kind, bytes
 		case "tvm.stackEntryTuple", "tvm.stackEntryList":
-			if val["@type"] == "tvm.stackEntryTuple" {
-				stack_row.Type = "tuple"
-			} else {
-				stack_row.Type = "list"
+			kind := map[string]string{"tvm.stackEntryTuple": "tuple", "tvm.stackEntryList": "list"}[marker]
+			elements, err := stackElements(val[kind], kind, depth)
+			if err != nil {
+				return nil, err
 			}
-			tuple := []interface{}{}
-			for _, item := range val[stack_row.Type].(map[string]interface{})["elements"].([]interface{}) {
-				loc, err := DecodeStackEntry(item)
-				if err != nil {
-					return nil, err
-				}
-				tuple = append(tuple, loc)
-			}
-			stack_row.Value = tuple
+			stack_row.Type, stack_row.Value = kind, elements
 		default:
-			return nil, fmt.Errorf("unsupported stack entry type: %s", val["@type"].(string))
+			return nil, fmt.Errorf("unsupported stack entry type: %s", marker)
 		}
 	default:
-		return nil, fmt.Errorf("failed to parse stack entry of type: %s", reflect.TypeOf(stack).Name())
+		return nil, fmt.Errorf("failed to parse stack entry of type: %T", stack)
 	}
 	return stack_row, nil
 }
 
-func DecodeStack(stack interface{}) (interface{}, error) {
-	result := []interface{}{}
-	switch st := stack.(type) {
-	case []interface{}:
-		for _, row := range st {
-			loc, err := DecodeStackEntry(row)
-			if err != nil {
-				return nil, err
-			}
-			result = append(result, loc)
-		}
-	default:
-		return nil, fmt.Errorf("failed to decode top level stack of type %s", reflect.TypeOf(st).Name())
+func stackPayload(value interface{}, kind string) (map[string]interface{}, error) {
+	payload, ok := value.(map[string]interface{})
+	if !ok {
+		return nil, fmt.Errorf("%s stack entry carries no object payload", kind)
 	}
+	return payload, nil
+}
 
+func stackBytes(value interface{}, kind string) (interface{}, error) {
+	payload, err := stackPayload(value, kind)
+	if err != nil {
+		return nil, err
+	}
+	bytes, ok := payload["bytes"]
+	if !ok {
+		return nil, fmt.Errorf("%s stack entry carries no bytes", kind)
+	}
+	return bytes, nil
+}
+
+func stackElements(value interface{}, kind string, depth int) ([]interface{}, error) {
+	payload, err := stackPayload(value, kind)
+	if err != nil {
+		return nil, err
+	}
+	items, ok := payload["elements"].([]interface{})
+	if !ok {
+		return nil, fmt.Errorf("%s stack entry carries no elements array", kind)
+	}
+	elements := []interface{}{}
+	for _, item := range items {
+		decoded, err := decodeStackEntry(item, depth+1)
+		if err != nil {
+			return nil, err
+		}
+		elements = append(elements, decoded)
+	}
+	return elements, nil
+}
+
+func DecodeStack(stack interface{}) ([]models.V2StackEntity, error) {
+	rows, ok := stack.([]interface{})
+	if !ok {
+		return nil, fmt.Errorf("failed to decode top level stack of type %T", stack)
+	}
+	result := []models.V2StackEntity{}
+	for _, row := range rows {
+		decoded, err := DecodeStackEntry(row)
+		if err != nil {
+			return nil, err
+		}
+		entry, ok := decoded.(models.V2StackEntity)
+		if !ok {
+			return nil, fmt.Errorf("stack entry decoded to %T", decoded)
+		}
+		result = append(result, entry)
+	}
 	return result, nil
 }
