@@ -63,14 +63,13 @@ type ActonContractsResponse struct {
 } // @name ActonContractsResponse
 
 type Snapshot struct {
-	Address             string          `json:"address"`
-	CodeHash            *string         `json:"code_hash"`
-	ImplementationHash  *string         `json:"implementation_hash,omitempty"`
-	DataHash            *string         `json:"data_hash"`
-	LastTransactionHash *string         `json:"last_transaction_hash"`
-	LastTransactionLT   *string         `json:"last_transaction_lt"`
-	Seqno               *int32          `json:"seqno,omitempty"`
-	BlockID             json.RawMessage `json:"block_id,omitempty" swaggertype:"object"`
+	Address             string  `json:"address"`
+	CodeHash            *string `json:"code_hash"`
+	ImplementationHash  *string `json:"implementation_hash,omitempty"`
+	DataHash            *string `json:"data_hash"`
+	LastTransactionHash *string `json:"last_transaction_hash"`
+	LastTransactionLT   *string `json:"last_transaction_lt"`
+	McSeqno             *int32  `json:"mc_seqno,omitempty"`
 } // @name ActonSnapshot
 
 type DecodeRequest struct {

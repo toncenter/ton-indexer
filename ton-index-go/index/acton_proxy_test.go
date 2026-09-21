@@ -101,7 +101,7 @@ func TestActonProxyPinsDiscoveryStateAndExecution(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if snapshot.Seqno == nil || *snapshot.Seqno != 54321 {
+	if snapshot.McSeqno == nil || *snapshot.McSeqno != 54321 {
 		t.Fatalf("bad pinning: %+v", snapshot)
 	}
 	if *snapshot.CodeHash != base64.StdEncoding.EncodeToString(code.Hash()) || *snapshot.DataHash != base64.StdEncoding.EncodeToString(data.Hash()) || *snapshot.LastTransactionLT != "9007199254740993" {
@@ -166,7 +166,7 @@ func TestActonProxyHistoricalSkipsDiscovery(t *testing.T) {
 	}
 	mu.Lock()
 	defer mu.Unlock()
-	if len(paths) != 1 || paths[0] != "/api/v2/getAddressInformation?123" || *snapshot.Seqno != seqno {
+	if len(paths) != 1 || paths[0] != "/api/v2/getAddressInformation?123" || *snapshot.McSeqno != seqno {
 		t.Fatalf("historical selector not forwarded: %v %+v", paths, snapshot)
 	}
 }
@@ -176,7 +176,7 @@ func TestActonProxyPreservesUnsupportedAndFailedVMResults(t *testing.T) {
 		c.SetBodyString(`{"ok":true,"result":{"exit_code":11,"gas_used":"456","stack":[{"@type":"tvm.stackEntryUnsupported"}]}}`)
 	})
 	seqno := int32(42)
-	result, err := NewActonExecutor(actonSettings()).Run(context.Background(), &actonapi.Snapshot{Address: "0:" + strings.Repeat("00", 32), Seqno: &seqno}, 76543, nil)
+	result, err := NewActonExecutor(actonSettings()).Run(context.Background(), &actonapi.Snapshot{Address: "0:" + strings.Repeat("00", 32), McSeqno: &seqno}, 76543, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -212,7 +212,7 @@ func TestActonProxyRejectsIncompatibleUpstreamWithoutFallback(t *testing.T) {
 				c.SetStatusCode(tc.status)
 				c.SetBodyString(tc.body)
 			})
-			snapshot := &actonapi.Snapshot{Address: "0:" + strings.Repeat("00", 32), Seqno: new(int32(1))}
+			snapshot := &actonapi.Snapshot{Address: "0:" + strings.Repeat("00", 32), McSeqno: new(int32(1))}
 			result, err := NewActonExecutor(actonSettings()).Run(context.Background(), snapshot, 76543, nil)
 			var apiError models.IndexError
 			if result != nil || !errors.As(err, &apiError) || apiError.Code != 502 || strings.Contains(err.Error(), "private-key") || strings.Contains(err.Error(), "v2.test") || calls.Load() != 1 {

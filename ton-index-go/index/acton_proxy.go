@@ -126,10 +126,9 @@ func (e *actonExecutor) Snapshot(ctx context.Context, address string, seqno *int
 		pinned = *seqno
 	}
 	var state struct {
-		Code              string          `json:"code"`
-		Data              string          `json:"data"`
-		State             string          `json:"state"`
-		BlockID           json.RawMessage `json:"block_id"`
+		Code              string `json:"code"`
+		Data              string `json:"data"`
+		State             string `json:"state"`
 		LastTransactionID struct {
 			Hash *string `json:"hash"`
 			LT   any     `json:"lt"`
@@ -153,7 +152,7 @@ func (e *actonExecutor) Snapshot(ctx context.Context, address string, seqno *int
 		return nil, actonapi.Fail(502, "invalid upstream account code BOC")
 	}
 	hash := base64.StdEncoding.EncodeToString(code.Hash())
-	snapshot := &actonapi.Snapshot{Address: canonical, CodeHash: &hash, Seqno: &pinned, BlockID: state.BlockID, LastTransactionHash: state.LastTransactionID.Hash}
+	snapshot := &actonapi.Snapshot{Address: canonical, CodeHash: &hash, McSeqno: &pinned, LastTransactionHash: state.LastTransactionID.Hash}
 	if code.GetType() == cell.LibraryCellType {
 		// ActonScan codeCell.ts uses the embedded hash for catalog lookup, but
 		// it is not the account's code-cell hash. Preserve both identities.
@@ -186,12 +185,12 @@ func (e *actonExecutor) Snapshot(ctx context.Context, address string, seqno *int
 		snapshot.DataHash = &hash
 	}
 	// raw.fullAccountState has no account-state hash; never synthesize one from
-	// code+data. block_id may be a shard block, so it is not compared to MC seqno.
+	// code+data.
 	return snapshot, nil
 }
 
 func (e *actonExecutor) Run(ctx context.Context, snapshot *actonapi.Snapshot, method int64, stack []tolkabi.StackValue) (*actonapi.Execution, error) {
-	if snapshot == nil || snapshot.Seqno == nil || *snapshot.Seqno <= 0 {
+	if snapshot == nil || snapshot.McSeqno == nil || *snapshot.McSeqno <= 0 {
 		return nil, actonapi.Fail(422, "pinned snapshot with positive seqno is required")
 	}
 	address, err := actonapi.CanonicalAddress(snapshot.Address)
@@ -211,7 +210,7 @@ func (e *actonExecutor) Run(ctx context.Context, snapshot *actonapi.Snapshot, me
 		Method  int64  `json:"method"`
 		Seqno   int32  `json:"seqno"`
 		Stack   []any  `json:"stack"`
-	}{address, method, *snapshot.Seqno, wire}
+	}{address, method, *snapshot.McSeqno, wire}
 	var response struct {
 		GasUsed  any             `json:"gas_used"`
 		ExitCode *int32          `json:"exit_code"`

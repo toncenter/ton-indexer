@@ -210,7 +210,7 @@ func (e *fakeExecutor) Snapshot(_ context.Context, addr string, seqno *int32) (*
 	if addr != testAddress {
 		e.t.Fatalf("noncanonical address: %s", addr)
 	}
-	if seqno != nil && *seqno != *e.snapshot.Seqno {
+	if seqno != nil && *seqno != *e.snapshot.McSeqno {
 		e.t.Fatal("wrong requested seqno")
 	}
 	return &e.snapshot, nil
@@ -228,7 +228,7 @@ func (e *fakeExecutor) Run(_ context.Context, snapshot *Snapshot, method int64, 
 func runFixture(t *testing.T) (*fiber.App, *fakeExecutor, *tolkabi.Contract) {
 	contract := testContract()
 	seqno := int32(123)
-	executor := &fakeExecutor{t: t, snapshot: Snapshot{Address: testAddress, CodeHash: &testHash, Seqno: &seqno}, execution: Execution{
+	executor := &fakeExecutor{t: t, snapshot: Snapshot{Address: testAddress, CodeHash: &testHash, McSeqno: &seqno}, execution: Execution{
 		Stack:   []models.V2StackEntity{{Type: "num", Value: "0x20000000000001"}},
 		Native:  []tolkabi.StackValue{{Type: "num", Value: "9007199254740993"}},
 		GasUsed: 9007199254740993, ExitCode: 0}}

@@ -354,10 +354,10 @@ func (a *API) RunGetMethod(c *fiber.Ctx) error {
 	if err != nil {
 		return err
 	}
-	if snapshot == nil || snapshot.CodeHash == nil || snapshot.Seqno == nil || *snapshot.Seqno <= 0 {
+	if snapshot == nil || snapshot.CodeHash == nil || snapshot.McSeqno == nil || *snapshot.McSeqno <= 0 {
 		return Fail(502, "upstream did not provide pinned account code")
 	}
-	if snapshot.Address != addr || req.Seqno != nil && *snapshot.Seqno != *req.Seqno {
+	if snapshot.Address != addr || req.Seqno != nil && *snapshot.McSeqno != *req.Seqno {
 		return Fail(502, "upstream snapshot selector mismatch")
 	}
 	key, err := tolkabi.NormalizeCodeHash(*snapshot.CodeHash)
