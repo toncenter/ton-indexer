@@ -42,7 +42,7 @@ func TestRealCatalogAddressGetter(t *testing.T) {
 	e := &fakeExecutor{t: t, snapshot: Snapshot{Address: testAddress, CodeHash: &contract.CodeHashes[0], McSeqno: &seqno}, execution: Execution{Native: stack}}
 	api := New(catalog.Contracts, catalog.Revision, Dependencies{Executor: func(*fiber.Ctx) GetterExecutor { return e }})
 	var result RunResponse
-	call(t, testApp(api), "POST", "/runGetMethod", `{"address":"`+testAddress+`","method":"get_nft_address_by_index","args":{"itemIndex":1},"seqno":91668427}`, 200, &result)
+	call(t, testApp(api), "POST", "/runGetMethod", `{"address":"`+testAddress+`","method":"get_nft_address_by_index","args":{"itemIndex":1},"mc_seqno":91668427}`, 200, &result)
 	if !result.Success || result.DecodeError != "" || result.Decoded == nil || e.method != method.ID {
 		t.Fatalf("real codec integration failed: %+v", result)
 	}

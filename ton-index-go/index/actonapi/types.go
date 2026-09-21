@@ -92,7 +92,7 @@ type RunRequest struct {
 	Address string          `json:"address"`
 	Method  string          `json:"method"`
 	Args    json.RawMessage `json:"args,omitempty" swaggertype:"object"`
-	Seqno   *int32          `json:"seqno,omitempty"`
+	McSeqno *int32          `json:"mc_seqno,omitempty"`
 } // @name ActonRunRequest
 
 // Stack is spelled the way /runGetMethod spells one, so one parser reads both.

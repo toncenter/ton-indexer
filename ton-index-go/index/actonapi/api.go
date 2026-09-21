@@ -299,11 +299,11 @@ func (a *API) Decode(c *fiber.Ctx) error {
 // RunGetMethod selects an ABI using code read at the execution seqno, never from
 // the latest indexed state. An explicit contract must also match that code hash.
 // @Summary Run and decode a pinned Acton getter
-// @Description Requires a positive seqno or resolves it once. Reads account code and executes runGetMethodStd at the same seqno; library code and implementation hashes stay distinct. The ABI is the catalog entry declaring the named getter for that code, so the request selects no ABI of its own. Pinning trusts the configured upstream, not a proof. The stack is spelled exactly as /api/v3/runGetMethod spells one, so a single parser reads both; `decoded` carries the typed ABI answer beside it. VM and decoding failures still retain the stack, gas and exit code.
+// @Description Requires a positive mc_seqno or resolves it once. Reads account code and executes runGetMethodStd at the same seqno; library code and implementation hashes stay distinct. The ABI is the catalog entry declaring the named getter for that code, so the request selects no ABI of its own. Pinning trusts the configured upstream, not a proof. The stack is spelled exactly as /api/v3/runGetMethod spells one, so a single parser reads both; `decoded` carries the typed ABI answer beside it. VM and decoding failures still retain the stack, gas and exit code.
 // @Tags acton
 // @Accept json
 // @Produce json
-// @Param request body RunRequest true "Address, getter name or numeric TVM ID, named args, optional seqno"
+// @Param request body RunRequest true "Address, getter name or numeric TVM ID, named args, optional mc_seqno"
 // @Success 200 {object} RunResponse
 // @Header 200 {string} X-Acton-Catalog-Revision "SHA-256 of the pinned ABI catalog that produced this response"
 // @Failure 409 {object} models.IndexError
@@ -321,8 +321,8 @@ func (a *API) RunGetMethod(c *fiber.Ctx) error {
 	if err != nil {
 		return err
 	}
-	if req.Seqno != nil && *req.Seqno <= 0 {
-		return Fail(422, "seqno must be positive")
+	if req.McSeqno != nil && *req.McSeqno <= 0 {
+		return Fail(422, "mc_seqno must be positive")
 	}
 	if req.Method == "" || len(req.Method) > 256 {
 		return Fail(422, "invalid method")
@@ -350,14 +350,14 @@ func (a *API) RunGetMethod(c *fiber.Ctx) error {
 	if executor == nil {
 		return Fail(503, "getter execution unavailable")
 	}
-	snapshot, err := executor.Snapshot(c.UserContext(), addr, req.Seqno)
+	snapshot, err := executor.Snapshot(c.UserContext(), addr, req.McSeqno)
 	if err != nil {
 		return err
 	}
 	if snapshot == nil || snapshot.CodeHash == nil || snapshot.McSeqno == nil || *snapshot.McSeqno <= 0 {
 		return Fail(502, "upstream did not provide pinned account code")
 	}
-	if snapshot.Address != addr || req.Seqno != nil && *snapshot.McSeqno != *req.Seqno {
+	if snapshot.Address != addr || req.McSeqno != nil && *snapshot.McSeqno != *req.McSeqno {
 		return Fail(502, "upstream snapshot selector mismatch")
 	}
 	key, err := tolkabi.NormalizeCodeHash(*snapshot.CodeHash)

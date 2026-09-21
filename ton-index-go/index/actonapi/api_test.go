@@ -239,7 +239,7 @@ func runFixture(t *testing.T) (*fiber.App, *fakeExecutor, *tolkabi.Contract) {
 func TestRunPinnedNamedArgsAndIDs(t *testing.T) {
 	app, executor, _ := runFixture(t)
 	var response RunResponse
-	call(t, app, "POST", "/runGetMethod", `{"address":"`+testAddress+`","method":"get_counter","args":{"increment":9007199254740993},"seqno":123}`, 200, &response)
+	call(t, app, "POST", "/runGetMethod", `{"address":"`+testAddress+`","method":"get_counter","args":{"increment":9007199254740993},"mc_seqno":123}`, 200, &response)
 	if executor.method != 76543 || executor.stack[0].Type != "int" || executor.stack[0].Value != "9007199254740993" {
 		t.Fatalf("method ID or precision lost: %d %+v", executor.method, executor.stack)
 	}
@@ -288,7 +288,7 @@ func TestRunValidationAndCodeMismatch(t *testing.T) {
 	app, executor, _ := runFixture(t)
 	// The request names a getter and nothing about its ABI; anything else is refused.
 	for _, fields := range []string{
-		`"args":null`, `"args":[]`, `"seqno":-1`, `"seqno":0`, `"transport":"legacy"`, `"unknown":true`,
+		`"args":null`, `"args":[]`, `"mc_seqno":-1`, `"mc_seqno":0`, `"seqno":1`, `"transport":"legacy"`, `"unknown":true`,
 		`"stack":[]`, `"catalog_id":"counter"`, `"code_hash":"` + testHash + `"`,
 	} {
 		call(t, app, "POST", "/runGetMethod", `{"address":"`+testAddress+`","method":"get_counter",`+fields+`}`, 422, nil)
