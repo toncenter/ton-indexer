@@ -2,7 +2,9 @@ name: Test pull request
 
 on:
   pull_request:
-    branches: [ "master" ]
+    # TEMPORARY: v1.3 is here so that pull requests targeting the release branch
+    # are tested too. Drop it once v1.3 has been merged into master.
+    branches: [ "master", "v1.3" ]
 
 permissions:
   contents: read
