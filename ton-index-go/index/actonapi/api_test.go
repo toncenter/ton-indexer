@@ -15,6 +15,7 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/ton-blockchain/tolk-abi-to-go"
+	"github.com/toncenter/ton-indexer/ton-index-go/index/acton"
 	"github.com/toncenter/ton-indexer/ton-index-go/index/models"
 	"github.com/xssnick/tonutils-go/tvm/cell"
 )
@@ -46,7 +47,7 @@ func testContract() *tolkabi.Contract {
 }
 
 func testApp(api *API) *fiber.App {
-	app := fiber.New(fiber.Config{ReadBufferSize: MaxBodyBytes, ErrorHandler: func(c *fiber.Ctx, err error) error {
+	app := fiber.New(fiber.Config{ReadBufferSize: acton.MaxBodyBytes, ErrorHandler: func(c *fiber.Ctx, err error) error {
 		// Mirror main.go: the shared handler renders models.IndexError.
 		var apiError models.IndexError
 		if errors.As(err, &apiError) {
@@ -133,7 +134,7 @@ func TestCatalogIndexAndSelectors(t *testing.T) {
 // response that names one contract for that code names the same one.
 func TestOrderCandidates(t *testing.T) {
 	message := map[string][]tolkabi.Binding{"incoming_messages": {{}}}
-	ordered := OrderCandidates([]*tolkabi.Contract{{ID: "b"}, {ID: "a"}, {ID: "c", Messages: message}, {ID: "d", GetMethods: make([]tolkabi.GetMethod, 1)}})
+	ordered := acton.OrderCandidates([]*tolkabi.Contract{{ID: "b"}, {ID: "a"}, {ID: "c", Messages: message}, {ID: "d", GetMethods: make([]tolkabi.GetMethod, 1)}})
 	ids := make([]string, 0, len(ordered))
 	for _, contract := range ordered {
 		ids = append(ids, contract.ID)
@@ -193,19 +194,19 @@ func TestNativeDecode(t *testing.T) {
 	for _, body := range []string{`{}`, `{"catalog_id":"counter","direction":"storage","body":"bad"}`, `{"catalog_id":"counter","direction":"bad","body":"` + boc + `"}`, `{"catalog_id":"counter","code_hash":"` + testHash + `"}`} {
 		call(t, app, "POST", "/decode", body, 422, nil)
 	}
-	call(t, app, "POST", "/decode", strings.Repeat(" ", MaxBodyBytes+1), 413, nil)
+	call(t, app, "POST", "/decode", strings.Repeat(" ", acton.MaxBodyBytes+1), 413, nil)
 }
 
 type fakeExecutor struct {
 	t               *testing.T
-	snapshot        Snapshot
-	execution       Execution
+	snapshot        acton.Snapshot
+	execution       acton.Execution
 	snapshots, runs int
 	method          int64
 	stack           []tolkabi.StackValue
 }
 
-func (e *fakeExecutor) Snapshot(_ context.Context, addr string, seqno *int32) (*Snapshot, error) {
+func (e *fakeExecutor) Snapshot(_ context.Context, addr string, seqno *int32) (*acton.Snapshot, error) {
 	e.snapshots++
 	if addr != testAddress {
 		e.t.Fatalf("noncanonical address: %s", addr)
@@ -216,7 +217,7 @@ func (e *fakeExecutor) Snapshot(_ context.Context, addr string, seqno *int32) (*
 	return &e.snapshot, nil
 }
 
-func (e *fakeExecutor) Run(_ context.Context, snapshot *Snapshot, method int64, stack []tolkabi.StackValue) (*Execution, error) {
+func (e *fakeExecutor) Run(_ context.Context, snapshot *acton.Snapshot, method int64, stack []tolkabi.StackValue) (*acton.Execution, error) {
 	e.runs++
 	if snapshot != &e.snapshot {
 		e.t.Fatal("snapshot not passed through")
@@ -228,11 +229,11 @@ func (e *fakeExecutor) Run(_ context.Context, snapshot *Snapshot, method int64, 
 func runFixture(t *testing.T) (*fiber.App, *fakeExecutor, *tolkabi.Contract) {
 	contract := testContract()
 	seqno := int32(123)
-	executor := &fakeExecutor{t: t, snapshot: Snapshot{Address: testAddress, CodeHash: &testHash, McSeqno: &seqno}, execution: Execution{
+	executor := &fakeExecutor{t: t, snapshot: acton.Snapshot{Address: testAddress, CodeHash: &testHash, McSeqno: &seqno}, execution: acton.Execution{
 		Stack:   []models.V2StackEntity{{Type: "num", Value: "0x20000000000001"}},
 		Native:  []tolkabi.StackValue{{Type: "num", Value: "9007199254740993"}},
 		GasUsed: 9007199254740993, ExitCode: 0}}
-	app := testApp(New([]*tolkabi.Contract{contract}, "revision", Dependencies{Executor: func(*fiber.Ctx) GetterExecutor { return executor }}))
+	app := testApp(New([]*tolkabi.Contract{contract}, "revision", Dependencies{Executor: func(*fiber.Ctx) acton.GetterExecutor { return executor }}))
 	return app, executor, contract
 }
 
@@ -334,7 +335,7 @@ func TestCanonicalizeDecodedRewritesOnlyAddresses(t *testing.T) {
 		"bits":     map[string]any{"bits": 64, "hex": strings.Repeat("ab", 32)},
 		"short":    "0:abab",
 	}
-	CanonicalizeDecoded(decoded)
+	acton.CanonicalizeDecoded(decoded)
 	children := decoded["children"].([]any)
 	if decoded["owner"] != upper || children[0].(map[string]any)["wallet"] != upper {
 		t.Fatalf("addresses were not rewritten: %v", decoded)

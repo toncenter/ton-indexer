@@ -1,9 +1,8 @@
-package crud
+package acton
 
 import (
 	"github.com/ton-blockchain/tolk-abi-to-go"
 	"github.com/toncenter/ton-indexer/ton-index-go/index/acton/catalog"
-	"github.com/toncenter/ton-indexer/ton-index-go/index/actonapi"
 	"github.com/toncenter/ton-indexer/ton-index-go/index/models"
 )
 
@@ -71,7 +70,7 @@ func codeBook(hashes []models.HashType, lookup func(string) []*tolkabi.Contract)
 		}
 		row, cached := resolved[*key]
 		if !cached {
-			for _, contract := range actonapi.OrderCandidates(lookup(string(*key))) {
+			for _, contract := range OrderCandidates(lookup(string(*key))) {
 				entry := models.CodeContract{CatalogID: contract.ID, DisplayName: contract.DisplayName}
 				for _, link := range contract.Links {
 					entry.Links = append(entry.Links, models.ContractLink{Kind: link.Kind, Title: link.Title, URL: link.URL})

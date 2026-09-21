@@ -1,4 +1,4 @@
-package actonapi
+package acton
 
 import (
 	"cmp"
@@ -42,7 +42,7 @@ func messageBindings(contract *tolkabi.Contract) int {
 // the same getter with different signatures. Candidates matched through a library
 // implementation hash are a different contract, not another name for the same
 // one, so the caller places them after the code-hash matches.
-func selectMethod(contracts []*tolkabi.Contract, name string, id int64, byName bool) (*tolkabi.Contract, *tolkabi.GetMethod, error) {
+func SelectMethod(contracts []*tolkabi.Contract, name string, id int64, byName bool) (*tolkabi.Contract, *tolkabi.GetMethod, error) {
 	if len(contracts) == 0 {
 		return nil, nil, Fail(404, "contract is not in the catalog")
 	}

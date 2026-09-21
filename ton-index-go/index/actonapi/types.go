@@ -1,10 +1,11 @@
-// Package actonapi exposes catalog-backed ABI operations without importing the
-// database or the legacy native marker. All state reads and execution are injected.
+// Package actonapi is the HTTP surface of the Acton endpoints: request and
+// response shapes, and the handlers that read them. Everything it decides with
+// lives in index/acton.
 package actonapi
 
 import (
-	"context"
 	"encoding/json"
+	"github.com/toncenter/ton-indexer/ton-index-go/index/acton"
 	"github.com/toncenter/ton-indexer/ton-index-go/index/models"
 
 	"github.com/gofiber/fiber/v2"
@@ -12,15 +13,12 @@ import (
 )
 
 const MaxBatch = 1000
-const MaxBodyBytes = 1 << 20
 const MaxMetadataBytes = 8 << 20
 
 // A selected contract carries its compiler ABI, which is 12 KiB for a median
 // catalog entry and 74 KiB for the largest, so the selector count is bounded far
 // below the batch limits that apply to hashes and addresses elsewhere.
 const MaxSelectors = 50
-
-func Fail(code int, message string) error { return models.IndexError{Code: code, Message: message} }
 
 // ActonParameter renders its type as a name rather than as an index into a type
 // table. No getter in the catalog takes a structural parameter, and a caller that
@@ -62,16 +60,6 @@ type ActonContractsResponse struct {
 	Offset    int             `json:"offset"`
 } // @name ActonContractsResponse
 
-type Snapshot struct {
-	Address             string  `json:"address"`
-	CodeHash            *string `json:"code_hash"`
-	ImplementationHash  *string `json:"implementation_hash,omitempty"`
-	DataHash            *string `json:"data_hash"`
-	LastTransactionHash *string `json:"last_transaction_hash"`
-	LastTransactionLT   *string `json:"last_transaction_lt"`
-	McSeqno             *int32  `json:"mc_seqno,omitempty"`
-} // @name ActonSnapshot
-
 type DecodeRequest struct {
 	CatalogID string `json:"catalog_id"`
 	CodeHash  string `json:"code_hash"`
@@ -95,21 +83,9 @@ type RunRequest struct {
 	McSeqno *int32          `json:"mc_seqno,omitempty"`
 } // @name ActonRunRequest
 
-// Stack is spelled the way /runGetMethod spells one, so one parser reads both.
-// Native is the same stack in the shape the codecs consume, decimal integers
-// and Lisp lists as cons pairs; a client reads the typed answer in `decoded`.
-// StackError must prevent typed decoding, not hide the exit code or the gas.
-type Execution struct {
-	Stack      []models.V2StackEntity `json:"stack"`
-	GasUsed    int64                  `json:"gas_used"`
-	ExitCode   int64                  `json:"exit_code"`
-	StackError string                 `json:"stack_error,omitempty"`
-	Native     []tolkabi.StackValue   `json:"-"`
-} // @name ActonExecution
-
 type RunResponse struct {
-	Execution
-	Snapshot       Snapshot       `json:"snapshot"`
+	acton.Execution
+	Snapshot       acton.Snapshot `json:"snapshot"`
 	CatalogID      string         `json:"catalog_id"`
 	Method         ActonGetMethod `json:"method"`
 	Identification string         `json:"identification"`
@@ -118,11 +94,6 @@ type RunResponse struct {
 	DecodeError    string         `json:"decode_error,omitempty"`
 } // @name ActonRunResponse
 
-type GetterExecutor interface {
-	Snapshot(context.Context, string, *int32) (*Snapshot, error)
-	Run(context.Context, *Snapshot, int64, []tolkabi.StackValue) (*Execution, error)
-}
-
 type Dependencies struct {
-	Executor func(*fiber.Ctx) GetterExecutor
+	Executor func(*fiber.Ctx) acton.GetterExecutor
 }

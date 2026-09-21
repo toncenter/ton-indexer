@@ -1,4 +1,4 @@
-package actonapi
+package acton
 
 import (
 	"encoding/base64"

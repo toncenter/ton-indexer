@@ -1,18 +1,17 @@
 package actonapi
 
 import (
-	"bytes"
 	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"slices"
 	"strconv"
 	"strings"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/ton-blockchain/tolk-abi-to-go"
+	"github.com/toncenter/ton-indexer/ton-index-go/index/acton"
 	"github.com/toncenter/ton-indexer/ton-index-go/index/models"
 )
 
@@ -43,8 +42,8 @@ func New(contracts []*tolkabi.Contract, revision string, deps Dependencies) *API
 // selected entry: it is ten times the size of everything else about a contract.
 func contractInfo(contract *tolkabi.Contract, withABI bool) ActonContract {
 	info := ActonContract{CatalogID: contract.ID, DisplayName: contract.DisplayName,
-		CodeHashes:     canonicalHashes(contract.CodeHashes),
-		KnownAddresses: canonicalAddresses(contract.KnownAddresses),
+		CodeHashes:     acton.CanonicalHashes(contract.CodeHashes),
+		KnownAddresses: acton.CanonicalAddresses(contract.KnownAddresses),
 		Links:          []models.ContractLink{}, GetMethods: []ActonGetMethod{}}
 	for _, link := range contract.Links {
 		info.Links = append(info.Links, models.ContractLink{Kind: link.Kind, Title: link.Title, URL: link.URL})
@@ -67,33 +66,6 @@ func methodInfo(method tolkabi.GetMethod) ActonGetMethod {
 	return rendered
 }
 
-// CanonicalAddress accepts every spelling the rest of v3 accepts and returns the
-// raw form it returns. A getter runs on an account, so the other address kinds
-// the parser knows — none, external, variable-length — are refused here.
-func CanonicalAddress(value string) (string, error) {
-	parsed, err := models.ParseAccountAddress(value)
-	if err != nil || !parsed.IsAddressStd() {
-		return "", Fail(422, "invalid standard account address")
-	}
-	return string(*parsed), nil
-}
-
-func decodeJSON(data []byte, dst any) error {
-	if len(data) > MaxBodyBytes {
-		return Fail(413, "request body exceeds 1 MiB")
-	}
-	d := json.NewDecoder(bytes.NewReader(data))
-	d.UseNumber()
-	d.DisallowUnknownFields()
-	if err := d.Decode(dst); err != nil {
-		return Fail(422, "invalid JSON: "+err.Error())
-	}
-	if err := d.Decode(new(any)); err != io.EOF {
-		return Fail(422, "expected one JSON value")
-	}
-	return nil
-}
-
 func queryValues(c *fiber.Ctx, name string) []string {
 	values := c.Context().QueryArgs().PeekMulti(name)
 	out := make([]string, 0, len(values))
@@ -105,31 +77,21 @@ func queryValues(c *fiber.Ctx, name string) []string {
 
 func (a *API) selectContracts(contractType, hash string) ([]*tolkabi.Contract, error) {
 	if (contractType == "") == (hash == "") {
-		return nil, Fail(422, "provide exactly one of catalog_id or code_hash")
+		return nil, acton.Fail(422, "provide exactly one of catalog_id or code_hash")
 	}
 	if contractType != "" {
 		return a.byID[contractType], nil
 	}
-	key, err := codeHashKey(hash)
+	key, err := acton.CodeHashKey(hash)
 	if err != nil {
 		return nil, err
 	}
 	return a.byHash[key], nil
 }
 
-// codeHashKey spells a hash the way the rest of v3 spells one, so every hex or
-// base64 form of the same code collapses to a single selector.
-func codeHashKey(hash string) (string, error) {
-	key, err := models.ParseHashType(hash)
-	if err != nil {
-		return "", Fail(422, "invalid code_hash")
-	}
-	return string(*key), nil
-}
-
 func unique(contracts []*tolkabi.Contract) (*tolkabi.Contract, error) {
 	if len(contracts) == 0 {
-		return nil, Fail(404, "contract is not in the catalog")
+		return nil, acton.Fail(404, "contract is not in the catalog")
 	}
 	if len(contracts) != 1 {
 		// Identical bytecode does not make two catalog entries interchangeable:
@@ -167,14 +129,14 @@ func (a *API) Contracts(c *fiber.Ctx) error {
 	hashes, ids := queryValues(c, "code_hash"), queryValues(c, "catalog_id")
 	selected := len(hashes)+len(ids) > 0
 	if len(hashes)+len(ids) > MaxSelectors {
-		return Fail(422, "provide at most 50 code_hash and catalog_id selectors")
+		return acton.Fail(422, "provide at most 50 code_hash and catalog_id selectors")
 	}
 	contracts := a.contracts
 	if selected {
 		contracts = nil
 		seen := map[*tolkabi.Contract]bool{}
 		add := func(matches []*tolkabi.Contract) {
-			for _, contract := range OrderCandidates(matches) {
+			for _, contract := range acton.OrderCandidates(matches) {
 				if !seen[contract] {
 					seen[contract] = true
 					contracts = append(contracts, contract)
@@ -185,7 +147,7 @@ func (a *API) Contracts(c *fiber.Ctx) error {
 			add(a.byID[id])
 		}
 		for _, hash := range hashes {
-			key, err := codeHashKey(hash)
+			key, err := acton.CodeHashKey(hash)
 			if err != nil {
 				return err
 			}
@@ -196,13 +158,13 @@ func (a *API) Contracts(c *fiber.Ctx) error {
 	if raw := c.Query("limit"); raw != "" {
 		parsed, err := strconv.Atoi(raw)
 		if err != nil || parsed < 1 || parsed > MaxBatch {
-			return Fail(422, "limit must be between 1 and 1000")
+			return acton.Fail(422, "limit must be between 1 and 1000")
 		}
 		limit = parsed
 	}
 	offset, err := strconv.Atoi(c.Query("offset", "0"))
 	if err != nil || offset < 0 {
-		return Fail(422, "offset must be nonnegative")
+		return acton.Fail(422, "offset must be nonnegative")
 	}
 	start := min(offset, len(contracts))
 	end := start + min(limit, len(contracts)-start)
@@ -229,7 +191,7 @@ func (a *API) Contracts(c *fiber.Ctx) error {
 // @Security APIKeyQuery
 func (a *API) Decode(c *fiber.Ctx) error {
 	var req DecodeRequest
-	if err := decodeJSON(c.Body(), &req); err != nil {
+	if err := acton.DecodeJSON(c.Body(), &req); err != nil {
 		return err
 	}
 	contracts, err := a.selectContracts(req.CatalogID, req.CodeHash)
@@ -241,7 +203,7 @@ func (a *API) Decode(c *fiber.Ctx) error {
 		return err
 	}
 	if req.Body == "" {
-		return Fail(422, "body BOC is required")
+		return acton.Fail(422, "body BOC is required")
 	}
 	response := DecodeResponse{CatalogID: contract.ID, Direction: req.Direction}
 	if req.Direction == "storage" || req.Direction == "deployment_storage" {
@@ -250,27 +212,27 @@ func (a *API) Decode(c *fiber.Ctx) error {
 			binding = contract.DeploymentStorage
 		}
 		if binding == nil {
-			return Fail(422, "storage binding unavailable")
+			return acton.Fail(422, "storage binding unavailable")
 		}
 		response.Type = binding.Type
 		// One caller-supplied BOC, so a per-call budget rather than a shared one.
-		decoded, err := decodeBinding(binding, req.Body)
+		decoded, err := acton.DecodeBinding(binding, req.Body)
 		if err != nil {
-			return Fail(422, err.Error())
+			return acton.Fail(422, err.Error())
 		}
-		response.Decoded = CanonicalizeDecoded(decoded)
+		response.Decoded = acton.CanonicalizeDecoded(decoded)
 	} else {
 		if req.Direction == "" || len(contract.Messages[req.Direction]) == 0 {
-			return Fail(422, "message direction is not in the selected ABI")
+			return acton.Fail(422, "message direction is not in the selected ABI")
 		}
 		decoded, err := tolkabi.DecodeMessage(contract, req.Direction, req.Body)
 		if err != nil {
-			return Fail(422, err.Error())
+			return acton.Fail(422, err.Error())
 		}
 		if decoded == nil {
-			return Fail(422, "no matching message binding")
+			return acton.Fail(422, "no matching message binding")
 		}
-		response.Type, response.Decoded = decoded.Type, CanonicalizeDecoded(decoded.Value)
+		response.Type, response.Decoded = decoded.Type, acton.CanonicalizeDecoded(decoded.Value)
 	}
 	return a.sendBounded(c, response)
 }
@@ -293,73 +255,73 @@ func (a *API) Decode(c *fiber.Ctx) error {
 // @Security APIKeyQuery
 func (a *API) RunGetMethod(c *fiber.Ctx) error {
 	var req RunRequest
-	if err := decodeJSON(c.Body(), &req); err != nil {
+	if err := acton.DecodeJSON(c.Body(), &req); err != nil {
 		return err
 	}
-	addr, err := CanonicalAddress(req.Address)
+	addr, err := acton.CanonicalAddress(req.Address)
 	if err != nil {
 		return err
 	}
 	if req.McSeqno != nil && *req.McSeqno <= 0 {
-		return Fail(422, "mc_seqno must be positive")
+		return acton.Fail(422, "mc_seqno must be positive")
 	}
 	if req.Method == "" || len(req.Method) > 256 {
-		return Fail(422, "invalid method")
+		return acton.Fail(422, "invalid method")
 	}
 	// A decimal method is a TVM ID and anything else is a getter name, so a
 	// number too large to be an ID must not quietly become a name.
 	methodID, parseError := strconv.ParseInt(req.Method, 10, 32)
 	if errors.Is(parseError, strconv.ErrRange) {
-		return Fail(422, "method ID must be an int32")
+		return acton.Fail(422, "method ID must be an int32")
 	}
 	byName := parseError != nil
 	args := map[string]any{}
 	if len(req.Args) != 0 {
-		if err := decodeJSON(req.Args, &args); err != nil {
+		if err := acton.DecodeJSON(req.Args, &args); err != nil {
 			return err
 		}
 		if args == nil {
-			return Fail(422, "args must be an object")
+			return acton.Fail(422, "args must be an object")
 		}
 	}
 	if a.deps.Executor == nil {
-		return Fail(503, "getter execution unavailable")
+		return acton.Fail(503, "getter execution unavailable")
 	}
 	executor := a.deps.Executor(c)
 	if executor == nil {
-		return Fail(503, "getter execution unavailable")
+		return acton.Fail(503, "getter execution unavailable")
 	}
 	snapshot, err := executor.Snapshot(c.UserContext(), addr, req.McSeqno)
 	if err != nil {
 		return err
 	}
 	if snapshot == nil || snapshot.CodeHash == nil || snapshot.McSeqno == nil || *snapshot.McSeqno <= 0 {
-		return Fail(502, "upstream did not provide pinned account code")
+		return acton.Fail(502, "upstream did not provide pinned account code")
 	}
 	if snapshot.Address != addr || req.McSeqno != nil && *snapshot.McSeqno != *req.McSeqno {
-		return Fail(502, "upstream snapshot selector mismatch")
+		return acton.Fail(502, "upstream snapshot selector mismatch")
 	}
-	key, err := codeHashKey(*snapshot.CodeHash)
+	key, err := acton.CodeHashKey(*snapshot.CodeHash)
 	if err != nil {
-		return Fail(502, "invalid upstream code hash")
+		return acton.Fail(502, "invalid upstream code hash")
 	}
-	contracts := OrderCandidates(a.byHash[key])
+	contracts := acton.OrderCandidates(a.byHash[key])
 	implementationKey := ""
 	if snapshot.ImplementationHash != nil {
-		implementationKey, err = codeHashKey(*snapshot.ImplementationHash)
+		implementationKey, err = acton.CodeHashKey(*snapshot.ImplementationHash)
 		if err != nil {
-			return Fail(502, "invalid upstream library implementation hash")
+			return acton.Fail(502, "invalid upstream library implementation hash")
 		}
 		// The implementation of a library reference is a different contract, so it
 		// is a fallback for a getter the code cell's own entries do not declare,
 		// never a competing description of the same code.
-		for _, candidate := range OrderCandidates(a.byHash[implementationKey]) {
+		for _, candidate := range acton.OrderCandidates(a.byHash[implementationKey]) {
 			if !slices.Contains(contracts, candidate) {
 				contracts = append(contracts, candidate)
 			}
 		}
 	}
-	contract, method, err := selectMethod(contracts, req.Method, methodID, byName)
+	contract, method, err := acton.SelectMethod(contracts, req.Method, methodID, byName)
 	if err != nil {
 		return err
 	}
@@ -374,10 +336,10 @@ func (a *API) RunGetMethod(c *fiber.Ctx) error {
 		identification = "library_reference"
 	}
 	if method.Unsupported != "" {
-		return Fail(422, method.Unsupported)
+		return acton.Fail(422, method.Unsupported)
 	}
 	if method.EncodeArgs == nil {
-		return Fail(422, "native argument encoder unavailable")
+		return acton.Fail(422, "native argument encoder unavailable")
 	}
 	allowed := map[string]bool{}
 	for _, parameter := range method.Parameters {
@@ -385,26 +347,26 @@ func (a *API) RunGetMethod(c *fiber.Ctx) error {
 	}
 	for name := range args {
 		if !allowed[name] {
-			return Fail(422, "unknown argument: "+name)
+			return acton.Fail(422, "unknown argument: "+name)
 		}
 	}
 	stack, err := method.EncodeArgs(args)
 	if err != nil {
-		return Fail(422, err.Error())
+		return acton.Fail(422, err.Error())
 	}
-	stack, err = NormalizeStack(stack)
+	stack, err = acton.NormalizeStack(stack)
 	if err != nil {
-		return Fail(422, err.Error())
+		return acton.Fail(422, err.Error())
 	}
 	execution, err := executor.Run(c.UserContext(), snapshot, method.ID, stack)
 	if err != nil {
 		return err
 	}
 	if execution == nil {
-		return Fail(502, "empty getter execution result")
+		return acton.Fail(502, "empty getter execution result")
 	}
 	if execution.StackError == "" {
-		execution.Native, err = NormalizeStack(execution.Native)
+		execution.Native, err = acton.NormalizeStack(execution.Native)
 		if err != nil {
 			execution.StackError = err.Error()
 		}
@@ -425,23 +387,9 @@ func (a *API) RunGetMethod(c *fiber.Ctx) error {
 			response.DecodeError = err.Error()
 			break
 		}
-		response.Decoded = CanonicalizeDecoded(decoded)
+		response.Decoded = acton.CanonicalizeDecoded(decoded)
 	}
 	return a.sendBounded(c, response)
-}
-
-func decodeBinding(binding *tolkabi.Binding, boc string) (any, error) {
-	if binding.Unsupported != "" {
-		return nil, fmt.Errorf("unsupported storage: %s", binding.Unsupported)
-	}
-	if binding.Decode == nil {
-		return nil, errors.New("native storage decoder unavailable")
-	}
-	root, err := tolkabi.DecodeBOC(boc)
-	if err != nil {
-		return nil, err
-	}
-	return binding.Decode(root)
 }
 
 // sendBounded serializes once and rejects the exact encoded size, so a caller
@@ -452,10 +400,10 @@ func decodeBinding(binding *tolkabi.Binding, boc string) (any, error) {
 func (a *API) sendBounded(c *fiber.Ctx, response any) error {
 	body, err := json.Marshal(response)
 	if err != nil {
-		return Fail(502, "response cannot be serialized")
+		return acton.Fail(502, "response cannot be serialized")
 	}
 	if len(body) > MaxMetadataBytes {
-		return Fail(413, "response exceeds 8 MiB; reduce the batch or page size")
+		return acton.Fail(413, "response exceeds 8 MiB; reduce the batch or page size")
 	}
 	c.Set("X-Acton-Catalog-Revision", a.revision)
 	if c.Method() == fiber.MethodGet {

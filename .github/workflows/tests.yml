@@ -81,7 +81,7 @@ jobs:
         run: go tool tolk-abi-to-go --catalog index/acton/catalog/catalog.json --output-dir index/acton/catalog --package catalog
 
       - name: Test native Acton bindings and handlers
-        run: go test ./index/acton/catalog ./index/actonapi -count=1
+        run: go test ./index/acton/... ./index/actonapi -count=1
 
   build:
     runs-on: ubuntu-24.04

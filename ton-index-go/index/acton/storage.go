@@ -1,4 +1,4 @@
-package crud
+package acton
 
 import (
 	"encoding/json"
@@ -7,7 +7,6 @@ import (
 
 	"github.com/ton-blockchain/tolk-abi-to-go"
 	"github.com/toncenter/ton-indexer/ton-index-go/index/acton/catalog"
-	"github.com/toncenter/ton-indexer/ton-index-go/index/actonapi"
 	"github.com/toncenter/ton-indexer/ton-index-go/index/models"
 )
 
@@ -45,7 +44,7 @@ func decodeAccountStorage(states []models.AccountStateFull, lookup func(string) 
 		if state.CodeHash == nil {
 			continue
 		}
-		contracts := actonapi.OrderCandidates(lookup(string(*state.CodeHash)))
+		contracts := OrderCandidates(lookup(string(*state.CodeHash)))
 		if len(contracts) == 0 || contracts[0].Storage == nil {
 			continue
 		}
@@ -83,7 +82,7 @@ func decodeStorage(budget *tolkabi.Context, binding *tolkabi.Binding, boc *model
 	if err != nil {
 		return nil, err
 	}
-	return json.Marshal(actonapi.CanonicalizeDecoded(value))
+	return json.Marshal(CanonicalizeDecoded(value))
 }
 
 func bocLength(value *models.BytesType) int {

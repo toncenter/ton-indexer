@@ -10,6 +10,7 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/ton-blockchain/tolk-abi-to-go"
+	"github.com/toncenter/ton-indexer/ton-index-go/index/acton"
 	"github.com/toncenter/ton-indexer/ton-index-go/index/acton/catalog"
 	"github.com/xssnick/tonutils-go/address"
 	"github.com/xssnick/tonutils-go/tvm/cell"
@@ -34,13 +35,13 @@ func TestRealCatalogAddressGetter(t *testing.T) {
 	contract, method := catalogMethod(t, "coffee.CoffeeStakingMaster", "get_nft_address_by_index")
 	boc := base64.StdEncoding.EncodeToString(cell.BeginCell().MustStoreAddr(address.MustParseRawAddr(testAddress)).EndCell().ToBOC())
 	raw := json.RawMessage(`[{"@type":"tvm.stackEntrySlice","slice":{"@type":"tvm.slice","bytes":"` + boc + `"}}]`)
-	stack, err := DecodeStandardStack(raw)
+	stack, err := acton.DecodeStandardStack(raw)
 	if err != nil {
 		t.Fatal(err)
 	}
 	seqno := int32(91668427)
-	e := &fakeExecutor{t: t, snapshot: Snapshot{Address: testAddress, CodeHash: &contract.CodeHashes[0], McSeqno: &seqno}, execution: Execution{Native: stack}}
-	api := New(catalog.Contracts, catalog.Revision, Dependencies{Executor: func(*fiber.Ctx) GetterExecutor { return e }})
+	e := &fakeExecutor{t: t, snapshot: acton.Snapshot{Address: testAddress, CodeHash: &contract.CodeHashes[0], McSeqno: &seqno}, execution: acton.Execution{Native: stack}}
+	api := New(catalog.Contracts, catalog.Revision, Dependencies{Executor: func(*fiber.Ctx) acton.GetterExecutor { return e }})
 	var result RunResponse
 	call(t, testApp(api), "POST", "/runGetMethod", `{"address":"`+testAddress+`","method":"get_nft_address_by_index","args":{"itemIndex":1},"mc_seqno":91668427}`, 200, &result)
 	if !result.Success || result.DecodeError != "" || result.Decoded == nil || e.method != method.ID {
@@ -61,7 +62,7 @@ func TestRealCatalogPluginLists(t *testing.T) {
 		{"standard_one", `[{"@type":"tvm.stackEntryList","list":{"@type":"tvm.list","elements":[{"@type":"tvm.stackEntryTuple","tuple":{"@type":"tvm.tuple","elements":[{"@type":"tvm.stackEntryNumber","number":{"@type":"tvm.numberDecimal","number":"0"}},{"@type":"tvm.stackEntryNumber","number":{"@type":"tvm.numberDecimal","number":"1"}}]}}]}}]`, 1},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			stack, err := DecodeStandardStack(json.RawMessage(tc.raw))
+			stack, err := acton.DecodeStandardStack(json.RawMessage(tc.raw))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -103,13 +104,13 @@ func TestCanonicalAddressFormsAndTags(t *testing.T) {
 	// The tag byte says how to send to an address, not which account it is, so a
 	// nonstandard one resolves like every other spelling, as it does elsewhere in v3.
 	for _, value := range []string{"EQD__________________________________________0vo", "EQD//////////////////////////////////////////0vo", "EgD___________________________________________-m", expected, strings.ToLower(expected)} {
-		actual, err := CanonicalAddress(value)
+		actual, err := acton.CanonicalAddress(value)
 		if err != nil || actual != expected {
 			t.Fatalf("%s: got %s, %v", value, actual, err)
 		}
 	}
 	for _, value := range []string{"EQD__________________________________________0vp", "EQD__________________________________________0vo=", "128:" + strings.Repeat("ff", 32), "-129:" + strings.Repeat("ff", 32)} {
-		if _, err := CanonicalAddress(value); err == nil {
+		if _, err := acton.CanonicalAddress(value); err == nil {
 			t.Fatalf("accepted invalid address: %s", value)
 		}
 	}
@@ -118,7 +119,7 @@ func TestCanonicalAddressFormsAndTags(t *testing.T) {
 		for _, bounce := range []bool{false, true} {
 			for _, testnet := range []bool{false, true} {
 				value := addr.Bounce(bounce).Testnet(testnet).String()
-				if actual, err := CanonicalAddress(value); err != nil || actual != strings.ToUpper(addr.StringRaw()) {
+				if actual, err := acton.CanonicalAddress(value); err != nil || actual != strings.ToUpper(addr.StringRaw()) {
 					t.Fatalf("valid flags/workchain rejected: %s %v", value, err)
 				}
 			}
@@ -140,7 +141,7 @@ func TestLibraryImplementationCatalogSelection(t *testing.T) {
 	// different contract rather than another name for the same one.
 	other := testContract()
 	other.ID, other.CodeHashes = "different", []string{actual}
-	api := New([]*tolkabi.Contract{contract, other}, "revision", Dependencies{Executor: func(*fiber.Ctx) GetterExecutor { return executor }})
+	api := New([]*tolkabi.Contract{contract, other}, "revision", Dependencies{Executor: func(*fiber.Ctx) acton.GetterExecutor { return executor }})
 	call(t, testApp(api), "POST", "/runGetMethod", `{"address":"`+testAddress+`","method":"get_counter"}`, 200, &result)
 	if result.CatalogID != "different" || result.Identification != "exact_code_hash" {
 		t.Fatalf("library implementation displaced the code cell's own entry: %+v", result)
@@ -180,7 +181,7 @@ func TestCatalogSpellsHashesAndAddressesLikeV3(t *testing.T) {
 			}
 		}
 		for _, address := range info.KnownAddresses {
-			if canonical, ok := upperRawAddress(address); !ok || canonical != address {
+			if canonical, ok := acton.UpperRawAddress(address); !ok || canonical != address {
 				t.Fatalf("%s: known address %q is not raw uppercase", contract.ID, address)
 			}
 		}

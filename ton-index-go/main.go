@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/toncenter/ton-indexer/ton-index-go/index/acton"
 	"github.com/toncenter/ton-indexer/ton-index-go/index/acton/catalog"
 	"github.com/toncenter/ton-indexer/ton-index-go/index/actonapi"
 	"github.com/toncenter/ton-indexer/ton-index-go/index/crud"
@@ -303,7 +304,7 @@ func GetTransactions(c *fiber.Ctx) error {
 		return err
 	}
 
-	txs_resp := models.TransactionsResponse{Transactions: txs, AddressBook: book, CodeBook: crud.TransactionCodeBook(txs)}
+	txs_resp := models.TransactionsResponse{Transactions: txs, AddressBook: book, CodeBook: acton.TransactionCodeBook(txs)}
 	return c.JSON(txs_resp)
 }
 
@@ -355,7 +356,7 @@ func GetPendingTransactions(c *fiber.Ctx) error {
 		return err
 	}
 
-	txs_resp := models.TransactionsResponse{Transactions: txs, AddressBook: book, CodeBook: crud.TransactionCodeBook(txs)}
+	txs_resp := models.TransactionsResponse{Transactions: txs, AddressBook: book, CodeBook: acton.TransactionCodeBook(txs)}
 	return c.JSON(txs_resp)
 }
 
@@ -387,7 +388,7 @@ func GetAdjacentTransactions(c *fiber.Ctx) error {
 	// 	return models.IndexError{Code: 404, Message: "transactions not found"}
 	// }
 
-	txs_resp := models.TransactionsResponse{Transactions: txs, AddressBook: book, CodeBook: crud.TransactionCodeBook(txs)}
+	txs_resp := models.TransactionsResponse{Transactions: txs, AddressBook: book, CodeBook: acton.TransactionCodeBook(txs)}
 	return c.JSON(txs_resp)
 }
 
@@ -428,7 +429,7 @@ func GetTransactionsByMasterchainBlock(c *fiber.Ctx) error {
 	// 	return models.IndexError{Code: 404, Message: "transactions not found"}
 	// }
 
-	txs_resp := models.TransactionsResponse{Transactions: txs, AddressBook: book, CodeBook: crud.TransactionCodeBook(txs)}
+	txs_resp := models.TransactionsResponse{Transactions: txs, AddressBook: book, CodeBook: acton.TransactionCodeBook(txs)}
 	return c.JSON(txs_resp)
 }
 
@@ -475,7 +476,7 @@ func GetTransactionsByMessage(c *fiber.Ctx) error {
 	// 	return models.IndexError{Code: 404, Message: "transactions not found"}
 	// }
 
-	txs_resp := models.TransactionsResponse{Transactions: txs, AddressBook: book, CodeBook: crud.TransactionCodeBook(txs)}
+	txs_resp := models.TransactionsResponse{Transactions: txs, AddressBook: book, CodeBook: acton.TransactionCodeBook(txs)}
 	return c.JSON(txs_resp)
 }
 
@@ -631,7 +632,7 @@ func GetAccountStates(c *fiber.Ctx) error {
 		return models.IndexError{Code: 422, Message: err.Error()}
 	}
 	if include_storage {
-		if err := crud.DecodeAccountStorage(res); err != nil {
+		if err := acton.DecodeAccountStorage(res); err != nil {
 			return models.IndexError{Code: 413, Message: err.Error()}
 		}
 	}
@@ -651,7 +652,7 @@ func GetAccountStates(c *fiber.Ctx) error {
 		}
 	}
 
-	resp := models.AccountStatesResponse{Accounts: res, AddressBook: book, Metadata: metadata, CodeBook: crud.AccountCodeBook(res)}
+	resp := models.AccountStatesResponse{Accounts: res, AddressBook: book, Metadata: metadata, CodeBook: acton.AccountCodeBook(res)}
 	return c.JSON(resp)
 }
 
@@ -1269,10 +1270,10 @@ func GetTraces(c *fiber.Ctx) error {
 	crud.SubstituteImgproxyBaseUrl(&metadata, settings.ImgProxyBaseUrl)
 
 	if c.Path() == "/api/v3/events" {
-		txs_resp := models.DeprecatedEventsResponse{Events: res, AddressBook: book, Metadata: metadata, CodeBook: crud.TraceCodeBook(res)}
+		txs_resp := models.DeprecatedEventsResponse{Events: res, AddressBook: book, Metadata: metadata, CodeBook: acton.TraceCodeBook(res)}
 		return c.JSON(txs_resp)
 	}
-	txs_resp := models.TracesResponse{Traces: res, AddressBook: book, Metadata: metadata, CodeBook: crud.TraceCodeBook(res)}
+	txs_resp := models.TracesResponse{Traces: res, AddressBook: book, Metadata: metadata, CodeBook: acton.TraceCodeBook(res)}
 	return c.JSON(txs_resp)
 }
 
@@ -1331,7 +1332,7 @@ func GetPendingTraces(c *fiber.Ctx) error {
 		return err
 	}
 
-	txs_resp := models.TracesResponse{Traces: res, AddressBook: book, Metadata: metadata, CodeBook: crud.TraceCodeBook(res)}
+	txs_resp := models.TracesResponse{Traces: res, AddressBook: book, Metadata: metadata, CodeBook: acton.TraceCodeBook(res)}
 	return c.JSON(txs_resp)
 }
 
@@ -2918,7 +2919,7 @@ func main() {
 	app.Get("/api/v3/walletStates", GetWalletStates)
 
 	actonAPI := actonapi.New(catalog.Contracts, catalog.Revision, actonapi.Dependencies{
-		Executor: func(c *fiber.Ctx) actonapi.GetterExecutor {
+		Executor: func(c *fiber.Ctx) acton.GetterExecutor {
 			return index.NewActonExecutor(GetRequestSettings(c, &settings))
 		},
 	})

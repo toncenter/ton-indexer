@@ -1,4 +1,4 @@
-package actonapi
+package acton
 
 import (
 	"strings"
@@ -17,7 +17,7 @@ import (
 // canonicalHashes renders catalog code hashes the way every other v3 hash is
 // rendered. A hash that cannot be parsed is passed through rather than dropped;
 // TestCatalogSpellsHashesAndAddressesLikeV3 asserts the catalog holds none.
-func canonicalHashes(hashes []string) []string {
+func CanonicalHashes(hashes []string) []string {
 	out := make([]string, 0, len(hashes))
 	for _, hash := range hashes {
 		parsed, err := models.ParseHashType(hash)
@@ -33,7 +33,7 @@ func canonicalHashes(hashes []string) []string {
 // canonicalAddresses renders catalog addresses in raw form. The friendly spelling
 // also carries the bounceable and testnet flags, but those say how to send to an
 // address rather than which account it is, which is all a catalog entry claims.
-func canonicalAddresses(addresses []string) []string {
+func CanonicalAddresses(addresses []string) []string {
 	out := make([]string, 0, len(addresses))
 	for _, value := range addresses {
 		canonical, err := CanonicalAddress(value)
@@ -61,14 +61,14 @@ func CanonicalizeDecoded(value any) any {
 			v[i] = CanonicalizeDecoded(item)
 		}
 	case string:
-		if address, ok := upperRawAddress(v); ok {
+		if address, ok := UpperRawAddress(v); ok {
 			return address
 		}
 	}
 	return value
 }
 
-func upperRawAddress(value string) (string, bool) {
+func UpperRawAddress(value string) (string, bool) {
 	workchain, hash, found := strings.Cut(value, ":")
 	if !found || len(hash) != 64 {
 		return "", false

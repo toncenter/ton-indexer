@@ -1,4 +1,4 @@
-package actonapi
+package acton
 
 import (
 	"encoding/json"
@@ -244,7 +244,7 @@ func EncodeStandardStack(stack []tolkabi.StackValue) ([]any, error) {
 // original raw stack independently, including on VM failure or wire limitations.
 func DecodeStandardStack(raw json.RawMessage) ([]tolkabi.StackValue, error) {
 	var entries []any
-	if err := decodeJSON(raw, &entries); err != nil {
+	if err := DecodeJSON(raw, &entries); err != nil {
 		return nil, err
 	}
 	if entries == nil {
