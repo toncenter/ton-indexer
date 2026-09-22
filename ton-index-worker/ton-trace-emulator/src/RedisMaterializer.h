@@ -90,12 +90,10 @@ class RedisMaterializer final : public td::actor::Actor {
   // Invoke with send_closure. Completion runs in this actor's scheduler
   // context and returns the original batch even on partial-write errors.
   void write(RedisWriteBatch batch, Completion completion, td::Timer timer);
-  // One serial control operation at a time, sharing the existing nonblocking transport.
-  void initialize_finalized(ton::BlockSeqno first_seqno, td::Promise<std::int64_t> promise);
-  // One atomic trace job, using the same bounded connection pool as ordinary writes.
+  // Deduplicate trace updates by mc seqno, using the same bounded pool as ordinary writes.
   void write_finalized_trace(ton::BlockSeqno seqno, RedisWritePlan plan,
                              td::Promise<std::int64_t> promise);
-  // Call only after every job of this block has a successful write response.
+  // Update shared health after all local jobs finish; does not fence other producers' trace writes.
   void finish_finalized(ton::BlockSeqno seqno, std::uint32_t unix_time, td::Promise<std::int64_t> promise);
 
  private:

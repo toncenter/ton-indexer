@@ -33,43 +33,29 @@ const std::string kUpdateAccountStateScript = std::string(kUpdateAccountStateFun
 return update_account(KEYS[1], ARGV[1], ARGV[2], ARGV[3], ARGV[4])
 )";
 
-// The stream is intentionally isolated in its own logical Redis DB. Never FLUSHDB here.
-constexpr const char* kFinalizedProgress = "finalized:progress";
-constexpr const char* kInitializeFinalized = R"(
-local first = redis.call('HGET', KEYS[1], 'first')
-if first then return tonumber(first) end
-redis.call('HSET', KEYS[1], 'first', ARGV[1], 'last', tonumber(ARGV[1]) - 1)
-return tonumber(ARGV[1])
-)";
+constexpr std::uint32_t kFinalizedVersionTtl = 600;
 
-// Check progress before markers. Mark success last, after data and publications.
+// Producers starting at different heads know different traces. Deduplicate per trace, not per block.
+// Mark success last, after data and publications, and retain it beyond the ordinary replay TTL.
 const std::string kWriteFinalizedTrace = std::string(kUpdateAccountStateFunction) + R"(
-local last = tonumber(redis.call('HGET', KEYS[1], 'last'))
-if not last then return redis.error_reply('NOT_INITIALIZED') end
-local n = tonumber(ARGV[1])
-if n <= last then return 0 end
-if n ~= last + 1 then return redis.error_reply('SEQNO_GAP') end
-if redis.call('SISMEMBER', KEYS[2], ARGV[2]) == 1 then return 0 end
+local last = redis.call('GET', KEYS[1])
+if last and tonumber(ARGV[1]) <= tonumber(last) then return 0 end
 for _, cmd in ipairs(cmsgpack.unpack(ARGV[3])) do
   if cmd[1] == 'ACCOUNT_STATE' then update_account(unpack(cmd, 2))
   else redis.call(unpack(cmd)) end
 end
-redis.call('SADD', KEYS[2], ARGV[2])
+redis.call('SET', KEYS[1], ARGV[1], 'EX', ARGV[2])
 return 1
 )";
 
-// The producer waits for all jobs; progress changes only after housekeeping succeeds.
+// Health reports the furthest completed block; it does not authorize or reject trace writes.
 constexpr const char* kFinishFinalized = R"(
-local last = tonumber(redis.call('HGET', KEYS[1], 'last'))
-if not last then return redis.error_reply('NOT_INITIALIZED') end
+local last = tonumber(redis.call('HGET', KEYS[1], 'mc_seqno'))
 local n = tonumber(ARGV[1])
-if n <= last then return 0 end
-if n ~= last + 1 then return redis.error_reply('SEQNO_GAP') end
-redis.call('HSET', KEYS[3], 'mode', 'finalized', 'finalized_mc_block_time', ARGV[2],
+if last and n <= last then return 0 end
+redis.call('HSET', KEYS[1], 'mode', 'finalized', 'finalized_mc_block_time', ARGV[2],
   'mc_seqno', ARGV[1], 'updated_at', redis.call('TIME')[1])
-redis.call('EXPIRE', KEYS[3], '20')
-redis.call('UNLINK', KEYS[2])
-redis.call('HSET', KEYS[1], 'last', ARGV[1], 'block_time', ARGV[2])
+redis.call('EXPIRE', KEYS[1], '20')
 return 1
 )";
 
@@ -332,22 +318,6 @@ void RedisMaterializer::execute_control(RedisPipeline pipeline, td::Promise<std:
                           RedisPipeline{}, std::move(promise));
 }
 
-void RedisMaterializer::initialize_finalized(ton::BlockSeqno first_seqno, td::Promise<std::int64_t> promise) {
-  if (!first_seqno) {
-    promise.set_error(td::Status::Error("First finalized seqno must be positive"));
-    return;
-  }
-  RedisPipeline pipeline;
-  auto status = pipeline.append({"EVAL", td::Slice(kInitializeFinalized), "1", td::Slice(kFinalizedProgress),
-                                std::to_string(first_seqno)},
-                                options_.max_batch_bytes);
-  if (status.is_error()) {
-    promise.set_error(std::move(status));
-    return;
-  }
-  execute_control(std::move(pipeline), std::move(promise));
-}
-
 void RedisMaterializer::write_finalized_trace(ton::BlockSeqno seqno, RedisWritePlan plan,
                                              td::Promise<std::int64_t> promise) {
   auto available = free_slot();
@@ -382,9 +352,9 @@ void RedisMaterializer::write_finalized_trace(ton::BlockSeqno seqno, RedisWriteP
   msgpack::sbuffer buffer;
   msgpack::pack(buffer, commands.commands());
   RedisPipeline pipeline;
-  status = pipeline.append({"EVAL", td::Slice(kWriteFinalizedTrace), "2", td::Slice(kFinalizedProgress),
-                            "finalized:written:" + std::to_string(seqno), std::to_string(seqno),
-                            plan.trace_key, td::Slice(buffer.data(), buffer.size())},
+  status = pipeline.append({"EVAL", td::Slice(kWriteFinalizedTrace), "1", "finalized:version:" + plan.trace_key,
+                            std::to_string(seqno), std::to_string(std::max(kFinalizedVersionTtl, plan.expire_seconds)),
+                            td::Slice(buffer.data(), buffer.size())},
                             options_.max_batch_bytes);
   if (status.is_error()) {
     promise.set_error(std::move(status));
@@ -404,8 +374,7 @@ void RedisMaterializer::write_finalized_trace(ton::BlockSeqno seqno, RedisWriteP
 void RedisMaterializer::finish_finalized(ton::BlockSeqno seqno, std::uint32_t unix_time,
                                         td::Promise<std::int64_t> promise) {
   RedisPipeline pipeline;
-  auto status = pipeline.append({"EVAL", td::Slice(kFinishFinalized), "3", td::Slice(kFinalizedProgress),
-      "finalized:written:" + std::to_string(seqno), "health:ton-trace-emulator", std::to_string(seqno),
+  auto status = pipeline.append({"EVAL", td::Slice(kFinishFinalized), "1", "health:ton-trace-emulator", std::to_string(seqno),
       std::to_string(unix_time)},
       options_.max_batch_bytes);
   if (status.is_error()) {

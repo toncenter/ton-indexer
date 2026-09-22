@@ -3,7 +3,6 @@
 #include "td/utils/format.h"
 #include "td/utils/logging.h"
 #include "td/utils/check.h"
-#include "td/utils/misc.h"
 
 #include "crypto/vm/cp0.h"
 
@@ -19,15 +18,6 @@
 #include <cmath>
 
 namespace {
-
-td::Status parse_finalized_seqno(td::Slice text, ton::BlockSeqno& target) {
-  auto value = td::to_integer_safe<std::uint32_t>(text);
-  if (value.is_error() || value.ok() == 0) {
-    return td::Status::Error("seqno must be a positive uint32");
-  }
-  target = value.move_as_ok();
-  return td::Status::OK();
-}
 
 td::Status parse_positive_seconds(td::Slice value,
                                   const char* option,
@@ -63,10 +53,9 @@ int main(int argc, char *argv[]) {
   std::string db_event_fifo_path;
   int mch_workers = 1;
   double actor_stats_interval = 30;
-  ton::BlockSeqno from_seqno = 0, to_seqno = 0;
 
   td::OptionParser p;
-  p.set_description("Stream finalized TON traces without emulation (active-active by mc seqno)");
+  p.set_description("Stream finalized TON traces from the current node head without emulation");
   p.add_option('\0', "help", "prints_help", [&]() {
     char b[10240];
     td::StringBuilder sb(td::MutableSlice{b, 10000});
@@ -124,11 +113,6 @@ int main(int argc, char *argv[]) {
     db_event_fifo_path = fname.str();
   });
 
-  p.add_checked_option('\0', "from-mc-seqno", "Bootstrap block (default: current node head on first initialization)",
-                       [&](td::Slice value) { return parse_finalized_seqno(value, from_seqno); });
-  p.add_checked_option('\0', "to-mc-seqno", "Stop after processing this block (for replay and validation)",
-                       [&](td::Slice value) { return parse_finalized_seqno(value, to_seqno); });
-
   p.add_checked_option('\0', "mch-workers", "MCH classifier workers (default: 1)", [&](td::Slice value) {
     int v;
     try {
@@ -156,10 +140,6 @@ int main(int argc, char *argv[]) {
     LOG(WARNING) << "Working dir not specified, using " << working_dir;
   }
 
-  if (to_seqno && from_seqno && to_seqno < from_seqno) {
-    std::cerr << "--to-mc-seqno precedes --from-mc-seqno" << std::endl;
-    return 2;
-  }
   if (trace_retention.completed_seconds < 1 || trace_retention.completed_seconds > 86400) {
     std::cerr << "Finalized replay TTL must be between 1 and 86400 seconds" << std::endl;
     return 2;
@@ -211,7 +191,7 @@ int main(int argc, char *argv[]) {
     trace_processor = td::actor::create_actor<TraceProcessor>(
         "TraceProcessor", redis_options.ok(), trace_retention, mch_classifier_config, true);
     td::actor::create_actor<FinalizedTraceScheduler>("FinalizedTraceScheduler", db_scanner.get(), trace_processor.get(),
-        redis_options.move_as_ok(), from_seqno, to_seqno, db_event_fifo_path).release();
+        redis_options.move_as_ok(), db_event_fifo_path).release();
   });
 
   scheduler.run();

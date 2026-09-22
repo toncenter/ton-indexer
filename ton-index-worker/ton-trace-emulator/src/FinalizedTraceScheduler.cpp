@@ -7,10 +7,10 @@
 
 FinalizedTraceScheduler::FinalizedTraceScheduler(td::actor::ActorId<DbScanner> scanner,
     td::actor::ActorId<TraceProcessor> processor, RedisConnectionOptions redis,
-    ton::BlockSeqno from, ton::BlockSeqno to, std::string db_event_fifo)
+    std::string db_event_fifo)
     : scanner_(scanner), processor_(processor),
       writer_(td::actor::create_actor<RedisMaterializer>("FinalizedRedisWriter", std::move(redis), kMaxWrites)),
-      db_event_fifo_(std::move(db_event_fifo)), requested_from_(from), to_(to) {}
+      db_event_fifo_(std::move(db_event_fifo)) {}
 
 void FinalizedTraceScheduler::start_up() {
   if (!db_event_fifo_.empty()) {
@@ -45,7 +45,7 @@ void FinalizedTraceScheduler::alarm() {
     return;
   }
   busy_ = true;
-  if (notified_head_ > head_) {
+  if (next_ && notified_head_ > head_) {
     // Refresh archives, state and cells before fetching blocks announced by the node.
     auto done = td::PromiseCreator::lambda([self = actor_id(this), head = notified_head_](td::Result<td::Unit> r) mutable {
       td::actor::send_closure(self, &FinalizedTraceScheduler::got_head,
@@ -69,13 +69,8 @@ void FinalizedTraceScheduler::got_head(td::Result<ton::BlockSeqno> result) {
   }
   head_ = result.move_as_ok();
   if (!next_) {
-    auto done = td::PromiseCreator::lambda([self = actor_id(this)](td::Result<std::int64_t> r) mutable {
-      td::actor::send_closure(self, &FinalizedTraceScheduler::initialized, std::move(r));
-    });
-    td::actor::send_closure(writer_, &RedisMaterializer::initialize_finalized,
-                           requested_from_ ? requested_from_ : head_,
-                           std::move(done));
-    return;
+    next_ = head_;
+    LOG(INFO) << "Starting finalized stream at node head " << next_;
   }
   if (next_ > head_) {
     busy_ = false;
@@ -89,26 +84,10 @@ void FinalizedTraceScheduler::got_head(td::Result<ton::BlockSeqno> result) {
   td::actor::send_closure(scanner_, &DbScanner::fetch_seqno, next_, std::move(done));
 }
 
-void FinalizedTraceScheduler::initialized(td::Result<std::int64_t> result) {
-  if (result.is_error()) {
-    auto error = result.move_as_error();
-    LOG(ERROR) << "Cannot initialize finalized stream: " << error;
-    busy_ = false;
-    alarm_timestamp() = td::Timestamp::in(1);
-    return;
-  }
-  next_ = static_cast<ton::BlockSeqno>(result.move_as_ok());
-  LOG(INFO) << "Rebuilding finalized trace state from shared start seqno " << next_ << ", node head " << head_;
-  if (to_ && next_ > to_) {
-    LOG(FATAL) << "End seqno precedes the shared stream start";
-  }
-  got_head(td::Result<ton::BlockSeqno>(head_));
-}
-
 void FinalizedTraceScheduler::fetched(td::Result<schema::MasterchainBlockDataState> result) {
   if (result.is_error()) {
     LOG(ERROR) << "Cannot fetch required finalized block " << next_ << ": " << result.move_as_error()
-               << "; keeping the cursor (node history must cover the bootstrap range)";
+               << "; keeping the cursor";
     busy_ = false;
     alarm_timestamp() = td::Timestamp::in(1);
     return;
@@ -135,7 +114,7 @@ void FinalizedTraceScheduler::fetched(td::Result<schema::MasterchainBlockDataSta
 }
 
 void FinalizedTraceScheduler::parsed(td::Result<FinalizedBlockResult> result) {
-  // Parsing may already have advanced message->trace mappings. Restart/replay instead of retrying partial state.
+  // Parsing may already have advanced message->trace mappings. Restart at head after partial local changes.
   if (result.is_error()) {
     LOG(FATAL) << "Finalized parsing failed: " << result.move_as_error();
   }
@@ -146,7 +125,7 @@ void FinalizedTraceScheduler::parsed(td::Result<FinalizedBlockResult> result) {
     td::actor::send_closure(self, &FinalizedTraceScheduler::trace_prepared, seqno, std::move(value));
   };
   auto done = td::PromiseCreator::lambda([self = actor_id(this), owners = std::move(block.block_data_owners)](
-      td::Result<RedisWriteBatch> r) mutable {
+      td::Result<td::Unit> r) mutable {
     td::actor::send_closure(self, &FinalizedTraceScheduler::prepared, std::move(r));
   });
   td::actor::send_closure(processor_, &TraceProcessor::prepare_finalized_block_streaming,
@@ -154,11 +133,10 @@ void FinalizedTraceScheduler::parsed(td::Result<FinalizedBlockResult> result) {
                          std::move(done));
 }
 
-void FinalizedTraceScheduler::prepared(td::Result<RedisWriteBatch> result) {
+void FinalizedTraceScheduler::prepared(td::Result<td::Unit> result) {
   if (result.is_error()) {
     LOG(FATAL) << "Finalized preparation failed: " << result.move_as_error();
   }
-  CHECK(result.ok().plans.empty());
   preparation_finished_ = true;
   drive_block();
 }
@@ -235,18 +213,12 @@ void FinalizedTraceScheduler::committed(td::Result<std::int64_t> result) {
     alarm_timestamp().relax(control_retry_at_);
     return;
   }
-  LOG(INFO) << "Finalized mc block " << next_ << (result.move_as_ok() ? " committed" : " already committed")
-            << ", traces=" << completed_traces_;
+  LOG(INFO) << "Finalized mc block " << next_ << " processed, traces=" << completed_traces_;
   CHECK(pending_traces_.empty());
   received_traces_.clear();
   completed_traces_ = 0;
   preparation_finished_ = block_active_ = false;
   control_retry_at_ = {};
-  if (to_ && next_ >= to_) {
-    LOG(INFO) << "Finished requested finalized range";
-    td::actor::SchedulerContext::get().stop();
-    return;
-  }
   ++next_;
   busy_ = false;
   alarm_timestamp() = td::Timestamp::in(0.001);

@@ -34,7 +34,7 @@ struct FinalizedTraceSchedulerTest : FinalizedTraceScheduler {
   std::vector<RedisWritePlan> plans;
   bool events_only;
   FinalizedTraceSchedulerTest(RedisConnectionOptions options, std::vector<RedisWritePlan> input, bool events = false)
-      : FinalizedTraceScheduler({}, {}, std::move(options), 100, 100), plans(std::move(input)), events_only(events) {}
+      : FinalizedTraceScheduler({}, {}, std::move(options)), plans(std::move(input)), events_only(events) {}
   void start_up() override {
     if (events_only) {
       check_db_events();
@@ -47,7 +47,15 @@ struct FinalizedTraceSchedulerTest : FinalizedTraceScheduler {
     for (auto& plan : plans) {
       trace_prepared(100, std::move(plan));
     }
-    prepared(td::Result<RedisWriteBatch>(RedisWriteBatch{}));
+    prepared(td::Result<td::Unit>(td::Unit()));
+  }
+  void alarm() override {
+    if (next_ == 101) {
+      ASSERT_TRUE(!busy_ && !block_active_ && pending_traces_.empty());
+      td::actor::SchedulerContext::get().stop();
+      return;
+    }
+    FinalizedTraceScheduler::alarm();
   }
   void check_db_events() {
     auto block = [](ton::WorkchainId workchain, ton::BlockSeqno seqno) {
@@ -1049,7 +1057,7 @@ TEST(RedisTransport, real_redis_data_indexes_lua_publications_and_cleanup) {
   ASSERT_EQ(std::make_pair(channel, std::string("deleted")), notices.back());
 }
 
-TEST(RedisTransport, finalized_block_commit_deduplicates_and_rejects_gaps_and_type_errors) {
+TEST(RedisTransport, finalized_trace_versions_deduplicate_and_retry_type_errors) {
   const auto* uri = std::getenv("TON_FINALIZED_TEST_REDIS_URI");
   if (!uri) {
     LOG(INFO) << "Skipping finalized Redis integration: TON_FINALIZED_TEST_REDIS_URI is unset";
@@ -1058,7 +1066,6 @@ TEST(RedisTransport, finalized_block_commit_deduplicates_and_rejects_gaps_and_ty
   auto options = parse_redis_connection_options(uri).move_as_ok();
   sw::redis::Redis redis(uri);
   // This opt-in test requires a dedicated DB. It never clears unknown data.
-  ASSERT_EQ(0, redis.exists("finalized:progress"));
   ASSERT_EQ(0, redis.exists("health:ton-trace-emulator"));
   const auto trace = "finalized-test:" + std::to_string(getpid());
   const auto channel = trace + ":events";
@@ -1084,8 +1091,7 @@ TEST(RedisTransport, finalized_block_commit_deduplicates_and_rejects_gaps_and_ty
   std::vector<Attempt> attempts{
       {100, first, 1, {}},
       {100, first, 0, {}},
-      {100, second, 0, {}}, // Completed blocks ignore even different payloads.
-      {102, second, -1, "SEQNO_GAP"},
+      {100, second, 0, {}}, // The first payload wins for the same trace version.
       {101, wrong_type, -1, "WRONGTYPE"},
       {101, wrong_type, 1, {}}, // Retry the same job after repairing its index key.
       {100, first, 0, {}},
@@ -1107,8 +1113,8 @@ TEST(RedisTransport, finalized_block_commit_deduplicates_and_rejects_gaps_and_ty
         if (expected.result < 0) {
           ASSERT_TRUE(result.is_error());
           ASSERT_TRUE(result.error().message().str().find(expected.error) != std::string::npos);
-          ASSERT_EQ("100", redis.hget("finalized:progress", "last").value());
-          ASSERT_EQ(0, redis.exists("finalized:written:101"));
+          ASSERT_EQ("100", redis.hget("health:ton-trace-emulator", "mc_seqno").value());
+          ASSERT_EQ("100", redis.get("finalized:version:" + trace).value());
           if (expected.error == "WRONGTYPE") {
             // Redis does not roll back preceding commands; the failed job stays unmarked.
             ASSERT_EQ("two", redis.hget(trace, "new").value());
@@ -1124,27 +1130,21 @@ TEST(RedisTransport, finalized_block_commit_deduplicates_and_rejects_gaps_and_ty
       });
       commit_one_finalized(id, attempt.seqno, attempt.plan, std::move(done));
     };
-    auto init = td::PromiseCreator::lambda([run](td::Result<std::int64_t> result) {
-      ASSERT_TRUE(result.is_ok());
-      ASSERT_EQ(100, result.move_as_ok());
-      (*run)(0);
-    });
-    td::actor::send_closure(id, &RedisMaterializer::initialize_finalized, 100, std::move(init));
+    (*run)(0);
   });
   subscriber.consume();
   subscriber.consume();
   ASSERT_EQ(std::vector<std::string>({"one", "two"}), messages);
-  ASSERT_EQ("101", redis.hget("finalized:progress", "last").value());
+  ASSERT_EQ("101", redis.hget("health:ton-trace-emulator", "mc_seqno").value());
   ASSERT_EQ("101", redis.hget(trace, "update_seq").value());
   ASSERT_TRUE(!redis.hget(trace, "old").has_value());
   ASSERT_EQ("two", redis.hget(trace, "new").value());
   ASSERT_TRUE(redis.zscore(trace + ":wrong-index", "member").has_value());
   ASSERT_EQ("finalized", redis.hget("health:ton-trace-emulator", "mode").value());
   ASSERT_TRUE(redis.ttl(trace) > 0);
-  ASSERT_TRUE(!redis.hget("finalized:progress", "configuration"));
-  ASSERT_EQ(0, redis.exists("finalized:written:100"));
-  ASSERT_EQ(0, redis.exists("finalized:written:101"));
-  for (const auto& key : {trace, trace + ":wrong-index", "tr_in_msg:" + trace, std::string("finalized:progress"),
+  ASSERT_EQ("101", redis.get("finalized:version:" + trace).value());
+  ASSERT_TRUE(redis.ttl("finalized:version:" + trace) > redis.ttl(trace));
+  for (const auto& key : {trace, trace + ":wrong-index", "tr_in_msg:" + trace, "finalized:version:" + trace,
                           std::string("health:ton-trace-emulator")}) {
     redis.del(key);
   }
@@ -1163,13 +1163,13 @@ TEST(RedisTransport, finalized_trace_jobs_use_bounded_parallel_connections_and_r
     for (auto& peer : peers) {
       const auto command = peer.command();
       ASSERT_EQ("EVAL", command[0]);
-      received.insert(command[6]);
+      received.insert(command[3]);
     }
-    ASSERT_EQ(std::set<std::string>({"trace-0", "trace-1", "trace-2"}), received);
+    ASSERT_EQ(std::set<std::string>({"finalized:version:trace-0", "finalized:version:trace-1", "finalized:version:trace-2"}), received);
     ASSERT_EQ(0, completed.load()); // All three requests arrived before any response.
     peers[1].reply(":1\r\n");
     auto reused = peers[1].command();
-    ASSERT_EQ("reused", reused[6]); // Only this slot is free; other requests still wait.
+    ASSERT_EQ("finalized:version:reused", reused[3]); // Only this slot is free; other requests still wait.
     peers[1].reply(":1\r\n");
     peers[2].reply(":1\r\n");
     peers[0].reply(":1\r\n");
@@ -1215,7 +1215,7 @@ TEST(RedisTransport, finalized_trace_jobs_use_bounded_parallel_connections_and_r
   ASSERT_EQ(3, server.accepted_.load());
 }
 
-TEST(RedisTransport, finalized_account_states_keep_latest_lt_across_traces_and_skip_old_blocks_after_expiry) {
+TEST(RedisTransport, finalized_account_states_keep_latest_lt_and_deduplicate_after_snapshot_expiry) {
   const auto* uri = std::getenv("TON_FINALIZED_TEST_REDIS_URI");
   if (!uri) {
     LOG(INFO) << "Skipping finalized account state integration";
@@ -1225,7 +1225,6 @@ TEST(RedisTransport, finalized_account_states_keep_latest_lt_across_traces_and_s
   auto client_options = sw::redis::Uri(uri).connection_options();
   client_options.socket_timeout = 2s;
   sw::redis::Redis redis(client_options);
-  ASSERT_EQ(0, redis.exists("finalized:progress"));
   ASSERT_EQ(0, redis.exists("health:ton-trace-emulator"));
   const auto prefix = "finalized-accounts:" + std::to_string(getpid());
   const auto account = prefix + ":wallet";
@@ -1290,14 +1289,13 @@ TEST(RedisTransport, finalized_account_states_keep_latest_lt_across_traces_and_s
         ASSERT_EQ(std::to_string(attempts[index].lt), redis.hget(account_key, "lt").value());
         ASSERT_EQ(attempts[index].state, redis.hget(account_key, "state").value());
         ASSERT_EQ("interfaces:" + attempts[index].state, redis.hget(account_key, "interfaces").value());
-        ASSERT_EQ("299", redis.hget("finalized:progress", "last").value());
+        ASSERT_EQ(0, redis.exists("health:ton-trace-emulator"));
         ASSERT_TRUE(redis.ttl(account_key) > 0);
         (*keep)(index + 1);
       });
       td::actor::send_closure(id, &RedisMaterializer::write_finalized_trace, 300, attempts[index].job, std::move(done));
     };
-    td::actor::send_closure(id, &RedisMaterializer::initialize_finalized, 300,
-        td::PromiseCreator::lambda([run](td::Result<std::int64_t> r) { ASSERT_TRUE(r.is_ok()); (*run)(0); }));
+    (*run)(0);
   });
   with_materializer(options, 1, [&](auto& writer) {
     commit_one_finalized(writer.get(), 301, newest, td::PromiseCreator::lambda([](td::Result<std::int64_t> r) {
@@ -1347,25 +1345,23 @@ TEST(RedisTransport, finalized_account_states_keep_latest_lt_across_traces_and_s
   for (const auto& p : {a, b, stale, equal, newest}) {
     redis.del(p.trace_key);
     redis.del("tr_in_msg:" + p.raw_external_message_hash);
+    redis.del("finalized:version:" + p.trace_key);
   }
-  for (const auto* key : {"finalized:progress", "health:ton-trace-emulator"}) {
-    redis.del(key);
-  }
+  redis.del("health:ton-trace-emulator");
 }
 
-TEST(RedisTransport, another_producer_resumes_partial_block_without_republishing_or_stale_cleanup) {
+TEST(RedisTransport, producer_can_write_known_traces_after_another_producer_finishes_newer_blocks) {
   const auto* uri = std::getenv("TON_FINALIZED_TEST_REDIS_URI");
   if (!uri) {
-    LOG(INFO) << "Skipping partial finalized block integration";
+    LOG(INFO) << "Skipping restarted finalized producer integration";
     return;
   }
   auto options = parse_redis_connection_options(uri).move_as_ok();
   auto client_options = sw::redis::Uri(uri).connection_options();
   client_options.socket_timeout = 2s;
   sw::redis::Redis redis(client_options);
-  ASSERT_EQ(0, redis.exists("finalized:progress"));
   ASSERT_EQ(0, redis.exists("health:ton-trace-emulator"));
-  const auto prefix = "finalized-partial:" + std::to_string(getpid());
+  const auto prefix = "finalized-restart:" + std::to_string(getpid());
   auto make_plan = [&](std::string suffix, std::string value) {
     auto plan = batch(prefix + suffix, value).plans.front();
     plan.replace_trace = true;
@@ -1375,110 +1371,87 @@ TEST(RedisTransport, another_producer_resumes_partial_block_without_republishing
     return plan;
   };
   auto a = make_plan(":a", "A");
-  auto c = make_plan(":c", "C");
+  auto b = make_plan(":b", "B");
   RedisWritePlan cleanup;
-  cleanup.trace_key = prefix + ":b";
-  cleanup.raw_external_message_hash = cleanup.trace_key;
+  cleanup.trace_key = b.trace_key;
+  cleanup.raw_external_message_hash = b.trace_key;
   cleanup.erase_trace = true;
-  auto recreated = make_plan(":b", "B-new");
   std::vector<std::string> messages;
   auto subscriber = redis.subscriber();
   subscriber.on_message([&](std::string, std::string message) { messages.push_back(std::move(message)); });
   subscriber.subscribe(prefix);
   subscriber.consume();
-
-  // Producer A publishes just one trace, then disappears before completing the block.
-  with_materializer(options, 2, [&](auto& writer) {
-    const auto id = writer.get();
-    auto initialized = td::PromiseCreator::lambda([&, id](td::Result<std::int64_t> result) {
-      ASSERT_TRUE(result.is_ok());
-      td::actor::send_closure(id, &RedisMaterializer::write_finalized_trace, 200, a,
-            td::PromiseCreator::lambda([](td::Result<std::int64_t> r) {
-              ASSERT_TRUE(r.is_ok()); ASSERT_EQ(1, r.move_as_ok()); stop_scheduler();
-            }));
+  auto write = [&](std::uint32_t seqno, const RedisWritePlan& plan, int expected) {
+    with_materializer(options, 1, [&](auto& writer) {
+      td::actor::send_closure(writer, &RedisMaterializer::write_finalized_trace, seqno, plan,
+          td::PromiseCreator::lambda([expected](td::Result<std::int64_t> r) {
+            ASSERT_TRUE(r.is_ok());
+            ASSERT_EQ(expected, r.move_as_ok());
+            stop_scheduler();
+          }));
     });
-    td::actor::send_closure(id, &RedisMaterializer::initialize_finalized, 200, std::move(initialized));
-  });
-  subscriber.consume();
-  ASSERT_EQ(std::vector<std::string>({"A"}), messages); // Live notice precedes block completion.
-  ASSERT_EQ("199", redis.hget("finalized:progress", "last").value());
-  ASSERT_EQ(1, redis.scard("finalized:written:200"));
-  ASSERT_TRUE(redis.sismember("finalized:written:200", a.trace_key));
-  ASSERT_EQ(-1, redis.ttl("finalized:written:200"));
-  redis.del(a.trace_key); // Snapshot TTL may expire while the block is incomplete; dedup must survive.
-  redis.set("health:ton-trace-emulator", "wrong type");
+  };
+  auto finish = [&](std::uint32_t seqno, int expected) {
+    with_materializer(options, 1, [&](auto& writer) {
+      td::actor::send_closure(writer, &RedisMaterializer::finish_finalized, seqno, seqno * 10,
+          td::PromiseCreator::lambda([expected](td::Result<std::int64_t> r) {
+            if (expected < 0) {
+              ASSERT_TRUE(r.is_error());
+              ASSERT_TRUE(r.error().message().str().find("WRONGTYPE") != std::string::npos);
+            } else {
+              ASSERT_TRUE(r.is_ok());
+              ASSERT_EQ(expected, r.move_as_ok());
+            }
+            stop_scheduler();
+          }));
+    });
+  };
 
-  using Step = std::function<void(td::actor::ActorId<RedisMaterializer>, td::Promise<std::int64_t>)>;
-  struct Expected { Step step; std::int64_t result; std::string error; };
-  std::vector<Expected> steps;
-  // The shared bootstrap point wins even if a replacement starts at a newer node head.
-  steps.push_back({[](auto id, auto p) { td::actor::send_closure(id, &RedisMaterializer::initialize_finalized,
-      250, std::move(p)); }, 200, {}});
-  steps.push_back({[&](auto id, auto p) { td::actor::send_closure(id, &RedisMaterializer::write_finalized_trace,
-      200, a, std::move(p)); }, 0, {}});
-  auto changed_a = make_plan(":a", "different-result");
-  steps.push_back({[&](auto id, auto p) { td::actor::send_closure(id, &RedisMaterializer::write_finalized_trace,
-      200, changed_a, std::move(p)); }, 0, {}}); // First write wins; no result comparison.
-  steps.push_back({[&](auto id, auto p) { td::actor::send_closure(id, &RedisMaterializer::write_finalized_trace,
-      200, cleanup, std::move(p)); }, 1, {}});
-  steps.push_back({[&](auto id, auto p) { td::actor::send_closure(id, &RedisMaterializer::write_finalized_trace,
-      200, c, std::move(p)); }, 1, {}});
-  steps.push_back({[](auto id, auto p) { td::actor::send_closure(id, &RedisMaterializer::finish_finalized,
-      202, 1234, std::move(p)); }, -1, "SEQNO_GAP"});
-  steps.push_back({[](auto id, auto p) { td::actor::send_closure(id, &RedisMaterializer::finish_finalized,
-      200, 1234, std::move(p)); }, -1, "WRONGTYPE"});
-  steps.push_back({[](auto id, auto p) { td::actor::send_closure(id, &RedisMaterializer::finish_finalized,
-      200, 1234, std::move(p)); }, 1, {}});
-  steps.push_back({[&](auto id, auto p) { commit_one_finalized(id, 201, recreated, std::move(p)); }, 1, {}});
-  steps.push_back({[&](auto id, auto p) { td::actor::send_closure(id, &RedisMaterializer::write_finalized_trace,
-      200, cleanup, std::move(p)); }, 0, {}});
-  // Empty blocks need no metadata or written set.
-  steps.push_back({[](auto id, auto p) { td::actor::send_closure(id, &RedisMaterializer::finish_finalized,
-      202, 1234, std::move(p)); }, 1, {}});
-  with_materializer(options, 2, [&](auto& writer) {
-    auto id = writer.get();
-    auto run = std::make_shared<std::function<void(std::size_t)>>();
-    std::weak_ptr<std::function<void(std::size_t)>> weak = run;
-    *run = [&, id, weak](std::size_t index) {
-      if (index == steps.size()) {
-        stop_scheduler();
-        return;
-      }
-      auto keep = weak.lock(); CHECK(keep);
-      auto done = td::PromiseCreator::lambda([&, index, keep](td::Result<std::int64_t> r) {
-        if (steps[index].result < 0) {
-          ASSERT_TRUE(r.is_error());
-          ASSERT_TRUE(r.error().message().str().find(steps[index].error) != std::string::npos);
-          ASSERT_EQ("199", redis.hget("finalized:progress", "last").value());
-          ASSERT_EQ(3, redis.scard("finalized:written:200"));
-          if (steps[index].error == "WRONGTYPE") {
-            redis.del("health:ton-trace-emulator");
-          }
-        } else {
-          ASSERT_TRUE(r.is_ok());
-          ASSERT_EQ(steps[index].result, r.move_as_ok());
-        }
-        (*keep)(index + 1);
-      });
-      steps[index].step(id, std::move(done));
-    };
-    (*run)(0);
-  });
+  write(200, a, 1);
+  redis.del(a.trace_key); // Deduplication outlives the replay snapshot.
+  redis.set("health:ton-trace-emulator", "wrong type");
+  finish(250, -1);
+  redis.del("health:ton-trace-emulator");
+  // A freshly started producer knows no old roots, but can finish an empty block at head.
+  finish(250, 1);
+  write(200, b, 1); // The running producer still delivers a trace whose root it knows.
+  write(200, a, 0);
+  write(200, make_plan(":a", "different-result"), 0);
+  write(199, b, 0);
+  write(201, cleanup, 1);
+  ASSERT_EQ(0, redis.exists(b.trace_key));
+  write(200, b, 0); // Cleanup keeps a version marker, so stale data cannot resurrect it.
+  write(202, make_plan(":b", "B-new"), 1);
+  write(201, cleanup, 0); // A late cleanup cannot delete the newer snapshot.
+  finish(200, 0);
+  ASSERT_EQ("250", redis.hget("health:ton-trace-emulator", "mc_seqno").value());
+  finish(251, 1);
   subscriber.consume();
   subscriber.consume();
-  ASSERT_EQ(std::vector<std::string>({"A", "C", "B-new"}), messages);
-  ASSERT_EQ("202", redis.hget("finalized:progress", "last").value());
-  ASSERT_EQ(0, redis.exists("finalized:written:200"));
-  ASSERT_EQ(0, redis.exists("finalized:written:201"));
-  ASSERT_EQ(0, redis.exists("finalized:written:202"));
+  subscriber.consume();
+  ASSERT_EQ(std::vector<std::string>({"A", "B", "B-new"}), messages);
+  ASSERT_EQ("251", redis.hget("health:ton-trace-emulator", "mc_seqno").value());
+  ASSERT_EQ("2510", redis.hget("health:ton-trace-emulator", "finalized_mc_block_time").value());
+  ASSERT_TRUE(redis.ttl("health:ton-trace-emulator") > 0);
+  ASSERT_EQ(0, redis.exists("finalized:progress"));
+  // Expiry forgets the health maximum, but does not change trace deduplication.
+  redis.del("health:ton-trace-emulator");
+  finish(200, 1);
+  ASSERT_EQ("200", redis.hget("health:ton-trace-emulator", "mc_seqno").value());
+  ASSERT_EQ("2000", redis.hget("health:ton-trace-emulator", "finalized_mc_block_time").value());
+  write(201, cleanup, 0);
+  finish(252, 1);
+  ASSERT_EQ("252", redis.hget("health:ton-trace-emulator", "mc_seqno").value());
+  ASSERT_EQ("200", redis.get("finalized:version:" + a.trace_key).value());
+  ASSERT_EQ("202", redis.get("finalized:version:" + b.trace_key).value());
   ASSERT_EQ(0, redis.exists(a.trace_key));
-  ASSERT_EQ("B-new", redis.hget(cleanup.trace_key, "node").value());
-  for (const auto& key : {a.trace_key, cleanup.trace_key, c.trace_key}) {
-    redis.del(key); redis.del("tr_in_msg:" + key);
-  }
-  for (const auto* key : {"finalized:progress", "health:ton-trace-emulator"}) {
+  ASSERT_EQ("B-new", redis.hget(b.trace_key, "node").value());
+  for (const auto& key : {a.trace_key, b.trace_key}) {
     redis.del(key);
+    redis.del("tr_in_msg:" + key);
+    redis.del("finalized:version:" + key);
   }
+  redis.del("health:ton-trace-emulator");
 }
 
 TEST(RedisTransport, finalized_scheduler_retries_all_redis_errors_without_advancing_early) {
@@ -1488,14 +1461,14 @@ TEST(RedisTransport, finalized_scheduler_retries_all_redis_errors_without_advanc
     auto b = server.accept();
     const auto first = a.command();
     const auto failed = b.command();
-    ASSERT_EQ("2", first[2]);
-    ASSERT_EQ("2", failed[2]);
-    b.reply("-ERR NOT_INITIALIZED\r\n");
+    ASSERT_EQ("1", first[2]);
+    ASSERT_EQ("1", failed[2]);
+    b.reply("-ERR WRONGTYPE\r\n");
     b.expect_closed();
 
     // Keep A in flight so B's retry must use its failed connection's slot.
     // No finish request is allowed while either job is still unacknowledged.
-    for (const auto* error : {"SEQNO_GAP", "WRONGTYPE"}) {
+    for (const auto* error : {"NOPERM", "WRONGTYPE"}) {
       auto retry = server.accept();
       ASSERT_EQ(failed, retry.command());
       retry.reply(std::string("-ERR ") + error + "\r\n");
@@ -1503,17 +1476,17 @@ TEST(RedisTransport, finalized_scheduler_retries_all_redis_errors_without_advanc
     }
     auto retry = server.accept();
     const auto repeated = retry.command();
-    ASSERT_EQ("2", repeated[2]);
+    ASSERT_EQ("1", repeated[2]);
     ASSERT_EQ(failed[6], repeated[6]);
     retry.reply(":0\r\n"); // Another producer may already have written it.
     a.reply(":1\r\n");
 
-    for (const std::string error : {"SEQNO_GAP", "NOT_INITIALIZED", "WRONGTYPE", ""}) {
+    for (const std::string error : {"NOPERM", "READONLY", "WRONGTYPE", ""}) {
       auto control = server.accept();
       const auto finish = control.command();
-      ASSERT_EQ("3", finish[2]);
-      ASSERT_EQ("health:ton-trace-emulator", finish[5]);
-      ASSERT_EQ("100", finish[6]);
+      ASSERT_EQ("1", finish[2]);
+      ASSERT_EQ("health:ton-trace-emulator", finish[3]);
+      ASSERT_EQ("100", finish[4]);
       control.reply(error.empty() ? ":1\r\n" : "-ERR " + error + "\r\n");
       if (!error.empty()) {
         control.expect_closed();

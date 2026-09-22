@@ -1124,15 +1124,6 @@ RedisWritePlan build_finalized_snapshot(const std::string& trace_key, const Acti
   return plan;
 }
 
-void sort_finalized_batch(RedisWriteBatch& batch) {
-  std::sort(batch.plans.begin(), batch.plans.end(), [](const auto& a, const auto& b) {
-    if (a.trace_key != b.trace_key) {
-      return a.trace_key < b.trace_key;
-    }
-    return a.erase_trace && !b.erase_trace;
-  });
-}
-
 constexpr bool cleanup_is_terminal(TraceCleanupMode mode) {
   return mode == TraceCleanupMode::Invalidation || mode == TraceCleanupMode::Oversized;
 }
@@ -1174,8 +1165,7 @@ struct TraceProcessor::Impl {
     ton::BlockSeqno seqno;
     std::uint32_t unix_time;
     std::size_t remaining;
-    RedisWriteBatch batch;
-    td::Promise<RedisWriteBatch> promise;
+    td::Promise<td::Unit> promise;
     std::optional<td::Status> error;
     std::function<void(RedisWritePlan)> on_plan;
   };
@@ -1207,25 +1197,14 @@ void TraceProcessor::start_up() {
   }
 }
 
-void TraceProcessor::prepare_finalized_block(ton::BlockSeqno seqno, std::uint32_t unix_time,
-                                            std::vector<TraceUpdate> updates, td::Promise<RedisWriteBatch> promise) {
-  prepare_finalized_impl(seqno, unix_time, std::move(updates), {}, std::move(promise));
-}
-
 void TraceProcessor::prepare_finalized_block_streaming(ton::BlockSeqno seqno, std::uint32_t unix_time,
     std::vector<TraceUpdate> updates,
-    std::function<void(RedisWritePlan)> on_plan, td::Promise<RedisWriteBatch> promise) {
-  prepare_finalized_impl(seqno, unix_time, std::move(updates), std::move(on_plan),
-                         std::move(promise));
-}
-
-void TraceProcessor::prepare_finalized_impl(ton::BlockSeqno seqno, std::uint32_t unix_time,
-    std::vector<TraceUpdate> updates,
-    std::function<void(RedisWritePlan)> on_plan, td::Promise<RedisWriteBatch> promise) {
+    std::function<void(RedisWritePlan)> on_plan, td::Promise<td::Unit> promise) {
   if (!impl_->finalized_only || impl_->preparing_block || impl_->pending_updates || impl_->active_writes) {
     promise.set_error(td::Status::Error("Finalized preparation requires an idle finalized-only processor"));
     return;
   }
+  CHECK(on_plan);
   std::set<td::Bits256> keys;
   std::set<std::string> updating;
   for (const auto& update : updates) {
@@ -1244,7 +1223,7 @@ void TraceProcessor::prepare_finalized_impl(ton::BlockSeqno seqno, std::uint32_t
   for (const auto& key : keys) {
     updating.insert(td::base64_encode(key.as_slice()));
   }
-  Impl::PreparingBlock block{seqno, unix_time, updates.size(), {}, std::move(promise), {}, std::move(on_plan)};
+  Impl::PreparingBlock block{seqno, unix_time, updates.size(), std::move(promise), {}, std::move(on_plan)};
   // Only finished traces expire locally. Block time makes pruning identical during replay and live processing.
   for (auto it = impl_->traces.begin(); it != impl_->traces.end();) {
     const auto& slot = it->second;
@@ -1253,23 +1232,16 @@ void TraceProcessor::prepare_finalized_impl(ton::BlockSeqno seqno, std::uint32_t
         unix_time - slot.finalized_updated_at > impl_->retention.completed_seconds &&
         !finalized_trace_is_open(*slot.current)) {
       auto cleanup = build_cleanup_batch(it->first, slot, TraceCleanupMode::Retention);
-      for (auto& plan : cleanup.plans) {
-        block.batch.plans.push_back(std::move(plan));
-      }
       it = impl_->traces.erase(it);
+      for (auto& plan : cleanup.plans) {
+        block.on_plan(std::move(plan));
+      }
     } else {
       ++it;
     }
   }
-  if (block.on_plan) {
-    for (auto& plan : block.batch.plans) {
-      block.on_plan(std::move(plan));
-    }
-    block.batch.plans.clear();
-  }
   if (updates.empty()) {
-    sort_finalized_batch(block.batch);
-    block.promise.set_value(std::move(block.batch));
+    block.promise.set_value(td::Unit());
     return;
   }
   impl_->preparing_block.emplace(std::move(block));
@@ -1295,9 +1267,7 @@ void TraceProcessor::finalized_update_prepared(td::Result<td::Unit> result) {
   if (finished.error) {
     finished.promise.set_error(std::move(*finished.error));
   } else {
-    // Classification completion order is not deterministic across worker threads.
-    sort_finalized_batch(finished.batch);
-    finished.promise.set_value(std::move(finished.batch));
+    finished.promise.set_value(td::Unit());
   }
 }
 
@@ -1329,11 +1299,7 @@ td::Status TraceProcessor::drop_oversized_finalized_trace(const std::string& tra
   // Account snapshots are independent of the discarded trace graph and actions.
   TRY_STATUS(append_account_state_writes(plan, update));
   auto& block = *impl_->preparing_block;
-  if (block.on_plan) {
-    block.on_plan(std::move(plan));
-  } else {
-    block.batch.plans.push_back(std::move(plan));
-  }
+  block.on_plan(std::move(plan));
   impl_->traces.erase(trace_key);
   // No expiry in finalized mode: late continuations must also be skipped during replay.
   impl_->oversized_traces.emplace(trace_key, td::Timestamp{});
@@ -1512,6 +1478,12 @@ void TraceProcessor::enqueue_trace_update(TraceUpdate update, bool confirmed, td
 
   const bool real_root = contains_real_root(update);
   auto slot_it = impl_->traces.find(trace_key);
+  if (impl_->finalized_only && !real_root &&
+      (slot_it == impl_->traces.end() || !slot_it->second.current->root())) {
+    // A producer starting at head cannot reconstruct traces whose root it never saw.
+    completion.set_value();
+    return;
+  }
   if (slot_it != impl_->traces.end() && cleanup_is_terminal(slot_it->second.cleanup_mode)) {
     if (confirmed) {
       completion.set_error(td::Status::Error("Confirmed trace is already being invalidated"));
@@ -1879,11 +1851,7 @@ void TraceProcessor::materialize_classified_trace(std::string trace_key) {
                                          static_cast<std::uint32_t>(impl_->retention.completed_seconds));
     plan.account_states = std::move(prepared.redis.account_states);
     plan.indexes_to_remove = collect_cleanup_index_refs(slot);
-    if (block.on_plan) {
-      block.on_plan(std::move(plan));
-    } else {
-      block.batch.plans.push_back(std::move(plan));
-    }
+    block.on_plan(std::move(plan));
     slot.current = std::make_shared<const ActiveTrace>(std::move(prepared.next_trace));
     slot.finalized_updated_at = block.unix_time;
     slot.dirty = {};
