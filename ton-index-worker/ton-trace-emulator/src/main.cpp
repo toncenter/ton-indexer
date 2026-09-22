@@ -58,7 +58,7 @@ int main(int argc, char *argv[]) {
   std::string db_event_fifo_path;
   bool mch_disable = false;
   bool mch_no_tier2 = false;
-  int mch_workers = 1;
+  int mch_workers = 8;
   double actor_stats_interval = 30;
   
   td::OptionParser p;

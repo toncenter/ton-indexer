@@ -51,7 +51,7 @@ int main(int argc, char *argv[]) {
   TraceRetentionConfig trace_retention;
 
   std::string db_event_fifo_path;
-  int mch_workers = 1;
+  int mch_workers = 8;
   double actor_stats_interval = 30;
 
   td::OptionParser p;
