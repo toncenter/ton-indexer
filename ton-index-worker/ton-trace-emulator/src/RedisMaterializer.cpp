@@ -342,9 +342,9 @@ void RedisMaterializer::write_finalized_trace(ton::BlockSeqno seqno, RedisWriteP
       return;
     }
   }
-  // Bound Lua unpack() before sending anything to Redis.
+  // Leave room below Lua's 8000-slot C stack limit when calling unpack().
   for (const auto& command : commands.commands()) {
-    if (command.size() > 4000) {
+    if (command.size() > 7500) {
       promise.set_error(td::Status::Error("Redis command exceeds the Lua argument limit"));
       return;
     }
