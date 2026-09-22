@@ -101,9 +101,11 @@ td::Result<TraceStateNode> prepare_state_node(const TraceNode& node, const std::
   msgpack::pack(buffer, redis_node);
 
   std::vector<std::string> out_message_keys;
+  std::vector<std::string> internal_message_keys;
   out_message_keys.reserve(redis_node.transaction.out_msgs.size());
   for (const auto& out_message : redis_node.transaction.out_msgs) {
     out_message_keys.push_back(td::base64_encode(out_message.hash.as_slice()));
+    if (out_message.destination) internal_message_keys.push_back(out_message_keys.back());
   }
 
   auto index = TraceStateIndexRef{
@@ -120,6 +122,7 @@ td::Result<TraceStateNode> prepare_state_node(const TraceNode& node, const std::
       .workchain = node.address.workchain,
       .mc_seqno = node.mc_block_seqno,
       .child_keys = std::move(out_message_keys),
+      .internal_child_keys = std::move(internal_message_keys),
       .index_refs = {std::move(index)},
   };
 }

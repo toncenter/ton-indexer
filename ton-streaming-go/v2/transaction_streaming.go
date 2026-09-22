@@ -111,8 +111,9 @@ func buildTransactionNotification(traceContext *crud.EmulatedTracesContext, hint
 	stage.Span.AddAttr("ton.trace.finality", finality.String())
 	stage.Span.AddAttr("ton.transactions.count", len(txs))
 	return &TransactionsNotification{
-		version: deliveryVersion{seq: hint.UpdateSeq, partial: hint.UpdateFinality == indexModels.FinalityStatePending},
-		Type:    EventTransactions, Finality: finality, TraceExternalHashNorm: hint.TraceKey, Transactions: txs,
+		version:         deliveryVersion{seq: hint.UpdateSeq, partial: hint.UpdateFinality == indexModels.FinalityStatePending},
+		traceIncomplete: stage.traceIncomplete,
+		Type:            EventTransactions, Finality: finality, TraceExternalHashNorm: hint.TraceKey, Transactions: txs,
 	}, addresses, nil
 }
 

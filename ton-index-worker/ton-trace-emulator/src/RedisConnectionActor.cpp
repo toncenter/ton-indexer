@@ -20,6 +20,15 @@ void RedisConnectionActor::ReaderDeleter::operator()(redisReader* reader) const 
 }
 
 void RedisConnectionActor::execute(RedisPipeline data, RedisPipeline publications, td::Promise<td::Unit> promise) {
+  execute_with_reply(std::move(data), std::move(publications),
+      td::PromiseCreator::lambda([promise = std::move(promise)](td::Result<std::int64_t> result) mutable {
+        if (result.is_error()) promise.set_error(result.move_as_error());
+        else promise.set_value(td::Unit());
+      }));
+}
+
+void RedisConnectionActor::execute_with_reply(RedisPipeline data, RedisPipeline publications,
+                                             td::Promise<std::int64_t> promise) {
   if (request_) {
     promise.set_error(td::Status::Error("Redis connection already has an active batch"));
     return;
@@ -30,6 +39,7 @@ void RedisConnectionActor::execute(RedisPipeline data, RedisPipeline publication
     return;
   }
   request_.emplace(Request{std::move(data), std::move(publications), std::move(promise)});
+  last_integer_reply_ = 0;
   deadline_ = td::Timestamp::in(options_.batch_timeout);
   alarm_timestamp() = deadline_;
   if (socket_.empty()) {
@@ -158,6 +168,7 @@ td::Status RedisConnectionActor::drive() {
                   !(reply->type == REDIS_REPLY_STATUS && td::Slice(reply->str, reply->len) == "OK"))) {
         return td::Status::Error("Unexpected Redis reply type for write command");
       }
+      if (reply->type == REDIS_REPLY_INTEGER && phase_ != Phase::Setup) last_integer_reply_ = reply->integer;
       --remaining_replies_;
       --reply_budget;
       continue;
@@ -236,7 +247,7 @@ void RedisConnectionActor::finish(td::Status status) {
   if (status.is_error())
     promise.set_error(std::move(status));
   else
-    promise.set_value(td::Unit());
+    promise.set_value(std::int64_t(last_integer_reply_));
 }
 
 void RedisConnectionActor::close_connection() {

@@ -14,6 +14,43 @@
 
 namespace {
 
+// The stream is intentionally isolated in its own logical Redis DB. Never FLUSHDB here.
+constexpr const char* kFinalizedProgress = "finalized:progress";
+constexpr const char* kInitializeFinalized = R"(
+local first = redis.call('HGET', KEYS[1], 'first')
+if first then return tonumber(first) end
+redis.call('HSET', KEYS[1], 'first', ARGV[1], 'last', tonumber(ARGV[1]) - 1)
+return tonumber(ARGV[1])
+)";
+
+// Check progress before markers. Mark success last, after data and publications.
+constexpr const char* kWriteFinalizedTrace = R"(
+local last = tonumber(redis.call('HGET', KEYS[1], 'last'))
+if not last then return redis.error_reply('NOT_INITIALIZED') end
+local n = tonumber(ARGV[1])
+if n <= last then return 0 end
+if n ~= last + 1 then return redis.error_reply('SEQNO_GAP') end
+if redis.call('SISMEMBER', KEYS[2], ARGV[2]) == 1 then return 0 end
+for _, cmd in ipairs(cmsgpack.unpack(ARGV[3])) do redis.call(unpack(cmd)) end
+redis.call('SADD', KEYS[2], ARGV[2])
+return 1
+)";
+
+// The producer waits for all jobs; progress changes only after housekeeping succeeds.
+constexpr const char* kFinishFinalized = R"(
+local last = tonumber(redis.call('HGET', KEYS[1], 'last'))
+if not last then return redis.error_reply('NOT_INITIALIZED') end
+local n = tonumber(ARGV[1])
+if n <= last then return 0 end
+if n ~= last + 1 then return redis.error_reply('SEQNO_GAP') end
+redis.call('HSET', KEYS[3], 'mode', 'finalized', 'finalized_mc_block_time', ARGV[2],
+  'mc_seqno', ARGV[1], 'updated_at', redis.call('TIME')[1])
+redis.call('EXPIRE', KEYS[3], '20')
+redis.call('UNLINK', KEYS[2])
+redis.call('HSET', KEYS[1], 'last', ARGV[1], 'block_time', ARGV[2])
+return 1
+)";
+
 constexpr const char* kUpdateAccountStateScript = R"(
     local cur = redis.call('HGET', KEYS[1], 'lt')
     local cur_num = tonumber(cur)
@@ -66,6 +103,9 @@ td::Status append_redis_data_commands(RedisPipeline& pipeline, const RedisWriteP
     return td::Status::OK();
   }
 
+  if (plan.replace_trace) {
+    TRY_STATUS(pipeline.append({"DEL", plan.trace_key}, max_bytes));
+  }
   // Switch the payload, root pointer and update_seq in one HSET before removing
   // obsolete fields. A reader of an older hint then sees either the intact old
   // graph or the new version, never a pointer to a root we have just deleted.
@@ -118,6 +158,9 @@ td::Status append_redis_data_commands(RedisPipeline& pipeline, const RedisWriteP
                                max_bytes));
   }
 
+  if (plan.expire_seconds) {
+    TRY_STATUS(pipeline.append({"EXPIRE", plan.trace_key, std::to_string(plan.expire_seconds)}, max_bytes));
+  }
   return pipeline.append({"SETEX", "tr_in_msg:" + plan.raw_external_message_hash, "600", plan.trace_key}, max_bytes);
 }
 
@@ -155,14 +198,20 @@ RedisMaterializer::RedisMaterializer(RedisConnectionOptions options, std::size_t
 }
 
 void RedisMaterializer::write(RedisWriteBatch batch, Completion completion, td::Timer timer) {
-  auto index = std::size_t{0};
-  while (index < slots_.size() && slots_[index].pending)
-    ++index;
-  if (index == slots_.size() && slots_.size() == limit_) {
+  for (const auto& plan : batch.plans) {
+    if (plan.replace_trace) {
+      complete(std::move(completion), td::Status::Error("Full replacement requires a finalized block commit"),
+               std::move(batch), timer);
+      return;
+    }
+  }
+  auto available = free_slot();
+  if (!available) {
     complete(std::move(completion), td::Status::Error("Redis materializer capacity exhausted"), std::move(batch),
              timer);
     return;
   }
+  const auto index = *available;
   RedisPipeline data;
   RedisPipeline publications;
   auto status = td::Status::OK();
@@ -182,17 +231,36 @@ void RedisMaterializer::write(RedisWriteBatch batch, Completion completion, td::
     complete(std::move(completion), std::move(status), std::move(batch), timer);
     return;
   }
-  if (index == slots_.size()) {
-    slots_.push_back(Slot{td::actor::create_actor<RedisConnectionActor>(
-                              td::actor::ActorOptions().with_name("RedisConnection").with_poll(), options_),
-                          {}});
-  }
+  ensure_slot(index);
   slots_[index].pending.emplace(Pending{std::move(batch), std::move(completion), timer});
   auto promise = td::PromiseCreator::lambda([self = actor_id(this), index](td::Result<td::Unit> result) mutable {
     td::actor::send_closure(self, &RedisMaterializer::finished, index, std::move(result));
   });
   td::actor::send_closure(slots_[index].connection, &RedisConnectionActor::execute, std::move(data),
                           std::move(publications), std::move(promise));
+}
+
+std::optional<std::size_t> RedisMaterializer::free_slot() const {
+  for (std::size_t i = 0; i < slots_.size(); ++i) {
+    if (!slots_[i].pending && !slots_[i].finalized) return i;
+  }
+  if (slots_.size() < limit_) return slots_.size();
+  return std::nullopt;
+}
+
+void RedisMaterializer::ensure_slot(std::size_t index) {
+  if (index == slots_.size()) {
+    slots_.push_back(Slot{td::actor::create_actor<RedisConnectionActor>(
+        td::actor::ActorOptions().with_name("RedisConnection").with_poll(), options_), {}, {}, td::Timer{}});
+  }
+}
+
+void RedisMaterializer::finalized_finished(std::size_t index, td::Result<std::int64_t> result) {
+  CHECK(index < slots_.size() && slots_[index].finalized);
+  auto promise = std::move(*slots_[index].finalized);
+  slots_[index].finalized.reset();
+  g_statistics.record_time(INSERT_TRACE, slots_[index].finalized_timer.elapsed() * 1e3);
+  promise.set_result(std::move(result));
 }
 
 void RedisMaterializer::finished(std::size_t index, td::Result<td::Unit> result) {
@@ -210,6 +278,11 @@ void RedisMaterializer::complete(Completion completion, td::Status status, Redis
 
 void RedisMaterializer::tear_down() {
   for (auto& slot : slots_) {
+    if (slot.finalized) {
+      auto promise = std::move(*slot.finalized);
+      slot.finalized.reset();
+      promise.set_error(td::Status::Error("Redis materializer stopped"));
+    }
     if (!slot.pending)
       continue;
     auto pending = std::move(*slot.pending);
@@ -218,6 +291,81 @@ void RedisMaterializer::tear_down() {
              pending.timer);
   }
   slots_.clear();
+  control_.reset();
+}
+
+void RedisMaterializer::execute_control(RedisPipeline pipeline, td::Promise<std::int64_t> promise) {
+  if (control_.empty()) {
+    control_ = td::actor::create_actor<RedisConnectionActor>(
+        td::actor::ActorOptions().with_name("RedisFinalizedCommit").with_poll(), options_);
+  }
+  td::actor::send_closure(control_, &RedisConnectionActor::execute_with_reply, std::move(pipeline),
+                          RedisPipeline{}, std::move(promise));
+}
+
+void RedisMaterializer::initialize_finalized(ton::BlockSeqno first_seqno, td::Promise<std::int64_t> promise) {
+  if (!first_seqno) { promise.set_error(td::Status::Error("First finalized seqno must be positive")); return; }
+  RedisPipeline pipeline;
+  auto status = pipeline.append({"EVAL", td::Slice(kInitializeFinalized), "1", td::Slice(kFinalizedProgress),
+                                std::to_string(first_seqno)},
+                                options_.max_batch_bytes);
+  if (status.is_error()) { promise.set_error(std::move(status)); return; }
+  execute_control(std::move(pipeline), std::move(promise));
+}
+
+void RedisMaterializer::write_finalized_trace(ton::BlockSeqno seqno, RedisWritePlan plan,
+                                             td::Promise<std::int64_t> promise) {
+  auto available = free_slot();
+  if (!available) {
+    promise.set_error(td::Status::Error("Redis materializer capacity exhausted"));
+    return;
+  }
+  if (plan.trace_key.empty() || !plan.account_states.empty() || (!plan.replace_trace && !plan.erase_trace)) {
+    promise.set_error(td::Status::Error("Finalized trace job requires one full snapshot or cleanup"));
+    return;
+  }
+  RedisPipeline commands(true);
+  auto status = append_redis_data_commands(commands, plan, options_.max_batch_bytes);
+  if (status.is_error()) { promise.set_error(std::move(status)); return; }
+  for (const auto& [channel, message] : plan.publications) {
+    status = commands.append({"PUBLISH", channel, message}, options_.max_batch_bytes);
+    if (status.is_error()) { promise.set_error(std::move(status)); return; }
+  }
+  // Bound Lua unpack() before sending anything to Redis.
+  for (const auto& command : commands.commands()) {
+    if (command.size() > 4000) {
+      promise.set_error(td::Status::Error("Redis command exceeds the Lua argument limit"));
+      return;
+    }
+  }
+  msgpack::sbuffer buffer;
+  msgpack::pack(buffer, commands.commands());
+  RedisPipeline pipeline;
+  status = pipeline.append({"EVAL", td::Slice(kWriteFinalizedTrace), "2", td::Slice(kFinalizedProgress),
+                            "finalized:written:" + std::to_string(seqno), std::to_string(seqno),
+                            plan.trace_key, td::Slice(buffer.data(), buffer.size())},
+                            options_.max_batch_bytes);
+  if (status.is_error()) { promise.set_error(std::move(status)); return; }
+  const auto index = *available;
+  ensure_slot(index);
+  slots_[index].finalized.emplace(std::move(promise));
+  slots_[index].finalized_timer = td::Timer{};
+  auto done = td::PromiseCreator::lambda([self = actor_id(this), index](td::Result<std::int64_t> result) mutable {
+    td::actor::send_closure(self, &RedisMaterializer::finalized_finished, index, std::move(result));
+  });
+  td::actor::send_closure(slots_[index].connection, &RedisConnectionActor::execute_with_reply,
+                         std::move(pipeline), RedisPipeline{}, std::move(done));
+}
+
+void RedisMaterializer::finish_finalized(ton::BlockSeqno seqno, std::uint32_t unix_time,
+                                        td::Promise<std::int64_t> promise) {
+  RedisPipeline pipeline;
+  auto status = pipeline.append({"EVAL", td::Slice(kFinishFinalized), "3", td::Slice(kFinalizedProgress),
+      "finalized:written:" + std::to_string(seqno), "health:ton-trace-emulator", std::to_string(seqno),
+      std::to_string(unix_time)},
+      options_.max_batch_bytes);
+  if (status.is_error()) { promise.set_error(std::move(status)); return; }
+  execute_control(std::move(pipeline), std::move(promise));
 }
 
 td::Status flush_pending_redis_database(const std::string& redis_dsn) {

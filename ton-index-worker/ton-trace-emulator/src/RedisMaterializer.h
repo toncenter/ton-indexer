@@ -59,6 +59,8 @@ struct AccountStateWrite {
 struct RedisWritePlan {
   std::string trace_key;
   bool erase_trace{false};
+  bool replace_trace{false};
+  std::uint32_t expire_seconds{0};
   std::vector<std::string> node_fields_to_delete;
   std::vector<TraceStateIndexRef> indexes_to_remove;
   std::vector<TraceStateIndexRef> indexes_to_add;
@@ -88,6 +90,13 @@ class RedisMaterializer final : public td::actor::Actor {
   // Invoke with send_closure. Completion runs in this actor's scheduler
   // context and returns the original batch even on partial-write errors.
   void write(RedisWriteBatch batch, Completion completion, td::Timer timer);
+  // One serial control operation at a time, sharing the existing nonblocking transport.
+  void initialize_finalized(ton::BlockSeqno first_seqno, td::Promise<std::int64_t> promise);
+  // One atomic trace job, using the same bounded connection pool as ordinary writes.
+  void write_finalized_trace(ton::BlockSeqno seqno, RedisWritePlan plan,
+                             td::Promise<std::int64_t> promise);
+  // Call only after every job of this block has a successful write response.
+  void finish_finalized(ton::BlockSeqno seqno, std::uint32_t unix_time, td::Promise<std::int64_t> promise);
 
  private:
   struct Pending {
@@ -98,11 +107,19 @@ class RedisMaterializer final : public td::actor::Actor {
   struct Slot {
     td::actor::ActorOwn<RedisConnectionActor> connection;
     std::optional<Pending> pending;
+    std::optional<td::Promise<std::int64_t>> finalized;
+    td::Timer finalized_timer;
   };
 
   RedisConnectionOptions options_;
   std::size_t limit_;
   std::vector<Slot> slots_;
+  td::actor::ActorOwn<RedisConnectionActor> control_;
+
+  void execute_control(RedisPipeline pipeline, td::Promise<std::int64_t> promise);
+  std::optional<std::size_t> free_slot() const;
+  void ensure_slot(std::size_t index);
+  void finalized_finished(std::size_t index, td::Result<std::int64_t> result);
 
   void finished(std::size_t index, td::Result<td::Unit> result);
   static void complete(Completion completion, td::Status status, RedisWriteBatch batch, td::Timer timer);

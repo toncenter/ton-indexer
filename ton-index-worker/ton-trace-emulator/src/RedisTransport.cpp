@@ -103,6 +103,12 @@ td::Status RedisPipeline::append(const std::vector<td::Slice>& arguments, std::s
     return td::Status::Error("Cannot encode Redis command");
   }
   bytes_.append(command.get(), static_cast<std::size_t>(size));
+  if (capture_commands_) {
+    std::vector<std::string> args;
+    args.reserve(arguments.size());
+    for (auto argument : arguments) args.push_back(argument.str());
+    commands_.push_back(std::move(args));
+  }
   ++replies_;
   return td::Status::OK();
 }

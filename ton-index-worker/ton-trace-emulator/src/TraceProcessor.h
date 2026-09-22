@@ -1,6 +1,7 @@
 #pragma once
 
 #include <memory>
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -16,6 +17,7 @@
 #include "TraceUpdate.h"
 
 struct RedisWriteBatch;
+struct RedisWritePlan;
 struct RedisConnectionOptions;
 
 enum class TraceCleanupMode {
@@ -64,11 +66,23 @@ class TraceProcessor : public ITraceProcessor {
   void classification_ready(std::string trace_key, mch::EmuActionPayload payload);
   void materialize_classified_trace(std::string trace_key);
   void write_finished(std::string trace_key, td::Status status, RedisWriteBatch batch);
+  void finalized_update_prepared(td::Result<td::Unit> result);
+  void prepare_finalized_impl(ton::BlockSeqno seqno, std::uint32_t unix_time, std::vector<TraceUpdate> updates,
+      std::function<void(RedisWritePlan)> on_plan, td::Promise<RedisWriteBatch> promise);
 
  public:
   TraceProcessor(RedisConnectionOptions redis_options, TraceRetentionConfig retention,
-                 mch::EmuClassifierConfig classifier_config = {});
+                 mch::EmuClassifierConfig classifier_config = {}, bool finalized_only = false);
   ~TraceProcessor() override;
+
+  // Applies every update locally and returns complete Redis snapshots, without writing.
+  // One block at a time. Retain/retry the returned batch on Redis failures.
+  void prepare_finalized_block(ton::BlockSeqno seqno, std::uint32_t unix_time,
+                               std::vector<TraceUpdate> updates, td::Promise<RedisWriteBatch> promise);
+  // Emit each trace as soon as its classification finishes; complete after all updates.
+  void prepare_finalized_block_streaming(ton::BlockSeqno seqno, std::uint32_t unix_time,
+      std::vector<TraceUpdate> updates,
+      std::function<void(RedisWritePlan)> on_plan, td::Promise<RedisWriteBatch> promise);
 
   void process_trace_update(TraceUpdate update, td::Promise<td::Unit> promise) override;
   void process_confirmed_trace_update(TraceUpdate update, td::Promise<ConfirmedTraceSnapshot> promise) override;

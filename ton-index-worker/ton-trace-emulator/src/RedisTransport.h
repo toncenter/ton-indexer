@@ -27,6 +27,7 @@ td::Result<RedisConnectionOptions> parse_redis_connection_options(const std::str
 // Binary-safe RESP encoding only: hiredis performs no socket I/O here.
 class RedisPipeline {
  public:
+  explicit RedisPipeline(bool capture_commands = false) : capture_commands_(capture_commands) {}
   td::Status append(const std::vector<td::Slice>& arguments, std::size_t max_bytes);
   const std::string& bytes() const {
     return bytes_;
@@ -34,10 +35,13 @@ class RedisPipeline {
   std::size_t replies() const {
     return replies_;
   }
+  const std::vector<std::vector<std::string>>& commands() const { return commands_; }
 
  private:
   std::string bytes_;
   std::size_t replies_ = 0;
+  bool capture_commands_{false};
+  std::vector<std::vector<std::string>> commands_;
 };
 
 // Opens a nonblocking socket using the already resolved endpoint.

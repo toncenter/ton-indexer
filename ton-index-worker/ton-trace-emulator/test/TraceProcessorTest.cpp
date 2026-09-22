@@ -155,13 +155,15 @@ void commit_to_redis(const char* uri, RedisWritePlan plan) {
 struct TraceProcessorTest : TraceProcessor {
   using Check = std::function<void(TraceProcessorTest&)>;
   Check check;
+  bool stop_after_check;
 
-  TraceProcessorTest(Check check, mch::EmuClassifierConfig config)
-      : TraceProcessor(RedisConnectionOptions{}, TraceRetentionConfig{}, std::move(config)), check(std::move(check)) {}
+  TraceProcessorTest(Check check, mch::EmuClassifierConfig config, bool finalized_only = false, bool stop_after = true)
+      : TraceProcessor(RedisConnectionOptions{}, TraceRetentionConfig{}, std::move(config), finalized_only),
+        check(std::move(check)), stop_after_check(stop_after) {}
 
   void start_up() override {
     check(*this);
-    td::actor::SchedulerContext::get().stop();
+    if (stop_after_check) td::actor::SchedulerContext::get().stop();
   }
 
   auto& state() { return *impl_; }
@@ -1219,4 +1221,148 @@ TEST(TraceProcessor, cleanup_of_actionless_trace_unchanged) {
 
   ASSERT_EQ(1u, refs.size());
   ASSERT_EQ(node_ref, refs[0]);
+}
+
+TEST(TraceProcessor, finalized_preparation_keeps_open_trace_and_emits_full_snapshots_without_redis) {
+  td::actor::Scheduler scheduler({1});
+  td::actor::ActorOwn<TraceProcessor> processor;
+  const auto external = trace_test::message(801, true);
+  const auto internal = trace_test::message(802);
+  auto root = trace_test::node(external, {internal}, FinalityState::Finalized);
+  const auto root_hash = root->transaction_root->get_hash().bits();
+  const auto root_key = trace_test::key(external);
+  const auto child_key = trace_test::key(internal);
+  std::vector<TraceUpdate> first;
+  first.push_back(make_trace_update(trace_test::trace(std::move(root), external), {}));
+  bool finished = false;
+  scheduler.run_in_context([&] {
+    // No Redis endpoint and no classifier: only real serializer/assembler and async block completion.
+    processor = td::actor::create_actor<TraceProcessor>("FinalizedTest", RedisConnectionOptions{},
+        TraceRetentionConfig{}, mch::EmuClassifierConfig{}, true);
+    auto p1 = td::PromiseCreator::lambda([&](td::Result<RedisWriteBatch> result) {
+      ASSERT_TRUE(result.is_ok());
+      auto batch = result.move_as_ok();
+      ASSERT_EQ(1u, batch.plans.size());
+      ASSERT_TRUE(batch.plans[0].replace_trace);
+      ASSERT_TRUE(batch.plans[0].account_states.empty());
+      ASSERT_TRUE(redis_field(batch.plans[0], root_key).has_value());
+      ASSERT_EQ("100", *redis_field(batch.plans[0], "update_seq"));
+      ASSERT_EQ("0", *redis_field(batch.plans[0], "trace_complete"));
+      ASSERT_EQ(2u, batch.plans[0].publications.size());
+      auto child = trace_test::node(internal, {}, FinalityState::Finalized, 110);
+      child->mc_block_seqno = 101;
+      std::vector<TraceUpdate> second;
+      second.push_back(make_trace_update(trace_test::trace(std::move(child), external, root_hash), {}));
+      auto p2 = td::PromiseCreator::lambda([&](td::Result<RedisWriteBatch> r2) {
+        ASSERT_TRUE(r2.is_ok());
+        auto b2 = r2.move_as_ok();
+        ASSERT_EQ(1u, b2.plans.size());
+        ASSERT_TRUE(redis_field(b2.plans[0], root_key).has_value());
+        ASSERT_TRUE(redis_field(b2.plans[0], child_key).has_value());
+        ASSERT_EQ("101", *redis_field(b2.plans[0], "update_seq"));
+        ASSERT_EQ("1", *redis_field(b2.plans[0], "trace_complete"));
+        auto p3 = td::PromiseCreator::lambda([&](td::Result<RedisWriteBatch> r3) {
+          ASSERT_TRUE(r3.is_ok());
+          auto b3 = r3.move_as_ok();
+          ASSERT_EQ(1u, b3.plans.size());
+          ASSERT_TRUE(b3.plans[0].erase_trace);
+          ASSERT_TRUE(b3.plans[0].publications.empty());
+          finished = true;
+          td::actor::SchedulerContext::get().stop();
+        });
+        td::actor::send_closure(processor, &TraceProcessor::prepare_finalized_block,
+                               102, 2031, std::vector<TraceUpdate>{}, std::move(p3));
+      });
+      // Much later than both ordinary TTLs: a missing on-chain child must keep the local trace alive.
+      td::actor::send_closure(processor, &TraceProcessor::prepare_finalized_block,
+                             101, 2000, std::move(second), std::move(p2));
+    });
+    td::actor::send_closure(processor, &TraceProcessor::prepare_finalized_block,
+                           100, 1000, std::move(first), std::move(p1));
+  });
+  scheduler.run();
+  scheduler.run_in_context([&] { processor.reset(); });
+  ASSERT_TRUE(finished);
+}
+
+TEST(TraceProcessor, streaming_emits_first_trace_while_another_update_is_still_pending) {
+  td::actor::Scheduler scheduler({1});
+  td::actor::ActorOwn<TraceProcessorTest> processor;
+  bool finished = false;
+  std::size_t emitted = 0;
+  scheduler.run_in_context([&] {
+    auto check = [&](TraceProcessorTest& self) {
+      std::vector<TraceUpdate> updates;
+      for (char digit : {'d', 'e'}) {
+        auto external = trace_test::message(static_cast<unsigned>(digit), true);
+        auto trace = trace_test::trace(trace_test::node(external, {}, FinalityState::Finalized), external);
+        trace.ext_in_msg_hash_norm = trace_test::hash(digit);
+        updates.push_back(make_trace_update(std::move(trace), {}));
+      }
+      auto on_plan = [&](RedisWritePlan plan) {
+        ASSERT_TRUE(!finished);
+        ASSERT_TRUE(plan.replace_trace);
+        ASSERT_EQ("1", *redis_field(plan, "trace_complete"));
+        if (++emitted == 1) {
+          // This callback is not a loop over an already-completed block's batch.
+          ASSERT_TRUE(self.state().preparing_block && self.state().preparing_block->remaining >= 2);
+        }
+      };
+      auto done = td::PromiseCreator::lambda([&](td::Result<RedisWriteBatch> result) {
+        ASSERT_TRUE(result.is_ok());
+        ASSERT_TRUE(result.ok().plans.empty());
+        ASSERT_EQ(2u, emitted);
+        finished = true;
+        td::actor::SchedulerContext::get().stop();
+      });
+      self.prepare_finalized_block_streaming(100, 1000, std::move(updates), on_plan, std::move(done));
+    };
+    processor = td::actor::create_actor<TraceProcessorTest>("StreamingPrepare", check, mch::EmuClassifierConfig{}, true, false);
+  });
+  scheduler.run();
+  scheduler.run_in_context([&] { processor.reset(); });
+  ASSERT_TRUE(finished);
+}
+
+TEST(TraceProcessor, streaming_does_not_schedule_cleanup_alongside_an_update_of_the_same_trace) {
+  td::actor::Scheduler scheduler({1});
+  td::actor::ActorOwn<TraceProcessor> processor;
+  const auto external = trace_test::message(803, true);
+  auto updates_at = [&](ton::BlockSeqno seqno) {
+    auto root = trace_test::node(external, {}, FinalityState::Finalized);
+    root->mc_block_seqno = seqno;
+    std::vector<TraceUpdate> updates;
+    updates.push_back(make_trace_update(trace_test::trace(std::move(root), external), {}));
+    return updates;
+  };
+  bool finished = false;
+  std::size_t emitted = 0;
+  scheduler.run_in_context([&] {
+    processor = td::actor::create_actor<TraceProcessor>("FinalizedCleanupCollision", RedisConnectionOptions{},
+        TraceRetentionConfig{}, mch::EmuClassifierConfig{}, true);
+    auto first = td::PromiseCreator::lambda([&](td::Result<RedisWriteBatch> result) {
+      ASSERT_TRUE(result.is_ok());
+      ASSERT_EQ(1u, result.ok().plans.size());
+      auto plan = [&](RedisWritePlan value) {
+        ASSERT_TRUE(value.replace_trace && !value.erase_trace);
+        ASSERT_EQ("101", *redis_field(value, "update_seq"));
+        ++emitted;
+      };
+      auto done = td::PromiseCreator::lambda([&](td::Result<RedisWriteBatch> next) {
+        ASSERT_TRUE(next.is_ok() && next.ok().plans.empty());
+        ASSERT_EQ(1u, emitted);
+        finished = true;
+        td::actor::SchedulerContext::get().stop();
+      });
+      // The closed trace is past retention, but is also updated in this block.
+      td::actor::send_closure(processor, &TraceProcessor::prepare_finalized_block_streaming,
+          101, 2000, updates_at(101),
+          std::function<void(RedisWritePlan)>(plan), std::move(done));
+    });
+    td::actor::send_closure(processor, &TraceProcessor::prepare_finalized_block,
+                           100, 1000, updates_at(100), std::move(first));
+  });
+  scheduler.run();
+  scheduler.run_in_context([&] { processor.reset(); });
+  ASSERT_TRUE(finished);
 }
