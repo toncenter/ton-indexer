@@ -36,7 +36,7 @@ WORKDIR /app/build
 ENV CC=clang-20
 ENV CXX=clang++-20
 RUN touch /app/suppression_mappings.txt && cmake -DPGTON=1 -DCMAKE_BUILD_TYPE=Release -DPORTABLE=1 -DMCH_INDEXER_ROOT=/indexer .. && make -j$(nproc) ton-index-postgres ton-index-postgres-migrate ton-index-clickhouse ton-smc-scanner \
-     ton-integrity-checker ton-trace-emulator ton-trace-task-emulator ton-marker-cli ton-marker-core ton-marker pgton
+     ton-integrity-checker ton-trace-emulator ton-finalized-streamer ton-trace-task-emulator ton-marker-cli ton-marker-core ton-marker pgton
 
 
 ## build index api service ton-index-go
@@ -128,6 +128,7 @@ COPY --from=core-builder /app/build/ton-index-clickhouse/ton-index-clickhouse /u
 COPY --from=core-builder /app/build/ton-smc-scanner/ton-smc-scanner /usr/bin/ton-smc-scanner
 COPY --from=core-builder /app/build/ton-integrity-checker/ton-integrity-checker /usr/bin/ton-integrity-checker
 COPY --from=core-builder /app/build/ton-trace-emulator/ton-trace-emulator /usr/bin/ton-trace-emulator
+COPY --from=core-builder /app/build/ton-trace-emulator/ton-finalized-streamer /usr/bin/ton-finalized-streamer
 COPY --from=core-builder /app/build/ton-trace-task-emulator/ton-trace-task-emulator /usr/bin/ton-trace-task-emulator
 COPY --from=core-builder /app/build/ton-marker/libton-marker* /usr/lib/
 COPY --from=core-builder /app/build/ton-marker/ton-marker-cli /usr/bin/ton-marker-cli

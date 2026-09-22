@@ -63,10 +63,12 @@ struct FinalizedBlockResult {
 };
 
 class McBlockEmulator: public td::actor::Actor {
+    friend struct McBlockEmulatorTest;
 private:
     schema::MasterchainBlockDataState mc_data_state_;
     std::function<void(ton::BlockSeqno)> trace_ids_resolved_;
     td::Promise<FinalizedBlockResult> promise_;
+    bool emulate_tails_{true};
     size_t blocks_left_to_parse_;
     std::vector<TransactionInfo> txs_;
     std::vector<TraceUpdate> trace_updates_;
@@ -104,7 +106,7 @@ public:
     McBlockEmulator(schema::MasterchainBlockDataState mc_data_state,
                     std::function<void(ton::BlockSeqno)> trace_ids_resolved,
                     std::function<void(td::Promise<td::Unit>)> promote_confirmed,
-                    td::Promise<FinalizedBlockResult> promise);
+                    td::Promise<FinalizedBlockResult> promise, bool emulate_tails = true);
 
     virtual void start_up() override;
 };

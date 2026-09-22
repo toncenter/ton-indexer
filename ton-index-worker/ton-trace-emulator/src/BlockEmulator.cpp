@@ -27,6 +27,11 @@ class InterblockTraceStore {
     return true;
   }
 
+  void forget(const td::Bits256& key) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    trace_ids_.erase(key);
+  }
+
  private:
   std::mutex mutex_;
   std::unordered_map<td::Bits256, TraceIds> trace_ids_;
@@ -275,10 +280,11 @@ McBlockEmulator::McBlockEmulator(schema::MasterchainBlockDataState mc_data_state
                                  std::function<void(ton::BlockSeqno)>
                                      trace_ids_resolved,
                                  std::function<void(td::Promise<td::Unit>)> promote_confirmed,
-                                 td::Promise<FinalizedBlockResult> promise)
+                                 td::Promise<FinalizedBlockResult> promise, bool emulate_tails)
     : mc_data_state_(std::move(mc_data_state)),
       trace_ids_resolved_(std::move(trace_ids_resolved)),
       promise_(std::move(promise)),
+      emulate_tails_(emulate_tails),
       blocks_left_to_parse_(mc_data_state_.shard_blocks_diff_.size()),
       promote_confirmed_(std::move(promote_confirmed)) {
 }
@@ -341,7 +347,8 @@ void McBlockEmulator::block_parsed(
 
 void McBlockEmulator::resolve_trace_ids() {
     std::sort(txs_.begin(), txs_.end(), [](const TransactionInfo& a, const TransactionInfo& b) {
-        return a.lt < b.lt;
+        if (a.lt != b.lt) return a.lt < b.lt;
+        return a.hash < b.hash;
     });
 
     for (auto& tx : txs_) {
@@ -369,12 +376,18 @@ void McBlockEmulator::resolve_trace_ids() {
         // write trace_id for out_msgs for interblock chains
         if (tx.trace_ids.has_value()) {
             for (const auto& out_msg : tx.out_msgs) {
+                if (!emulate_tails_ && block::gen::t_CommonMsgInfo.get_tag(vm::load_cell_slice(out_msg.root)) !=
+                        block::gen::CommonMsgInfo::int_msg_info) {
+                    continue;
+                }
                 finalized_interblock_trace_store().put(
                     out_msg.hash, tx.trace_ids.value());
-                confirmed_interblock_trace_store().put(
-                    out_msg.hash, tx.trace_ids.value());
+                if (emulate_tails_) {
+                    confirmed_interblock_trace_store().put(out_msg.hash, tx.trace_ids.value());
+                }
             }
         }
+        if (!emulate_tails_) finalized_interblock_trace_store().forget(tx.in_msg_hash);
         tx_by_in_msg_hash_.insert({tx.in_msg_hash, tx});
     }
     auto mc_seqno =
@@ -426,7 +439,7 @@ std::unique_ptr<TraceNode> McBlockEmulator::construct_commited_trace(const Trans
             }
             auto child = construct_commited_trace(child_tx, reqs, nullptr, depth + 1);
             trace_node->children.push_back(std::move(child));
-        } else {
+        } else if (emulate_tails_) {
             // remember where to attach the emulated node
             size_t idx = trace_node->children.size();
             reqs.push_back(EmuRequest{
@@ -621,7 +634,7 @@ void McBlockEmulator::finish_block_if_done(bool promoted) {
       return lhs.fragments.front().ext_in_msg_hash_norm < rhs.fragments.front().ext_in_msg_hash_norm;
     });
     LOG(INFO) << "Finished processing mc block " << blkid.seqno
-              << " mode=" << (promoted ? "promotion" : "emulation")
+              << " mode=" << (promoted ? "promotion" : emulate_tails_ ? "emulation" : "finalized")
               << " parsed_transactions=" << txs_.size() << " trace_fragments=" << traces_cnt_
               << " trace_updates=" << trace_updates_.size()
               << " elapsed_ms=" << (td::Timestamp::now().at() - start_time_.at()) * 1000;

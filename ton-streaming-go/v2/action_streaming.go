@@ -125,7 +125,7 @@ func buildActionNotification(traceContext *crud.EmulatedTracesContext, hint acti
 	stage.Span.AddAttr("ton.actions.has_actions", len(actions) > 0)
 	stage.Span.AddAttr("ton.actions.updated", hint.ActionsUpdated)
 	stage.Span.AddAttr("ton.trace.finality", finality.String())
-	return &ActionsNotification{version: deliveryVersion{seq: hint.UpdateSeq},
+	return &ActionsNotification{version: deliveryVersion{seq: hint.UpdateSeq}, traceIncomplete: stage.traceIncomplete,
 		Type: EventActions, Finality: finality, TraceExternalHashNorm: hint.TraceKey, Actions: actions, ActionAddresses: addresses,
 	}, flattenActionAddresses(addresses)
 }
@@ -147,7 +147,7 @@ func buildTraceNotification(traceContext *crud.EmulatedTracesContext, actions *A
 		return nil, nil, fmt.Errorf("trace root is nil")
 	}
 	// Keep an explicit empty actions array when classification failed or found nothing.
-	return &TraceNotification{version: actions.version, Type: EventTrace, Finality: actions.Finality,
+	return &TraceNotification{version: actions.version, traceIncomplete: actions.traceIncomplete, Type: EventTrace, Finality: actions.Finality,
 		TraceExternalHashNorm: actions.TraceExternalHashNorm, Trace: *root, Transactions: txMap, Actions: &actions.Actions,
 	}, traceNotificationAddresses(txs, actions.ActionAddresses), nil
 }

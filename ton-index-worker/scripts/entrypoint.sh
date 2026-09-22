@@ -22,7 +22,7 @@ chmod 0600 "$tmp"
 export PGPASSFILE="$tmp"
 
 INDEX_ARGS=""
-if [[ "$TON_WORKER_BINARY" =~ ^(ton-trace-emulator|ton-trace-task-emulator|ton-index-postgres)$ ]]; then
+if [[ "$TON_WORKER_BINARY" =~ ^(ton-trace-emulator|ton-finalized-streamer|ton-trace-task-emulator|ton-index-postgres)$ ]]; then
     case $TON_INDEXER_IS_TESTNET in
         y|yes|t|true|on|1)
             echo "Using testnet"

@@ -81,6 +81,10 @@ func applyEmulatorStatus(status *componentHealth, values map[string]string, now 
 		}
 	}
 
+	// Finalized-only producers publish this marker in the same commit as trace data.
+	if values["mode"] == "finalized" {
+		return
+	}
 	confirmed, err := parseInt64Field(values, "confirmed_block_time")
 	if err != nil {
 		status.OK = false

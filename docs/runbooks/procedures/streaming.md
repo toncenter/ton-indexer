@@ -5,6 +5,11 @@ Streaming API состоит из `ton-trace-emulator` и `ton-streaming-go`, с
 классифицирует actions встроенным MCH engine. Streaming API отправляет
 обновления клиентам через SSE и WebSocket.
 
+Если нужны только finalized-данные, вместо emulator можно использовать
+`ton-finalized-streamer`. Он совместим с `ton-streaming-go` и поддерживает
+несколько active-active instances с общим Redis; настройка и ограничения
+описаны в [разделе 9](#9-ton-finalized-streamer-и-active-active-ha).
+
 ```text
 TON-нода + ton-trace-emulator → Redis → ton-streaming-go → SSE / WebSocket
                                           ↑
@@ -141,10 +146,12 @@ pending/finalized. В таком режиме `/api/streaming/healthz` буде�
 временные snapshots и передаёт уведомления между emulator и API. Kvrocks
 индексатора и Redis event-cache других сервисов не подходят для этой роли.
 
-**При каждом старте emulator выполняет `FLUSHDB` выбранной Redis DB.** В ней
+**При каждом старте `ton-trace-emulator` выполняет `FLUSHDB` выбранной Redis DB.** В ней
 не должно быть данных других сервисов. На один streaming Redis instance
-запускать один emulator; несколько streaming API instances могут читать его
-одновременно. Redis Pub/Sub channels общие для всех логических DB instance,
+запускать один `ton-trace-emulator`; несколько streaming API instances могут
+читать его одновременно. Для `ton-finalized-streamer` допустимы несколько
+producers, и Redis при старте не очищается (см. раздел 9).
+Redis Pub/Sub channels общие для всех логических DB instance,
 поэтому разные номера DB не изолируют независимые streaming deployments.
 
 На выделенном Redis host установить `redis-server` и `redis-tools`. В его
@@ -354,6 +361,8 @@ curl -fsS http://127.0.0.1:8085/api/streaming/healthz
 Healthcheck проверяет Redis и timestamps emulator: finalized masterchain block
 и confirmed block должны быть не старше 15 секунд. `503` во время старта или
 догоняющей обработки означает, что поток ещё не готов.
+Для `ton-finalized-streamer` health содержит `mode=finalized`: проверяется
+только свежесть finalized-блоков, отсутствие confirmed не вызывает `503`.
 
 На API host открыть SSE-подписку на адрес с недавней активностью в выбранной
 сети:
@@ -397,6 +406,9 @@ keepalive comments. Пустой replay допустим, если подход�
 
 ## 8. Обновление и диагностика
 
+Ниже описано обновление связки с обычным `ton-trace-emulator`. Ограничения
+поочерёдного рестарта finalized producers приведены в разделе 9.
+
 Для обновления собрать оба бинарника и `libton-marker.so` из одной версии.
 Остановить streaming API, затем emulator на соответствующих hosts, заменить
 файлы командами из пункта 1 и выполнить `ldconfig` на API host. Если менялись
@@ -420,3 +432,79 @@ units, выполнить `systemctl daemon-reload`. Запустить emulator
 
 Emulator также сохраняет runtime statistics в
 `/var/lib/ton-trace-emulator/stats`; по умолчанию interval равен 30 секундам.
+
+## 9. ton-finalized-streamer и active-active HA
+
+`ton-finalized-streamer` читает только finalized-блоки локальной TON-ноды,
+собирает реальные трейсы и классифицирует actions тем же MCH engine.
+Pending/confirmed и эмуляции будущих продолжений нет. Snapshots, actions,
+account states, индексы и Pub/Sub-уведомления записываются в том же формате,
+что у `ton-trace-emulator`, с дополнительными полями для finalized-режима.
+`ton-streaming-go` из той же версии репозитория читает их через существующие
+SSE/WebSocket API и `replay_existing`; отдельный streaming backend не нужен.
+
+Обновления открытого трейса тоже сохраняются в Redis. Подписки на `trace`,
+`actions` и `transactions` с `min_finality: "finalized"` получают только
+завершённые трейсы: API учитывает поле `trace_complete`. Трейсы без известного
+корня не публикуются. Account states не ждут завершения всего трейса.
+
+### Запуск finalized-варианта
+
+На build host из checkout, подготовленного в пункте 1, собрать:
+
+```bash
+cmake --build build --parallel 16 --target ton-finalized-streamer
+```
+
+Перенести `build/ton-index-worker/ton-trace-emulator/ton-finalized-streamer`
+на TON node host и установить в `/usr/local/bin/ton-finalized-streamer`.
+Использовать env-файл и systemd unit из пунктов 4–5, заменив `ExecStart`:
+
+```ini
+ExecStart=/usr/local/bin/ton-finalized-streamer \
+  --db ${TON_DBROOT} \
+  --working-dir ${TON_WORKDIR} \
+  --redis ${REDIS_URI} \
+  $TON_NETWORK_ARGS
+```
+
+Global config, overlay address и UDP port для этого бинаря не нужны.
+`--db-event-fifo` можно добавить для пробуждения по событиям ноды; без него
+работает polling. Правило одного читателя FIFO сохраняется. API unit менять
+не требуется; в проверочных подписках указать `min_finality: "finalized"`.
+
+Каждый запуск начинает с текущего последнего masterchain-блока и продолжает
+работу без конечного seqno. История за время простоя и прежние открытые трейсы
+не восстанавливаются; параметров `from`/`to` нет. Redis при старте сохраняется.
+Replay TTL задаётся `--trace-completed-ttl`, по умолчанию 30 секунд.
+
+### Active-active и ограничения
+
+Запускать два или более `ton-finalized-streamer` на отдельных синхронизированных
+TON node hosts, с одной версией кода, сетью и настройками. У каждого процесса
+своя рабочая директория. Все producers и API instances подключаются к одной
+Redis DB. Каждый producer обрабатывает весь доступный ему поток; Redis
+дедуплицирует записи по ключу трейса и masterchain seqno. Выборов лидера нет.
+Отказ одного producer сам по себе не разрывает SSE/WebSocket-соединения API.
+
+- **Длинные трейсы при рестартах.** Риск касается трейсов, которые остаются
+  открытыми между рестартами копий: это редкие, часто вырожденные случаи.
+  Если все копии, знавшие корень, перезапустятся до завершения такого трейса,
+  его завершённое событие может потеряться.
+- **Очистка индексов пока зависит от памяти producer.** Если все знавшие трейс
+  копии перезапустились до cleanup, snapshot истечёт, но ссылки в адресных и
+  action-индексах могут остаться. Это ограничение текущей реализации.
+- **Общий health не проверяет каждую копию.** Он отражает свежесть блоков,
+  обработанных хотя бы одним producer. Отставание и ошибки каждого процесса
+  нужно отслеживать отдельно.
+- **HA producers не обеспечивает HA Redis.** Нативные Sentinel discovery и
+  Redis Cluster в producer не поддержаны. Для переключения primary нужен
+  стабильный endpoint, например HAProxy, направляющий подключения на master.
+  Переключение Redis и возможная потеря кэша/уведомлений требуют отдельной проверки.
+- **Не смешивать источники в одном Redis deployment.** Обычный
+  `ton-trace-emulator` очищает DB при старте, а Pub/Sub channels общие даже для
+  разных номеров DB. Также не смешивать версии finalized producer с разными
+  протоколами записи.
+- **Трейсы больше 1000 узлов пропускаются.** Их завершённый trace/actions
+  результат через этот источник не гарантируется; остальные трейсы
+  продолжают обрабатываться.

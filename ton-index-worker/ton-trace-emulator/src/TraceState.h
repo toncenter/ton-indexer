@@ -34,6 +34,8 @@ struct TraceStateNode {
     std::int32_t workchain{0};
     std::uint32_t mc_seqno{0};
     std::vector<std::string> child_keys;
+    // External-out messages have no receiving transaction and do not keep a trace open.
+    std::vector<std::string> internal_child_keys;
     std::vector<TraceStateIndexRef> index_refs;
 
     // The transaction hash is the first component of the serialization fingerprint;

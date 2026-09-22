@@ -56,8 +56,9 @@ const (
 )
 
 type TraceProcessingStage struct {
-	RootTxHash indexModels.HashType
-	Span       *observability.StageSpan
+	RootTxHash      indexModels.HashType
+	Span            *observability.StageSpan
+	traceIncomplete bool
 }
 
 func NewTraceProcessingStage(
@@ -70,6 +71,8 @@ func NewTraceProcessingStage(
 	stage := &TraceProcessingStage{
 		RootTxHash: "-",
 		Span:       observability.NewStage(startTimeUnix, spanName, rawTrace),
+		// Only ton-finalized-streamer sets this field; legacy snapshots omit it.
+		traceIncomplete: rawTrace["trace_complete"] == "0",
 	}
 	stage.Span.AddAttr("ton.redis.in.channel", channel)
 	stage.Span.AddAttr("ton.trace.external_message_hash_norm", traceExternalHashNorm)
@@ -656,6 +659,7 @@ func (n *TraceInvalidatedNotification) AdjustForClient(client *Client) any {
 
 type ActionsNotification struct {
 	version               deliveryVersion
+	traceIncomplete       bool
 	Type                  EventType                      `json:"type"` // always "actions"
 	Finality              indexModels.FinalityState      `json:"finality,string"`
 	TraceExternalHashNorm indexModels.HashType           `json:"trace_external_hash_norm"`
@@ -669,7 +673,7 @@ var _ Notification = (*ActionsNotification)(nil)
 
 func (n *ActionsNotification) AdjustForClient(client *Client) any {
 	// Finality filter
-	if n.Finality < client.Subscription.MinFinality {
+	if n.Finality < client.Subscription.MinFinality || n.traceIncomplete && client.Subscription.MinFinality == indexModels.FinalityStateFinalized {
 		return nil
 	}
 
@@ -746,6 +750,7 @@ func (n *ActionsNotification) AdjustForClient(client *Client) any {
 
 type TransactionsNotification struct {
 	version               deliveryVersion
+	traceIncomplete       bool
 	Type                  EventType                 `json:"type"` // always "transactions"
 	Finality              indexModels.FinalityState `json:"finality"`
 	TraceExternalHashNorm indexModels.HashType      `json:"trace_external_hash_norm"`
@@ -758,7 +763,7 @@ var _ Notification = (*TransactionsNotification)(nil)
 
 func (n *TransactionsNotification) AdjustForClient(client *Client) any {
 	// Finality filter
-	if n.Finality < client.Subscription.MinFinality {
+	if n.Finality < client.Subscription.MinFinality || n.traceIncomplete && client.Subscription.MinFinality == indexModels.FinalityStateFinalized {
 		return nil
 	}
 
@@ -831,6 +836,7 @@ func (n *TransactionsNotification) AdjustForClient(client *Client) any {
 
 type TraceNotification struct {
 	version               deliveryVersion
+	traceIncomplete       bool
 	Type                  EventType                                         `json:"type"` // always "trace"
 	Finality              indexModels.FinalityState                         `json:"finality"`
 	TraceExternalHashNorm indexModels.HashType                              `json:"trace_external_hash_norm"`
@@ -844,7 +850,7 @@ type TraceNotification struct {
 var _ Notification = (*TraceNotification)(nil)
 
 func (n *TraceNotification) AdjustForClient(client *Client) any {
-	if n.Finality < client.Subscription.MinFinality {
+	if n.Finality < client.Subscription.MinFinality || n.traceIncomplete && client.Subscription.MinFinality == indexModels.FinalityStateFinalized {
 		return nil
 	}
 	if !client.Subscription.InterestedInTrace(EventTrace, n.TraceExternalHashNorm) {

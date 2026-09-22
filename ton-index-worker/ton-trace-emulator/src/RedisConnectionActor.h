@@ -22,6 +22,7 @@ class RedisConnectionActor final : public td::actor::Actor, private td::Observer
   explicit RedisConnectionActor(RedisConnectionOptions options);
   ~RedisConnectionActor() override;
   void execute(RedisPipeline data, RedisPipeline publications, td::Promise<td::Unit> promise);
+  void execute_with_reply(RedisPipeline data, RedisPipeline publications, td::Promise<std::int64_t> promise);
 
  private:
   enum class Phase { Setup, Data, Publications };
@@ -31,7 +32,7 @@ class RedisConnectionActor final : public td::actor::Actor, private td::Observer
   struct Request {
     RedisPipeline data;
     RedisPipeline publications;
-    td::Promise<td::Unit> promise;
+    td::Promise<std::int64_t> promise;
   };
 
   RedisConnectionOptions options_;
@@ -44,6 +45,7 @@ class RedisConnectionActor final : public td::actor::Actor, private td::Observer
   std::size_t written_ = 0;
   std::size_t remaining_replies_ = 0;
   std::optional<td::Status> first_error_;
+  std::int64_t last_integer_reply_{0};
   td::Timestamp deadline_;
   bool connecting_ = false;
   bool subscribed_ = false;
