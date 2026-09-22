@@ -22,7 +22,9 @@ namespace {
 
 td::Status parse_finalized_seqno(td::Slice text, ton::BlockSeqno& target) {
   auto value = td::to_integer_safe<std::uint32_t>(text);
-  if (value.is_error() || value.ok() == 0) return td::Status::Error("seqno must be a positive uint32");
+  if (value.is_error() || value.ok() == 0) {
+    return td::Status::Error("seqno must be a positive uint32");
+  }
   target = value.move_as_ok();
   return td::Status::OK();
 }
@@ -98,7 +100,9 @@ int main(int argc, char *argv[]) {
     } catch (...) {
       return td::Status::Error(ton::ErrorCode::error, "bad value for --threads: not a number");
     }
-    if (v < 1) return td::Status::Error("--threads must be positive");
+    if (v < 1) {
+      return td::Status::Error("--threads must be positive");
+    }
     threads = v;
     return td::Status::OK();
   });

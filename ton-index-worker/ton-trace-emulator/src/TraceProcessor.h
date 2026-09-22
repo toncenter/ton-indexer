@@ -57,6 +57,7 @@ class TraceProcessor : public ITraceProcessor {
   void start_replaced_confirmed_root_ttl(const std::string& trace_key);
   void update_lifecycle(const std::string& trace_key);
   bool touch_oversized_trace(const std::string& trace_key);
+  td::Status drop_oversized_finalized_trace(const std::string& trace_key, const TraceUpdate& update);
   void enqueue_trace_update(TraceUpdate update, bool confirmed, td::Promise<td::Unit> regular_promise,
                             td::Promise<ConfirmedTraceSnapshot> confirmed_promise);
   void start_up() override;

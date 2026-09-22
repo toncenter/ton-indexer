@@ -92,6 +92,23 @@ sw::redis::Redis create_startup_redis(const std::string& redis_dsn, std::size_t 
   return sw::redis::Redis(connection_options, pool_options);
 }
 
+td::Status append_redis_account_commands(RedisPipeline& pipeline, const RedisWritePlan& plan, std::size_t max_bytes,
+                                        bool inside_script) {
+  for (const auto& account : plan.account_states) {
+    auto hint = pack_streaming_hint(StreamingAccountStateHint{
+        .account = account.account,
+        .lt = account.lt,
+        .finality = static_cast<std::uint8_t>(account.finality),
+    });
+    const auto key = account.redis_key(), lt = std::to_string(account.lt);
+    std::vector<td::Slice> args = inside_script ? std::vector<td::Slice>{"ACCOUNT_STATE"}
+        : std::vector<td::Slice>{"EVAL", td::Slice(kUpdateAccountStateScript), "1"};
+    args.insert(args.end(), {key, lt, account.state, account.interfaces, hint});
+    TRY_STATUS(pipeline.append(args, max_bytes));
+  }
+  return td::Status::OK();
+}
+
 td::Status append_redis_data_commands(RedisPipeline& pipeline, const RedisWritePlan& plan, std::size_t max_bytes,
                                      bool inside_script = false) {
   // Keep chronological plans separate: a carried delete followed by a later
@@ -102,8 +119,9 @@ td::Status append_redis_data_commands(RedisPipeline& pipeline, const RedisWriteP
     for (const auto& index : index_writes) {
       if (!index.members_to_remove.empty()) {
         std::vector<td::Slice> args{"ZREM", index.index_key};
-        for (const auto& member : index.members_to_remove)
+        for (const auto& member : index.members_to_remove) {
           args.emplace_back(member);
+        }
         TRY_STATUS(pipeline.append(args, max_bytes));
       }
     }
@@ -111,7 +129,7 @@ td::Status append_redis_data_commands(RedisPipeline& pipeline, const RedisWriteP
     if (!plan.raw_external_message_hash.empty()) {
       TRY_STATUS(pipeline.append({"DEL", "tr_in_msg:" + plan.raw_external_message_hash}, max_bytes));
     }
-    return td::Status::OK();
+    return append_redis_account_commands(pipeline, plan, max_bytes, inside_script);
   }
 
   if (plan.replace_trace) {
@@ -130,15 +148,17 @@ td::Status append_redis_data_commands(RedisPipeline& pipeline, const RedisWriteP
   }
   if (!plan.node_fields_to_delete.empty()) {
     std::vector<td::Slice> args{"HDEL", plan.trace_key};
-    for (const auto& field : plan.node_fields_to_delete)
+    for (const auto& field : plan.node_fields_to_delete) {
       args.emplace_back(field);
+    }
     TRY_STATUS(pipeline.append(args, max_bytes));
   }
   for (const auto& index : index_writes) {
     if (!index.members_to_remove.empty()) {
       std::vector<td::Slice> args{"ZREM", index.index_key};
-      for (const auto& member : index.members_to_remove)
+      for (const auto& member : index.members_to_remove) {
         args.emplace_back(member);
+      }
       TRY_STATUS(pipeline.append(args, max_bytes));
     }
     if (!index.members_to_add.empty()) {
@@ -149,8 +169,9 @@ td::Status append_redis_data_commands(RedisPipeline& pipeline, const RedisWriteP
         char buffer[64];
         auto formatted = std::to_chars(buffer, buffer + sizeof(buffer), score, std::chars_format::general,
                                        std::numeric_limits<double>::max_digits10);
-        if (formatted.ec != std::errc{})
+        if (formatted.ec != std::errc{}) {
           return td::Status::Error("Cannot encode Redis index score");
+        }
         scores.emplace_back(buffer, formatted.ptr);
         args.emplace_back(scores.back());
         args.emplace_back(member);
@@ -158,18 +179,7 @@ td::Status append_redis_data_commands(RedisPipeline& pipeline, const RedisWriteP
       TRY_STATUS(pipeline.append(args, max_bytes));
     }
   }
-  for (const auto& account : plan.account_states) {
-    auto hint = pack_streaming_hint(StreamingAccountStateHint{
-        .account = account.account,
-        .lt = account.lt,
-        .finality = static_cast<std::uint8_t>(account.finality),
-    });
-    const auto key = account.redis_key(), lt = std::to_string(account.lt);
-    std::vector<td::Slice> args = inside_script ? std::vector<td::Slice>{"ACCOUNT_STATE"}
-        : std::vector<td::Slice>{"EVAL", td::Slice(kUpdateAccountStateScript), "1"};
-    args.insert(args.end(), {key, lt, account.state, account.interfaces, hint});
-    TRY_STATUS(pipeline.append(args, max_bytes));
-  }
+  TRY_STATUS(append_redis_account_commands(pipeline, plan, max_bytes, inside_script));
 
   if (plan.expire_seconds) {
     TRY_STATUS(pipeline.append({"EXPIRE", plan.trace_key, std::to_string(plan.expire_seconds)}, max_bytes));
@@ -231,8 +241,9 @@ void RedisMaterializer::write(RedisWriteBatch batch, Completion completion, td::
   try {
     for (const auto& plan : batch.plans) {
       status = append_redis_data_commands(data, plan, options_.max_batch_bytes);
-      if (status.is_error())
+      if (status.is_error()) {
         break;
+      }
     }
     if (status.is_ok()) {
       status = append_redis_publications(publications, batch, options_.max_batch_bytes - data.bytes().size());
@@ -255,9 +266,13 @@ void RedisMaterializer::write(RedisWriteBatch batch, Completion completion, td::
 
 std::optional<std::size_t> RedisMaterializer::free_slot() const {
   for (std::size_t i = 0; i < slots_.size(); ++i) {
-    if (!slots_[i].pending && !slots_[i].finalized) return i;
+    if (!slots_[i].pending && !slots_[i].finalized) {
+      return i;
+    }
   }
-  if (slots_.size() < limit_) return slots_.size();
+  if (slots_.size() < limit_) {
+    return slots_.size();
+  }
   return std::nullopt;
 }
 
@@ -296,8 +311,9 @@ void RedisMaterializer::tear_down() {
       slot.finalized.reset();
       promise.set_error(td::Status::Error("Redis materializer stopped"));
     }
-    if (!slot.pending)
+    if (!slot.pending) {
       continue;
+    }
     auto pending = std::move(*slot.pending);
     slot.pending.reset();
     complete(std::move(pending.completion), td::Status::Error("Redis materializer stopped"), std::move(pending.batch),
@@ -317,12 +333,18 @@ void RedisMaterializer::execute_control(RedisPipeline pipeline, td::Promise<std:
 }
 
 void RedisMaterializer::initialize_finalized(ton::BlockSeqno first_seqno, td::Promise<std::int64_t> promise) {
-  if (!first_seqno) { promise.set_error(td::Status::Error("First finalized seqno must be positive")); return; }
+  if (!first_seqno) {
+    promise.set_error(td::Status::Error("First finalized seqno must be positive"));
+    return;
+  }
   RedisPipeline pipeline;
   auto status = pipeline.append({"EVAL", td::Slice(kInitializeFinalized), "1", td::Slice(kFinalizedProgress),
                                 std::to_string(first_seqno)},
                                 options_.max_batch_bytes);
-  if (status.is_error()) { promise.set_error(std::move(status)); return; }
+  if (status.is_error()) {
+    promise.set_error(std::move(status));
+    return;
+  }
   execute_control(std::move(pipeline), std::move(promise));
 }
 
@@ -339,10 +361,16 @@ void RedisMaterializer::write_finalized_trace(ton::BlockSeqno seqno, RedisWriteP
   }
   RedisPipeline commands(true);
   auto status = append_redis_data_commands(commands, plan, options_.max_batch_bytes, true);
-  if (status.is_error()) { promise.set_error(std::move(status)); return; }
+  if (status.is_error()) {
+    promise.set_error(std::move(status));
+    return;
+  }
   for (const auto& [channel, message] : plan.publications) {
     status = commands.append({"PUBLISH", channel, message}, options_.max_batch_bytes);
-    if (status.is_error()) { promise.set_error(std::move(status)); return; }
+    if (status.is_error()) {
+      promise.set_error(std::move(status));
+      return;
+    }
   }
   // Bound Lua unpack() before sending anything to Redis.
   for (const auto& command : commands.commands()) {
@@ -358,7 +386,10 @@ void RedisMaterializer::write_finalized_trace(ton::BlockSeqno seqno, RedisWriteP
                             "finalized:written:" + std::to_string(seqno), std::to_string(seqno),
                             plan.trace_key, td::Slice(buffer.data(), buffer.size())},
                             options_.max_batch_bytes);
-  if (status.is_error()) { promise.set_error(std::move(status)); return; }
+  if (status.is_error()) {
+    promise.set_error(std::move(status));
+    return;
+  }
   const auto index = *available;
   ensure_slot(index);
   slots_[index].finalized.emplace(std::move(promise));
@@ -377,7 +408,10 @@ void RedisMaterializer::finish_finalized(ton::BlockSeqno seqno, std::uint32_t un
       "finalized:written:" + std::to_string(seqno), "health:ton-trace-emulator", std::to_string(seqno),
       std::to_string(unix_time)},
       options_.max_batch_bytes);
-  if (status.is_error()) { promise.set_error(std::move(status)); return; }
+  if (status.is_error()) {
+    promise.set_error(std::move(status));
+    return;
+  }
   execute_control(std::move(pipeline), std::move(promise));
 }
 

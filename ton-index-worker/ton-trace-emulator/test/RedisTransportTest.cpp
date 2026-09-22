@@ -44,7 +44,9 @@ struct FinalizedTraceSchedulerTest : FinalizedTraceScheduler {
     next_ = 100;
     block_time_ = 1234;
     block_active_ = busy_ = true;
-    for (auto& plan : plans) trace_prepared(100, std::move(plan));
+    for (auto& plan : plans) {
+      trace_prepared(100, std::move(plan));
+    }
     prepared(td::Result<RedisWriteBatch>(RedisWriteBatch{}));
   }
   void check_db_events() {
@@ -166,8 +168,9 @@ class FakeRedis {
     thread_ = std::thread(std::move(script));
   }
   void join() {
-    if (thread_.joinable())
+    if (thread_.joinable()) {
       thread_.join();
+    }
   }
   Peer accept() {
     pollfd fd{listener_.socket(), POLLIN, 0};
@@ -251,7 +254,10 @@ void commit_one_finalized(td::actor::ActorId<RedisMaterializer> id, std::uint32_
                           td::Promise<std::int64_t> promise) {
   auto write = td::PromiseCreator::lambda(
       [id, seqno, promise = std::move(promise)](td::Result<std::int64_t> result) mutable {
-        if (result.is_error()) { promise.set_error(result.move_as_error()); return; }
+        if (result.is_error()) {
+          promise.set_error(result.move_as_error());
+          return;
+        }
         td::actor::send_closure(id, &RedisMaterializer::finish_finalized, seqno, 1234, std::move(promise));
       });
   td::actor::send_closure(id, &RedisMaterializer::write_finalized_trace, seqno, std::move(plan), std::move(write));
@@ -288,8 +294,9 @@ void with_subscriber(RedisConnectionOptions options, ChannelListener::Handler ha
           td::actor::send_closure(self, &SubscriptionConsumer::receive, std::move(messages), std::move(done));
         });
     alarm_in(5, [] { LOG(FATAL) << "Redis subscriber test timed out"; });
-    if (start)
+    if (start) {
       start(listener);
+    }
   });
   scheduler.run();
 }
@@ -371,8 +378,9 @@ TEST(RedisSubscriber, partial_auth_select_and_subscription_with_messages) {
     peer.reply("K\r\n");
     ASSERT_EQ(std::vector<std::string>({"SUBSCRIBE", "input"}), peer.command());
     auto bytes = subscription_ack();
-    for (const auto& value : expected)
+    for (const auto& value : expected) {
       bytes += publication(value);
+    }
     peer.reply(bytes.substr(0, 12));
     peer.expect_no_command();
     peer.reply(bytes.substr(12));
@@ -382,8 +390,9 @@ TEST(RedisSubscriber, partial_auth_select_and_subscription_with_messages) {
   with_subscriber(server.options("user:secret@", 2), [&](auto messages, auto done) {
     received.insert(received.end(), messages.begin(), messages.end());
     done.set_value(td::Unit());
-    if (received.size() == expected.size())
+    if (received.size() == expected.size()) {
       stop_scheduler();
+    }
   });
   server.join();
   ASSERT_EQ(expected, received);
@@ -397,8 +406,9 @@ TEST(RedisSubscriber, burst_is_ordered_and_waits_for_consumer_before_next_batch)
     auto peer = server.accept();
     accept_subscription(peer);
     std::string bytes;
-    for (int i = 0; i < count; ++i)
+    for (int i = 0; i < count; ++i) {
       bytes += publication(std::to_string(i));
+    }
     peer.reply(bytes);
     // EOF with more than a turn's worth of replies must still drain in order.
   });
@@ -409,8 +419,9 @@ TEST(RedisSubscriber, burst_is_ordered_and_waits_for_consumer_before_next_batch)
       [&](auto messages, auto done) {
         ++deliveries;
         ASSERT_TRUE(messages.size() <= 256);
-        for (const auto& message : messages)
+        for (const auto& message : messages) {
           ASSERT_EQ(std::to_string(received++), message);
+        }
         if (deliveries == 1) {
           auto held = std::make_shared<td::Promise<td::Unit>>(std::move(done));
           cpu_alarm_in(0.08, [&, held] {
@@ -421,8 +432,9 @@ TEST(RedisSubscriber, burst_is_ordered_and_waits_for_consumer_before_next_batch)
         } else {
           done.set_value(td::Unit());
         }
-        if (received == count)
+        if (received == count) {
           stop_scheduler();
+        }
       },
       [&](auto&) { alarm_in(0.02, [&] { poll_tick = true; }); });
   server.join();
@@ -710,8 +722,9 @@ TEST(RedisTransport, timeout_and_capacity_do_not_block_poll_worker) {
     auto peer = server.accept();
     read_data(peer);
     auto until = std::chrono::steady_clock::now() + 1s;
-    while ((!heartbeat || !overflow) && std::chrono::steady_clock::now() < until)
+    while ((!heartbeat || !overflow) && std::chrono::steady_clock::now() < until) {
       std::this_thread::sleep_for(1ms);
+    }
     CHECK(heartbeat && overflow);
     // The only I/O worker must run the batch timeout despite this missing reply.
     peer.expect_closed();
@@ -826,8 +839,9 @@ TEST(RedisTransport, large_request_handles_partial_writes_and_keeps_poll_worker_
   server.run([&] {
     auto peer = server.accept();
     auto until = std::chrono::steady_clock::now() + 1s;
-    while (!heartbeat && std::chrono::steady_clock::now() < until)
+    while (!heartbeat && std::chrono::steady_clock::now() < until) {
       std::this_thread::sleep_for(1ms);
+    }
     CHECK(heartbeat);
     ASSERT_EQ(std::vector<std::string>({"HSET", "trace", "node", value}), peer.command());
     ASSERT_EQ("SETEX", peer.command().front());
@@ -852,24 +866,28 @@ TEST(RedisTransport, many_replies_yield_without_losing_pipeline_order) {
   constexpr int count = 350;
   server.run([&] {
     auto peer = server.accept();
-    for (int i = 0; i < count; ++i)
+    for (int i = 0; i < count; ++i) {
       read_data(peer, "trace-" + std::to_string(i));
+    }
     std::string replies;
-    for (int i = 0; i < count; ++i)
+    for (int i = 0; i < count; ++i) {
       replies += ":1\r\n+OK\r\n";
+    }
     peer.reply(replies);
     for (int i = 0; i < count; ++i) {
       ASSERT_EQ(std::vector<std::string>({"PUBLISH", "streaming_transactions", "notice"}), peer.command());
     }
     replies.clear();
-    for (int i = 0; i < count; ++i)
+    for (int i = 0; i < count; ++i) {
       replies += ":1\r\n";
+    }
     peer.reply(replies);
   });
   with_materializer(server.options(), 1, [&](auto& materializer) {
     RedisWriteBatch request;
-    for (int i = 0; i < count; ++i)
+    for (int i = 0; i < count; ++i) {
       request.plans.push_back(std::move(batch("trace-" + std::to_string(i)).plans.front()));
+    }
     td::actor::send_closure(
         materializer, &RedisMaterializer::write, std::move(request),
         [&](td::Status status, RedisWriteBatch result) {
@@ -893,11 +911,13 @@ TEST(RedisTransport, sixteen_connections_progress_without_sixteen_worker_threads
       ASSERT_EQ("SETEX", peers.back().command().front());
     }
     auto until = std::chrono::steady_clock::now() + 1s;
-    while (!heartbeat && std::chrono::steady_clock::now() < until)
+    while (!heartbeat && std::chrono::steady_clock::now() < until) {
       std::this_thread::sleep_for(1ms);
+    }
     CHECK(heartbeat);
-    for (auto& peer : peers)
+    for (auto& peer : peers) {
       finish_data(peer);
+    }
   });
   int completions = 0;
   with_materializer(server.options(), 16, [&](auto& materializer) {
@@ -907,8 +927,9 @@ TEST(RedisTransport, sixteen_connections_progress_without_sixteen_worker_threads
           materializer, &RedisMaterializer::write, batch("trace-" + std::to_string(i)),
           [&](td::Status status, RedisWriteBatch) {
             status.ensure();
-            if (++completions == 16)
+            if (++completions == 16) {
               stop_scheduler();
+            }
           },
           td::Timer());
     }
@@ -999,8 +1020,9 @@ TEST(RedisTransport, real_redis_data_indexes_lua_publications_and_cleanup) {
   ASSERT_EQ(trace_key, *redis.get("tr_in_msg:" + external_hash));
   ASSERT_EQ(binary, *redis.hget("account_finalized:" + account, "state"));
   ASSERT_EQ("100", *redis.hget("account_finalized:" + account, "lt"));
-  while (notices.size() < 3)
+  while (notices.size() < 3) {
     subscriber.consume();
+  }
   ASSERT_EQ("streaming_account_states", notices[0].first);
   ASSERT_EQ(std::make_pair(channel, std::string("first")), notices[1]);
   ASSERT_EQ(std::make_pair(channel, std::string("second")), notices[2]);
@@ -1029,7 +1051,10 @@ TEST(RedisTransport, real_redis_data_indexes_lua_publications_and_cleanup) {
 
 TEST(RedisTransport, finalized_block_commit_deduplicates_and_rejects_gaps_and_type_errors) {
   const auto* uri = std::getenv("TON_FINALIZED_TEST_REDIS_URI");
-  if (!uri) { LOG(INFO) << "Skipping finalized Redis integration: TON_FINALIZED_TEST_REDIS_URI is unset"; return; }
+  if (!uri) {
+    LOG(INFO) << "Skipping finalized Redis integration: TON_FINALIZED_TEST_REDIS_URI is unset";
+    return;
+  }
   auto options = parse_redis_connection_options(uri).move_as_ok();
   sw::redis::Redis redis(uri);
   // This opt-in test requires a dedicated DB. It never clears unknown data.
@@ -1070,7 +1095,10 @@ TEST(RedisTransport, finalized_block_commit_deduplicates_and_rejects_gaps_and_ty
     auto run = std::make_shared<std::function<void(std::size_t)>>();
     std::weak_ptr<std::function<void(std::size_t)>> weak_run = run;
     *run = [&, id, weak_run](std::size_t index) {
-      if (index == attempts.size()) { stop_scheduler(); return; }
+      if (index == attempts.size()) {
+        stop_scheduler();
+        return;
+      }
       auto run = weak_run.lock();
       CHECK(run);
       const auto& attempt = attempts[index];
@@ -1117,7 +1145,9 @@ TEST(RedisTransport, finalized_block_commit_deduplicates_and_rejects_gaps_and_ty
   ASSERT_EQ(0, redis.exists("finalized:written:100"));
   ASSERT_EQ(0, redis.exists("finalized:written:101"));
   for (const auto& key : {trace, trace + ":wrong-index", "tr_in_msg:" + trace, std::string("finalized:progress"),
-                          std::string("health:ton-trace-emulator")}) redis.del(key);
+                          std::string("health:ton-trace-emulator")}) {
+    redis.del(key);
+  }
 }
 
 TEST(RedisTransport, finalized_trace_jobs_use_bounded_parallel_connections_and_reuse_them) {
@@ -1126,7 +1156,9 @@ TEST(RedisTransport, finalized_trace_jobs_use_bounded_parallel_connections_and_r
   bool overflow_rejected = false;
   server.run([&] {
     std::vector<Peer> peers;
-    for (int i = 0; i < 3; ++i) peers.push_back(server.accept());
+    for (int i = 0; i < 3; ++i) {
+      peers.push_back(server.accept());
+    }
     std::set<std::string> received;
     for (auto& peer : peers) {
       const auto command = peer.command();
@@ -1158,7 +1190,9 @@ TEST(RedisTransport, finalized_trace_jobs_use_bounded_parallel_connections_and_r
         td::actor::send_closure(id, &RedisMaterializer::write_finalized_trace, 100,
             std::move(plan), td::PromiseCreator::lambda([callback](td::Result<std::int64_t> r) { (*callback)(std::move(r)); }));
       }
-      if (count == 4) stop_scheduler();
+      if (count == 4) {
+        stop_scheduler();
+      }
     };
     for (int i = 0; i < 3; ++i) {
       auto plan = batch("trace-" + std::to_string(i)).plans.front();
@@ -1183,7 +1217,10 @@ TEST(RedisTransport, finalized_trace_jobs_use_bounded_parallel_connections_and_r
 
 TEST(RedisTransport, finalized_account_states_keep_latest_lt_across_traces_and_skip_old_blocks_after_expiry) {
   const auto* uri = std::getenv("TON_FINALIZED_TEST_REDIS_URI");
-  if (!uri) { LOG(INFO) << "Skipping finalized account state integration"; return; }
+  if (!uri) {
+    LOG(INFO) << "Skipping finalized account state integration";
+    return;
+  }
   auto options = parse_redis_connection_options(uri).move_as_ok();
   auto client_options = sw::redis::Uri(uri).connection_options();
   client_options.socket_timeout = 2s;
@@ -1215,7 +1252,10 @@ TEST(RedisTransport, finalized_account_states_keep_latest_lt_across_traces_and_s
   std::vector<std::uint64_t> notifications;
   auto subscriber = redis.subscriber();
   subscriber.on_message([&](std::string channel, std::string message) {
-    if (channel == prefix) { drained = true; return; }
+    if (channel == prefix) {
+      drained = true;
+      return;
+    }
     StreamingAccountStateHint hint;
     msgpack::unpack(message.data(), message.size()).get().convert(hint);
     if (hint.account == account) {
@@ -1266,6 +1306,31 @@ TEST(RedisTransport, finalized_account_states_keep_latest_lt_across_traces_and_s
   });
   ASSERT_EQ(std::to_string(last_lt), redis.hget(account_key, "lt").value());
   ASSERT_EQ("last", redis.hget(account_key, "state").value());
+  // Dropping an oversized trace removes its replay data but still writes account snapshots.
+  RedisWritePlan cleanup;
+  cleanup.trace_key = newest.trace_key;
+  cleanup.raw_external_message_hash = newest.raw_external_message_hash;
+  cleanup.erase_trace = true;
+  cleanup.indexes_to_remove = {{prefix + ":index", newest.trace_key, 0}};
+  cleanup.account_states = {{account, 0, FinalityState::Finalized, "deleted", "interfaces:deleted"}};
+  redis.zadd(prefix + ":index", newest.trace_key, 1);
+  with_materializer(options, 1, [&](auto& writer) {
+    commit_one_finalized(writer.get(), 302, cleanup, td::PromiseCreator::lambda([](td::Result<std::int64_t> r) {
+      ASSERT_TRUE(r.is_ok()); ASSERT_EQ(1, r.move_as_ok()); stop_scheduler();
+    }));
+  });
+  ASSERT_EQ(0, redis.exists(newest.trace_key));
+  ASSERT_EQ(0, redis.exists("tr_in_msg:" + newest.raw_external_message_hash));
+  ASSERT_EQ(0, redis.exists(prefix + ":index"));
+  ASSERT_EQ("0", redis.hget(account_key, "lt").value());
+  ASSERT_EQ("deleted", redis.hget(account_key, "state").value());
+  ASSERT_EQ("interfaces:deleted", redis.hget(account_key, "interfaces").value());
+  with_materializer(options, 1, [&](auto& writer) {
+    td::actor::send_closure(writer, &RedisMaterializer::write_finalized_trace, 302, cleanup,
+        td::PromiseCreator::lambda([](td::Result<std::int64_t> r) {
+          ASSERT_TRUE(r.is_ok()); ASSERT_EQ(0, r.move_as_ok()); stop_scheduler();
+        }));
+  });
   redis.del(account_key); // Simulate account TTL expiry before a lagging producer retries an old block.
   with_materializer(options, 1, [&](auto& writer) {
     td::actor::send_closure(writer, &RedisMaterializer::write_finalized_trace, 300, b,
@@ -1275,18 +1340,25 @@ TEST(RedisTransport, finalized_account_states_keep_latest_lt_across_traces_and_s
   });
   ASSERT_EQ(0, redis.exists(account_key));
   redis.publish(prefix, "drained");
-  while (!drained) subscriber.consume();
-  ASSERT_EQ(std::vector<std::uint64_t>({first_lt, first_lt + 1, last_lt}), notifications);
+  while (!drained) {
+    subscriber.consume();
+  }
+  ASSERT_EQ(std::vector<std::uint64_t>({first_lt, first_lt + 1, last_lt, 0}), notifications);
   for (const auto& p : {a, b, stale, equal, newest}) {
     redis.del(p.trace_key);
     redis.del("tr_in_msg:" + p.raw_external_message_hash);
   }
-  for (const auto* key : {"finalized:progress", "health:ton-trace-emulator"}) redis.del(key);
+  for (const auto* key : {"finalized:progress", "health:ton-trace-emulator"}) {
+    redis.del(key);
+  }
 }
 
 TEST(RedisTransport, another_producer_resumes_partial_block_without_republishing_or_stale_cleanup) {
   const auto* uri = std::getenv("TON_FINALIZED_TEST_REDIS_URI");
-  if (!uri) { LOG(INFO) << "Skipping partial finalized block integration"; return; }
+  if (!uri) {
+    LOG(INFO) << "Skipping partial finalized block integration";
+    return;
+  }
   auto options = parse_redis_connection_options(uri).move_as_ok();
   auto client_options = sw::redis::Uri(uri).connection_options();
   client_options.socket_timeout = 2s;
@@ -1368,7 +1440,10 @@ TEST(RedisTransport, another_producer_resumes_partial_block_without_republishing
     auto run = std::make_shared<std::function<void(std::size_t)>>();
     std::weak_ptr<std::function<void(std::size_t)>> weak = run;
     *run = [&, id, weak](std::size_t index) {
-      if (index == steps.size()) { stop_scheduler(); return; }
+      if (index == steps.size()) {
+        stop_scheduler();
+        return;
+      }
       auto keep = weak.lock(); CHECK(keep);
       auto done = td::PromiseCreator::lambda([&, index, keep](td::Result<std::int64_t> r) {
         if (steps[index].result < 0) {
@@ -1376,8 +1451,13 @@ TEST(RedisTransport, another_producer_resumes_partial_block_without_republishing
           ASSERT_TRUE(r.error().message().str().find(steps[index].error) != std::string::npos);
           ASSERT_EQ("199", redis.hget("finalized:progress", "last").value());
           ASSERT_EQ(3, redis.scard("finalized:written:200"));
-          if (steps[index].error == "WRONGTYPE") redis.del("health:ton-trace-emulator");
-        } else { ASSERT_TRUE(r.is_ok()); ASSERT_EQ(steps[index].result, r.move_as_ok()); }
+          if (steps[index].error == "WRONGTYPE") {
+            redis.del("health:ton-trace-emulator");
+          }
+        } else {
+          ASSERT_TRUE(r.is_ok());
+          ASSERT_EQ(steps[index].result, r.move_as_ok());
+        }
         (*keep)(index + 1);
       });
       steps[index].step(id, std::move(done));
@@ -1396,7 +1476,9 @@ TEST(RedisTransport, another_producer_resumes_partial_block_without_republishing
   for (const auto& key : {a.trace_key, cleanup.trace_key, c.trace_key}) {
     redis.del(key); redis.del("tr_in_msg:" + key);
   }
-  for (const auto* key : {"finalized:progress", "health:ton-trace-emulator"}) redis.del(key);
+  for (const auto* key : {"finalized:progress", "health:ton-trace-emulator"}) {
+    redis.del(key);
+  }
 }
 
 TEST(RedisTransport, finalized_scheduler_retries_all_redis_errors_without_advancing_early) {
@@ -1433,7 +1515,9 @@ TEST(RedisTransport, finalized_scheduler_retries_all_redis_errors_without_advanc
       ASSERT_EQ("health:ton-trace-emulator", finish[5]);
       ASSERT_EQ("100", finish[6]);
       control.reply(error.empty() ? ":1\r\n" : "-ERR " + error + "\r\n");
-      if (!error.empty()) control.expect_closed();
+      if (!error.empty()) {
+        control.expect_closed();
+      }
     }
   });
   td::actor::Scheduler scheduler({1});

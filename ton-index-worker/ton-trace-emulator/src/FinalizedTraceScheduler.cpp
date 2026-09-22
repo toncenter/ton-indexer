@@ -23,16 +23,27 @@ void FinalizedTraceScheduler::start_up() {
 }
 
 void FinalizedTraceScheduler::handle_db_event(ton::tl_object_ptr<ton::ton_api::db_Event> event) {
-  if (event->get_id() != ton::ton_api::db_event_blockApplied::ID) return;
+  if (event->get_id() != ton::ton_api::db_event_blockApplied::ID) {
+    return;
+  }
   auto block = ton::create_block_id(static_cast<ton::ton_api::db_event_blockApplied&>(*event).block_id_);
-  if (!block.is_masterchain() || block.seqno() <= head_) return;
+  if (!block.is_masterchain() || block.seqno() <= head_) {
+    return;
+  }
   notified_head_ = std::max(notified_head_, block.seqno());
-  if (!busy_) alarm_timestamp().relax(td::Timestamp::now());
+  if (!busy_) {
+    alarm_timestamp().relax(td::Timestamp::now());
+  }
 }
 
 void FinalizedTraceScheduler::alarm() {
-  if (block_active_) { drive_block(); return; }
-  if (busy_) return;
+  if (block_active_) {
+    drive_block();
+    return;
+  }
+  if (busy_) {
+    return;
+  }
   busy_ = true;
   if (notified_head_ > head_) {
     // Refresh archives, state and cells before fetching blocks announced by the node.
@@ -88,7 +99,9 @@ void FinalizedTraceScheduler::initialized(td::Result<std::int64_t> result) {
   }
   next_ = static_cast<ton::BlockSeqno>(result.move_as_ok());
   LOG(INFO) << "Rebuilding finalized trace state from shared start seqno " << next_ << ", node head " << head_;
-  if (to_ && next_ > to_) LOG(FATAL) << "End seqno precedes the shared stream start";
+  if (to_ && next_ > to_) {
+    LOG(FATAL) << "End seqno precedes the shared stream start";
+  }
   got_head(td::Result<ton::BlockSeqno>(head_));
 }
 
@@ -110,7 +123,9 @@ void FinalizedTraceScheduler::fetched(td::Result<schema::MasterchainBlockDataSta
   auto config = block::ConfigInfo::extract_config(mc.block_state, id,
       block::ConfigInfo::needCapabilities | block::ConfigInfo::needLibraries | block::ConfigInfo::needWorkchainInfo |
       block::ConfigInfo::needSpecialSmc);
-  if (config.is_error()) LOG(FATAL) << "Cannot load finalized classifier configuration: " << config.move_as_error();
+  if (config.is_error()) {
+    LOG(FATAL) << "Cannot load finalized classifier configuration: " << config.move_as_error();
+  }
   data.config_ = config.move_as_ok();
   auto done = td::PromiseCreator::lambda([self = actor_id(this)](td::Result<FinalizedBlockResult> r) mutable {
     td::actor::send_closure(self, &FinalizedTraceScheduler::parsed, std::move(r));
@@ -121,7 +136,9 @@ void FinalizedTraceScheduler::fetched(td::Result<schema::MasterchainBlockDataSta
 
 void FinalizedTraceScheduler::parsed(td::Result<FinalizedBlockResult> result) {
   // Parsing may already have advanced message->trace mappings. Restart/replay instead of retrying partial state.
-  if (result.is_error()) LOG(FATAL) << "Finalized parsing failed: " << result.move_as_error();
+  if (result.is_error()) {
+    LOG(FATAL) << "Finalized parsing failed: " << result.move_as_error();
+  }
   auto block = result.move_as_ok();
   CHECK(block.mc_seqno == next_);
   block_active_ = true;
@@ -138,7 +155,9 @@ void FinalizedTraceScheduler::parsed(td::Result<FinalizedBlockResult> result) {
 }
 
 void FinalizedTraceScheduler::prepared(td::Result<RedisWriteBatch> result) {
-  if (result.is_error()) LOG(FATAL) << "Finalized preparation failed: " << result.move_as_error();
+  if (result.is_error()) {
+    LOG(FATAL) << "Finalized preparation failed: " << result.move_as_error();
+  }
   CHECK(result.ok().plans.empty());
   preparation_finished_ = true;
   drive_block();
@@ -153,14 +172,20 @@ void FinalizedTraceScheduler::trace_prepared(ton::BlockSeqno seqno, RedisWritePl
 }
 
 void FinalizedTraceScheduler::drive_block() {
-  if (control_in_flight_) return;
+  if (control_in_flight_) {
+    return;
+  }
   for (auto& [key, pending] : pending_traces_) {
-    if (pending.in_flight) continue;
+    if (pending.in_flight) {
+      continue;
+    }
     if (pending.retry_at && !pending.retry_at.is_in_past()) {
       alarm_timestamp().relax(pending.retry_at);
       continue;
     }
-    if (in_flight_ >= kMaxWrites) break;
+    if (in_flight_ >= kMaxWrites) {
+      break;
+    }
     pending.in_flight = true;
     ++in_flight_;
     auto done = td::PromiseCreator::lambda([self = actor_id(this), key](td::Result<std::int64_t> r) mutable {
@@ -169,7 +194,9 @@ void FinalizedTraceScheduler::drive_block() {
     td::actor::send_closure(writer_, &RedisMaterializer::write_finalized_trace, next_,
                            pending.plan, std::move(done));
   }
-  if (!preparation_finished_ || !pending_traces_.empty()) return;
+  if (!preparation_finished_ || !pending_traces_.empty()) {
+    return;
+  }
   CHECK(in_flight_ == 0 && completed_traces_ == received_traces_.size());
   if (control_retry_at_ && !control_retry_at_.is_in_past()) {
     alarm_timestamp().relax(control_retry_at_);

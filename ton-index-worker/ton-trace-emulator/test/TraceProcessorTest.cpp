@@ -163,7 +163,9 @@ struct TraceProcessorTest : TraceProcessor {
 
   void start_up() override {
     check(*this);
-    if (stop_after_check) td::actor::SchedulerContext::get().stop();
+    if (stop_after_check) {
+      td::actor::SchedulerContext::get().stop();
+    }
   }
 
   auto& state() { return *impl_; }
@@ -1303,6 +1305,142 @@ TEST(TraceProcessor, finalized_preparation_keeps_open_trace_and_emits_full_snaps
   scheduler.run();
   scheduler.run_in_context([&] { processor.reset(); });
   ASSERT_TRUE(finished);
+}
+
+TEST(TraceProcessor, oversized_finalized_traces_are_cleaned_without_stopping_other_updates) {
+  using namespace trace_test;
+  // Exercise both batch/replay and streaming preparation with a fresh processor.
+  for (bool streaming : {false, true}) {
+    td::actor::Scheduler scheduler({1});
+    td::actor::ActorOwn<TraceProcessorTest> processor;
+    const auto external = message(10000, true), fresh_external = message(20000, true);
+    const auto continuation = message(11000), late = message(30000);
+    const auto trace_key = td::base64_encode(hash('f').as_slice());
+    const auto fresh_key = td::base64_encode(hash('e').as_slice());
+    const auto healthy_key = td::base64_encode(hash('d').as_slice());
+    td::Bits256 root_hash;
+    std::set<TraceStateIndexRef> original_indexes;
+    auto wide_trace = [&](auto ext, std::size_t count, unsigned marker, ton::BlockSeqno seqno) {
+      std::vector<td::Ref<vm::Cell>> out;
+      for (std::size_t i = 0; i < count; ++i) {
+        out.push_back(message(marker + i));
+      }
+      auto root = node(ext, out, FinalityState::Finalized);
+      root->mc_block_seqno = seqno;
+      // Leave the last message unconsumed so another block can cross the limit.
+      for (std::size_t i = 0; i + 1 < count; ++i) {
+        auto child = node(out[i], {}, FinalityState::Finalized, 101 + i);
+        child->mc_block_seqno = seqno;
+        root->children.push_back(std::move(child));
+      }
+      return trace(std::move(root), ext);
+    };
+    auto add_account = [](Trace& trace, ton::BlockSeqno seqno) {
+      const auto address = trace.root->address;
+      block::Account account(address.workchain, address.addr.cbits());
+      ASSERT_TRUE(account.init_new(1000));
+      account.last_trans_lt_ = seqno;
+      trace.committed_accounts.emplace(address, std::move(account));
+      trace.committed_interfaces[address] = {};
+    };
+    bool finished = false;
+    scheduler.run_in_context([&] {
+      auto check = [&](TraceProcessorTest& self) {
+        auto run = std::make_shared<std::function<void(unsigned)>>();
+        std::weak_ptr<std::function<void(unsigned)>> weak = run;
+        *run = [&, weak](unsigned step) {
+          const ton::BlockSeqno seqno = 100 + step;
+          std::vector<TraceUpdate> updates;
+          if (step == 0) {
+            auto first = wide_trace(external, 1000, 10001, seqno);
+            root_hash = first.root_tx_hash;
+            add_account(first, seqno);
+            updates.push_back(make_trace_update(std::move(first), {}));
+          } else {
+            auto child = node(step == 1 ? continuation : late,
+                              step == 1 ? std::vector<td::Ref<vm::Cell>>{late} : std::vector<td::Ref<vm::Cell>>{},
+                              FinalityState::Finalized, 2000 + step);
+            child->mc_block_seqno = seqno;
+            auto next = trace(std::move(child), external, root_hash);
+            add_account(next, seqno);
+            updates.push_back(make_trace_update(std::move(next), {}));
+            if (step == 1) {
+              auto fresh = wide_trace(fresh_external, 1001, 20001, seqno);
+              fresh.ext_in_msg_hash_norm = hash('e');
+              add_account(fresh, seqno);
+              updates.push_back(make_trace_update(std::move(fresh), {}));
+            }
+            auto healthy = trace(node(message(40000, true), {}, FinalityState::Finalized, 3000 + step),
+                                 message(40000, true));
+            healthy.root->mc_block_seqno = seqno;
+            healthy.ext_in_msg_hash_norm = hash('d');
+            updates.push_back(make_trace_update(std::move(healthy), {}));
+          }
+          auto emitted = std::make_shared<std::vector<RedisWritePlan>>();
+          auto done = td::PromiseCreator::lambda([&, step, seqno, emitted, keep = weak.lock()](
+              td::Result<RedisWriteBatch> result) {
+            ASSERT_TRUE(result.is_ok());
+            auto batch = result.move_as_ok();
+            if (streaming) {
+              ASSERT_TRUE(batch.plans.empty());
+              batch.plans = std::move(*emitted);
+            }
+            ASSERT_EQ(step == 0 ? 1u : step == 1 ? 3u : 2u, batch.plans.size());
+            ASSERT_EQ(0u, self.state().pending_updates);
+            for (const auto& plan : batch.plans) {
+              if (step == 0) {
+                ASSERT_TRUE(plan.replace_trace && !plan.erase_trace);
+                ASSERT_EQ("0", *redis_field(plan, "trace_complete"));
+                ASSERT_EQ(1000u, self.state().traces.at(trace_key).current->nodes.nodes().size());
+                original_indexes.insert(plan.indexes_to_add.begin(), plan.indexes_to_add.end());
+                ASSERT_TRUE(!original_indexes.empty());
+              } else if (plan.trace_key == healthy_key) {
+                ASSERT_TRUE(plan.replace_trace && !plan.erase_trace);
+                ASSERT_EQ("1", *redis_field(plan, "trace_complete"));
+                ASSERT_EQ(std::to_string(seqno), *redis_field(plan, "update_seq"));
+                continue;
+              } else {
+                ASSERT_TRUE(plan.erase_trace && !plan.replace_trace);
+                ASSERT_TRUE(plan.fields_to_set.empty() && plan.publications.empty());
+                ASSERT_TRUE(plan.indexes_to_add.empty());
+                ASSERT_EQ(plan.trace_key == trace_key ? key(external) : key(fresh_external),
+                          plan.raw_external_message_hash);
+                const std::set<TraceStateIndexRef> removed(plan.indexes_to_remove.begin(), plan.indexes_to_remove.end());
+                ASSERT_TRUE(removed == (step == 1 && plan.trace_key == trace_key
+                    ? original_indexes : std::set<TraceStateIndexRef>{}));
+                ASSERT_EQ(0u, self.state().traces.count(plan.trace_key));
+                ASSERT_EQ(1u, self.state().oversized_traces.count(plan.trace_key));
+              }
+              ASSERT_EQ(1u, plan.account_states.size());
+              ASSERT_EQ(seqno, plan.account_states[0].lt);
+            }
+            if (step < 2) {
+              (*keep)(step + 1);
+              return;
+            }
+            ASSERT_EQ(2u, self.state().oversized_traces.size());
+            ASSERT_EQ(0u, self.state().traces.count(fresh_key));
+            finished = true;
+            td::actor::SchedulerContext::get().stop();
+          });
+          // A late continuation must not outlive the oversized marker, even beyond the ordinary TTL.
+          const std::uint32_t time = step == 2 ? 100000 : 1000 + step;
+          if (streaming) {
+            self.prepare_finalized_block_streaming(seqno, time, std::move(updates),
+                [emitted](RedisWritePlan plan) { emitted->push_back(std::move(plan)); }, std::move(done));
+          } else {
+            self.prepare_finalized_block(seqno, time, std::move(updates), std::move(done));
+          }
+        };
+        (*run)(0);
+      };
+      processor = td::actor::create_actor<TraceProcessorTest>("OversizedFinalized", check,
+          mch::EmuClassifierConfig{}, true, false);
+    });
+    scheduler.run();
+    scheduler.run_in_context([&] { processor.reset(); });
+    ASSERT_TRUE(finished);
+  }
 }
 
 TEST(TraceProcessor, streaming_emits_first_trace_while_another_update_is_still_pending) {
