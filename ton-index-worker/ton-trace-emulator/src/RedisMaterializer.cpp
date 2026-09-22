@@ -18,8 +18,9 @@ namespace {
 constexpr const char* kUpdateAccountStateFunction = R"(
 local function update_account(key, lt, state, interfaces, hint)
   local cur = redis.call('HGET', key, 'lt')
+  -- A nonexist account has LT=0 and must replace the previous state.
   -- Compare decimal uint64 strings without rounding through Lua numbers.
-  if not cur or #lt > #cur or (#lt == #cur and lt > cur) then
+  if not cur or lt == '0' or #lt > #cur or (#lt == #cur and lt > cur) then
     redis.call('HSET', key, 'lt', lt, 'state', state, 'interfaces', interfaces)
     redis.call('PUBLISH', 'streaming_account_states', hint)
   end
