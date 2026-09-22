@@ -1807,6 +1807,7 @@ void TraceProcessor::materialize_classified_trace(std::string trace_key) {
     auto& block = *impl_->preparing_block;
     auto plan = build_finalized_snapshot(trace_key, prepared.next_trace,
                                          static_cast<std::uint32_t>(impl_->retention.completed_seconds));
+    plan.account_states = std::move(prepared.redis.account_states);
     plan.indexes_to_remove = collect_cleanup_index_refs(slot);
     if (block.on_plan) block.on_plan(std::move(plan));
     else block.batch.plans.push_back(std::move(plan));

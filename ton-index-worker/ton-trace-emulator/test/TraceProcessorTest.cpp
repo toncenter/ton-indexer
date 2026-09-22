@@ -1232,8 +1232,18 @@ TEST(TraceProcessor, finalized_preparation_keeps_open_trace_and_emits_full_snaps
   const auto root_hash = root->transaction_root->get_hash().bits();
   const auto root_key = trace_test::key(external);
   const auto child_key = trace_test::key(internal);
+  const auto address = root->address;
+  auto add_account = [&](Trace& trace, std::uint64_t lt) {
+    block::Account account(address.workchain, address.addr.cbits());
+    ASSERT_TRUE(account.init_new(1000));
+    account.last_trans_lt_ = lt;
+    trace.committed_accounts.emplace(address, std::move(account));
+    trace.committed_interfaces[address] = {};
+  };
+  auto first_trace = trace_test::trace(std::move(root), external);
+  add_account(first_trace, 100);
   std::vector<TraceUpdate> first;
-  first.push_back(make_trace_update(trace_test::trace(std::move(root), external), {}));
+  first.push_back(make_trace_update(std::move(first_trace), {}));
   bool finished = false;
   scheduler.run_in_context([&] {
     // No Redis endpoint and no classifier: only real serializer/assembler and async block completion.
@@ -1244,15 +1254,22 @@ TEST(TraceProcessor, finalized_preparation_keeps_open_trace_and_emits_full_snaps
       auto batch = result.move_as_ok();
       ASSERT_EQ(1u, batch.plans.size());
       ASSERT_TRUE(batch.plans[0].replace_trace);
-      ASSERT_TRUE(batch.plans[0].account_states.empty());
+      ASSERT_EQ(1u, batch.plans[0].account_states.size());
+      ASSERT_EQ(100u, batch.plans[0].account_states[0].lt);
+      ASSERT_EQ(account_key(address), batch.plans[0].account_states[0].account);
+      ASSERT_TRUE(batch.plans[0].account_states[0].finality == FinalityState::Finalized);
+      ASSERT_TRUE(!batch.plans[0].account_states[0].state.empty());
+      ASSERT_TRUE(!batch.plans[0].account_states[0].interfaces.empty());
       ASSERT_TRUE(redis_field(batch.plans[0], root_key).has_value());
       ASSERT_EQ("100", *redis_field(batch.plans[0], "update_seq"));
       ASSERT_EQ("0", *redis_field(batch.plans[0], "trace_complete"));
       ASSERT_EQ(2u, batch.plans[0].publications.size());
       auto child = trace_test::node(internal, {}, FinalityState::Finalized, 110);
       child->mc_block_seqno = 101;
+      auto second_trace = trace_test::trace(std::move(child), external, root_hash);
+      add_account(second_trace, 110);
       std::vector<TraceUpdate> second;
-      second.push_back(make_trace_update(trace_test::trace(std::move(child), external, root_hash), {}));
+      second.push_back(make_trace_update(std::move(second_trace), {}));
       auto p2 = td::PromiseCreator::lambda([&](td::Result<RedisWriteBatch> r2) {
         ASSERT_TRUE(r2.is_ok());
         auto b2 = r2.move_as_ok();
@@ -1261,12 +1278,15 @@ TEST(TraceProcessor, finalized_preparation_keeps_open_trace_and_emits_full_snaps
         ASSERT_TRUE(redis_field(b2.plans[0], child_key).has_value());
         ASSERT_EQ("101", *redis_field(b2.plans[0], "update_seq"));
         ASSERT_EQ("1", *redis_field(b2.plans[0], "trace_complete"));
+        ASSERT_EQ(1u, b2.plans[0].account_states.size());
+        ASSERT_EQ(110u, b2.plans[0].account_states[0].lt);
         auto p3 = td::PromiseCreator::lambda([&](td::Result<RedisWriteBatch> r3) {
           ASSERT_TRUE(r3.is_ok());
           auto b3 = r3.move_as_ok();
           ASSERT_EQ(1u, b3.plans.size());
           ASSERT_TRUE(b3.plans[0].erase_trace);
           ASSERT_TRUE(b3.plans[0].publications.empty());
+          ASSERT_TRUE(b3.plans[0].account_states.empty());
           finished = true;
           td::actor::SchedulerContext::get().stop();
         });

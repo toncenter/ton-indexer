@@ -17,6 +17,7 @@
 #include "td/utils/tests.h"
 
 #include "RedisMaterializer.h"
+#include "StreamingHints.h"
 #include "ChannelListener.h"
 #include "FinalizedTraceScheduler.h"
 #include "ton/ton-tl.hpp"
@@ -1178,6 +1179,109 @@ TEST(RedisTransport, finalized_trace_jobs_use_bounded_parallel_connections_and_r
   ASSERT_TRUE(overflow_rejected);
   ASSERT_EQ(4, completed.load());
   ASSERT_EQ(3, server.accepted_.load());
+}
+
+TEST(RedisTransport, finalized_account_states_keep_latest_lt_across_traces_and_skip_old_blocks_after_expiry) {
+  const auto* uri = std::getenv("TON_FINALIZED_TEST_REDIS_URI");
+  if (!uri) { LOG(INFO) << "Skipping finalized account state integration"; return; }
+  auto options = parse_redis_connection_options(uri).move_as_ok();
+  auto client_options = sw::redis::Uri(uri).connection_options();
+  client_options.socket_timeout = 2s;
+  sw::redis::Redis redis(client_options);
+  ASSERT_EQ(0, redis.exists("finalized:progress"));
+  ASSERT_EQ(0, redis.exists("health:ton-trace-emulator"));
+  const auto prefix = "finalized-accounts:" + std::to_string(getpid());
+  const auto account = prefix + ":wallet";
+  const auto account_key = "account_finalized:" + account;
+  const std::uint64_t first_lt = 9007199254740992ULL;
+  const std::uint64_t last_lt = 18446744073709551615ULL;
+  const auto binary = std::string("new\0state", 9);
+  auto plan = [&](std::string suffix, std::uint64_t lt, std::string value) {
+    RedisWritePlan p;
+    p.trace_key = prefix + suffix;
+    p.raw_external_message_hash = p.trace_key;
+    p.replace_trace = true;
+    p.expire_seconds = 30;
+    p.fields_to_set = {{"trace_complete", "0"}}; // Account updates do not wait for trace completion.
+    p.account_states = {{account, lt, FinalityState::Finalized, value, "interfaces:" + value}};
+    return p;
+  };
+  auto a = plan(":a", first_lt, "first");
+  auto b = plan(":b", first_lt + 1, binary);
+  auto stale = plan(":stale", first_lt - 1, "stale");
+  auto equal = plan(":equal", first_lt + 1, "different-state");
+  auto newest = plan(":newest", last_lt, "last");
+  bool drained = false;
+  std::vector<std::uint64_t> notifications;
+  auto subscriber = redis.subscriber();
+  subscriber.on_message([&](std::string channel, std::string message) {
+    if (channel == prefix) { drained = true; return; }
+    StreamingAccountStateHint hint;
+    msgpack::unpack(message.data(), message.size()).get().convert(hint);
+    if (hint.account == account) {
+      ASSERT_EQ(static_cast<std::uint8_t>(FinalityState::Finalized), hint.finality);
+      notifications.push_back(hint.lt);
+    }
+  });
+  subscriber.subscribe("streaming_account_states");
+  subscriber.subscribe(prefix);
+  subscriber.consume();
+  subscriber.consume();
+
+  struct Attempt { RedisWritePlan job; int result; std::uint64_t lt; std::string state; };
+  std::vector<Attempt> attempts{{a, 1, first_lt, "first"}, {a, 0, first_lt, "first"},
+      {b, 1, first_lt + 1, binary}, {stale, 1, first_lt + 1, binary}, {equal, 1, first_lt + 1, binary}};
+  with_materializer(options, 2, [&](auto& writer) {
+    const auto id = writer.get();
+    auto run = std::make_shared<std::function<void(std::size_t)>>();
+    std::weak_ptr<std::function<void(std::size_t)>> weak = run;
+    *run = [&, id, weak](std::size_t index) {
+      if (index == attempts.size()) {
+        td::actor::send_closure(id, &RedisMaterializer::finish_finalized, 300, 1234,
+            td::PromiseCreator::lambda([](td::Result<std::int64_t> r) {
+              ASSERT_TRUE(r.is_ok()); ASSERT_EQ(1, r.move_as_ok()); stop_scheduler();
+            }));
+        return;
+      }
+      auto keep = weak.lock(); CHECK(keep);
+      auto done = td::PromiseCreator::lambda([&, index, keep](td::Result<std::int64_t> r) {
+        ASSERT_TRUE(r.is_ok());
+        ASSERT_EQ(attempts[index].result, r.move_as_ok());
+        ASSERT_EQ(std::to_string(attempts[index].lt), redis.hget(account_key, "lt").value());
+        ASSERT_EQ(attempts[index].state, redis.hget(account_key, "state").value());
+        ASSERT_EQ("interfaces:" + attempts[index].state, redis.hget(account_key, "interfaces").value());
+        ASSERT_EQ("299", redis.hget("finalized:progress", "last").value());
+        ASSERT_TRUE(redis.ttl(account_key) > 0);
+        (*keep)(index + 1);
+      });
+      td::actor::send_closure(id, &RedisMaterializer::write_finalized_trace, 300, attempts[index].job, std::move(done));
+    };
+    td::actor::send_closure(id, &RedisMaterializer::initialize_finalized, 300,
+        td::PromiseCreator::lambda([run](td::Result<std::int64_t> r) { ASSERT_TRUE(r.is_ok()); (*run)(0); }));
+  });
+  with_materializer(options, 1, [&](auto& writer) {
+    commit_one_finalized(writer.get(), 301, newest, td::PromiseCreator::lambda([](td::Result<std::int64_t> r) {
+      ASSERT_TRUE(r.is_ok()); ASSERT_EQ(1, r.move_as_ok()); stop_scheduler();
+    }));
+  });
+  ASSERT_EQ(std::to_string(last_lt), redis.hget(account_key, "lt").value());
+  ASSERT_EQ("last", redis.hget(account_key, "state").value());
+  redis.del(account_key); // Simulate account TTL expiry before a lagging producer retries an old block.
+  with_materializer(options, 1, [&](auto& writer) {
+    td::actor::send_closure(writer, &RedisMaterializer::write_finalized_trace, 300, b,
+        td::PromiseCreator::lambda([](td::Result<std::int64_t> r) {
+          ASSERT_TRUE(r.is_ok()); ASSERT_EQ(0, r.move_as_ok()); stop_scheduler();
+        }));
+  });
+  ASSERT_EQ(0, redis.exists(account_key));
+  redis.publish(prefix, "drained");
+  while (!drained) subscriber.consume();
+  ASSERT_EQ(std::vector<std::uint64_t>({first_lt, first_lt + 1, last_lt}), notifications);
+  for (const auto& p : {a, b, stale, equal, newest}) {
+    redis.del(p.trace_key);
+    redis.del("tr_in_msg:" + p.raw_external_message_hash);
+  }
+  for (const auto* key : {"finalized:progress", "health:ton-trace-emulator"}) redis.del(key);
 }
 
 TEST(RedisTransport, another_producer_resumes_partial_block_without_republishing_or_stale_cleanup) {

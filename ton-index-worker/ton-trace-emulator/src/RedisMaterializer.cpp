@@ -14,6 +14,24 @@
 
 namespace {
 
+// Shared by standalone account writes and the finalized trace script (Redis forbids nested EVAL).
+constexpr const char* kUpdateAccountStateFunction = R"(
+local function update_account(key, lt, state, interfaces, hint)
+  local cur = redis.call('HGET', key, 'lt')
+  -- Compare decimal uint64 strings without rounding through Lua numbers.
+  if not cur or #lt > #cur or (#lt == #cur and lt > cur) then
+    redis.call('HSET', key, 'lt', lt, 'state', state, 'interfaces', interfaces)
+    redis.call('PUBLISH', 'streaming_account_states', hint)
+  end
+  redis.call('EXPIRE', key, 60)
+  return 1
+end
+)";
+
+const std::string kUpdateAccountStateScript = std::string(kUpdateAccountStateFunction) + R"(
+return update_account(KEYS[1], ARGV[1], ARGV[2], ARGV[3], ARGV[4])
+)";
+
 // The stream is intentionally isolated in its own logical Redis DB. Never FLUSHDB here.
 constexpr const char* kFinalizedProgress = "finalized:progress";
 constexpr const char* kInitializeFinalized = R"(
@@ -24,14 +42,17 @@ return tonumber(ARGV[1])
 )";
 
 // Check progress before markers. Mark success last, after data and publications.
-constexpr const char* kWriteFinalizedTrace = R"(
+const std::string kWriteFinalizedTrace = std::string(kUpdateAccountStateFunction) + R"(
 local last = tonumber(redis.call('HGET', KEYS[1], 'last'))
 if not last then return redis.error_reply('NOT_INITIALIZED') end
 local n = tonumber(ARGV[1])
 if n <= last then return 0 end
 if n ~= last + 1 then return redis.error_reply('SEQNO_GAP') end
 if redis.call('SISMEMBER', KEYS[2], ARGV[2]) == 1 then return 0 end
-for _, cmd in ipairs(cmsgpack.unpack(ARGV[3])) do redis.call(unpack(cmd)) end
+for _, cmd in ipairs(cmsgpack.unpack(ARGV[3])) do
+  if cmd[1] == 'ACCOUNT_STATE' then update_account(unpack(cmd, 2))
+  else redis.call(unpack(cmd)) end
+end
 redis.call('SADD', KEYS[2], ARGV[2])
 return 1
 )";
@@ -49,18 +70,6 @@ redis.call('EXPIRE', KEYS[3], '20')
 redis.call('UNLINK', KEYS[2])
 redis.call('HSET', KEYS[1], 'last', ARGV[1], 'block_time', ARGV[2])
 return 1
-)";
-
-constexpr const char* kUpdateAccountStateScript = R"(
-    local cur = redis.call('HGET', KEYS[1], 'lt')
-    local cur_num = tonumber(cur)
-    local new_num = tonumber(ARGV[1])
-    if (not cur_num) or (new_num > cur_num) then
-        redis.call('HSET', KEYS[1], 'lt', ARGV[1], 'state', ARGV[2], 'interfaces', ARGV[3])
-        redis.call('PUBLISH', 'streaming_account_states', ARGV[4])
-    end
-    redis.call('EXPIRE', KEYS[1], 60)
-    return 1
 )";
 
 // Used only by the explicit pre-scheduler startup FLUSHDB.
@@ -82,7 +91,8 @@ sw::redis::Redis create_startup_redis(const std::string& redis_dsn, std::size_t 
   return sw::redis::Redis(connection_options, pool_options);
 }
 
-td::Status append_redis_data_commands(RedisPipeline& pipeline, const RedisWritePlan& plan, std::size_t max_bytes) {
+td::Status append_redis_data_commands(RedisPipeline& pipeline, const RedisWritePlan& plan, std::size_t max_bytes,
+                                     bool inside_script = false) {
   // Keep chronological plans separate: a carried delete followed by a later
   // reinsert of the same member must retain that order.
   auto index_writes = group_redis_index_writes(plan.indexes_to_remove, plan.indexes_to_add);
@@ -153,9 +163,11 @@ td::Status append_redis_data_commands(RedisPipeline& pipeline, const RedisWriteP
         .lt = account.lt,
         .finality = static_cast<std::uint8_t>(account.finality),
     });
-    TRY_STATUS(pipeline.append({"EVAL", td::Slice(kUpdateAccountStateScript), "1", account.redis_key(),
-                                std::to_string(account.lt), account.state, account.interfaces, hint},
-                               max_bytes));
+    const auto key = account.redis_key(), lt = std::to_string(account.lt);
+    std::vector<td::Slice> args = inside_script ? std::vector<td::Slice>{"ACCOUNT_STATE"}
+        : std::vector<td::Slice>{"EVAL", td::Slice(kUpdateAccountStateScript), "1"};
+    args.insert(args.end(), {key, lt, account.state, account.interfaces, hint});
+    TRY_STATUS(pipeline.append(args, max_bytes));
   }
 
   if (plan.expire_seconds) {
@@ -320,12 +332,12 @@ void RedisMaterializer::write_finalized_trace(ton::BlockSeqno seqno, RedisWriteP
     promise.set_error(td::Status::Error("Redis materializer capacity exhausted"));
     return;
   }
-  if (plan.trace_key.empty() || !plan.account_states.empty() || (!plan.replace_trace && !plan.erase_trace)) {
+  if (plan.trace_key.empty() || (!plan.replace_trace && !plan.erase_trace)) {
     promise.set_error(td::Status::Error("Finalized trace job requires one full snapshot or cleanup"));
     return;
   }
   RedisPipeline commands(true);
-  auto status = append_redis_data_commands(commands, plan, options_.max_batch_bytes);
+  auto status = append_redis_data_commands(commands, plan, options_.max_batch_bytes, true);
   if (status.is_error()) { promise.set_error(std::move(status)); return; }
   for (const auto& [channel, message] : plan.publications) {
     status = commands.append({"PUBLISH", channel, message}, options_.max_batch_bytes);

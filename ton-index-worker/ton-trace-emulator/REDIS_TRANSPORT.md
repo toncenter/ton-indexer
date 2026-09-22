@@ -75,6 +75,19 @@ owns a `RedisMaterializer` with the same bounded pool of 64 connections. The
 processor emits each full snapshot as soon as classification finishes, including
 updates of still-open traces, without waiting for the rest of the block.
 
+Finalized plans also carry the committed account states prepared by the common
+processor. Both executables use the same account-state encoder and Lua function:
+`account_finalized:<address>` stores `lt`, `state`, and `interfaces` with a
+60-second TTL. State and its `streaming_account_states` hint are updated only
+for a greater LT. Canonical decimal strings preserve the full uint64 ordering.
+Equal/older LTs only refresh the account TTL, as in the ordinary emulator.
+
+In the finalized script, encoded `ACCOUNT_STATE` operations call that function
+directly; the ordinary pipeline invokes it with EVAL. This avoids nested EVAL
+and keeps account changes behind the same block/job checks. An old completed
+block cannot resurrect an expired account key. Account-state notifications do
+not wait for `trace_complete`: these states already come from finalized blocks.
+
 - `write_finalized_trace` runs one Lua operation per job through the shared
   pool. It executes a single prepared list of data/publication commands, then
   records set membership last. A successfully marked `(mc_seqno, trace_key)`
