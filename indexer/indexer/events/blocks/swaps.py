@@ -807,7 +807,7 @@ async def build_tonco_swap_core(
     for i, (swap_block, payout_block) in enumerate(swap_payout_pairs):
         try:
             swap_msg = ToncoPoolV3Swap(swap_block.get_body())
-            payout_msg = ToncoRouterV3PayTo(payout_block.get_body())
+            payout_msg = ToncoRouterV3PayTo(payout_block.get_body(), swap_msg.is_v2)
 
             # check success
             if payout_msg.exit_code != 0 and payout_msg.exit_code != 200:
