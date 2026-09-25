@@ -213,6 +213,7 @@ type AccountRequest struct {
 	AccountAddress []AccountAddress `query:"address"`
 	CodeHash       []HashType       `query:"code_hash"`
 	IncludeBOC     *bool            `query:"include_boc"`
+	IncludeStorage *bool            `query:"include_storage"`
 }
 
 type ActionRequest struct {

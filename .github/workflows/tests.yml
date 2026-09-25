@@ -2,7 +2,16 @@ name: Test pull request
 
 on:
   pull_request:
-    branches: [ "master" ]
+    # TEMPORARY: v1.3 is here so that pull requests targeting the release branch
+    # are tested too. Drop it once v1.3 has been merged into master.
+    branches: [ "master", "v1.3" ]
+  push:
+    # Warm caches for pull requests targeting either branch.
+    branches: [ "master", "v1.3" ]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -18,7 +27,7 @@ jobs:
         python-version: [ "3.12" ]
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v5
@@ -44,29 +53,78 @@ jobs:
         run: |
           pytest tests
 
+  acton-test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ton-index-go
+    env:
+      CGO_ENABLED: '0'
+      GOWORK: 'off'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: ton-index-go/go.mod
+          cache-dependency-path: ton-index-go/go.sum
+
+      - name: Download the pinned ABI catalog
+        run: |
+          . index/acton/catalog/catalog.lock
+          curl -fsSL -o index/acton/catalog/catalog.json "$ABI_CATALOG_URL"
+          echo "$ABI_CATALOG_SHA256  index/acton/catalog/catalog.json" | sha256sum -c
+
+      - name: Generate Acton bindings
+        run: go tool tolk-abi-to-go --catalog index/acton/catalog/catalog.json --output-dir index/acton/catalog --package catalog
+
+      - name: Test native Acton bindings and handlers
+        run: go test ./index/acton/... ./index/actonapi -count=1
+
   build:
     runs-on: ubuntu-24.04
     env:
       CC: clang-20
       CXX: clang++-20
+      CCACHE_DIR: ${{ github.workspace }}/.cache/ccache
+      CCACHE_BASEDIR: ${{ github.workspace }}
+      CCACHE_COMPILERCHECK: content
+      CCACHE_MAXSIZE: 2G
+      # CMake overrides GOPATH; keep its module cache shared with setup-go.
+      GOMODCACHE: ${{ github.workspace }}/.cache/go-mod
 
     steps:
     - name: Check out repository
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
       with:      
         submodules: 'recursive'
     
     - uses: actions/setup-go@v5
       with:
-        go-version: '>=1.23.0'
+        go-version-file: ton-index-go/go.mod
+        cache-dependency-path: |
+          ton-index-go/go.sum
+          ton-streaming-go/go.sum
+          ton-emulate-go/go.sum
 
     - name: Install system libraries
       run: |
         sudo apt-get update
-        sudo apt-get install -y build-essential clang-20 git cmake ninja-build zlib1g-dev libcurl4-openssl-dev libsecp256k1-dev libmicrohttpd-dev libsodium-dev liblz4-dev libjemalloc-dev libhiredis-dev
-#        wget https://apt.llvm.org/llvm.sh
-#        chmod +x llvm.sh
-#        sudo ./llvm.sh 16 all
+        sudo apt-get install -y build-essential clang-20 ccache git cmake ninja-build zlib1g-dev libcurl4-openssl-dev libsecp256k1-dev libmicrohttpd-dev libsodium-dev liblz4-dev libjemalloc-dev libhiredis-dev
+
+    - name: Restore ccache
+      id: ccache
+      uses: actions/cache/restore@v4
+      with:
+        path: ${{ env.CCACHE_DIR }}
+        key: ccache-v1-${{ runner.os }}-${{ runner.arch }}-ubuntu-24.04-${{ env.CXX }}-${{ env.BUILD_TYPE }}-${{ github.sha }}
+        restore-keys: |
+          ccache-v1-${{ runner.os }}-${{ runner.arch }}-ubuntu-24.04-${{ env.CXX }}-${{ env.BUILD_TYPE }}-
+
+    - name: Reset ccache statistics
+      run: ccache --zero-stats
 
     - name: Setup cmake
       uses: jwlawson/actions-setup-cmake@v2
@@ -74,10 +132,28 @@ jobs:
         cmake-version: '3.x'
 
     - name: Configure CMake
-      run: cmake -B ${{github.workspace}}/build -DCMAKE_C_COMPILER=clang-20 -DCMAKE_CXX_COMPILER=clang++-20
+      run: |
+        cmake -S . -B build \
+          -DCMAKE_BUILD_TYPE="$BUILD_TYPE" \
+          -DCMAKE_C_COMPILER="$CC" \
+          -DCMAKE_CXX_COMPILER="$CXX" \
+          -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+          -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
 
     - name: Build C++ libraries
       run: touch suppression_mappings.txt && cmake --build ${{github.workspace}}/build --config ${{env.BUILD_TYPE}} --target ton-index-postgres ton-index-postgres-migrate ton-index-clickhouse ton-trace-emulator ton-trace-task-emulator ton-index-go ton-streaming-go ton-mch-engine --parallel $(nproc)
+
+    - name: Show ccache statistics
+      if: always()
+      run: ccache --show-stats
+
+    # Keep successful compilation results even if a later test fails.
+    - name: Save ccache
+      if: steps.ccache.outputs.cache-hit != 'true'
+      uses: actions/cache/save@v4
+      with:
+        path: ${{ env.CCACHE_DIR }}
+        key: ${{ steps.ccache.outputs.cache-primary-key }}
 
     # The hermetic mch gates. CMake emits the production IR from the tracked
     # manifest/specs and compiles its tables into the engine. mch_ir_equivalence

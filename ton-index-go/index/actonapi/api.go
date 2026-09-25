@@ -1,0 +1,418 @@
+package actonapi
+
+import (
+	"crypto/sha256"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"slices"
+	"strconv"
+	"strings"
+
+	"github.com/gofiber/fiber/v2"
+	"github.com/ton-blockchain/tolk-abi-to-go"
+	"github.com/toncenter/ton-indexer/ton-index-go/index/acton"
+	"github.com/toncenter/ton-indexer/ton-index-go/index/models"
+)
+
+type API struct {
+	contracts []*tolkabi.Contract
+	revision  string
+	byID      map[string][]*tolkabi.Contract
+	byHash    map[string][]*tolkabi.Contract
+	deps      Dependencies
+}
+
+func New(contracts []*tolkabi.Contract, revision string, deps Dependencies) *API {
+	a := &API{contracts: contracts, revision: revision, deps: deps, byID: map[string][]*tolkabi.Contract{}, byHash: map[string][]*tolkabi.Contract{}}
+	for _, contract := range contracts {
+		a.byID[contract.ID] = append(a.byID[contract.ID], contract)
+		seen := map[string]bool{}
+		for _, hash := range contract.CodeHashes {
+			if key, err := models.ParseHashType(hash); err == nil && !seen[string(*key)] {
+				a.byHash[string(*key)] = append(a.byHash[string(*key)], contract)
+				seen[string(*key)] = true
+			}
+		}
+	}
+	return a
+}
+
+// contractInfo renders one catalog entry. The compiler ABI is attached only for a
+// selected entry: it is ten times the size of everything else about a contract.
+func contractInfo(contract *tolkabi.Contract, withABI bool) ActonContract {
+	info := ActonContract{CatalogID: contract.ID, DisplayName: contract.DisplayName,
+		CodeHashes:     acton.CanonicalHashes(contract.CodeHashes),
+		KnownAddresses: acton.CanonicalAddresses(contract.KnownAddresses),
+		Links:          []models.ContractLink{}, GetMethods: []ActonGetMethod{}}
+	for _, link := range contract.Links {
+		info.Links = append(info.Links, models.ContractLink{Kind: link.Kind, Title: link.Title, URL: link.URL})
+	}
+	for _, method := range contract.GetMethods {
+		info.GetMethods = append(info.GetMethods, methodInfo(method))
+	}
+	if withABI {
+		info.ABI = contract.ABI
+	}
+	return info
+}
+
+func methodInfo(method tolkabi.GetMethod) ActonGetMethod {
+	rendered := ActonGetMethod{Name: method.Name, MethodID: method.ID, Return: method.Return.Name,
+		Description: method.Description, Unsupported: method.Unsupported, Parameters: []ActonParameter{}}
+	for _, parameter := range method.Parameters {
+		rendered.Parameters = append(rendered.Parameters, ActonParameter{Name: parameter.Name, Type: parameter.Type.Name})
+	}
+	return rendered
+}
+
+func queryValues(c *fiber.Ctx, name string) []string {
+	values := c.Context().QueryArgs().PeekMulti(name)
+	out := make([]string, 0, len(values))
+	for _, value := range values {
+		out = append(out, string(value))
+	}
+	return out
+}
+
+func (a *API) selectContracts(contractType, hash string) ([]*tolkabi.Contract, error) {
+	if (contractType == "") == (hash == "") {
+		return nil, acton.Fail(422, "provide exactly one of catalog_id or code_hash")
+	}
+	if contractType != "" {
+		return a.byID[contractType], nil
+	}
+	key, err := acton.CodeHashKey(hash)
+	if err != nil {
+		return nil, err
+	}
+	return a.byHash[key], nil
+}
+
+func unique(contracts []*tolkabi.Contract) (*tolkabi.Contract, error) {
+	if len(contracts) == 0 {
+		return nil, acton.Fail(404, "contract is not in the catalog")
+	}
+	if len(contracts) != 1 {
+		// Identical bytecode does not make two catalog entries interchangeable:
+		// they can declare different getters and different storage meanings for
+		// the same bits. Report the candidates so the caller can pick one with
+		// catalog_id instead of guessing.
+		ids := make([]string, 0, len(contracts))
+		for _, c := range contracts {
+			ids = append(ids, c.ID)
+		}
+		return nil, models.IndexError{Code: 409, Message: "ambiguous catalog selection: " + strings.Join(ids, ", "), Candidates: ids}
+	}
+	return contracts[0], nil
+}
+
+// Contracts is the whole catalog when no selector is given, and only the named
+// entries, each with its compiler ABI, when one is.
+// @Summary List Acton contracts
+// @Description Without a selector this is the entire pinned catalog without type tables. With code_hash or catalog_id it is the matching entries, each carrying its full compiler ABI. Results are deduplicated and keep selector order; unknown selectors match nothing. Identification is bytecode-hash matching, not source verification. A GET carries a strong ETag; repeating the request with If-None-Match returns 304 while the catalog is unchanged.
+// @Tags acton
+// @Produce json
+// @Param code_hash query []string false "Code hashes; at most 50 selectors in total" collectionFormat(multi)
+// @Param catalog_id query []string false "Catalog IDs; at most 50 selectors in total" collectionFormat(multi)
+// @Param limit query int false "Page size; the whole result by default" minimum(1) maximum(1000)
+// @Param offset query int false "Rows to skip" default(0) minimum(0)
+// @Success 200 {object} ActonContractsResponse
+// @Header 200 {string} X-Acton-Catalog-Revision "SHA-256 of the pinned ABI catalog that produced this response"
+// @Header 200 {string} ETag "Strong validator for the response; send it back in If-None-Match"
+// @Failure 413 {object} models.IndexError
+// @Failure 422 {object} models.IndexError
+// @Router /api/v3/acton/contracts [get]
+// @Security APIKeyHeader
+// @Security APIKeyQuery
+func (a *API) Contracts(c *fiber.Ctx) error {
+	hashes, ids := queryValues(c, "code_hash"), queryValues(c, "catalog_id")
+	selected := len(hashes)+len(ids) > 0
+	if len(hashes)+len(ids) > MaxSelectors {
+		return acton.Fail(422, "provide at most 50 code_hash and catalog_id selectors")
+	}
+	contracts := a.contracts
+	if selected {
+		contracts = nil
+		seen := map[*tolkabi.Contract]bool{}
+		add := func(matches []*tolkabi.Contract) {
+			for _, contract := range acton.OrderCandidates(matches) {
+				if !seen[contract] {
+					seen[contract] = true
+					contracts = append(contracts, contract)
+				}
+			}
+		}
+		for _, id := range ids {
+			add(a.byID[id])
+		}
+		for _, hash := range hashes {
+			key, err := acton.CodeHashKey(hash)
+			if err != nil {
+				return err
+			}
+			add(a.byHash[key])
+		}
+	}
+	limit := len(contracts)
+	if raw := c.Query("limit"); raw != "" {
+		parsed, err := strconv.Atoi(raw)
+		if err != nil || parsed < 1 || parsed > MaxBatch {
+			return acton.Fail(422, "limit must be between 1 and 1000")
+		}
+		limit = parsed
+	}
+	offset, err := strconv.Atoi(c.Query("offset", "0"))
+	if err != nil || offset < 0 {
+		return acton.Fail(422, "offset must be nonnegative")
+	}
+	start := min(offset, len(contracts))
+	end := start + min(limit, len(contracts)-start)
+	response := ActonContractsResponse{Contracts: []ActonContract{}, Total: len(contracts), Limit: limit, Offset: offset}
+	for _, contract := range contracts[start:end] {
+		response.Contracts = append(response.Contracts, contractInfo(contract, selected))
+	}
+	return a.sendBounded(c, response)
+}
+
+// Decode uses native generated bindings for an explicitly selected ABI.
+// @Summary Decode Acton storage or message body
+// @Description Select exactly one catalog_id or code_hash. Direction is storage, deployment_storage, incoming_messages, incoming_external, outgoing_messages, or emitted_events.
+// @Tags acton
+// @Accept json
+// @Produce json
+// @Param request body DecodeRequest true "Explicit ABI selector and BOC"
+// @Success 200 {object} DecodeResponse
+// @Header 200 {string} X-Acton-Catalog-Revision "SHA-256 of the pinned ABI catalog that produced this response"
+// @Failure 409 {object} models.IndexError
+// @Failure 422 {object} models.IndexError
+// @Router /api/v3/acton/decode [post]
+// @Security APIKeyHeader
+// @Security APIKeyQuery
+func (a *API) Decode(c *fiber.Ctx) error {
+	var req DecodeRequest
+	if err := acton.DecodeJSON(c.Body(), &req); err != nil {
+		return err
+	}
+	contracts, err := a.selectContracts(req.CatalogID, req.CodeHash)
+	if err != nil {
+		return err
+	}
+	contract, err := unique(contracts)
+	if err != nil {
+		return err
+	}
+	if req.Body == "" {
+		return acton.Fail(422, "body BOC is required")
+	}
+	response := DecodeResponse{CatalogID: contract.ID, Direction: req.Direction}
+	if req.Direction == "storage" || req.Direction == "deployment_storage" {
+		binding := contract.Storage
+		if req.Direction == "deployment_storage" {
+			binding = contract.DeploymentStorage
+		}
+		if binding == nil {
+			return acton.Fail(422, "storage binding unavailable")
+		}
+		response.Type = binding.Type
+		// One caller-supplied BOC, so a per-call budget rather than a shared one.
+		decoded, err := acton.DecodeBinding(binding, req.Body)
+		if err != nil {
+			return acton.Fail(422, err.Error())
+		}
+		response.Decoded = acton.CanonicalizeDecoded(decoded)
+	} else {
+		if req.Direction == "" || len(contract.Messages[req.Direction]) == 0 {
+			return acton.Fail(422, "message direction is not in the selected ABI")
+		}
+		decoded, err := tolkabi.DecodeMessage(contract, req.Direction, req.Body)
+		if err != nil {
+			return acton.Fail(422, err.Error())
+		}
+		if decoded == nil {
+			return acton.Fail(422, "no matching message binding")
+		}
+		response.Type, response.Decoded = decoded.Type, acton.CanonicalizeDecoded(decoded.Value)
+	}
+	return a.sendBounded(c, response)
+}
+
+// RunGetMethod selects an ABI using code read at the execution seqno, never from
+// the latest indexed state. An explicit contract must also match that code hash.
+// @Summary Run and decode a pinned Acton getter
+// @Description Requires a positive mc_seqno or resolves it once. Reads account code and executes runGetMethodStd at the same seqno; library code and implementation hashes stay distinct. The ABI is the catalog entry declaring the named getter for that code, so the request selects no ABI of its own. Pinning trusts the configured upstream, not a proof. The stack is spelled exactly as /api/v3/runGetMethod spells one, so a single parser reads both; `decoded` carries the typed ABI answer beside it. VM and decoding failures still retain the stack, gas and exit code.
+// @Tags acton
+// @Accept json
+// @Produce json
+// @Param request body RunRequest true "Address, getter name or numeric TVM ID, named args, optional mc_seqno"
+// @Success 200 {object} RunResponse
+// @Header 200 {string} X-Acton-Catalog-Revision "SHA-256 of the pinned ABI catalog that produced this response"
+// @Failure 409 {object} models.IndexError
+// @Failure 422 {object} models.IndexError
+// @Failure 502 {object} models.IndexError
+// @Router /api/v3/acton/runGetMethod [post]
+// @Security APIKeyHeader
+// @Security APIKeyQuery
+func (a *API) RunGetMethod(c *fiber.Ctx) error {
+	var req RunRequest
+	if err := acton.DecodeJSON(c.Body(), &req); err != nil {
+		return err
+	}
+	addr, err := acton.CanonicalAddress(req.Address)
+	if err != nil {
+		return err
+	}
+	if req.McSeqno != nil && *req.McSeqno <= 0 {
+		return acton.Fail(422, "mc_seqno must be positive")
+	}
+	if req.Method == "" || len(req.Method) > 256 {
+		return acton.Fail(422, "invalid method")
+	}
+	// A decimal method is a TVM ID and anything else is a getter name, so a
+	// number too large to be an ID must not quietly become a name.
+	methodID, parseError := strconv.ParseInt(req.Method, 10, 32)
+	if errors.Is(parseError, strconv.ErrRange) {
+		return acton.Fail(422, "method ID must be an int32")
+	}
+	byName := parseError != nil
+	args := map[string]any{}
+	if len(req.Args) != 0 {
+		if err := acton.DecodeJSON(req.Args, &args); err != nil {
+			return err
+		}
+		if args == nil {
+			return acton.Fail(422, "args must be an object")
+		}
+	}
+	if a.deps.Executor == nil {
+		return acton.Fail(503, "getter execution unavailable")
+	}
+	executor := a.deps.Executor(c)
+	if executor == nil {
+		return acton.Fail(503, "getter execution unavailable")
+	}
+	snapshot, err := executor.Snapshot(c.UserContext(), addr, req.McSeqno)
+	if err != nil {
+		return err
+	}
+	if snapshot == nil || snapshot.CodeHash == nil || snapshot.McSeqno == nil || *snapshot.McSeqno <= 0 {
+		return acton.Fail(502, "upstream did not provide pinned account code")
+	}
+	if snapshot.Address != addr || req.McSeqno != nil && *snapshot.McSeqno != *req.McSeqno {
+		return acton.Fail(502, "upstream snapshot selector mismatch")
+	}
+	key, err := acton.CodeHashKey(*snapshot.CodeHash)
+	if err != nil {
+		return acton.Fail(502, "invalid upstream code hash")
+	}
+	contracts := acton.OrderCandidates(a.byHash[key])
+	implementationKey := ""
+	if snapshot.ImplementationHash != nil {
+		implementationKey, err = acton.CodeHashKey(*snapshot.ImplementationHash)
+		if err != nil {
+			return acton.Fail(502, "invalid upstream library implementation hash")
+		}
+		// The implementation of a library reference is a different contract, so it
+		// is a fallback for a getter the code cell's own entries do not declare,
+		// never a competing description of the same code.
+		for _, candidate := range acton.OrderCandidates(a.byHash[implementationKey]) {
+			if !slices.Contains(contracts, candidate) {
+				contracts = append(contracts, candidate)
+			}
+		}
+	}
+	contract, method, err := acton.SelectMethod(contracts, req.Method, methodID, byName)
+	if err != nil {
+		return err
+	}
+	identification := "exact_code_hash"
+	matchedCode := false
+	for _, candidate := range a.byHash[key] {
+		if candidate == contract {
+			matchedCode = true
+		}
+	}
+	if !matchedCode && implementationKey != "" {
+		identification = "library_reference"
+	}
+	if method.Unsupported != "" {
+		return acton.Fail(422, method.Unsupported)
+	}
+	if method.EncodeArgs == nil {
+		return acton.Fail(422, "native argument encoder unavailable")
+	}
+	allowed := map[string]bool{}
+	for _, parameter := range method.Parameters {
+		allowed[parameter.Name] = true
+	}
+	for name := range args {
+		if !allowed[name] {
+			return acton.Fail(422, "unknown argument: "+name)
+		}
+	}
+	stack, err := method.EncodeArgs(args)
+	if err != nil {
+		return acton.Fail(422, err.Error())
+	}
+	stack, err = acton.NormalizeStack(stack)
+	if err != nil {
+		return acton.Fail(422, err.Error())
+	}
+	execution, err := executor.Run(c.UserContext(), snapshot, method.ID, stack)
+	if err != nil {
+		return err
+	}
+	if execution == nil {
+		return acton.Fail(502, "empty getter execution result")
+	}
+	if execution.StackError == "" {
+		execution.Native, err = acton.NormalizeStack(execution.Native)
+		if err != nil {
+			execution.StackError = err.Error()
+		}
+	}
+	response := RunResponse{Execution: *execution, Snapshot: *snapshot, CatalogID: contract.ID, Method: methodInfo(*method), Identification: identification, Success: execution.ExitCode == 0 || execution.ExitCode == 1}
+	switch {
+	case !response.Success:
+		response.DecodeError = fmt.Sprintf("VM exited with code %d", execution.ExitCode)
+	case execution.StackError != "":
+		response.DecodeError = execution.StackError
+	case method.Unsupported != "":
+		response.DecodeError = method.Unsupported
+	case method.DecodeResult == nil:
+		response.DecodeError = "native result decoder unavailable"
+	default:
+		decoded, err := method.DecodeResult(execution.Native)
+		if err != nil {
+			response.DecodeError = err.Error()
+			break
+		}
+		response.Decoded = acton.CanonicalizeDecoded(decoded)
+	}
+	return a.sendBounded(c, response)
+}
+
+// sendBounded serializes once and rejects the exact encoded size, so a caller
+// that batches too much gets 413 instead of a multi-megabyte body. A GET response
+// here is a pure function of the pinned catalog and the request, so its digest is
+// a strong validator and a client that already holds the body revalidates for the
+// cost of a header.
+func (a *API) sendBounded(c *fiber.Ctx, response any) error {
+	body, err := json.Marshal(response)
+	if err != nil {
+		return acton.Fail(502, "response cannot be serialized")
+	}
+	if len(body) > MaxMetadataBytes {
+		return acton.Fail(413, "response exceeds 8 MiB; reduce the batch or page size")
+	}
+	c.Set("X-Acton-Catalog-Revision", a.revision)
+	if c.Method() == fiber.MethodGet {
+		tag := fmt.Sprintf("%q", fmt.Sprintf("%x", sha256.Sum256(body)))
+		c.Set(fiber.HeaderETag, tag)
+		if strings.Contains(c.Get(fiber.HeaderIfNoneMatch), tag) {
+			return c.SendStatus(fiber.StatusNotModified)
+		}
+	}
+	c.Type("json")
+	return c.Send(body)
+}

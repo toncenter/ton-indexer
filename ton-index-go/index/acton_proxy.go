@@ -1,0 +1,251 @@
+package index
+
+import (
+	"bytes"
+	"context"
+	"encoding/base64"
+	"encoding/json"
+	"fmt"
+	"math"
+	"net/url"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/ton-blockchain/tolk-abi-to-go"
+	"github.com/toncenter/ton-indexer/ton-index-go/index/acton"
+	"github.com/toncenter/ton-indexer/ton-index-go/index/models"
+	"github.com/valyala/fasthttp"
+	"github.com/xssnick/tonutils-go/tvm/cell"
+)
+
+const actonMaxUpstreamBytes = 4 << 20
+
+// Acton getters use their own pool so a slow upstream cannot starve the legacy
+// v2 routes, but the same tuning and a hard response-body cap.
+var actonV2HTTPClient = &fasthttp.Client{
+	MaxConnsPerHost:     v2MaxConnections,
+	MaxConnWaitTimeout:  v2ConnectionWaitLimit,
+	MaxIdleConnDuration: v2IdleConnectionLimit,
+	MaxResponseBodySize: actonMaxUpstreamBytes,
+}
+
+type actonExecutor struct {
+	settings models.RequestSettings
+	deadline time.Time
+}
+
+// NewActonExecutor pins one deadline across discovery, state loading and
+// execution, so a chain of upstream calls cannot outlive the client's request.
+func NewActonExecutor(settings models.RequestSettings) acton.GetterExecutor {
+	timeout := settings.Timeout
+	if timeout <= 0 || timeout > 3*time.Second {
+		timeout = 3 * time.Second
+	}
+	return &actonExecutor{settings: settings, deadline: time.Now().Add(timeout)}
+}
+
+func (e *actonExecutor) request(ctx context.Context, method, endpoint string, query url.Values, payload any, result any) error {
+	requestURL, err := v2RequestURL(e.settings, endpoint, query)
+	if err != nil {
+		return acton.Fail(503, "configured v2 endpoint is unavailable")
+	}
+	var data []byte
+	if payload != nil {
+		if data, err = json.Marshal(payload); err != nil || len(data) > acton.MaxBodyBytes {
+			return acton.Fail(422, "invalid or oversized v2 request")
+		}
+	}
+	deadline := e.deadline
+	if d, ok := ctx.Deadline(); ok && d.Before(deadline) {
+		deadline = d
+	}
+	if ctx.Err() != nil || time.Until(deadline) <= 0 {
+		return acton.Fail(504, "Acton execution deadline exceeded")
+	}
+
+	req, resp := fasthttp.AcquireRequest(), fasthttp.AcquireResponse()
+	defer fasthttp.ReleaseRequest(req)
+	defer fasthttp.ReleaseResponse(resp)
+	req.Header.SetMethod(method)
+	req.SetRequestURI(requestURL)
+	if payload != nil {
+		req.Header.SetContentType("application/json")
+		req.SetBody(data)
+	}
+	// Do (unlike DoRedirects) never follows redirects, and the client's
+	// MaxResponseBodySize bounds the body for chunked responses too.
+	if err := actonV2HTTPClient.DoDeadline(req, resp, deadline); err != nil {
+		if ctx.Err() != nil || time.Until(deadline) <= 0 {
+			return acton.Fail(504, "Acton upstream timeout")
+		}
+		return acton.Fail(502, "Acton v2 upstream request failed")
+	}
+	if status := resp.StatusCode(); status < 200 || status >= 300 {
+		return acton.Fail(502, fmt.Sprintf("Acton v2 %s returned HTTP %d; no transport fallback", endpoint, status))
+	}
+	var envelope struct {
+		OK     bool            `json:"ok"`
+		Result json.RawMessage `json:"result"`
+	}
+	if err := json.Unmarshal(resp.Body(), &envelope); err != nil || !envelope.OK || len(envelope.Result) == 0 || bytes.Equal(envelope.Result, []byte("null")) {
+		// Do not relay upstream error text, which can contain credentials or URLs.
+		return acton.Fail(502, "v2 "+endpoint+" failed or returned an incompatible response; no legacy fallback")
+	}
+	d := json.NewDecoder(bytes.NewReader(envelope.Result))
+	d.UseNumber()
+	if err := d.Decode(result); err != nil {
+		return acton.Fail(502, "invalid v2 "+endpoint+" result")
+	}
+	return nil
+}
+
+func (e *actonExecutor) Snapshot(ctx context.Context, address string, seqno *int32) (*acton.Snapshot, error) {
+	canonical, err := acton.CanonicalAddress(address)
+	if err != nil {
+		return nil, err
+	}
+	var pinned int32
+	if seqno == nil {
+		var info struct {
+			Last struct {
+				Seqno *int32 `json:"seqno"`
+			} `json:"last"`
+		}
+		if err := e.request(ctx, "GET", "getMasterchainInfo", nil, nil, &info); err != nil {
+			return nil, err
+		}
+		if info.Last.Seqno == nil || *info.Last.Seqno <= 0 {
+			return nil, acton.Fail(502, "upstream did not return a masterchain seqno")
+		}
+		pinned = *info.Last.Seqno
+	} else {
+		if *seqno <= 0 {
+			return nil, acton.Fail(422, "seqno must be positive")
+		}
+		pinned = *seqno
+	}
+	var state struct {
+		Code              string `json:"code"`
+		Data              string `json:"data"`
+		State             string `json:"state"`
+		LastTransactionID struct {
+			Hash *string `json:"hash"`
+			LT   any     `json:"lt"`
+		} `json:"last_transaction_id"`
+	}
+	query := url.Values{"address": {canonical}, "seqno": {strconv.FormatInt(int64(pinned), 10)}}
+	if err := e.request(ctx, "GET", "getAddressInformation", query, nil, &state); err != nil {
+		return nil, err
+	}
+	if state.State == "" {
+		return nil, acton.Fail(502, "missing upstream account status")
+	}
+	if state.State != "active" || state.Code == "" {
+		return nil, acton.Fail(409, "account has no active code at execution seqno")
+	}
+	if len(state.Code) > acton.MaxBodyBytes || len(state.Data) > acton.MaxBodyBytes {
+		return nil, acton.Fail(502, "upstream account BOC exceeds size limit")
+	}
+	code, err := tolkabi.DecodeOpaqueBOC(state.Code)
+	if err != nil {
+		return nil, acton.Fail(502, "invalid upstream account code BOC")
+	}
+	hash := base64.StdEncoding.EncodeToString(code.Hash())
+	snapshot := &acton.Snapshot{Address: canonical, CodeHash: &hash, McSeqno: &pinned, LastTransactionHash: state.LastTransactionID.Hash}
+	if code.GetType() == cell.LibraryCellType {
+		// ActonScan codeCell.ts uses the embedded hash for catalog lookup, but
+		// it is not the account's code-cell hash. Preserve both identities.
+		slice, err := code.BeginParse()
+		if err != nil {
+			return nil, acton.Fail(502, "invalid library reference")
+		}
+		if _, err := slice.LoadUInt(8); err != nil {
+			return nil, acton.Fail(502, "invalid library reference")
+		}
+		implementation, err := slice.LoadSlice(256)
+		if err != nil {
+			return nil, acton.Fail(502, "invalid library reference hash")
+		}
+		snapshot.ImplementationHash = new(base64.StdEncoding.EncodeToString(implementation))
+	}
+	if state.LastTransactionID.LT != nil {
+		lt, err := acton.Decimal(state.LastTransactionID.LT)
+		if err != nil || strings.HasPrefix(lt, "-") {
+			return nil, acton.Fail(502, "invalid upstream last transaction LT")
+		}
+		snapshot.LastTransactionLT = &lt
+	}
+	if state.Data != "" {
+		data, err := tolkabi.DecodeOpaqueBOC(state.Data)
+		if err != nil {
+			return nil, acton.Fail(502, "invalid upstream account data BOC")
+		}
+		hash := base64.StdEncoding.EncodeToString(data.Hash())
+		snapshot.DataHash = &hash
+	}
+	// raw.fullAccountState has no account-state hash; never synthesize one from
+	// code+data.
+	return snapshot, nil
+}
+
+func (e *actonExecutor) Run(ctx context.Context, snapshot *acton.Snapshot, method int64, stack []tolkabi.StackValue) (*acton.Execution, error) {
+	if snapshot == nil || snapshot.McSeqno == nil || *snapshot.McSeqno <= 0 {
+		return nil, acton.Fail(422, "pinned snapshot with positive seqno is required")
+	}
+	address, err := acton.CanonicalAddress(snapshot.Address)
+	if err != nil {
+		return nil, err
+	}
+	if method < math.MinInt32 || method > math.MaxInt32 {
+		return nil, acton.Fail(422, "method ID must be an int32")
+	}
+	endpoint := "runGetMethodStd"
+	wire, err := acton.EncodeStandardStack(stack)
+	if err != nil {
+		return nil, acton.Fail(422, err.Error())
+	}
+	request := struct {
+		Address string `json:"address"`
+		Method  int64  `json:"method"`
+		Seqno   int32  `json:"seqno"`
+		Stack   []any  `json:"stack"`
+	}{address, method, *snapshot.McSeqno, wire}
+	var response struct {
+		GasUsed  any             `json:"gas_used"`
+		ExitCode *int32          `json:"exit_code"`
+		Stack    json.RawMessage `json:"stack"`
+	}
+	if err := e.request(ctx, "POST", endpoint, nil, request, &response); err != nil {
+		return nil, err
+	}
+	if response.ExitCode == nil || len(response.Stack) == 0 {
+		return nil, acton.Fail(502, "incomplete "+endpoint+" result")
+	}
+	gas, err := acton.Decimal(response.GasUsed)
+	if err != nil {
+		return nil, acton.Fail(502, "invalid "+endpoint+" gas_used")
+	}
+	gasUsed, err := strconv.ParseInt(gas, 10, 64)
+	if err != nil || gasUsed < 0 {
+		return nil, acton.Fail(502, "invalid "+endpoint+" gas_used")
+	}
+	result := &acton.Execution{GasUsed: gasUsed, ExitCode: int64(*response.ExitCode)}
+	// rendered by the decoder /runGetMethod uses; the codecs need their own
+	// shape, and a stack neither can read still leaves the exit code and gas.
+	var upstream any
+	if err := json.Unmarshal(response.Stack, &upstream); err != nil {
+		result.StackError = err.Error()
+		return result, nil
+	}
+	result.Stack, err = DecodeStack(upstream)
+	if err != nil {
+		result.StackError = err.Error()
+		return result, nil
+	}
+	result.Native, err = acton.DecodeStandardStack(response.Stack)
+	if err != nil {
+		result.StackError = err.Error()
+	}
+	return result, nil
+}

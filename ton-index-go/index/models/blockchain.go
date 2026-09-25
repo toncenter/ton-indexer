@@ -44,6 +44,10 @@ type AccountStateFull struct {
 	CodeBoc                *BytesType        `json:"code_boc,omitempty"`
 	ContractMethods        *[]uint32         `json:"contract_methods"`
 	Interfaces             *[]string         `json:"interfaces"`
+	// Storage is the data cell decoded with the catalog entry the response's
+	// code_book names first for this code, requested with include_storage.
+	Storage      json.RawMessage `json:"storage,omitempty" swaggertype:"object"`
+	StorageError string          `json:"storage_error,omitempty"`
 } // @name AccountStateFull
 
 type WalletState struct {
