@@ -47,6 +47,7 @@ add_library(ton-trace-emulator-core STATIC
     src/TraceUpdate.cpp
     src/ExternalMessageAdmission.cpp
     src/OverlayListener.cpp
+    src/BlockParser.cpp
     src/BlockEmulator.cpp
     src/TraceInterfaceDetector.cpp
     src/Measurement.cpp
@@ -73,6 +74,8 @@ target_compile_features(ton-trace-emulator-core PRIVATE cxx_std_20)
 # Common processor and Redis I/O, reused by both entry points and schedulers.
 add_library(ton-trace-processor-runtime STATIC
     src/TraceProcessor.cpp
+    src/TraceMaterialization.cpp
+    src/FinalizedTraceProcessor.cpp
     src/RedisMaterializer.cpp
     src/RedisConnectionActor.cpp
     src/RedisTransport.cpp
@@ -154,9 +157,12 @@ target_compile_features(test-ton-trace-state PRIVATE cxx_std_20)
 add_executable(test-ton-trace-processor
     test/TraceProcessorTest.cpp
     test/FinalizedBlockTest.cpp
+    test/FinalizedTraceProcessorTest.cpp
     test/ConfirmedPromotionTest.cpp
     test/RedisTransportTest.cpp
     src/FinalizedTraceScheduler.cpp
+    src/FinalizedTraceProcessor.cpp
+    src/TraceMaterialization.cpp
     src/TraceScheduler.cpp
     src/RedisListener.cpp
     src/RedisMaterializer.cpp

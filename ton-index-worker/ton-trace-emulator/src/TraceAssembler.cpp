@@ -11,6 +11,8 @@
 
 #include "Serializer.hpp"
 #include "TraceAssembler.h"
+#include "BlockParser.h"
+#include "TraceInterfaceDetector.h"
 
 namespace {
 
@@ -381,14 +383,16 @@ td::Result<TraceTransition> TraceAssembler::apply_update(const ActiveTrace& curr
   return finish_transition(current, std::move(combined));
 }
 
-td::Result<mch::EmuTraceView> TraceAssembler::build_full_trace(const ActiveTrace& trace, const std::string& trace_key,
-                                                               const Trace& lookup_context) const {
+namespace {
+td::Result<mch::EmuTraceView> build_trace_view(const ActiveTrace& trace, const std::string& trace_key,
+    const AllShardStates& shard_states, const std::shared_ptr<block::ConfigInfo>& config,
+    const TraceNode* fallback_root) {
   mch::EmuTraceView view;
   view.trace_id = trace_key;
   view.tx_limit_exceeded = trace.tx_limit_exceeded;
   view.interfaces = trace.classifier_interfaces;
-  view.shard_states = lookup_context.shard_states;
-  view.config = lookup_context.config;
+  view.shard_states = shard_states;
+  view.config = config;
   view.update_seq = trace.update_seq;
   view.nodes.reserve(trace.nodes.nodes().size());
 
@@ -415,8 +419,8 @@ td::Result<mch::EmuTraceView> TraceAssembler::build_full_trace(const ActiveTrace
 
   if (auto root_key = trace_metadata_value(trace, "root_node")) {
     append_subtree(*root_key);
-  } else if (lookup_context.root) {
-    append_subtree(node_key(*lookup_context.root));
+  } else if (fallback_root) {
+    append_subtree(node_key(*fallback_root));
   }
   // Unknown-root continuation patches and any temporarily disconnected nodes
   // still belong to the full trace.
@@ -437,4 +441,43 @@ td::Result<mch::EmuTraceView> TraceAssembler::build_full_trace(const ActiveTrace
     view.nodes.push_back(std::move(full_trace_node));
   }
   return view;
+}
+
+}  // namespace
+
+td::Result<mch::EmuTraceView> TraceAssembler::build_full_trace(const ActiveTrace& trace, const std::string& key,
+    const Trace& context) const {
+  return build_trace_view(trace, key, context.shard_states, context.config, context.root.get());
+}
+
+td::Result<mch::EmuTraceView> TraceAssembler::build_full_trace(const ActiveTrace& trace, const std::string& key,
+    const AllShardStates& states, const std::shared_ptr<block::ConfigInfo>& config) const {
+  return build_trace_view(trace, key, states, config, nullptr);
+}
+
+td::Result<TraceStateNode> prepare_finalized_node(const TransactionInfo& tx, const std::string& trace_key) {
+  // A non-owning leaf adapter for the common node serializer; no tree is built.
+  TraceNode node;
+  node.node_id = tx.in_msg_hash;
+  node.address = tx.account;
+  node.transaction_root = tx.root;
+  node.mc_block_seqno = tx.mc_block_seqno;
+  node.block_id = tx.block_id;
+  node.finality_state = FinalityState::Finalized;
+  std::size_t reused = 0;
+  return prepare_state_node(node, node_key(node), node_fingerprint(node), nullptr, trace_key, reused);
+}
+
+void apply_detected_accounts(ActiveTrace& trace, const DetectedAccounts& accounts) {
+  auto interfaces = std::make_shared<ClassifierInterfaces>(*trace.classifier_interfaces);
+  for (const auto& [address, detected] : accounts.interfaces) {
+    std::stringstream buffer;
+    msgpack::pack(buffer, parse_interfaces(detected));
+    trace.metadata.insert_or_assign(account_key(address), buffer.str());
+    interfaces->erase(address);
+  }
+  for (auto& [address, detected] : mch::make_interface_map(accounts)) {
+    interfaces->insert_or_assign(std::move(address), std::move(detected));
+  }
+  trace.classifier_interfaces = std::move(interfaces);
 }

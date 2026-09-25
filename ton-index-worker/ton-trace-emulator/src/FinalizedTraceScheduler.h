@@ -3,28 +3,30 @@
 #include <map>
 #include <set>
 
-#include "BlockEmulator.h"
+#include "BlockParser.h"
 #include "DbScanner.h"
 #include "DbEventListener.h"
 #include "RedisMaterializer.h"
-#include "TraceProcessor.h"
+#include "FinalizedTraceProcessor.h"
 
 // Each producer starts at its node's head. Redis deduplicates individual trace updates.
 class FinalizedTraceScheduler : public td::actor::Actor {
   friend struct FinalizedTraceSchedulerTest;
  public:
-  FinalizedTraceScheduler(td::actor::ActorId<DbScanner> scanner, td::actor::ActorId<TraceProcessor> processor,
+  FinalizedTraceScheduler(td::actor::ActorId<DbScanner> scanner, td::actor::ActorId<FinalizedTraceProcessor> processor,
                           RedisConnectionOptions redis, std::string db_event_fifo = {});
 
  private:
   td::actor::ActorId<DbScanner> scanner_;
-  td::actor::ActorId<TraceProcessor> processor_;
+  td::actor::ActorId<FinalizedTraceProcessor> processor_;
   td::actor::ActorOwn<RedisMaterializer> writer_;
   std::string db_event_fifo_;
   td::actor::ActorOwn<DbEventListener> db_event_listener_;
   ton::BlockSeqno notified_head_{0};
   ton::BlockSeqno next_{0}, head_{0};
   std::uint32_t block_time_{0};
+  std::optional<ParsedFinalizedBlock> parsing_block_;
+  std::size_t blocks_left_to_parse_{0};
   static constexpr std::size_t kMaxWrites = 64;
   struct PendingTrace {
     RedisWritePlan plan;
@@ -44,7 +46,7 @@ class FinalizedTraceScheduler : public td::actor::Actor {
   void handle_db_event(ton::tl_object_ptr<ton::ton_api::db_Event> event);
   void got_head(td::Result<ton::BlockSeqno> result);
   void fetched(td::Result<schema::MasterchainBlockDataState> result);
-  void parsed(td::Result<FinalizedBlockResult> result);
+  void parsed(td::Result<std::vector<TransactionInfo>> result);
   void prepared(td::Result<td::Unit> result);
   void trace_prepared(ton::BlockSeqno seqno, RedisWritePlan plan);
   void trace_written(std::string trace_key, td::Result<std::int64_t> result);

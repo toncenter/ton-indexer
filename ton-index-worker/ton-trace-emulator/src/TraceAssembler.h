@@ -17,6 +17,8 @@
 using TraceMetadata = std::map<std::string, std::string>;
 
 struct RedisTraceNode;
+struct TransactionInfo;
+struct DetectedAccounts;
 
 struct ActionState {
   std::optional<std::string> blob;
@@ -73,7 +75,13 @@ class TraceAssembler {
 
   td::Result<mch::EmuTraceView> build_full_trace(const ActiveTrace& trace, const std::string& trace_key,
                                                  const Trace& lookup_context) const;
+  td::Result<mch::EmuTraceView> build_full_trace(const ActiveTrace& trace, const std::string& trace_key,
+      const AllShardStates& shard_states, const std::shared_ptr<block::ConfigInfo>& config) const;
 };
+
+// Flat finalized input reuses the serializer without constructing fragment trees.
+td::Result<TraceStateNode> prepare_finalized_node(const TransactionInfo& tx, const std::string& trace_key);
+void apply_detected_accounts(ActiveTrace& trace, const DetectedAccounts& accounts);
 
 std::optional<std::string> trace_metadata_value(const ActiveTrace& trace, const std::string& field);
 

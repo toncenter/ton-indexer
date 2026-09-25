@@ -70,57 +70,66 @@ yields if more work is ready. Empty readiness waits for a poll notification.
 
 ## Finalized-only producer
 
-`ton-finalized-streamer` reuses this transport and command encoder. Its scheduler
-owns a `RedisMaterializer` with the same bounded pool of 64 connections. The
-processor emits each full snapshot as soon as classification finishes, including
-updates of still-open traces, without waiting for the rest of the block.
+`ton-finalized-streamer` uses the same transaction decoder, MCH classifier,
+serializer and Redis transport as the ordinary emulator. Its assembly path is
+separate:
 
-Finalized plans also carry the committed account states prepared by the common
-processor. Both executables use the same account-state encoder and Lua function:
-`account_finalized:<address>` stores `lt`, `state`, and `interfaces` with a
-60-second TTL. State and its `streaming_account_states` hint are updated only
-for a greater LT. Canonical decimal strings preserve the full uint64 ordering.
-Equal/older LTs only refresh the account TTL, as in the ordinary emulator.
+1. `FinalizedTraceScheduler` fetches a masterchain block and uses the stateless
+   `BlockParser` to decode the associated blocks into flat `TransactionInfo`
+   records. It retains block owners/root cells with the parsed block.
+2. `FinalizedTraceProcessor` owns both active trace graphs and the index mapping
+   outstanding internal messages to their trace identities. Transactions are
+   applied in LT/hash order directly to the flat graph; no fragment trees or
+   emulated tails are constructed. All changes to one trace in a block are
+   collected before classification. Unknown-root continuations are skipped.
+3. The shared account/interface detector works from the changed account addresses.
+   MCH classifies each complete known graph using the shared `TraceAssembler`
+   view. `TraceMaterialization` prepares a full snapshot directly, rather than
+   first building an emulator delta. Plans are emitted as individual traces
+   finish; the block promise completes after all plans have been emitted.
+4. The scheduler writes plans with up to 64 requests in flight, retries failed
+   writes, updates shared health after all local jobs succeed, then advances.
 
-In the finalized script, encoded `ACCOUNT_STATE` operations call that function
-directly; the ordinary pipeline invokes it with EVAL. This avoids nested EVAL
-and keeps account changes behind the same block/job checks. An old completed
-block cannot resurrect an expired account key. Account-state notifications do
-not wait for `trace_complete`: these states already come from finalized blocks.
+The ordinary `TraceProcessor` retains pending/confirmed updates, promotion,
+invalidation, dirty batches and its Redis writer. It has no finalized-only mode.
+The finalized processor owns no Redis connections and has no promotion or
+per-trace input queues. Each executable creates its own classifier workers.
 
-- `write_finalized_trace` runs one Lua operation per job through the shared
-  pool. It executes a single prepared list of data/publication commands, then
-  records set membership last. A successfully marked `(mc_seqno, trace_key)`
-  skips all mutations and publications on retry, even if its snapshot has
-  since expired. The first successful job wins; payloads are not compared.
-- `finish_finalized` advances progress/health and deletes the block's marker
-  set. The scheduler calls it only after preparation and every local job have
-  succeeded. Redis checks block order; it does not verify the job list.
+Only completed traces expire from finalized processor memory, using block time.
+Open traces retain their full graph across blocks even after Redis replay expiry.
+Traces above 1000 nodes emit cleanup instead of a snapshot. Their IDs and message
+routing remain available for later continuations and committed account updates.
+An update and retention cleanup for the same trace never run in the same block.
 
-Scripts do not preflight key types or ACLs. Redis command errors propagate to
-the scheduler, which logs and retries every error after 0.5 seconds without
-advancing or special recovery branches. Lua does not roll back earlier commands:
-a failed job can leave partial data/publications, and retry can republish them.
-Its marker is written only after all commands succeed. Finish writes progress
-last, after health and marker cleanup. Persistent errors require operational
+`write_finalized_trace` executes one Lua operation per plan. The
+`finalized:version:<trace>` key fences incoming versions at or below the last
+successful masterchain seqno. Data and publications precede the version marker;
+the first successful result for a trace/version wins. Snapshots and cleanup use
+the same check. The marker TTL is the larger of 600 seconds and the snapshot TTL
+(cleanup uses 600 seconds). Deduplication is bounded by that TTL and does not
+provide exactly-once delivery across expiry or Redis data loss.
+
+Plans carry committed account states. Both executables use the same encoder and
+Lua function for `account_finalized:<address>` (`lt`, `state`, `interfaces`, with
+a 60-second TTL). A greater LT or an incoming zero LT replaces the state and
+publishes its hint. Other LTs refresh the TTL. Decimal uint64 strings avoid Lua
+number rounding. Zero represents a deleted account; the existing LT comparison
+does not distinguish delayed older states from later recreation after deletion.
+Account states do not wait for `trace_complete`.
+
+`finish_finalized` only updates `health:ton-trace-emulator` to the greatest local
+completed seqno while that key exists. It does not commit a global block or fence
+other producers' writes. Each producer starts at its node's current head and
+maintains its own graphs/message index; state is not restored on restart. A
+running producer can therefore still publish a known trace after a newly started
+producer has finished a newer block. Redis stores no bootstrap, block manifest,
+configuration fingerprint or durable processing cursor. Neither startup nor
+recovery calls FLUSHDB.
+
+Lua does not roll back earlier commands after a command error. The scheduler
+retries errors after 0.5 seconds; a partially failed operation can republish data
+because its success marker was not written. Persistent errors require operational
 repair. Command size and Lua argument-count limits are checked before sending.
-
-Different producers may win different jobs of the same block. A replacement
-producer can finish a partially written block without republishing successful
-jobs. Completed blocks reject stale mutations, including cleanup, before
-consulting or recreating markers. The `finalized:written:<seqno>` set has no
-TTL while its block is incomplete and is removed when the block finishes.
-The payload cache retains its usual replay TTL. Readers see individual traces
-as they become ready; there is no atomic visibility guarantee for a whole block.
-Redis still executes these Lua operations serially; the pool overlaps network
-I/O and trace preparation, and limits each script to a single trace job.
-
-Startup stores only the shared bootstrap seqno and initial progress. Subsequent
-starts use that same bootstrap point to rebuild local state. Redis stores no
-configuration fingerprint, manifest, result digest, or completed-job counter.
-Deployment is responsible for using compatible producers on the same network.
-Neither startup nor recovery calls FLUSHDB. Earlier prototypes used a different
-marker format and must not run concurrently with this protocol.
 
 ## Configuration
 
@@ -141,7 +150,7 @@ actor pool.
 In the ordinary emulator, only trace materialization uses this transport. Its
 pre-scheduler startup FLUSHDB, input subscriber, and health publisher retain
 their existing clients. The finalized-only producer also uses the transport
-for its progress and health control operations.
+for its health control operation.
 
 ## Validation
 
@@ -160,8 +169,13 @@ notifications, and cleanup using keys prefixed with `redis-transport-test:<pid>:
 No FLUSHDB is issued by the tests.
 
 `TON_FINALIZED_TEST_REDIS_URI` enables the finalized protocol integration cases.
-Use a dedicated test DB with no `finalized:progress` or health key; the tests
-check idempotence, ordering, partial-block recovery, early publications, and
-stale cleanup protection. The controlled loopback peer also verifies that
+Use a dedicated test DB with no health key; the tests check trace-version
+idempotence, overlapping producers, account updates, and stale cleanup protection. The controlled loopback peer also verifies that
 several trace requests are outstanding before any Redis reply is delivered,
 and that the scheduler waits for a failed job's successful retry before finish.
+
+`FinalizedTraceProcessor` tests feed flat transactions and check within-block and
+interblock assembly, processor-local message routing, completion, retention,
+oversized continuations, real classification, and compatibility with snapshots
+prepared by the ordinary fragment assembler. The tests use a synthetic shard
+state to exercise the shared account detector without a TON node database.

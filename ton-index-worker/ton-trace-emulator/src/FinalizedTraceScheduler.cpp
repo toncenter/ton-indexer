@@ -6,7 +6,7 @@
 #include <algorithm>
 
 FinalizedTraceScheduler::FinalizedTraceScheduler(td::actor::ActorId<DbScanner> scanner,
-    td::actor::ActorId<TraceProcessor> processor, RedisConnectionOptions redis,
+    td::actor::ActorId<FinalizedTraceProcessor> processor, RedisConnectionOptions redis,
     std::string db_event_fifo)
     : scanner_(scanner), processor_(processor),
       writer_(td::actor::create_actor<RedisMaterializer>("FinalizedRedisWriter", std::move(redis), kMaxWrites)),
@@ -105,32 +105,49 @@ void FinalizedTraceScheduler::fetched(td::Result<schema::MasterchainBlockDataSta
   if (config.is_error()) {
     LOG(FATAL) << "Cannot load finalized classifier configuration: " << config.move_as_error();
   }
-  data.config_ = config.move_as_ok();
-  auto done = td::PromiseCreator::lambda([self = actor_id(this)](td::Result<FinalizedBlockResult> r) mutable {
-    td::actor::send_closure(self, &FinalizedTraceScheduler::parsed, std::move(r));
-  });
-  td::actor::create_actor<McBlockEmulator>("FinalizedBlockParser", std::move(data), [](ton::BlockSeqno) {},
-      std::function<void(td::Promise<td::Unit>)>{}, std::move(done), false).release();
+  parsing_block_.emplace();
+  parsing_block_->seqno = id.seqno();
+  parsing_block_->unix_time = block_time_;
+  parsing_block_->config = config.move_as_ok();
+  for (const auto& shard : data.shard_blocks_) parsing_block_->shard_states.push_back(shard.block_state);
+  for (const auto& shard : data.shard_blocks_diff_) {
+    parsing_block_->block_data_owners.push_back(shard.block_data);
+    parsing_block_->block_roots.push_back(shard.block_data->root_cell());
+  }
+  blocks_left_to_parse_ = data.shard_blocks_diff_.size();
+  if (!blocks_left_to_parse_) {
+    blocks_left_to_parse_ = 1;
+    parsed(std::vector<TransactionInfo>{});
+    return;
+  }
+  for (const auto& shard : data.shard_blocks_diff_) {
+    auto done = td::PromiseCreator::lambda([self = actor_id(this)](td::Result<std::vector<TransactionInfo>> r) mutable {
+      td::actor::send_closure(self, &FinalizedTraceScheduler::parsed, std::move(r));
+    });
+    td::actor::create_actor<BlockParser>("FinalizedBlockParser", shard.block_data, next_, std::move(done)).release();
+  }
 }
 
-void FinalizedTraceScheduler::parsed(td::Result<FinalizedBlockResult> result) {
-  // Parsing may already have advanced message->trace mappings. Restart at head after partial local changes.
+void FinalizedTraceScheduler::parsed(td::Result<std::vector<TransactionInfo>> result) {
   if (result.is_error()) {
     LOG(FATAL) << "Finalized parsing failed: " << result.move_as_error();
   }
-  auto block = result.move_as_ok();
-  CHECK(block.mc_seqno == next_);
+  CHECK(parsing_block_ && blocks_left_to_parse_);
+  auto transactions = result.move_as_ok();
+  auto& all = parsing_block_->transactions;
+  all.insert(all.end(), std::make_move_iterator(transactions.begin()), std::make_move_iterator(transactions.end()));
+  if (--blocks_left_to_parse_) return;
+  CHECK(parsing_block_->seqno == next_);
   block_active_ = true;
   std::function<void(RedisWritePlan)> plan = [self = actor_id(this), seqno = next_](auto value) {
     td::actor::send_closure(self, &FinalizedTraceScheduler::trace_prepared, seqno, std::move(value));
   };
-  auto done = td::PromiseCreator::lambda([self = actor_id(this), owners = std::move(block.block_data_owners)](
-      td::Result<td::Unit> r) mutable {
+  auto done = td::PromiseCreator::lambda([self = actor_id(this)](td::Result<td::Unit> r) mutable {
     td::actor::send_closure(self, &FinalizedTraceScheduler::prepared, std::move(r));
   });
-  td::actor::send_closure(processor_, &TraceProcessor::prepare_finalized_block_streaming,
-                         next_, block_time_, std::move(block.trace_updates), std::move(plan),
-                         std::move(done));
+  td::actor::send_closure(processor_, &FinalizedTraceProcessor::prepare_block,
+                         std::move(*parsing_block_), std::move(plan), std::move(done));
+  parsing_block_.reset();
 }
 
 void FinalizedTraceScheduler::prepared(td::Result<td::Unit> result) {

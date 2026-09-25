@@ -6,8 +6,33 @@
 #include "TraceEmulator.h"
 #include "TraceUpdate.h"
 
+struct DetectedAccounts {
+    std::unordered_map<block::StdAddress, block::Account> states;
+    std::unordered_map<block::StdAddress, std::vector<Trace::Detector::DetectedInterface>> interfaces;
+};
+
+// Detect committed account states without constructing a trace tree.
+class AccountStatesDetector : public td::actor::Actor {
+    AllShardStates shard_states_;
+    std::shared_ptr<block::ConfigInfo> config_;
+    std::unordered_set<block::StdAddress> addresses_;
+    DetectedAccounts accounts_;
+    td::Promise<DetectedAccounts> promise_;
+    void start_up() override;
+    void got_interfaces(block::StdAddress address, std::vector<Trace::Detector::DetectedInterface> interfaces,
+                        td::Promise<td::Unit> promise);
+    void finish(td::Result<td::Unit> result);
+
+public:
+    AccountStatesDetector(AllShardStates states, std::shared_ptr<block::ConfigInfo> config,
+                          std::unordered_set<block::StdAddress> addresses, td::Promise<DetectedAccounts> promise)
+        : shard_states_(std::move(states)), config_(std::move(config)), addresses_(std::move(addresses)),
+          promise_(std::move(promise)) {}
+};
+
 class TraceInterfaceDetector: public td::actor::Actor {
 private:
+    void got_committed_accounts(DetectedAccounts accounts, td::Promise<td::Unit> promise);
     AllShardStates shard_states_;
     std::shared_ptr<block::ConfigInfo> config_;
     Trace trace_;
@@ -22,7 +47,8 @@ private:
 
     void start_up() override;
 private:
-    void got_interfaces(block::StdAddress address, std::vector<typename Trace::Detector::DetectedInterface> interfaces, bool is_committed, td::Promise<td::Unit> promise);
+    void got_emulated_interfaces(block::StdAddress address,
+        std::vector<typename Trace::Detector::DetectedInterface> interfaces, td::Promise<td::Unit> promise);
     void finish(td::Result<td::Unit> status);
 };
 

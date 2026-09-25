@@ -8,7 +8,8 @@
 
 #include "DbScanner.h"
 #include "FinalizedTraceScheduler.h"
-#include "TraceProcessor.h"
+#include "FinalizedTraceProcessor.h"
+#include "TraceLifecycle.h"
 #include "RedisMaterializer.h"
 #include "StatsRecorder.h"
 #include "Statistics.h"
@@ -180,7 +181,7 @@ int main(int argc, char *argv[]) {
 
   td::actor::Scheduler scheduler({threads});
   td::actor::ActorOwn<DbScanner> db_scanner;
-  td::actor::ActorOwn<TraceProcessor> trace_processor;
+  td::actor::ActorOwn<FinalizedTraceProcessor> trace_processor;
 
   scheduler.run_in_context([&] {
     if (stats_writer) {
@@ -188,8 +189,8 @@ int main(int argc, char *argv[]) {
                                             [] { return g_statistics.generate_report_and_reset(); }).release();
     }
     db_scanner = td::actor::create_actor<DbScanner>("scanner", db_root, dbs_secondary, working_dir, 0.05f);
-    trace_processor = td::actor::create_actor<TraceProcessor>(
-        "TraceProcessor", redis_options.ok(), trace_retention, mch_classifier_config, true);
+    trace_processor = td::actor::create_actor<FinalizedTraceProcessor>(
+        "FinalizedTraceProcessor", trace_retention.completed_seconds, mch_classifier_config);
     td::actor::create_actor<FinalizedTraceScheduler>("FinalizedTraceScheduler", db_scanner.get(), trace_processor.get(),
         redis_options.move_as_ok(), db_event_fifo_path).release();
   });

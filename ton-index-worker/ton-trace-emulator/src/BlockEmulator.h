@@ -8,29 +8,7 @@
 #include "Measurement.h"
 #include "TraceEmulator.h"
 #include "TraceUpdate.h"
-
-struct OutMsgInfo {
-    td::Bits256 hash;
-    td::Ref<vm::Cell> root;
-};
-
-struct TraceIds {
-    td::Bits256 root_tx_hash;
-    td::Bits256 ext_in_msg_hash;
-    td::Bits256 ext_in_msg_hash_norm;
-};
-
-struct TransactionInfo {
-    block::StdAddress account;
-    td::Bits256 hash;
-    ton::LogicalTime lt;
-    td::Ref<vm::Cell> root;
-    ton::BlockId block_id;
-    ton::BlockSeqno mc_block_seqno;
-    td::Bits256 in_msg_hash;
-    std::vector<OutMsgInfo> out_msgs;
-    std::optional<TraceIds> trace_ids{};
-};
+#include "BlockParser.h"
 
 struct EmuRequest {
   TraceNode* parent;             // attach under this node
@@ -68,7 +46,6 @@ private:
     schema::MasterchainBlockDataState mc_data_state_;
     std::function<void(ton::BlockSeqno)> trace_ids_resolved_;
     td::Promise<FinalizedBlockResult> promise_;
-    bool emulate_tails_{true};
     size_t blocks_left_to_parse_;
     std::vector<TransactionInfo> txs_;
     std::vector<TraceUpdate> trace_updates_;
@@ -106,7 +83,7 @@ public:
     McBlockEmulator(schema::MasterchainBlockDataState mc_data_state,
                     std::function<void(ton::BlockSeqno)> trace_ids_resolved,
                     std::function<void(td::Promise<td::Unit>)> promote_confirmed,
-                    td::Promise<FinalizedBlockResult> promise, bool emulate_tails = true);
+                    td::Promise<FinalizedBlockResult> promise);
 
     virtual void start_up() override;
 };

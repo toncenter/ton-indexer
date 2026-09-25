@@ -3,6 +3,7 @@
 #include "EmuInterfaces.h"
 
 #include "TraceEmulator.h"
+#include "TraceInterfaceDetector.h"
 
 #include "td/utils/overloaded.h"
 
@@ -12,31 +13,15 @@
 
 namespace mch {
 
-ParsedBlockLookupSource::InterfaceMap make_interface_map(const ::Trace &trace) {
+namespace {
+template <class CodeHash>
+ParsedBlockLookupSource::InterfaceMap adapt_interfaces(
+    const std::unordered_map<block::StdAddress, std::vector<::Trace::Detector::DetectedInterface>>& interfaces,
+    CodeHash account_code_hash) {
   ParsedBlockLookupSource::InterfaceMap result;
-
-  // Derive NFT code hashes from the detector's account state, preferring the
-  // latest emulated state over committed state. Zero means unknown.
-  auto account_code_hash = [&trace](const block::StdAddress &addr) {
-    td::Bits256 h;
-    h.set_zero();
-    auto range = trace.emulated_accounts.equal_range(addr);
-    if (range.first != range.second) {
-      const block::Account &acc = std::prev(range.second)->second;
-      if (acc.code.not_null()) {
-        return td::Bits256{acc.code->get_hash().bits()};
-      }
-    }
-    auto it = trace.committed_accounts.find(addr);
-    if (it != trace.committed_accounts.end() && it->second.code.not_null()) {
-      return td::Bits256{it->second.code->get_hash().bits()};
-    }
-    return h;
-  };
-
   // Use trace-final interfaces so emulated accounts resolve in tier 1. Variants
   // without a tier-1 lookup kind are ignored.
-  for (const auto &[addr, ifaces] : trace.interfaces) {
+  for (const auto &[addr, ifaces] : interfaces) {
     std::vector<schema::BlockchainInterfaceV2> adapted;
     const td::Bits256 code_hash = account_code_hash(addr);
     for (const auto &iface : ifaces) {
@@ -77,6 +62,41 @@ ParsedBlockLookupSource::InterfaceMap make_interface_map(const ::Trace &trace) {
     }
   }
   return result;
+}
+}  // namespace
+
+ParsedBlockLookupSource::InterfaceMap make_interface_map(const ::Trace &trace) {
+
+  // Derive NFT code hashes from the detector's account state, preferring the
+  // latest emulated state over committed state. Zero means unknown.
+  auto account_code_hash = [&trace](const block::StdAddress &addr) {
+    td::Bits256 h;
+    h.set_zero();
+    auto range = trace.emulated_accounts.equal_range(addr);
+    if (range.first != range.second) {
+      const block::Account &acc = std::prev(range.second)->second;
+      if (acc.code.not_null()) {
+        return td::Bits256{acc.code->get_hash().bits()};
+      }
+    }
+    auto it = trace.committed_accounts.find(addr);
+    if (it != trace.committed_accounts.end() && it->second.code.not_null()) {
+      return td::Bits256{it->second.code->get_hash().bits()};
+    }
+    return h;
+  };
+
+  return adapt_interfaces(trace.interfaces, account_code_hash);
+}
+
+ParsedBlockLookupSource::InterfaceMap make_interface_map(const ::DetectedAccounts& accounts) {
+  return adapt_interfaces(accounts.interfaces, [&](const block::StdAddress& address) {
+    auto it = accounts.states.find(address);
+    if (it != accounts.states.end() && it->second.code.not_null()) {
+      return td::Bits256{it->second.code->get_hash().bits()};
+    }
+    return td::Bits256::zero();
+  });
 }
 
 }  // namespace mch

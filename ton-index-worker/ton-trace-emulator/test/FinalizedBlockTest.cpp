@@ -2,7 +2,7 @@
 #include "TraceTestUtils.h"
 
 struct McBlockEmulatorTest {
-  static void check(bool emulate_tails) {
+  static void check() {
     auto external = trace_test::message(901, true);
     auto outgoing = trace_test::message(902);
     auto root = trace_test::node(external, {outgoing}, FinalityState::Finalized);
@@ -15,11 +15,11 @@ struct McBlockEmulatorTest {
     tx.block_id = root->block_id;
     tx.mc_block_seqno = 100;
     tx.out_msgs.push_back(OutMsgInfo{outgoing->get_hash().bits(), outgoing});
-    McBlockEmulator parser({}, [](ton::BlockSeqno) {}, {}, {}, emulate_tails);
+    McBlockEmulator parser({}, [](ton::BlockSeqno) {}, {}, {});
     std::vector<EmuRequest> requests;
     auto partial = parser.construct_commited_trace(tx, requests, {}, 1);
-    ASSERT_EQ(emulate_tails ? 1u : 0u, requests.size());
-    ASSERT_EQ(emulate_tails ? 1u : 0u, partial->children.size());
+    ASSERT_EQ(1u, requests.size());
+    ASSERT_EQ(1u, partial->children.size());
     ASSERT_TRUE(partial->finality_state == FinalityState::Finalized);
     TransactionInfo receiving;
     receiving.root = child->transaction_root;
@@ -39,7 +39,6 @@ struct McBlockEmulatorTest {
   }
 };
 
-TEST(FinalizedBlock, missing_tail_is_not_emulated_but_committed_children_remain) {
-  McBlockEmulatorTest::check(false);
-  McBlockEmulatorTest::check(true);
+TEST(FinalizedBlock, ordinary_emulator_keeps_tail_requests_and_committed_children) {
+  McBlockEmulatorTest::check();
 }

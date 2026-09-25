@@ -30,68 +30,25 @@ void TraceInterfaceDetector::start_up() {
                     promise.set_error(interfaces.move_as_error());
                     return;
                 }
-                td::actor::send_closure(SelfId, &TraceInterfaceDetector::got_interfaces, address, interfaces.move_as_ok(), false, std::move(promise));
+                td::actor::send_closure(SelfId, &TraceInterfaceDetector::got_emulated_interfaces, address,
+                                        interfaces.move_as_ok(), std::move(promise));
             })).release();
         emulated_detector_tasks++;
     }
 
-    // For committed accounts fetch block::Account and detect interfaces
-    for (const auto& address : trace_.get_addresses(true)) {
-        std::optional<block::Account> account_state;
-
-        for (const auto& shard_state : shard_states_) {
-            block::gen::ShardStateUnsplit::Record sstate;
-            if (!tlb::unpack_cell(shard_state, sstate)) {
-                continue;
+    auto addresses = trace_.get_addresses(true);
+    committed_detector_tasks = addresses.size();
+    auto committed = td::PromiseCreator::lambda(
+        [self = actor_id(this), promise = ig.get_promise()](td::Result<DetectedAccounts> result) mutable {
+            if (result.is_error()) {
+                promise.set_error(result.move_as_error());
+                return;
             }
-
-            if (!ton::shard_contains(ton::ShardIdFull(block::ShardId(sstate.shard_id)),
-                    ton::extract_addr_prefix(address.workchain, address.addr))) {
-                continue;
-            }
-
-            vm::AugmentedDictionary accounts_dict(vm::load_cell_slice_ref(sstate.accounts), 256, block::tlb::aug_ShardAccounts);
-            account_state = block::Account(address.workchain, address.addr.cbits());
-            auto account_cell = accounts_dict.lookup(address.addr);
-
-            if (account_cell.is_null()) {
-                if (!account_state->init_new(sstate.gen_utime)) {
-                    LOG(ERROR) << "Failed to initialize new account for " << std::to_string(address.workchain) << ":" << address.addr.to_hex();
-                    continue;
-                }
-            } else {
-                if (!account_state->unpack(std::move(account_cell), sstate.gen_utime,
-                            address.workchain == ton::masterchainId && config_->is_special_smartcontract(address.addr))) {
-                    LOG(ERROR) << "Failed to unpack account for " << std::to_string(address.workchain) << ":" << address.addr.to_hex();
-                    continue;
-                }
-            }
-            break;
-        }
-
-        if (!account_state) {
-            LOG(ERROR) << "Account " << std::to_string(address.workchain) << ":" << address.addr.to_hex() << " not found in shard states";
-            continue;
-        }
-
-        trace_.committed_accounts[address] = *account_state;
-
-        if (account_state->status == block::Account::acc_active && account_state->code.not_null() && account_state->data.not_null()) {
-            td::actor::create_actor<Trace::Detector>("InterfacesDetector", address, account_state->code, account_state->data, shard_states_, config_,
-                td::PromiseCreator::lambda([SelfId = actor_id(this), address, promise = ig.get_promise()](td::Result<std::vector<typename Trace::Detector::DetectedInterface>> interfaces) mutable {
-                    if (interfaces.is_error()) {
-                        promise.set_error(interfaces.move_as_error());
-                        return;
-                    }
-                    td::actor::send_closure(SelfId, &TraceInterfaceDetector::got_interfaces, address, interfaces.move_as_ok(), true, std::move(promise));
-                })).release();
-        } else {
-            // Account is not active, skip interface detection
-            LOG(DEBUG) << "Account " << std::to_string(address.workchain) << ":" << address.addr.to_hex() << " is not active, skipping interface detection";
-            got_interfaces(address, {}, true, ig.get_promise());
-        }
-        committed_detector_tasks++;
-    }
+            td::actor::send_closure(self, &TraceInterfaceDetector::got_committed_accounts,
+                                    result.move_as_ok(), std::move(promise));
+        });
+    td::actor::create_actor<AccountStatesDetector>("CommittedAccountStates", shard_states_, config_,
+                                                   std::move(addresses), std::move(committed)).release();
     if (measurement_) {
         measurement_->set_otel_attribute("ton.interfaces.emulated_accounts_count", emulated_detector_tasks);
         measurement_->set_otel_attribute("ton.interfaces.committed_accounts_count", committed_detector_tasks);
@@ -99,15 +56,9 @@ void TraceInterfaceDetector::start_up() {
     }
 }
 
-void TraceInterfaceDetector::got_interfaces(block::StdAddress address, std::vector<typename Trace::Detector::DetectedInterface> interfaces, bool is_committed, td::Promise<td::Unit> promise) {
-    if (is_committed) {
-      trace_.committed_interfaces[address] = interfaces;
-      if (emulated_addresses_.count(address) == 0) {
-        trace_.interfaces[address] = std::move(interfaces);
-      }
-    } else {
-      trace_.interfaces[address] = std::move(interfaces);
-    }
+void TraceInterfaceDetector::got_emulated_interfaces(block::StdAddress address,
+    std::vector<typename Trace::Detector::DetectedInterface> interfaces, td::Promise<td::Unit> promise) {
+    trace_.interfaces[address] = std::move(interfaces);
     promise.set_value(td::Unit());
 }
 
@@ -188,4 +139,91 @@ void TraceUpdateInterfaceDetector::finish() {
     promise_.set_value(std::move(update_));
   }
   stop();
+}
+
+void TraceInterfaceDetector::got_committed_accounts(DetectedAccounts accounts, td::Promise<td::Unit> promise) {
+    trace_.committed_accounts = std::move(accounts.states);
+    for (auto& [address, interfaces] : accounts.interfaces) {
+        trace_.committed_interfaces[address] = interfaces;
+        if (emulated_addresses_.count(address) == 0) {
+            trace_.interfaces[address] = std::move(interfaces);
+        }
+    }
+    promise.set_value(td::Unit());
+}
+
+void AccountStatesDetector::start_up() {
+    td::MultiPromise mp;
+    auto ig = mp.init_guard();
+    ig.add_promise(td::PromiseCreator::lambda([self = actor_id(this)](td::Result<td::Unit> result) mutable {
+        td::actor::send_closure(self, &AccountStatesDetector::finish, std::move(result));
+    }));
+    // For committed accounts fetch block::Account and detect interfaces
+    for (const auto& address : addresses_) {
+        std::optional<block::Account> account_state;
+
+        for (const auto& shard_state : shard_states_) {
+            block::gen::ShardStateUnsplit::Record sstate;
+            if (!tlb::unpack_cell(shard_state, sstate)) {
+                continue;
+            }
+
+            if (!ton::shard_contains(ton::ShardIdFull(block::ShardId(sstate.shard_id)),
+                    ton::extract_addr_prefix(address.workchain, address.addr))) {
+                continue;
+            }
+
+            vm::AugmentedDictionary accounts_dict(vm::load_cell_slice_ref(sstate.accounts), 256, block::tlb::aug_ShardAccounts);
+            account_state = block::Account(address.workchain, address.addr.cbits());
+            auto account_cell = accounts_dict.lookup(address.addr);
+
+            if (account_cell.is_null()) {
+                if (!account_state->init_new(sstate.gen_utime)) {
+                    LOG(ERROR) << "Failed to initialize new account for " << std::to_string(address.workchain) << ":" << address.addr.to_hex();
+                    continue;
+                }
+            } else {
+                if (!account_state->unpack(std::move(account_cell), sstate.gen_utime,
+                            address.workchain == ton::masterchainId && config_->is_special_smartcontract(address.addr))) {
+                    LOG(ERROR) << "Failed to unpack account for " << std::to_string(address.workchain) << ":" << address.addr.to_hex();
+                    continue;
+                }
+            }
+            break;
+        }
+
+        if (!account_state) {
+            LOG(ERROR) << "Account " << std::to_string(address.workchain) << ":" << address.addr.to_hex() << " not found in shard states";
+            continue;
+        }
+
+        accounts_.states[address] = *account_state;
+
+        if (account_state->status == block::Account::acc_active && account_state->code.not_null() && account_state->data.not_null()) {
+            td::actor::create_actor<Trace::Detector>("InterfacesDetector", address, account_state->code, account_state->data, shard_states_, config_,
+                td::PromiseCreator::lambda([SelfId = actor_id(this), address, promise = ig.get_promise()](td::Result<std::vector<typename Trace::Detector::DetectedInterface>> interfaces) mutable {
+                    if (interfaces.is_error()) {
+                        promise.set_error(interfaces.move_as_error());
+                        return;
+                    }
+                    td::actor::send_closure(SelfId, &AccountStatesDetector::got_interfaces, address, interfaces.move_as_ok(), std::move(promise));
+                })).release();
+        } else {
+            // Account is not active, skip interface detection
+            LOG(DEBUG) << "Account " << std::to_string(address.workchain) << ":" << address.addr.to_hex() << " is not active, skipping interface detection";
+            got_interfaces(address, {}, ig.get_promise());
+        }
+    }
+}
+
+void AccountStatesDetector::got_interfaces(block::StdAddress address,
+    std::vector<Trace::Detector::DetectedInterface> interfaces, td::Promise<td::Unit> promise) {
+    accounts_.interfaces[address] = std::move(interfaces);
+    promise.set_value(td::Unit());
+}
+
+void AccountStatesDetector::finish(td::Result<td::Unit> result) {
+    if (result.is_error()) promise_.set_error(result.move_as_error());
+    else promise_.set_value(std::move(accounts_));
+    stop();
 }

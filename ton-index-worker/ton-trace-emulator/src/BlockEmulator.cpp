@@ -27,11 +27,6 @@ class InterblockTraceStore {
     return true;
   }
 
-  void forget(const td::Bits256& key) {
-    std::lock_guard<std::mutex> lock(mutex_);
-    trace_ids_.erase(key);
-  }
-
  private:
   std::mutex mutex_;
   std::unordered_map<td::Bits256, TraceIds> trace_ids_;
@@ -153,138 +148,15 @@ td::Status attach_emulated_tails(TraceUpdate& update, std::vector<std::unique_pt
 }  // namespace
 
 
-class BlockParser: public td::actor::Actor {
-    td::Ref<ton::validator::BlockData> block_data_;
-    ton::BlockSeqno mc_block_seqno_;
-    td::Promise<std::vector<TransactionInfo>> promise_;
-    MeasurementPtr measurement_;
-public:
-    BlockParser(td::Ref<ton::validator::BlockData> block_data, ton::BlockSeqno mc_block_seqno, td::Promise<std::vector<TransactionInfo>> promise, const MeasurementPtr& measurement)
-        : block_data_(std::move(block_data)), mc_block_seqno_(mc_block_seqno), promise_(std::move(promise)), measurement_(measurement) {}
-
-    void start_up() override {
-        std::vector<TransactionInfo> res;
-
-        block::gen::Block::Record blk;
-        block::gen::BlockInfo::Record info;
-        block::gen::BlockExtra::Record extra;
-        if (!(tlb::unpack_cell(block_data_->root_cell(), blk) && tlb::unpack_cell(blk.info, info) && tlb::unpack_cell(blk.extra, extra))) {
-            promise_.set_error(td::Status::Error("block data info extra unpack failed"));
-            stop();
-            return;
-        }
-        try {
-            vm::AugmentedDictionary acc_dict{vm::load_cell_slice_ref(extra.account_blocks), 256, block::tlb::aug_ShardAccountBlocks};
-
-            td::Bits256 cur_addr = td::Bits256::zero();
-            bool eof = false;
-            bool allow_same = true;
-            while (!eof) {
-                auto value = acc_dict.extract_value(
-                    acc_dict.vm::DictionaryFixed::lookup_nearest_key(cur_addr.bits(), 256, true, allow_same));
-                if (value.is_null()) {
-                    eof = true;
-                    break;
-                }
-                allow_same = false;
-                block::gen::AccountBlock::Record acc_blk;
-                if (!(tlb::csr_unpack(std::move(value), acc_blk) && acc_blk.account_addr == cur_addr)) {
-                    promise_.set_error(td::Status::Error("invalid AccountBlock for account " + cur_addr.to_hex()));
-                    stop();
-                    return;
-                }
-                vm::AugmentedDictionary trans_dict{vm::DictNonEmpty(), std::move(acc_blk.transactions), 64,
-                                                    block::tlb::aug_AccountTransactions};
-                td::BitArray<64> cur_trans{(long long)0};
-                while (true) {
-                    auto tvalue = trans_dict.extract_value_ref(
-                        trans_dict.vm::DictionaryFixed::lookup_nearest_key(cur_trans.bits(), 64, true));
-                    if (tvalue.is_null()) {
-                        break;
-                    }
-                    block::gen::Transaction::Record trans;
-                    if (!tlb::unpack_cell(tvalue, trans)) {
-                        promise_.set_error(td::Status::Error("Failed to unpack Transaction"));
-                        stop();
-                        return;
-                    }
-                    block::gen::TransactionDescr::Record_trans_ord descr;
-                    if (!tlb::unpack_cell(trans.description, descr)) {
-                        continue;
-                    }
-
-                    TransactionInfo tx_info;
-
-                    tx_info.account = block::StdAddress(block_data_->block_id().id.workchain, cur_addr);
-                    tx_info.hash = tvalue->get_hash().bits();
-                    tx_info.root = tvalue;
-                    tx_info.lt = trans.lt;
-                    tx_info.block_id = block_data_->block_id().id;
-                    tx_info.mc_block_seqno = mc_block_seqno_;
-
-                    if (trans.r1.in_msg->prefetch_long(1)) {
-                        auto msg = trans.r1.in_msg->prefetch_ref();
-                        tx_info.in_msg_hash = msg->get_hash().bits();
-                        auto message_cs = vm::load_cell_slice(trans.r1.in_msg->prefetch_ref());
-                        auto msg_tag = block::gen::t_CommonMsgInfo.get_tag(message_cs);
-                        if (msg_tag == block::gen::CommonMsgInfo::ext_in_msg_info) {
-                            tx_info.trace_ids = TraceIds{
-                                .root_tx_hash = tx_info.hash,
-                                .ext_in_msg_hash = msg->get_hash().bits(),
-                                .ext_in_msg_hash_norm = ext_in_msg_get_normalized_hash(msg).move_as_ok()
-                            };
-                        } else if (msg_tag == block::gen::CommonMsgInfo::int_msg_info) {
-                            block::gen::CommonMsgInfo::Record_int_msg_info msg_info;
-                            block::StdAddress source;
-                            if (tlb::unpack(message_cs, msg_info) &&
-                                block::tlb::t_MsgAddressInt.extract_std_address(msg_info.src, source) &&
-                                source.workchain == ton::masterchainId && source.addr.is_zero()) {
-                                // Protocol-generated masterchain messages have no external-message trace root.
-                                continue;
-                            }
-                        }
-                    } else {
-                        LOG(ERROR) << "Ordinary transaction without in_msg, skipping";
-                        continue;
-                    }
-
-                    // LOG(INFO) << "TX hash: " << tx_info.hash.to_hex();
-
-                    if (trans.outmsg_cnt != 0) {
-                        vm::Dictionary dict{trans.r1.out_msgs, 15};
-                        for (int x = 0; x < trans.outmsg_cnt; x++) {
-                            auto value = dict.lookup_ref(td::BitArray<15>{x});
-                            OutMsgInfo out_msg_info;
-                            out_msg_info.hash = value->get_hash().bits();
-                            out_msg_info.root = value;
-                            tx_info.out_msgs.push_back(std::move(out_msg_info));
-
-                            // LOG(INFO) << "  out msg: " << out_msg_info.hash.to_hex();
-                        }
-                    }
-
-                    res.push_back(tx_info);
-                }
-            }
-        } catch (const vm::VmError& err) {
-            promise_.set_error(td::Status::Error(PSLICE() << "error while parsing AccountBlocks : " << err.get_msg()));
-            stop();
-            return;
-        }
-        promise_.set_value(std::move(res));
-        stop();
-    }
-};
 
 McBlockEmulator::McBlockEmulator(schema::MasterchainBlockDataState mc_data_state,
                                  std::function<void(ton::BlockSeqno)>
                                      trace_ids_resolved,
                                  std::function<void(td::Promise<td::Unit>)> promote_confirmed,
-                                 td::Promise<FinalizedBlockResult> promise, bool emulate_tails)
+                                 td::Promise<FinalizedBlockResult> promise)
     : mc_data_state_(std::move(mc_data_state)),
       trace_ids_resolved_(std::move(trace_ids_resolved)),
       promise_(std::move(promise)),
-      emulate_tails_(emulate_tails),
       blocks_left_to_parse_(mc_data_state_.shard_blocks_diff_.size()),
       promote_confirmed_(std::move(promote_confirmed)) {
 }
@@ -376,18 +248,11 @@ void McBlockEmulator::resolve_trace_ids() {
         // write trace_id for out_msgs for interblock chains
         if (tx.trace_ids.has_value()) {
             for (const auto& out_msg : tx.out_msgs) {
-                if (!emulate_tails_ && block::gen::t_CommonMsgInfo.get_tag(vm::load_cell_slice(out_msg.root)) !=
-                        block::gen::CommonMsgInfo::int_msg_info) {
-                    continue;
-                }
                 finalized_interblock_trace_store().put(
                     out_msg.hash, tx.trace_ids.value());
-                if (emulate_tails_) {
-                    confirmed_interblock_trace_store().put(out_msg.hash, tx.trace_ids.value());
-                }
+                confirmed_interblock_trace_store().put(out_msg.hash, tx.trace_ids.value());
             }
         }
-        if (!emulate_tails_) finalized_interblock_trace_store().forget(tx.in_msg_hash);
         tx_by_in_msg_hash_.insert({tx.in_msg_hash, tx});
     }
     auto mc_seqno =
@@ -439,7 +304,7 @@ std::unique_ptr<TraceNode> McBlockEmulator::construct_commited_trace(const Trans
             }
             auto child = construct_commited_trace(child_tx, reqs, nullptr, depth + 1);
             trace_node->children.push_back(std::move(child));
-        } else if (emulate_tails_) {
+        } else {
             // remember where to attach the emulated node
             size_t idx = trace_node->children.size();
             reqs.push_back(EmuRequest{
@@ -634,7 +499,7 @@ void McBlockEmulator::finish_block_if_done(bool promoted) {
       return lhs.fragments.front().ext_in_msg_hash_norm < rhs.fragments.front().ext_in_msg_hash_norm;
     });
     LOG(INFO) << "Finished processing mc block " << blkid.seqno
-              << " mode=" << (promoted ? "promotion" : emulate_tails_ ? "emulation" : "finalized")
+              << " mode=" << (promoted ? "promotion" : "emulation")
               << " parsed_transactions=" << txs_.size() << " trace_fragments=" << traces_cnt_
               << " trace_updates=" << trace_updates_.size()
               << " elapsed_ms=" << (td::Timestamp::now().at() - start_time_.at()) * 1000;
