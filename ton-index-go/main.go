@@ -1345,6 +1345,7 @@ func GetPendingTraces(c *fiber.Ctx) error {
 // @param include_transactions query bool false "Include `transactions_full` array with detailed transaction data for each action in response." default(false)
 // @param limit query int32 false "Limit number of queried rows. Use with *offset* to batch read." minimum(1) maximum(1000) default(10)
 // @param offset query int32 false "Skip first N rows. Use with *limit* to batch read." minimum(0) default(0)
+// @param cursor query string false "Continue after the page that returned this `next_cursor`. Send the same filters and sort; not combined with *offset*."
 // @param sort query string false "Sort actions by lt." Enums(asc, desc) default(desc)
 // @router			/api/v3/actions [get]
 // @security		APIKeyHeader
@@ -1367,7 +1368,7 @@ func GetActions(c *fiber.Ctx) error {
 		act_req.SupportedActionTypes = []string{value_str}
 	}
 
-	res, book, metadata, err := pool.QueryActionsV2(act_req, request_settings)
+	res, book, metadata, nextCursor, err := pool.QueryActionsV2(act_req, request_settings)
 	if err != nil {
 		return err
 	}
@@ -1376,7 +1377,7 @@ func GetActions(c *fiber.Ctx) error {
 	// }
 	crud.SubstituteImgproxyBaseUrl(&metadata, settings.ImgProxyBaseUrl)
 
-	resp := models.ActionsResponse{Actions: res, AddressBook: book, Metadata: metadata}
+	resp := models.ActionsResponse{Actions: res, AddressBook: book, Metadata: metadata, NextCursor: nextCursor}
 	return c.Status(200).JSON(resp)
 }
 

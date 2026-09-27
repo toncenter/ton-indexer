@@ -228,6 +228,7 @@ type ActionRequest struct {
 	SupportedActionTypes []string        `query:"supported_action_types"`
 	IncludeAccounts      *bool           `query:"include_accounts"`
 	IncludeTransactions  *bool           `query:"include_transactions"`
+	Cursor               *string         `query:"cursor"`
 	UtimeParams
 	LtParams
 	LimitParams
