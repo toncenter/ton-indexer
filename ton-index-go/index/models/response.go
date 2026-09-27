@@ -98,6 +98,7 @@ type ActionsResponse struct {
 	Actions     []Action    `json:"actions"`
 	AddressBook AddressBook `json:"address_book"`
 	Metadata    Metadata    `json:"metadata"`
+	NextCursor  *string     `json:"next_cursor,omitempty"`
 } // @name ActionsResponse
 
 type DNSRecordsResponse struct {

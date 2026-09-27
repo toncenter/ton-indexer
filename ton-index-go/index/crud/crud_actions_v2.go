@@ -15,9 +15,9 @@ import (
 func (db *DbClient) QueryActionsV2(
 	req models.ActionRequest,
 	settings models.RequestSettings,
-) ([]models.Action, models.AddressBook, models.Metadata, error) {
+) ([]models.Action, models.AddressBook, models.Metadata, *string, error) {
 	if req.InitiatedByAccount != nil && (req.AccountAddress == nil || len(*req.AccountAddress) == 0) {
-		return nil, nil, nil, models.IndexError{Code: 422, Message: "account is required when initiated_by_account is set"}
+		return nil, nil, nil, nil, models.IndexError{Code: 422, Message: "account is required when initiated_by_account is set"}
 	}
 	if len(req.SupportedActionTypes) == 0 {
 		req.SupportedActionTypes = []string{"latest"}
@@ -30,7 +30,7 @@ func (db *DbClient) QueryActionsV2(
 		var serr error
 		sortOrder, serr = getSortOrder(*v)
 		if serr != nil {
-			return nil, nil, nil, serr
+			return nil, nil, nil, nil, serr
 		}
 	}
 	offset := 0
@@ -41,15 +41,37 @@ func (db *DbClient) QueryActionsV2(
 	if lim_req.Limit != nil {
 		limit = max(1, *lim_req.Limit)
 		if limit > int32(settings.MaxLimit) {
-			return nil, nil, nil, models.IndexError{Code: 422, Message: fmt.Sprintf("limit is not allowed: %d > %d", limit, settings.MaxLimit)}
+			return nil, nil, nil, nil, models.IndexError{Code: 422, Message: fmt.Sprintf("limit is not allowed: %d > %d", limit, settings.MaxLimit)}
 		}
 	}
 
 	parts := actionsQueryPartsV2(req, sortOrder)
+	w := routeWindow{
+		startLt:    req.StartLt,
+		endLt:      req.EndLt,
+		startUtime: (*uint64)(req.StartUtime),
+		endUtime:   (*uint64)(req.EndUtime),
+		orderByNow: parts.orderKey == "utime",
+		sortDesc:   sortOrder == "desc",
+	}
+	if req.Cursor != nil {
+		cur, cerr := decodeActionsCursor(*req.Cursor)
+		if cerr != nil {
+			return nil, nil, nil, nil, cerr
+		}
+		if offset > 0 {
+			return nil, nil, nil, nil, models.IndexError{Code: 422, Message: "cursor and offset can not be used together"}
+		}
+		if cur.Utime != w.orderByNow || cur.Desc != w.sortDesc {
+			return nil, nil, nil, nil, models.IndexError{Code: 422, Message: "cursor does not match the sort order or the time filter of the request"}
+		}
+		parts.applyCursor(cur)
+		cur.narrowWindow(&w)
+	}
 
 	fc, release, err := db.acquireFedForRequest(settings)
 	if err != nil {
-		return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
+		return nil, nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
 	defer release()
 
@@ -68,25 +90,17 @@ func (db *DbClient) QueryActionsV2(
 		// a masterchain round's actions live wholly in one partition
 		conn, cerr := fc.connForSeqno(uint64(*req.McSeqno))
 		if cerr != nil {
-			return nil, nil, nil, models.IndexError{Code: 500, Message: cerr.Error()}
+			return nil, nil, nil, nil, models.IndexError{Code: 500, Message: cerr.Error()}
 		}
 		exists, eerr := queryBlockExists(*req.McSeqno, conn, settings)
 		if eerr != nil {
-			return nil, nil, nil, eerr
+			return nil, nil, nil, nil, eerr
 		}
 		if !exists {
-			return nil, nil, nil, models.IndexError{Code: 404, Message: fmt.Sprintf("masterchain block %d not found", *req.McSeqno)}
+			return nil, nil, nil, nil, models.IndexError{Code: 404, Message: fmt.Sprintf("masterchain block %d not found", *req.McSeqno)}
 		}
 		raw_actions, err = fetch(buildActionsOffsetQueryV2(parts, offset, int(limit)), conn)
 	} else if fc.federated && actionsHasIdFilter(req) && offset+int(limit) <= idMergeMaxRows {
-		w := routeWindow{
-			startLt:    req.StartLt,
-			endLt:      req.EndLt,
-			startUtime: (*uint64)(req.StartUtime),
-			endUtime:   (*uint64)(req.EndUtime),
-			orderByNow: parts.orderKey == "utime",
-			sortDesc:   sortOrder == "desc",
-		}
 		if dec, ok := idSingleLeg(w, fc.split, fc.utimeMargin); ok {
 			// Enrichment must follow the DB that served the page (cold on hot-error fallback).
 			routed = true
@@ -95,7 +109,7 @@ func (db *DbClient) QueryActionsV2(
 				func(conn *pgxpool.Conn) ([]models.RawAction, error) { return fetch(query, conn) },
 				actionOrderKey(w.orderByNow), int(limit), 0)
 			if err != nil {
-				return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
+				return nil, nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 			}
 		} else {
 			// Mixed results must be enriched from each action's owning partition.
@@ -105,16 +119,29 @@ func (db *DbClient) QueryActionsV2(
 				func(conn *pgxpool.Conn) ([]models.RawAction, error) { return fetch(query, conn) },
 				actionMergeKey, &desc)
 			if err != nil {
-				return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
+				return nil, nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 			}
 			raw_actions = slicePage(raw_actions, offset, int(limit))
 		}
 	} else {
 		routed = true
-		raw_actions, servedCold, err = queryActionsRouted(fc, req, parts, sortOrder, offset, int(limit), fetch)
+		raw_actions, servedCold, err = queryActionsRouted(fc, w, parts, offset, int(limit), fetch)
 	}
 	if err != nil {
-		return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
+		return nil, nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
+	}
+
+	var nextCursor *string
+	if n := len(raw_actions); n > 0 && n == int(limit) {
+		cur, cerr := actionsCursorAfter(&raw_actions[n-1], w.orderByNow, w.sortDesc)
+		var token string
+		if cerr == nil {
+			token, cerr = cur.encode()
+		}
+		if cerr != nil {
+			return nil, nil, nil, nil, models.IndexError{Code: 500, Message: cerr.Error()}
+		}
+		nextCursor = &token
 	}
 
 	actions := []models.Action{}
@@ -125,7 +152,7 @@ func (db *DbClient) QueryActionsV2(
 		parse.CollectAddressesFromAction(&addr_map, &raw_actions[idx])
 		action, perr := parse.ParseRawAction(&raw_actions[idx])
 		if perr != nil {
-			return nil, nil, nil, models.IndexError{Code: 500, Message: perr.Error()}
+			return nil, nil, nil, nil, models.IndexError{Code: 500, Message: perr.Error()}
 		}
 		actions = append(actions, *action)
 	}
@@ -137,13 +164,13 @@ func (db *DbClient) QueryActionsV2(
 			eerr = enrichActionsAccounts(fc, actions, settings)
 		}
 		if eerr != nil {
-			return nil, nil, nil, models.IndexError{Code: 500, Message: eerr.Error()}
+			return nil, nil, nil, nil, models.IndexError{Code: 500, Message: eerr.Error()}
 		}
 	}
 	if req.IncludeTransactions != nil && *req.IncludeTransactions {
 		actions, err = queryActionsTransactionsImpl(fc, release, actions, settings, db.Kvrocks)
 		if err != nil {
-			return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
+			return nil, nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 		}
 	}
 	if len(addr_map) > 0 {
@@ -155,28 +182,28 @@ func (db *DbClient) QueryActionsV2(
 			release()
 			book, metadata, err = db.queryKvrocksEnrichment(addr_list, settings)
 			if err != nil {
-				return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
+				return nil, nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 			}
 		} else if !settings.NoAddressBook || !settings.NoMetadata {
 			coldConn, cerr := fc.cold()
 			if cerr != nil {
-				return nil, nil, nil, models.IndexError{Code: 500, Message: cerr.Error()}
+				return nil, nil, nil, nil, models.IndexError{Code: 500, Message: cerr.Error()}
 			}
 			if !settings.NoAddressBook {
 				book, err = QueryAddressBookImpl(addr_list, coldConn, settings)
 				if err != nil {
-					return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
+					return nil, nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 				}
 			}
 			if !settings.NoMetadata {
 				metadata, err = QueryMetadataImpl(addr_list, coldConn, settings)
 				if err != nil {
-					return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
+					return nil, nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 				}
 			}
 		}
 	}
-	return actions, book, metadata, nil
+	return actions, book, metadata, nextCursor, nil
 }
 
 // enrichActionsAccounts batches account enrichment by the action's owning DB.
@@ -264,29 +291,20 @@ func actionOrderKey(orderByNow bool) func(*models.RawAction) *uint64 {
 // queryActionsRouted returns one router-served page plus the side it came from.
 func queryActionsRouted(
 	fc *fedConns,
-	req models.ActionRequest,
+	w routeWindow,
 	parts actionsQueryParts,
-	sortOrder string,
 	offset, limit int,
 	fetch func(query string, conn *pgxpool.Conn) ([]models.RawAction, error),
 ) ([]models.RawAction, bool, error) {
 	query := buildActionsOffsetQueryV2(parts, offset, limit)
 
 	// Match the sort axis selected by actionsQueryPartsV2.
-	orderByNow := parts.orderKey == "utime"
+	orderByNow := w.orderByNow
 
 	// Single pool: read cold directly, no classification.
 	dec := routeCold
 	var floor uint64
 	if fc.federated {
-		w := routeWindow{
-			startLt:    req.StartLt,
-			endLt:      req.EndLt,
-			startUtime: (*uint64)(req.StartUtime),
-			endUtime:   (*uint64)(req.EndUtime),
-			orderByNow: orderByNow,
-			sortDesc:   sortOrder == "desc",
-		}
 		dec = classifyRoute(w, fc.split, fc.utimeMargin)
 
 		// Verify against the same floor classifyRoute used.
@@ -496,6 +514,7 @@ func actionsQueryPartsV2(req models.ActionRequest, sort_order string) actionsQue
 	from_query := `actions as A`
 	filter_list := []string{}
 	orderby_query := ``
+	var order_cols []string
 	args := []any{req.SupportedActionTypes}
 	// time
 	order_by_now := false
@@ -616,17 +635,21 @@ func actionsQueryPartsV2(req models.ActionRequest, sort_order string) actionsQue
 		if order_by_now {
 			orderby_query = fmt.Sprintf(" order by AA.account %s, AA.trace_end_utime %s, AA.trace_id %s, AA.action_end_utime %s, AA.action_id %s",
 				sort_order, sort_order, sort_order, sort_order, sort_order)
+			order_cols = []string{"AA.trace_end_utime", "AA.trace_id", "AA.action_end_utime", "AA.action_id"}
 		} else {
 			orderby_query = fmt.Sprintf(" order by AA.account %s, AA.trace_end_lt %s, AA.trace_id %s, AA.action_end_lt %s, AA.action_id %s",
 				sort_order, sort_order, sort_order, sort_order, sort_order)
+			order_cols = []string{"AA.trace_end_lt", "AA.trace_id", "AA.action_end_lt", "AA.action_id"}
 		}
 	} else {
 		if order_by_now {
 			orderby_query = fmt.Sprintf(" order by A.trace_end_utime %s, A.trace_id %s, A.end_utime %s, A.action_id %s",
 				sort_order, sort_order, sort_order, sort_order)
+			order_cols = []string{"A.trace_end_utime", "A.trace_id", "A.end_utime", "A.action_id"}
 		} else {
 			orderby_query = fmt.Sprintf(" order by A.trace_end_lt %s, A.trace_id %s, A.end_lt %s, A.action_id %s",
 				sort_order, sort_order, sort_order, sort_order)
+			order_cols = []string{"A.trace_end_lt", "A.trace_id", "A.end_lt", "A.action_id"}
 		}
 	}
 	filter_list = append(filter_list, "A.end_lt is not NULL")
@@ -647,6 +670,7 @@ func actionsQueryPartsV2(req models.ActionRequest, sort_order string) actionsQue
 		filterList: filter_list,
 		args:       args,
 		orderBy:    orderby_query,
+		orderCols:  order_cols,
 		orderKey:   orderKey,
 	}
 }
@@ -659,6 +683,7 @@ type actionsQueryParts struct {
 	filterList []string
 	args       []any
 	orderBy    string
+	orderCols  []string
 	orderKey   string
 }
 
