@@ -15,9 +15,9 @@ type actionsCursor struct {
 	Utime    bool
 	Desc     bool
 	TraceEnd int64
-	TraceId  []byte
+	TraceId  [32]byte
 	End      int64
-	ActionId []byte
+	ActionId [32]byte
 }
 
 func (c actionsCursor) encode() (string, error) {
@@ -31,7 +31,7 @@ func decodeActionsCursor(s string) (actionsCursor, error) {
 	if err == nil {
 		err = msgpack.Unmarshal(b, &c)
 	}
-	if err != nil || len(c.TraceId) != 32 || len(c.ActionId) != 32 {
+	if err != nil {
 		return actionsCursor{}, models.IndexError{Code: 422, Message: "invalid cursor"}
 	}
 	return c, nil
@@ -46,7 +46,7 @@ func actionsCursorAfter(a *models.RawAction, utime, desc bool) (actionsCursor, e
 	if err != nil {
 		return actionsCursor{}, err
 	}
-	c := actionsCursor{Utime: utime, Desc: desc, TraceEnd: a.TraceEndLt, TraceId: traceId, End: a.EndLt, ActionId: actionId}
+	c := actionsCursor{Utime: utime, Desc: desc, TraceEnd: a.TraceEndLt, TraceId: [32]byte(traceId), End: a.EndLt, ActionId: [32]byte(actionId)}
 	if utime {
 		c.TraceEnd, c.End = a.TraceEndUtime, a.EndUtime
 	}
@@ -60,8 +60,8 @@ func (p *actionsQueryParts) applyCursor(c actionsCursor) {
 		op = "<"
 	}
 	p.filterList = append(p.filterList, fmt.Sprintf("(%s) %s (%d, '%s'::tonhash, %d, '%s'::tonhash)",
-		strings.Join(p.orderCols, ", "), op, c.TraceEnd, base64.StdEncoding.EncodeToString(c.TraceId),
-		c.End, base64.StdEncoding.EncodeToString(c.ActionId)))
+		strings.Join(p.orderCols, ", "), op, c.TraceEnd, base64.StdEncoding.EncodeToString(c.TraceId[:]),
+		c.End, base64.StdEncoding.EncodeToString(c.ActionId[:])))
 }
 
 // narrowWindow bounds the router window by the cursor so pages past the split go straight to cold.
