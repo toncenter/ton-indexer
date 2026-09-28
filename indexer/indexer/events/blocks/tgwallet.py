@@ -26,9 +26,8 @@ async def _storage_changed(tx: Transaction) -> bool:
     after = states.get(tx.account_state_hash_after)
     if before is not None and after is not None:
         return before['data_hash'] != after['data_hash']
-    logger.info(f"tg-wallet key rotation {tx.hash} accepted without the storage check")
-    return True
-
+    else:
+        return False
 
 class ChangeWalletKeyBlock(Block):
     """
