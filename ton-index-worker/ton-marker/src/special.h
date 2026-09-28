@@ -11,6 +11,7 @@ const unsigned OPCODE_HIGHLOAD_V3_INTERNAL_REQUEST = 0xae42e5a4;
     
 int count_actions_depth(vm::Ref<vm::Cell> list);
 
-bool try_parse_special(std::string opcode_name, vm::CellSlice& cs, tlb::JsonPrinter& pp, std::string& output_str);
+bool try_parse_special(std::string opcode_name, vm::CellSlice& cs, tlb::JsonPrinter& pp, std::string& output_str,
+                       int print_limit);
 
 } // namespace ton_marker
