@@ -19,6 +19,13 @@ import (
 	"github.com/toncenter/ton-indexer/ton-index-go/index/models"
 )
 
+const (
+	maxMarkerBOCRequests    = 2000
+	maxMarkerOpcodeRequests = 1000
+	maxMarkerEncodedBOCSize = 2 * 1024 * 1024
+	maxMarkerBatchBOCSize   = 16 * 1024 * 1024
+)
+
 // check if library is loaded and initialized
 var isLibraryInitialized bool
 
@@ -40,12 +47,28 @@ func MarkerRequest(opcodesList []uint32, bocBase64List []string) ([]string, []st
 	if !isLibraryInitialized {
 		return nil, nil, errors.New("ton-marker library is not initialized")
 	}
+	if len(opcodesList) > maxMarkerOpcodeRequests {
+		return nil, nil, fmt.Errorf("ton-marker batch exceeds %d opcodes", maxMarkerOpcodeRequests)
+	}
+	if len(bocBase64List) > maxMarkerBOCRequests {
+		return nil, nil, fmt.Errorf("ton-marker batch exceeds %d BOCs", maxMarkerBOCRequests)
+	}
+	totalBOCSize := 0
+	for _, boc := range bocBase64List {
+		if len(boc) > maxMarkerEncodedBOCSize {
+			return nil, nil, fmt.Errorf("ton-marker BOC exceeds %d bytes", maxMarkerEncodedBOCSize)
+		}
+		if len(boc) > maxMarkerBatchBOCSize-totalBOCSize {
+			return nil, nil, fmt.Errorf("ton-marker batch BOCs exceed %d bytes", maxMarkerBatchBOCSize)
+		}
+		totalBOCSize += len(boc)
+	}
 	// allocate memory for opcodes array
 	var opcodesPtr unsafe.Pointer
 	if len(opcodesList) > 0 {
 		opcodesPtr = C.malloc(C.size_t(len(opcodesList) * int(unsafe.Sizeof(C.uint(0)))))
 		if opcodesPtr == nil {
-			panic("Failed to allocate memory for opcodes")
+			return nil, nil, errors.New("failed to allocate memory for opcodes")
 		}
 		defer C.free(opcodesPtr)
 
@@ -62,7 +85,7 @@ func MarkerRequest(opcodesList []uint32, bocBase64List []string) ([]string, []st
 	if len(bocBase64List) > 0 {
 		bocListPtr = C.malloc(C.size_t(len(bocBase64List) * int(unsafe.Sizeof(uintptr(0)))))
 		if bocListPtr == nil {
-			panic("Failed to allocate memory for boc list")
+			return nil, nil, errors.New("failed to allocate memory for boc list")
 		}
 		defer C.free(bocListPtr)
 	}

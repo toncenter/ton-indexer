@@ -1,9 +1,15 @@
 #pragma once
 
+#include <cstddef>
 #include <string>
 #include <vector>
 
 namespace ton_marker {
+
+inline constexpr std::size_t kMaxEncodedBocBytes = 2 * 1024 * 1024;
+inline constexpr std::size_t kMaxBocBatchRequests = 2000;
+inline constexpr std::size_t kMaxOpcodeBatchRequests = 1000;
+inline constexpr std::size_t kMaxBatchEncodedBocBytes = 16 * 1024 * 1024;
 
 // core types for library
 struct DecodeBocRequest {

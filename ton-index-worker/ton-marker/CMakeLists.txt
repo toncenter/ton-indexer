@@ -49,6 +49,15 @@ add_executable(ton-marker-cli
 target_compile_features(ton-marker-cli PRIVATE cxx_std_20)
 target_link_libraries(ton-marker-cli PRIVATE ton-marker-core)
 
+add_executable(test-ton-marker
+    test/logic.cpp
+)
+
+target_compile_features(test-ton-marker PRIVATE cxx_std_20)
+target_link_libraries(test-ton-marker PRIVATE ton-marker ton-marker-core)
+
+add_test(NAME ton-marker COMMAND test-ton-marker)
+
 # install targets
 install(TARGETS ton-marker-core ton-marker ton-marker-cli
     RUNTIME DESTINATION bin

@@ -22,7 +22,8 @@ int count_actions_depth(vm::Ref<vm::Cell> list) {
 
 // JsonPrinter should be reset if this function fails, 
 // bc it writes failed result to pp
-bool try_parse_special(std::string opcode_name, vm::CellSlice& cs, tlb::JsonPrinter& pp, std::string& output_str) {
+bool try_parse_special(std::string opcode_name, vm::CellSlice& cs, tlb::JsonPrinter& pp, std::string& output_str,
+                       int print_limit) {
     if (opcode_name == "w5_external_signed_request" || opcode_name == "w5_internal_signed_request" || opcode_name == "w5_extension_action_request") {        
         // we can't use W5MsgBody just as is. it has snake cells for actions,
         // and tlb-generated code is not capable of detecting how many cells are in the snake.
@@ -86,7 +87,7 @@ bool try_parse_special(std::string opcode_name, vm::CellSlice& cs, tlb::JsonPrin
         // try parse externals that start with signatures
         
         // helper to try wallet parser with output restoration on failure
-        auto try_wallet_parser = [&cs, &pp, &output_str](const auto& parser) -> bool {
+        auto try_wallet_parser = [&cs, &pp, &output_str, print_limit](const auto& parser) -> bool {
             auto cs_copy = cs;
             if (parser.print_skip(pp, cs_copy) && cs_copy.empty_ext()) { // empty_ext() checks that all refs are empty
                 return true;
@@ -94,6 +95,7 @@ bool try_parse_special(std::string opcode_name, vm::CellSlice& cs, tlb::JsonPrin
             // restore output on failure
             output_str = "";
             pp = tlb::JsonPrinter(&output_str);
+            pp.set_limit(print_limit);
             return false;
         };
 
