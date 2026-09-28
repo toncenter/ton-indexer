@@ -163,8 +163,11 @@ def extract_tg_wallet_key_rotation_states(tx: Transaction, msg: Message) -> set[
     if msg.message_content is None or \
             get_tg_wallet_request_opcode(msg.message_content.body) != TG_WALLET_CHANGE_PUBLIC_KEY_INTERNAL:
         return set()
-    return {ExtraAccountRequest(account=tx.account, request_type='account_states', state_hash=state_hash)
-            for state_hash in (tx.account_state_hash_before, tx.account_state_hash_after)}
+    requests = {ExtraAccountRequest(account=tx.account, request_type='account_states', state_hash=state_hash)
+                for state_hash in (tx.account_state_hash_before, tx.account_state_hash_after)}
+    # the latest storage, checked when the states are not stored
+    requests.add(ExtraAccountRequest(account=tx.account, request_type='data_boc'))
+    return requests
 
 
 def extract_extra_accounts_data_requests(tx: Transaction) -> set[ExtraAccountRequest]:

@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import logging
 
-from pytoniq_core import Slice
+from nacl.exceptions import BadSignatureError
+from nacl.signing import VerifyKey
+from pytoniq_core import Address, Slice, begin_cell
 
 from indexer.core.database import Transaction
 from indexer.events import context
@@ -19,15 +21,59 @@ from indexer.events.blocks.utils import AccountId
 logger = logging.getLogger(__name__)
 
 
-async def _storage_changed(tx: Transaction) -> bool:
-    extra = await context.interface_repository.get().get_extra_data(tx.account, 'account_states')
+# KeyRotationProofPayload tag, the new key signs it together with the wallet address
+KEY_ROTATION_PROOF_TAG = 0x4B45595F524F544154494F4E
+
+
+def _signature_valid(public_key: bytes, signed_hash: bytes, signature: bytes | None) -> bool:
+    if signature is None:
+        return False
+    try:
+        VerifyKey(public_key).verify(signed_hash, signature)
+        return True
+    except BadSignatureError:
+        return False
+
+
+def _latest_state_confirms(tx: Transaction, request: TgWalletChangePublicKeyRequest, data_boc: str) -> bool:
+    """
+    Checks the request against the latest wallet storage (revision:uint8 seqno:uint32 subwallet:uint32
+    publicKey:uint256). For a finalized trace it is the storage after the rotation or later, for a pending
+    trace the one before it. A later rotation makes it inconclusive, so only a positive answer counts.
+    """
+    storage = Slice.one_from_boc(data_boc)
+    storage.skip_bits(8)
+    seqno, subwallet_id, public_key = storage.load_uint(32), storage.load_uint(32), storage.load_bytes(32)
+    address = Address(tx.account)
+    proof_payload = begin_cell().store_uint(KEY_ROTATION_PROOF_TAG, 96).store_int(address.wc, 8).store_bytes(address.hash_part).end_cell()
+    if request.valid_until <= tx.now or request.subwallet_id != subwallet_id or \
+            not _signature_valid(request.new_public_key, proof_payload.hash, request.rotation_signature):
+        return False
+    if public_key == request.new_public_key:
+        return seqno > request.seqno
+    # the storage before the rotation: the same checks the contract does
+    return seqno == request.seqno and _signature_valid(public_key, request.signed_hash, request.signature)
+
+
+async def _rotation_confirmed(tx: Transaction, request: TgWalletChangePublicKeyRequest) -> bool:
+    # an internal request with a bad signature is silently ignored: the tx succeeds, the storage stays.
+    # states are requested along with the interfaces, see address_selectors.extract_tg_wallet_key_rotation_states
+    repository = context.interface_repository.get()
+    extra = await repository.get_extra_data(tx.account, 'account_states')
     states = (extra or {}).get('states', {})
     before = states.get(tx.account_state_hash_before)
     after = states.get(tx.account_state_hash_after)
     if before is not None and after is not None:
         return before['data_hash'] != after['data_hash']
-    else:
+    # only the end-of-block state is stored and pending traces have none: check the latest storage
+    latest = await repository.get_extra_data(tx.account, 'data_boc')
+    if not latest or not latest.get('data_boc'):
         return False
+    try:
+        return _latest_state_confirms(tx, request, latest['data_boc'])
+    except Exception:
+        return False
+
 
 class ChangeWalletKeyBlock(Block):
     """
@@ -72,11 +118,11 @@ class ChangeWalletKeyMatcher(BlockMatcher):
         msg = block.get_message()
         if 'TgWallet' not in await context.interface_repository.get().get_interfaces(msg.destination):
             return []
-        if not block.is_external and not await _storage_changed(tx):
-            return []
         try:
             request = TgWalletChangePublicKeyRequest(Slice.one_from_boc(msg.message_content.body))
         except Exception:
+            return []
+        if not block.is_external and not await _rotation_confirmed(tx, request):
             return []
         encrypted_old_private_key = request.encrypted_old_private_key
         new_block = ChangeWalletKeyBlock({

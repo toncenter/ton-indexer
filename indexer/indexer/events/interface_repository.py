@@ -611,6 +611,8 @@ class EmulatedTransactionsInterfaceRepository(InterfaceRepository):
         return None
 
     async def get_extra_data(self, address: str, request: str) -> Any:
+        if self.kvrocks_fallback is not None:
+            return await self.kvrocks_fallback.get_extra_data(address, request)
         return None
 
 

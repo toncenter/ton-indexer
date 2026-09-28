@@ -229,7 +229,8 @@ class WalletTgExternalMessage:
 class TgWalletChangePublicKeyRequest:
 
     def __init__(self, slice: Slice):
-        self.signature = slice.load_bits(512)
+        self.signature = slice.load_bytes(64)
+        self.signed_hash = slice.to_cell().hash  # the signature covers the hash of the rest of the body
         self.opcode = slice.load_uint(32)
         if self.opcode not in (TG_WALLET_CHANGE_PUBLIC_KEY_INTERNAL, TG_WALLET_CHANGE_PUBLIC_KEY_EXTERNAL):
             raise ValueError(f'not a tg-wallet change key request: {self.opcode:#010x}')
