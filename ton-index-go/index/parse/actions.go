@@ -1142,8 +1142,11 @@ func ParseRawAction(raw *models.RawAction) (*models.Action, error) {
 		}
 	case "change_wallet_key":
 		act.Details = models.ActionDetailsChangeWalletKey{
-			Source:      raw.Source,
-			Destination: raw.Destination,
+			Source:                 raw.Source,
+			Destination:            raw.Destination,
+			NewPublicKey:           extraString(raw.Extra, "new_public_key"),
+			RotationSignature:      extraString(raw.Extra, "rotation_signature"),
+			EncryptedOldPrivateKey: extraString(raw.Extra, "encrypted_old_private_key"),
 		}
 	case "gasless_request":
 		act.Details = models.ActionDetailsGaslessRequest{
