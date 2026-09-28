@@ -1439,6 +1439,11 @@ def _fill_change_wallet_key_action(block: ChangeWalletKeyBlock, action: Action):
     action.source = _addr(block.data['source'])
     action.destination = _addr(block.data['destination'])
     action.value = _value(block.data['value'])
+    action.extra = {
+        'new_public_key': block.data['new_public_key'],
+        'rotation_signature': block.data['rotation_signature'],
+        'encrypted_old_private_key': block.data['encrypted_old_private_key'],
+    }
 
 
 def _fill_gasless_request_action(block: Block, action: Action):

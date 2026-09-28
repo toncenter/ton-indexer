@@ -8,6 +8,9 @@ cases:
         values:
           success: true
           extra.parent_gasless_action: null
+          extra.new_public_key: 1e2fcc815d4e002a2c2a8d6741d00c83180827f74c89d2b382398ca77695928c
+          extra.rotation_signature: 907f9ffcc07f9d6a4b5f52486bfd7640c4cd4711d481cf0e3fdcead1a6c31765b1438c83b80950759f1c937b5f452e0b389fca14c73bdf2f39ac5bd1ab61330d
+          extra.encrypted_old_private_key: null
           source: null
           destination: "0:E55E63B850B71B8FF5AD44E1B8271237AFAF31900B2B6D41233707BB585B8091"
           accounts:
@@ -23,6 +26,9 @@ cases:
         values:
           success: true
           extra.parent_gasless_action: "b5cLv1FsgTThSFHBjzqJteDep4FS/Xe+Wp3w1XvRtRc="
+          extra.new_public_key: 1e2fcc815d4e002a2c2a8d6741d00c83180827f74c89d2b382398ca77695928c
+          extra.rotation_signature: 907f9ffcc07f9d6a4b5f52486bfd7640c4cd4711d481cf0e3fdcead1a6c31765b1438c83b80950759f1c937b5f452e0b389fca14c73bdf2f39ac5bd1ab61330d
+          extra.encrypted_old_private_key: null
           source: "0:E15488B65F7E904F1D14C84AC6F603CCC4A404B03BEFB568D5F5CC8ED6866887"
           destination: "0:E55E63B850B71B8FF5AD44E1B8271237AFAF31900B2B6D41233707BB585B8091"
           value: 5000000
@@ -47,3 +53,63 @@ cases:
           tx_hashes:
             - "CaitzDiXgDuUMWIvvPLZwCI8YcDfz/M5dbXyaOs7Occ="
             - "0XU5v5zYu0IYjsLX1pXc77isPyzQhEcOJoRjRrAuHtE="
+  Change wallet key with encrypted old private key requested by external message:
+    # Newer contract revision: ChangePublicKeyRequestE carries a second ref, encryptedOldPrivateKey.
+    trace-id: jo7cPL4zAPwOFVm5UJDT6PoAI7p3ilqC6ol2mUZm8Ps=
+    expected-actions:
+      - type: change_wallet_key
+        values:
+          success: true
+          extra.parent_gasless_action: null
+          extra.new_public_key: c50eaae97d5209a5aafac51ca95ab80600796c7290ef8f7e801dadef15b6fa78
+          extra.rotation_signature: 51ec0ef889f4fa18a96fd76f78f226f43bfaecd83086be65de6a749c6144984e02d33a12704351b411be60d82d4e25affc6a9ca9d8bea3ff890eca659242c700
+          extra.encrypted_old_private_key: 5a38b183234c24f1c0dca87021598e3dffd05199684f7dd492a6e2bbd636362c
+          source: null
+          destination: "0:B836BD4E2A043F62DD6CECEECA344449F82099ADF0BB3DE2C9F8D7B859BD8212"
+          accounts:
+            - "0:B836BD4E2A043F62DD6CECEECA344449F82099ADF0BB3DE2C9F8D7B859BD8212"
+          tx_hashes:
+            - "jo7cPL4zAPwOFVm5UJDT6PoAI7p3ilqC6ol2mUZm8Ps="
+  Change wallet key with encrypted old private key requested by internal message:
+    # Current contract revision, relayed: ChangePublicKeyRequestI with encryptedOldPrivateKey
+    trace-id: dU1FT1bpCRfcSxDI8Qa6kF9ZTq5tM4YVbYjB4l1jdBU=
+    expected-actions:
+      - type: change_wallet_key
+        values:
+          success: true
+          extra.parent_gasless_action: "Z7ZEnd1QzNvbioDMxrugkAvq1MQEcD7D1gFma02Pp2s="
+          extra.new_public_key: f0af8ff91ee9d8a3ba1d99ed5f09098b87060f769c2a14d6e2565713000497ce
+          extra.rotation_signature: 1d10d09c83d8a3673ddccbc676e15ffc017c49b634046bc6d570f08226b60c42a4af8fbdfbab3749c17d4a710bff33c071fb4bac1d81a292f34a9e61bf3b9705
+          extra.encrypted_old_private_key: 6324f6a8586c3652323addbe700df0ee38d1940778315a5c184106ea260f9637
+          source: "0:E15488B65F7E904F1D14C84AC6F603CCC4A404B03BEFB568D5F5CC8ED6866887"
+          destination: "0:02CE48BFD0410400DF7AD9902205BDC086AC73B032FD68A8024FF5BDCA3AEC52"
+          value: 50000000
+          accounts:
+            - "0:E15488B65F7E904F1D14C84AC6F603CCC4A404B03BEFB568D5F5CC8ED6866887"
+            - "0:02CE48BFD0410400DF7AD9902205BDC086AC73B032FD68A8024FF5BDCA3AEC52"
+          tx_hashes:
+            - "dU1FT1bpCRfcSxDI8Qa6kF9ZTq5tM4YVbYjB4l1jdBU="
+            - "wLr7Ls7C1JVU9dzO/0W5fgHkjKwxKc8pAFYWdaA0h4o="
+      - type: gasless_request
+        values:
+          success: true
+          action_id: "Z7ZEnd1QzNvbioDMxrugkAvq1MQEcD7D1gFma02Pp2s="
+          source: "0:E15488B65F7E904F1D14C84AC6F603CCC4A404B03BEFB568D5F5CC8ED6866887"
+          destination: "0:02CE48BFD0410400DF7AD9902205BDC086AC73B032FD68A8024FF5BDCA3AEC52"
+  Change wallet key with encrypted old private key requested by external message 2:
+    # Current contract revision: ChangePublicKeyRequestE with encryptedOldPrivateKey
+    trace-id: 6P0ZkxbAIIdMARak-3NqAjtQzDFgI7g43gyQHi_NBuo=
+    expected-actions:
+      - type: change_wallet_key
+        values:
+          success: true
+          extra.parent_gasless_action: null
+          extra.new_public_key: 029e9704fa23216d3a994fcb24aaa50011f78150b83ae21f0313a6e6000fa98c
+          extra.rotation_signature: 040010c6704794847431bdf6336326dad39c2b4552884b3916c0756182e64d03b6599e36196330d98e95b37733cb31d42c98271b43508a2e50bafc9cb2825d09
+          extra.encrypted_old_private_key: dcff25e159e18e069b4bd451c0f2a2a3c8999ad0b16c1911081b776cdc7080fc
+          source: null
+          destination: "0:02CE48BFD0410400DF7AD9902205BDC086AC73B032FD68A8024FF5BDCA3AEC52"
+          accounts:
+            - "0:02CE48BFD0410400DF7AD9902205BDC086AC73B032FD68A8024FF5BDCA3AEC52"
+          tx_hashes:
+            - "6P0ZkxbAIIdMARak+3NqAjtQzDFgI7g43gyQHi/NBuo="

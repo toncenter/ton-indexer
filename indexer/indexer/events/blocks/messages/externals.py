@@ -226,6 +226,30 @@ class WalletTgExternalMessage:
                     s.load_uint(8)  # send mode
                     self.payload.append(PayloadMessage(s.load_ref()))
 
+class TgWalletChangePublicKeyRequest:
+
+    def __init__(self, slice: Slice):
+        self.signature = slice.load_bits(512)
+        self.opcode = slice.load_uint(32)
+        if self.opcode not in (TG_WALLET_CHANGE_PUBLIC_KEY_INTERNAL, TG_WALLET_CHANGE_PUBLIC_KEY_EXTERNAL):
+            raise ValueError(f'not a tg-wallet change key request: {self.opcode:#010x}')
+        self.subwallet_id = slice.load_uint(32)
+        self.valid_until = slice.load_uint(32)
+        self.seqno = slice.load_uint(32)
+        self.new_public_key = slice.load_bytes(32)
+        self.rotation_signature = self._load_bits_ref(slice, 512)
+        self.encrypted_old_private_key = self._load_bits_ref(slice, 256)
+
+    @staticmethod
+    def _load_bits_ref(slice: Slice, bits: int) -> bytes | None:
+        if slice.remaining_refs == 0:
+            return None
+        cell = slice.load_ref()
+        if len(cell.bits) != bits or cell.refs:
+            return None
+        return cell.begin_parse().load_bytes(bits // 8)
+
+
 def extract_payload_from_wallet_message(body: bytes) -> tuple[list[PayloadMessage], str|None]:
     # the v3/v4 parsers accept almost any body, so the ones checking an opcode go first
     wallets = [WalletTgExternalMessage, WalletV3ExternalMessage, WalletV4ExternalMessage, WalletV5R1ExternalMessage]
