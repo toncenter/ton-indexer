@@ -53,23 +53,6 @@ cases:
           tx_hashes:
             - "CaitzDiXgDuUMWIvvPLZwCI8YcDfz/M5dbXyaOs7Occ="
             - "0XU5v5zYu0IYjsLX1pXc77isPyzQhEcOJoRjRrAuHtE="
-  Change wallet key with encrypted old private key requested by external message:
-    # Newer contract revision: ChangePublicKeyRequestE carries a second ref, encryptedOldPrivateKey.
-    trace-id: jo7cPL4zAPwOFVm5UJDT6PoAI7p3ilqC6ol2mUZm8Ps=
-    expected-actions:
-      - type: change_wallet_key
-        values:
-          success: true
-          extra.parent_gasless_action: null
-          extra.new_public_key: c50eaae97d5209a5aafac51ca95ab80600796c7290ef8f7e801dadef15b6fa78
-          extra.rotation_signature: 51ec0ef889f4fa18a96fd76f78f226f43bfaecd83086be65de6a749c6144984e02d33a12704351b411be60d82d4e25affc6a9ca9d8bea3ff890eca659242c700
-          extra.encrypted_old_private_key: 5a38b183234c24f1c0dca87021598e3dffd05199684f7dd492a6e2bbd636362c
-          source: null
-          destination: "0:B836BD4E2A043F62DD6CECEECA344449F82099ADF0BB3DE2C9F8D7B859BD8212"
-          accounts:
-            - "0:B836BD4E2A043F62DD6CECEECA344449F82099ADF0BB3DE2C9F8D7B859BD8212"
-          tx_hashes:
-            - "jo7cPL4zAPwOFVm5UJDT6PoAI7p3ilqC6ol2mUZm8Ps="
   Change wallet key with encrypted old private key requested by internal message:
     # Current contract revision, relayed: ChangePublicKeyRequestI with encryptedOldPrivateKey
     trace-id: dU1FT1bpCRfcSxDI8Qa6kF9ZTq5tM4YVbYjB4l1jdBU=

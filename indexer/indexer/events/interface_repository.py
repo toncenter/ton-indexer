@@ -16,6 +16,8 @@ from indexer.core.database import JettonWallet, NFTItem, NftSale, NftAuction, La
     AccountState
 
 NOMINATOR_POOL_CODE_HASH = "mj7BS8CY9rRAZMMFIiyuooAPF92oXuaoGYpwle3hDc8="
+# Telegram wallet trampoline (tg-wallet-contract WalletTrampoline.boc), never changes
+TG_WALLET_CODE_HASH = "kUmuUcHkaJcQzr94MCl7Fqz7rbNjqSClN4k+f/7sp2g="
 
 @dataclass
 class DedustPool:
@@ -608,6 +610,9 @@ class EmulatedTransactionsInterfaceRepository(InterfaceRepository):
             return await self.kvrocks_fallback.get_dedust_pool(address)
         return None
 
+    async def get_extra_data(self, address: str, request: str) -> Any:
+        return None
+
 
 class EmulatedRepositoryWithDbFallback(InterfaceRepository):
     def __init__(self,
@@ -877,6 +882,8 @@ async def gather_interfaces_from_kvrocks(
         for account, payload in states.items():
             if payload.get("code_hash") == NOMINATOR_POOL_CODE_HASH:
                 result[account]["NominatorPool"] = {"address": account}
+            elif payload.get("code_hash") == TG_WALLET_CODE_HASH:
+                result[account]["TgWallet"] = {"address": account}
 
     for item in extra:
         result[item["account"]][item["request"]] = item
@@ -981,7 +988,7 @@ async def _gather_data_from_db(
         )
         pools = await session.execute(select(LatestAccountState)
                                                 .filter(LatestAccountState.account.in_(batch))
-                                                .filter(LatestAccountState.code_hash == NOMINATOR_POOL_CODE_HASH))
+                                                .filter(LatestAccountState.code_hash.in_([NOMINATOR_POOL_CODE_HASH, TG_WALLET_CODE_HASH])))
         jetton_wallets += list(wallets.scalars().all())
         nft_items += list(nft.scalars().all())
         nft_sales += list(sales.scalars().all())
@@ -1074,8 +1081,9 @@ async def gather_interfaces(accounts: set[str], session: AsyncSession, extra_req
             "min_bid": float(auction.min_bid) if auction.min_bid is not None else None,
             "code_hash": auction.code_hash,
         }
-    for account_state in nominator_pools:
-        result[account_state.account]["NominatorPool"] = {
+    for account_state in nominator_pools:  # and tg wallets, both are recognized by code hash
+        interface = "TgWallet" if account_state.code_hash == TG_WALLET_CODE_HASH else "NominatorPool"
+        result[account_state.account][interface] = {
             "address": account_state.account,
         }
     for order in multisig_orders:
