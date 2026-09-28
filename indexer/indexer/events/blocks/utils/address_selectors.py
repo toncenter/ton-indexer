@@ -3,8 +3,7 @@ from pytoniq_core import Slice
 from indexer.core.database import Message, Transaction, Trace
 from indexer.events.blocks.messages import JettonNotify, JettonTransfer, StonfiSwapV2, JVaultUnstakeJettons, \
     JVaultUnstakeRequest, ToncoRouterV3PayTo, ToncoPoolV3FundAccountPayload, ToncoPoolV3SwapPayload
-from indexer.events.blocks.messages.externals import extract_payload_from_wallet_message, \
-    get_tg_wallet_request_opcode, TG_WALLET_CHANGE_PUBLIC_KEY_INTERNAL
+from indexer.events.blocks.messages.externals import extract_payload_from_wallet_message
 from indexer.events.interface_repository import ExtraAccountRequest
 
 
@@ -158,23 +157,9 @@ def extract_from_jvault_unstake_data(message: Message) -> ExtraAccountRequest:
                                callback=derive_accounts_from_stake_wallet)
 
 
-def extract_tg_wallet_key_rotation_states(tx: Transaction, msg: Message) -> set[ExtraAccountRequest]:
-    # a relayed key rotation is recognized only if the wallet storage changed, see blocks/tgwallet.py
-    if msg.message_content is None or \
-            get_tg_wallet_request_opcode(msg.message_content.body) != TG_WALLET_CHANGE_PUBLIC_KEY_INTERNAL:
-        return set()
-    requests = {ExtraAccountRequest(account=tx.account, request_type='account_states', state_hash=state_hash)
-                for state_hash in (tx.account_state_hash_before, tx.account_state_hash_after)}
-    # the latest storage, checked when the states are not stored
-    requests.add(ExtraAccountRequest(account=tx.account, request_type='data_boc'))
-    return requests
-
-
 def extract_extra_accounts_data_requests(tx: Transaction) -> set[ExtraAccountRequest]:
     requests = set()
     for msg in tx.messages:
-        if msg.direction == 'in' and msg.source is not None:
-            requests.update(extract_tg_wallet_key_rotation_states(tx, msg))
         if msg.opcode is None:
             continue
         opcode = msg.opcode & 0xFFFFFFFF

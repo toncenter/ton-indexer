@@ -12,12 +12,14 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from indexer.core import kvrocks
-from indexer.core.database import JettonWallet, NFTItem, NftSale, NftAuction, LatestAccountState, MultisigOrder, \
-    AccountState
+from indexer.core.database import JettonWallet, NFTItem, NftSale, NftAuction, LatestAccountState, MultisigOrder
 
 NOMINATOR_POOL_CODE_HASH = "mj7BS8CY9rRAZMMFIiyuooAPF92oXuaoGYpwle3hDc8="
-# Telegram wallet trampoline (tg-wallet-contract WalletTrampoline.boc), never changes
-TG_WALLET_CODE_HASH = "kUmuUcHkaJcQzr94MCl7Fqz7rbNjqSClN4k+f/7sp2g="
+
+TG_WALLET_CODE_HASHES = frozenset({
+    "kUmuUcHkaJcQzr94MCl7Fqz7rbNjqSClN4k+f/7sp2g=",
+    "4wkRQgvvEZHAnc5Yud8rTKTC2cODzDtqkRcDSf+nDiw=",
+})
 
 @dataclass
 class DedustPool:
@@ -610,11 +612,6 @@ class EmulatedTransactionsInterfaceRepository(InterfaceRepository):
             return await self.kvrocks_fallback.get_dedust_pool(address)
         return None
 
-    async def get_extra_data(self, address: str, request: str) -> Any:
-        if self.kvrocks_fallback is not None:
-            return await self.kvrocks_fallback.get_extra_data(address, request)
-        return None
-
 
 class EmulatedRepositoryWithDbFallback(InterfaceRepository):
     def __init__(self,
@@ -765,14 +762,10 @@ async def _process_kvrocks_extra_requests(
 
         batch = defaultdict(list)
         batch_processors = {}
-        requested_states = {}
         while queue:
             extra_request = queue.popleft()
             account = kvrocks.normalize_address_id(extra_request.account)
             if account is None:
-                continue
-            if extra_request.request_type == "account_states":
-                requested_states[extra_request.state_hash] = account
                 continue
             request_key = (account, extra_request.request_type)
             if request_key in processed:
@@ -808,10 +801,6 @@ async def _process_kvrocks_extra_requests(
                         if normalized is not None
                     )
                 extra.append(n_extra)
-
-        if requested_states:
-            rows = await kvrocks.get_payloads("account_states", list(requested_states))
-            extra.extend(_account_states_extra(requested_states, rows))
     return extra
 
 
@@ -884,7 +873,7 @@ async def gather_interfaces_from_kvrocks(
         for account, payload in states.items():
             if payload.get("code_hash") == NOMINATOR_POOL_CODE_HASH:
                 result[account]["NominatorPool"] = {"address": account}
-            elif payload.get("code_hash") == TG_WALLET_CODE_HASH:
+            elif payload.get("code_hash") in TG_WALLET_CODE_HASHES:
                 result[account]["TgWallet"] = {"address": account}
 
     for item in extra:
@@ -913,13 +902,9 @@ async def _gather_data_from_db(
             break
         batch = defaultdict(list)
         batch_processors = {}
-        requested_states = {}
 
         while queue:
             extra_request = queue.popleft()
-            if extra_request.request_type == 'account_states':
-                requested_states[extra_request.state_hash] = extra_request.account
-                continue
 
             if (extra_request.account, extra_request.request_type) not in processed:
                 batch[extra_request.request_type].append(extra_request.account)
@@ -946,14 +931,6 @@ async def _gather_data_from_db(
                         queue.extend(new_requests)
                         accounts.update(new_accounts)
                     extra.append(n_extra)
-
-        if requested_states:
-            results = await session.execute(
-                select(AccountState).filter(AccountState.hash.in_(list(requested_states)))
-            )
-            rows = {state.hash: {field: getattr(state, field) for field in ACCOUNT_STATE_FIELDS}
-                    for state in results.scalars()}
-            extra.extend(_account_states_extra(requested_states, rows))
 
 
     account_list = list(accounts)
@@ -990,7 +967,7 @@ async def _gather_data_from_db(
         )
         pools = await session.execute(select(LatestAccountState)
                                                 .filter(LatestAccountState.account.in_(batch))
-                                                .filter(LatestAccountState.code_hash.in_([NOMINATOR_POOL_CODE_HASH, TG_WALLET_CODE_HASH])))
+                                                .filter(LatestAccountState.code_hash.in_([NOMINATOR_POOL_CODE_HASH, *TG_WALLET_CODE_HASHES])))
         jetton_wallets += list(wallets.scalars().all())
         nft_items += list(nft.scalars().all())
         nft_sales += list(sales.scalars().all())
@@ -1007,26 +984,6 @@ class ExtraAccountRequest:
     request_type: str = 'data_boc'
     # Callback returns (new_requests, accounts_for_interfaces)
     callback: Optional[Callable[[dict], tuple[list['ExtraAccountRequest'], set[str]]]] = None
-    # 'account_states' requests: hash of a historical state of the account (no callback)
-    state_hash: Optional[str] = None
-
-
-ACCOUNT_STATE_FIELDS = ('hash', 'balance', 'account_status', 'frozen_hash', 'code_hash', 'data_hash')
-
-
-def _account_states_extra(requested: dict[str, str], rows: dict[str, dict]) -> list[dict]:
-    """
-    Group the fetched states by account: interfaces[account]['account_states']['states'][state_hash].
-    `requested` maps state hash to account, `rows` maps state hash to an account_states row.
-    """
-    extra = {}
-    for state_hash, account in requested.items():
-        row = rows.get(state_hash)
-        if row is None:
-            continue
-        item = extra.setdefault(account, {'account': account, 'request': 'account_states', 'states': {}})
-        item['states'][state_hash] = {field: row.get(field) for field in ACCOUNT_STATE_FIELDS}
-    return list(extra.values())
 
 
 async def gather_interfaces(accounts: set[str], session: AsyncSession, extra_requests: set[ExtraAccountRequest] = None)\
@@ -1084,7 +1041,7 @@ async def gather_interfaces(accounts: set[str], session: AsyncSession, extra_req
             "code_hash": auction.code_hash,
         }
     for account_state in nominator_pools:  # and tg wallets, both are recognized by code hash
-        interface = "TgWallet" if account_state.code_hash == TG_WALLET_CODE_HASH else "NominatorPool"
+        interface = "TgWallet" if account_state.code_hash in TG_WALLET_CODE_HASHES else "NominatorPool"
         result[account_state.account][interface] = {
             "address": account_state.account,
         }

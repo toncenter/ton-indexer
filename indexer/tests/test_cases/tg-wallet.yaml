@@ -2,97 +2,60 @@ cases:
   Change wallet key requested by external message:
     # Telegram wallet key rotation asked for directly by the owner:
     # ChangePublicKeyRequestE (0xFBBA99C8) arrives as an external, so the action has no source.
-    trace-id: QilH-V1kzvOH8jquiL-36pCaUWypDuKINlUHbE3j79s=
+    # The wallet logs the rotation with an external out message (0xEBA19948 + encryptedOldPrivateKey).
+    trace-id: Qt9ZSd9dgRHWWR8BqRruoGWcV8XaxyMgQm-ZUtpbJ3A=
     expected-actions:
       - type: change_wallet_key
         values:
           success: true
           extra.parent_gasless_action: null
-          extra.new_public_key: 1e2fcc815d4e002a2c2a8d6741d00c83180827f74c89d2b382398ca77695928c
-          extra.rotation_signature: 907f9ffcc07f9d6a4b5f52486bfd7640c4cd4711d481cf0e3fdcead1a6c31765b1438c83b80950759f1c937b5f452e0b389fca14c73bdf2f39ac5bd1ab61330d
-          extra.encrypted_old_private_key: null
+          extra.new_public_key: b6d9a952b4e2fd24a9d80995f145b3813f844ffd5d25001f253255c16f3f49ed
+          extra.rotation_signature: 3128f0e1d3e99631b17b5a4904841da4670b110a67f1ac2705565fb0721e5487297b23a12b5f67dceee737587222379a9a349db5ab2c73273083916fdb14900a
+          extra.encrypted_old_private_key: e24177a0281afdfeb6c68fe1997c59c219107ed9160964599930037abe472da1
           source: null
-          destination: "0:E55E63B850B71B8FF5AD44E1B8271237AFAF31900B2B6D41233707BB585B8091"
+          destination: "0:1350B4C79830A1FC14F4DE2537A27911DC0FF37D9FDDC05AC3008F218D75F4DB"
           accounts:
-            - "0:E55E63B850B71B8FF5AD44E1B8271237AFAF31900B2B6D41233707BB585B8091"
+            - "0:1350B4C79830A1FC14F4DE2537A27911DC0FF37D9FDDC05AC3008F218D75F4DB"
           tx_hashes:
-            - "QilH+V1kzvOH8jquiL+36pCaUWypDuKINlUHbE3j79s="
+            - "Qt9ZSd9dgRHWWR8BqRruoGWcV8XaxyMgQm+ZUtpbJ3A="
   Change wallet key requested by internal message:
     # Same rotation, but a relayer pays the gas: it forwards
     # ChangePublicKeyRequestI (0xFBBA99C7) to the wallet as an internal message.
-    trace-id: CaitzDiXgDuUMWIvvPLZwCI8YcDfz_M5dbXyaOs7Occ=
+    trace-id: ybABMr-c9dJPt7wFMfUQyjd9HmweAIBz77Ym9Bh3M7Y=
     expected-actions:
       - type: change_wallet_key
         values:
           success: true
-          extra.parent_gasless_action: "b5cLv1FsgTThSFHBjzqJteDep4FS/Xe+Wp3w1XvRtRc="
-          extra.new_public_key: 1e2fcc815d4e002a2c2a8d6741d00c83180827f74c89d2b382398ca77695928c
-          extra.rotation_signature: 907f9ffcc07f9d6a4b5f52486bfd7640c4cd4711d481cf0e3fdcead1a6c31765b1438c83b80950759f1c937b5f452e0b389fca14c73bdf2f39ac5bd1ab61330d
-          extra.encrypted_old_private_key: null
+          extra.parent_gasless_action: "NJ+4G1wFzvsHnES0cXli0phw24NlMjD7wQuiFtPIv8Q="
+          extra.new_public_key: 38fc3898a2ce60ef78dd116059e81a5a80a57b74350aac9e8aa24c97bb644d33
+          extra.rotation_signature: 289e76cf42c5339c872c903e0a8ca0768178d39cbcfa8fe634a493323a0abe581dc130c87ff0dcd29280bc8841464e915d02b0b2294d0a0ad17fdd58713c2c00
+          extra.encrypted_old_private_key: 4c5cf96e0d7591f1797e579be823c7f96a05ba8b1907fed898e5d2b76708d026
           source: "0:E15488B65F7E904F1D14C84AC6F603CCC4A404B03BEFB568D5F5CC8ED6866887"
-          destination: "0:E55E63B850B71B8FF5AD44E1B8271237AFAF31900B2B6D41233707BB585B8091"
-          value: 5000000
+          destination: "0:1350B4C79830A1FC14F4DE2537A27911DC0FF37D9FDDC05AC3008F218D75F4DB"
+          value: 50000000
           accounts:
             - "0:E15488B65F7E904F1D14C84AC6F603CCC4A404B03BEFB568D5F5CC8ED6866887"
-            - "0:E55E63B850B71B8FF5AD44E1B8271237AFAF31900B2B6D41233707BB585B8091"
+            - "0:1350B4C79830A1FC14F4DE2537A27911DC0FF37D9FDDC05AC3008F218D75F4DB"
           tx_hashes:
-            - "CaitzDiXgDuUMWIvvPLZwCI8YcDfz/M5dbXyaOs7Occ="
-            - "0XU5v5zYu0IYjsLX1pXc77isPyzQhEcOJoRjRrAuHtE="
+            - "ybABMr+c9dJPt7wFMfUQyjd9HmweAIBz77Ym9Bh3M7Y="
+            - "Xi9Ia/KzhcVsARxVsFP42poCV8XqvkJ1H1tCZDFSJCg="
       # the relayed request is also marked as gasless_request, next to the rotation itself
       - type: gasless_request
         values:
           success: true
-          action_id: "b5cLv1FsgTThSFHBjzqJteDep4FS/Xe+Wp3w1XvRtRc="
-          extra.parent_gasless_action: null
+          action_id: "NJ+4G1wFzvsHnES0cXli0phw24NlMjD7wQuiFtPIv8Q="
           source: "0:E15488B65F7E904F1D14C84AC6F603CCC4A404B03BEFB568D5F5CC8ED6866887"
-          destination: "0:E55E63B850B71B8FF5AD44E1B8271237AFAF31900B2B6D41233707BB585B8091"
-          value: 5000000
-          accounts:
-            - "0:E15488B65F7E904F1D14C84AC6F603CCC4A404B03BEFB568D5F5CC8ED6866887"
-            - "0:E55E63B850B71B8FF5AD44E1B8271237AFAF31900B2B6D41233707BB585B8091"
-          tx_hashes:
-            - "CaitzDiXgDuUMWIvvPLZwCI8YcDfz/M5dbXyaOs7Occ="
-            - "0XU5v5zYu0IYjsLX1pXc77isPyzQhEcOJoRjRrAuHtE="
-  Change wallet key with encrypted old private key requested by internal message:
-    # Current contract revision, relayed: ChangePublicKeyRequestI with encryptedOldPrivateKey
-    trace-id: dU1FT1bpCRfcSxDI8Qa6kF9ZTq5tM4YVbYjB4l1jdBU=
+          destination: "0:1350B4C79830A1FC14F4DE2537A27911DC0FF37D9FDDC05AC3008F218D75F4DB"
+  Change wallet key requested by external message, another wallet:
+    trace-id: jo7cPL4zAPwOFVm5UJDT6PoAI7p3ilqC6ol2mUZm8Ps=
     expected-actions:
       - type: change_wallet_key
         values:
           success: true
-          extra.parent_gasless_action: "Z7ZEnd1QzNvbioDMxrugkAvq1MQEcD7D1gFma02Pp2s="
-          extra.new_public_key: f0af8ff91ee9d8a3ba1d99ed5f09098b87060f769c2a14d6e2565713000497ce
-          extra.rotation_signature: 1d10d09c83d8a3673ddccbc676e15ffc017c49b634046bc6d570f08226b60c42a4af8fbdfbab3749c17d4a710bff33c071fb4bac1d81a292f34a9e61bf3b9705
-          extra.encrypted_old_private_key: 6324f6a8586c3652323addbe700df0ee38d1940778315a5c184106ea260f9637
-          source: "0:E15488B65F7E904F1D14C84AC6F603CCC4A404B03BEFB568D5F5CC8ED6866887"
-          destination: "0:02CE48BFD0410400DF7AD9902205BDC086AC73B032FD68A8024FF5BDCA3AEC52"
-          value: 50000000
-          accounts:
-            - "0:E15488B65F7E904F1D14C84AC6F603CCC4A404B03BEFB568D5F5CC8ED6866887"
-            - "0:02CE48BFD0410400DF7AD9902205BDC086AC73B032FD68A8024FF5BDCA3AEC52"
-          tx_hashes:
-            - "dU1FT1bpCRfcSxDI8Qa6kF9ZTq5tM4YVbYjB4l1jdBU="
-            - "wLr7Ls7C1JVU9dzO/0W5fgHkjKwxKc8pAFYWdaA0h4o="
-      - type: gasless_request
-        values:
-          success: true
-          action_id: "Z7ZEnd1QzNvbioDMxrugkAvq1MQEcD7D1gFma02Pp2s="
-          source: "0:E15488B65F7E904F1D14C84AC6F603CCC4A404B03BEFB568D5F5CC8ED6866887"
-          destination: "0:02CE48BFD0410400DF7AD9902205BDC086AC73B032FD68A8024FF5BDCA3AEC52"
-  Change wallet key with encrypted old private key requested by external message 2:
-    # Current contract revision: ChangePublicKeyRequestE with encryptedOldPrivateKey
-    trace-id: 6P0ZkxbAIIdMARak-3NqAjtQzDFgI7g43gyQHi_NBuo=
-    expected-actions:
-      - type: change_wallet_key
-        values:
-          success: true
-          extra.parent_gasless_action: null
-          extra.new_public_key: 029e9704fa23216d3a994fcb24aaa50011f78150b83ae21f0313a6e6000fa98c
-          extra.rotation_signature: 040010c6704794847431bdf6336326dad39c2b4552884b3916c0756182e64d03b6599e36196330d98e95b37733cb31d42c98271b43508a2e50bafc9cb2825d09
-          extra.encrypted_old_private_key: dcff25e159e18e069b4bd451c0f2a2a3c8999ad0b16c1911081b776cdc7080fc
+          extra.new_public_key: c50eaae97d5209a5aafac51ca95ab80600796c7290ef8f7e801dadef15b6fa78
+          extra.rotation_signature: 51ec0ef889f4fa18a96fd76f78f226f43bfaecd83086be65de6a749c6144984e02d33a12704351b411be60d82d4e25affc6a9ca9d8bea3ff890eca659242c700
+          extra.encrypted_old_private_key: 5a38b183234c24f1c0dca87021598e3dffd05199684f7dd492a6e2bbd636362c
           source: null
-          destination: "0:02CE48BFD0410400DF7AD9902205BDC086AC73B032FD68A8024FF5BDCA3AEC52"
-          accounts:
-            - "0:02CE48BFD0410400DF7AD9902205BDC086AC73B032FD68A8024FF5BDCA3AEC52"
+          destination: "0:B836BD4E2A043F62DD6CECEECA344449F82099ADF0BB3DE2C9F8D7B859BD8212"
           tx_hashes:
-            - "6P0ZkxbAIIdMARak+3NqAjtQzDFgI7g43gyQHi/NBuo="
+            - "jo7cPL4zAPwOFVm5UJDT6PoAI7p3ilqC6ol2mUZm8Ps="
