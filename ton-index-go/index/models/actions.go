@@ -1138,8 +1138,11 @@ type ActionDetailsCocoonClientWithdraw struct {
 }
 
 type ActionDetailsChangeWalletKey struct {
-	Source      *AccountAddress `json:"source"`
-	Destination *AccountAddress `json:"destination"`
+	Source                 *AccountAddress `json:"source"`
+	Destination            *AccountAddress `json:"destination"`
+	NewPublicKey           *string         `json:"new_public_key"`
+	RotationSignature      *string         `json:"rotation_signature"`
+	EncryptedOldPrivateKey *string         `json:"encrypted_old_private_key"`
 }
 
 type ActionDetailsGaslessRequest struct {
