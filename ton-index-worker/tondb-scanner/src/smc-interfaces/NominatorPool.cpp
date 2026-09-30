@@ -36,11 +36,7 @@ td::Result<block::StdAddress> validator_address_from_hash(td::RefInt256 addr_has
   return address;
 }
 
-}  // namespace
-
-namespace nominator_pool {
-
-td::Result<ParsedStorage> parse_storage(td::Ref<vm::Cell> data_cell) {
+td::Result<nominator_pool::ParsedStorage> parse_storage_impl(td::Ref<vm::Cell> data_cell) {
   if (data_cell.is_null()) {
     return td::Status::Error("Pool state data is null");
   }
@@ -63,7 +59,7 @@ td::Result<ParsedStorage> parse_storage(td::Ref<vm::Cell> data_cell) {
   TRY_RESULT(min_nominator_stake, parse_grams(pool_config.min_nominator_stake, "min_nominator_stake"));
   TRY_RESULT(validator_address, validator_address_from_hash(pool_config.validator_address));
 
-  ParsedStorage result{
+  nominator_pool::ParsedStorage result{
       .state = pool_storage.state,
       .nominators_count = pool_storage.nominators_count,
       .stake_amount_sent = stake_amount_sent,
@@ -119,6 +115,18 @@ td::Result<ParsedStorage> parse_storage(td::Ref<vm::Cell> data_cell) {
   }
 
   return result;
+}
+
+}  // namespace
+
+namespace nominator_pool {
+
+td::Result<ParsedStorage> parse_storage(td::Ref<vm::Cell> data_cell) {
+  try {
+    return parse_storage_impl(std::move(data_cell));
+  } catch (vm::VmError& e) {
+    return td::Status::Error(PSLICE() << "Failed to parse NominatorPoolStorage: " << e.get_msg());
+  }
 }
 
 }  // namespace nominator_pool
