@@ -323,10 +323,9 @@ async def process_event_async(trace: Trace) -> Block:
         return root
     except NoMessageBodyException as e:
         raise e
-    except Exception as e:
-        logging.error(f"Failed to process {trace.trace_id}")
-        logging.exception(e, exc_info=True)
-        raise e
+    except Exception:
+        logging.exception("Failed to process %s", trace.trace_id)
+        raise
 
 async def process_event_async_with_postprocessing(trace: Trace) -> list[Block]:
     block = await process_event_async(trace)
