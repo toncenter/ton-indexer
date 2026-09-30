@@ -3,6 +3,28 @@
 #include "execute-smc.h"
 #include "FetchAccountFromShard.h"
 
+namespace {
+
+td::Result<std::vector<block::StdAddress>> parse_address_dict(td::Ref<vm::Cell> cell) {
+  std::vector<block::StdAddress> result;
+  try {
+    vm::Dictionary dict{std::move(cell), 8};
+    for (auto it = dict.begin(); !it.eof(); ++it) {
+      block::StdAddress address;
+      block::tlb::MsgAddressInt address_int{};
+      if (!address_int.extract_std_address(it.cur_value(), address)) {
+        return td::Status::Error("Unable to extract address");
+      }
+      result.push_back(address);
+    }
+  } catch (vm::VmError& e) {
+    return td::Status::Error(PSLICE() << "Failed to parse address dict: " << e.get_msg());
+  }
+  return result;
+}
+
+}  // namespace
+
 MultisigContract::MultisigContract(block::StdAddress address,
                        td::Ref<vm::Cell> code_cell,
                        td::Ref<vm::Cell> data_cell,
@@ -45,50 +67,24 @@ void MultisigContract::start_up() {
   data.next_order_seqno = stack[0].as_int();
   data.threshold = stack[1].as_int()->to_long();
 
-  // signers
-  if (stack[2].is_cell())
-  {
-    auto signers_cell = stack[2].as_cell();
-    vm::Dictionary signers_dict {signers_cell, 8};
-    auto it = signers_dict.begin();
-    while (!it.eof()) {
-      auto val = it.cur_value();
-      block::StdAddress address;
-      block::tlb::MsgAddressInt address_int{};
-      auto ok = address_int.extract_std_address(val, address);
-      if (!ok)
-      {
-        LOG(INFO) << "FAILED";
-        promise_.set_error(td::Status::Error("Unable to extract address"));
-        stop();
-        return;
-      }
-      data.signers.push_back(address);
-      ++it;
+  if (stack[2].is_cell()) {
+    auto signers = parse_address_dict(stack[2].as_cell());
+    if (signers.is_error()) {
+      promise_.set_error(signers.move_as_error());
+      stop();
+      return;
     }
+    data.signers = signers.move_as_ok();
   }
 
-  // proposers
-  if (stack[3].is_cell())
-  {
-    auto proposers_cell = stack[3].as_cell();
-    vm::Dictionary proposers_dict {proposers_cell, 8};
-    auto it = proposers_dict.begin();
-    while (!it.eof()) {
-      auto val = it.cur_value();
-      block::StdAddress address;
-      block::tlb::MsgAddressInt address_int{};
-      auto ok = address_int.extract_std_address(val, address);
-      if (!ok)
-      {
-        LOG(INFO) << "FAILED";
-        promise_.set_error(td::Status::Error("Unable to extract address"));
-        stop();
-        return;
-      }
-      data.proposers.push_back(address);
-      ++it;
+  if (stack[3].is_cell()) {
+    auto proposers = parse_address_dict(stack[3].as_cell());
+    if (proposers.is_error()) {
+      promise_.set_error(proposers.move_as_error());
+      stop();
+      return;
     }
+    data.proposers = proposers.move_as_ok();
   }
   promise_.set_value(std::move(data));
   stop();
@@ -145,24 +141,13 @@ void MultisigOrder::start_up() {
   data.expiration_date = stack[7].as_int();
   data.order = stack[8].as_cell();
 
-  // signers
-  auto signers_cell = stack[4].as_cell();
-  vm::Dictionary signers_dict {signers_cell, 8};
-  auto it = signers_dict.begin();
-  while (!it.eof()) {
-    auto val = it.cur_value();
-    block::StdAddress address;
-    block::tlb::MsgAddressInt address_int{};
-    auto ok = address_int.extract_std_address(val, address);
-    if (!ok)
-    {
-      promise_.set_error(td::Status::Error("Unable to extract address"));
-      stop();
-      return;
-    }
-    data.signers.push_back(address);
-    ++it;
+  auto signers = parse_address_dict(stack[4].as_cell());
+  if (signers.is_error()) {
+    promise_.set_error(signers.move_as_error());
+    stop();
+    return;
   }
+  data.signers = signers.move_as_ok();
 
   auto R = td::PromiseCreator::lambda([=, this, SelfId = actor_id(this)](td::Result<schema::AccountState> account_state_r) mutable {
       if (account_state_r.is_error()) {
