@@ -165,7 +165,7 @@ int main(int argc, char *argv[]) {
     mch_no_tier2 = true;
   });
 
-  p.add_checked_option('\0', "mch-workers", "MCH classifier workers (default: 1)", [&](td::Slice value) {
+  p.add_checked_option('\0', "mch-workers", "MCH classifier workers (default: 8)", [&](td::Slice value) {
     int v;
     try {
       v = std::stoi(value.str());
