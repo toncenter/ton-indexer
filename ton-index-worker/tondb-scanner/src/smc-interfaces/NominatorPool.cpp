@@ -4,6 +4,7 @@
 #include "crypto/block/block-parse.h"
 #include "td/utils/logging.h"
 #include "vm/dict.h"
+#include "safe-parse.h"
 
 namespace {
 
@@ -78,28 +79,29 @@ td::Result<nominator_pool::ParsedStorage> parse_storage_impl(td::Ref<vm::Cell> d
     td::Ref<vm::Cell> nominators_cell;
     auto nominators_slice = *pool_storage.nominators;
     if (nominators_slice.fetch_maybe_ref(nominators_cell) && nominators_cell.not_null()) {
-      vm::Dictionary nominators_dict{nominators_cell, 256};
-      for (auto it = nominators_dict.begin(); !it.eof(); ++it) {
-        tokens::gen::Nominator::Record nominator_data;
-        auto nominator_cs = *it.cur_value();
-        if (!tokens::gen::t_Nominator.unpack(nominator_cs, nominator_data)) {
-          LOG(WARNING) << "Nominator pool debug: failed to unpack nominator pool entry";
-          continue;
-        }
+      TRY_STATUS(safe_parse::for_each_dict_entry(nominators_cell, 256, safe_parse::kDefaultMaxDictEntries,
+          [&](td::ConstBitPtr key, int, td::Ref<vm::CellSlice> value) -> td::Status {
+            tokens::gen::Nominator::Record nominator_data;
+            auto nominator_cs = *value;
+            if (!tokens::gen::t_Nominator.unpack(nominator_cs, nominator_data)) {
+              LOG(WARNING) << "Nominator pool debug: failed to unpack nominator pool entry";
+              return td::Status::OK();
+            }
 
-        auto amount = block::tlb::t_Grams.as_integer(nominator_data.amount);
-        auto pending_deposit_amount = block::tlb::t_Grams.as_integer(nominator_data.pending_deposit_amount);
-        if (amount.is_null() || pending_deposit_amount.is_null()) {
-          LOG(DEBUG) << "Failed to parse nominator pool entry balances";
-          continue;
-        }
+            auto amount = block::tlb::t_Grams.as_integer(nominator_data.amount);
+            auto pending_deposit_amount = block::tlb::t_Grams.as_integer(nominator_data.pending_deposit_amount);
+            if (amount.is_null() || pending_deposit_amount.is_null()) {
+              LOG(DEBUG) << "Failed to parse nominator pool entry balances";
+              return td::Status::OK();
+            }
 
-        result.nominators.push_back({
-            .address = nominator_address_from_hash(td::BitArray<256>(it.cur_pos())),
-            .amount = amount,
-            .pending_deposit_amount = pending_deposit_amount,
-        });
-      }
+            result.nominators.push_back({
+                .address = nominator_address_from_hash(td::BitArray<256>(key)),
+                .amount = amount,
+                .pending_deposit_amount = pending_deposit_amount,
+            });
+            return td::Status::OK();
+          }));
     }
   }
 
@@ -107,10 +109,11 @@ td::Result<nominator_pool::ParsedStorage> parse_storage_impl(td::Ref<vm::Cell> d
     td::Ref<vm::Cell> withdraw_requests_cell;
     auto withdraw_requests_slice = *pool_storage.withdraw_requests;
     if (withdraw_requests_slice.fetch_maybe_ref(withdraw_requests_cell) && withdraw_requests_cell.not_null()) {
-      vm::Dictionary withdraw_requests_dict{withdraw_requests_cell, 256};
-      for (auto it = withdraw_requests_dict.begin(); !it.eof(); ++it) {
-        result.withdraw_requests.push_back(nominator_address_from_hash(td::BitArray<256>(it.cur_pos())));
-      }
+      TRY_STATUS(safe_parse::for_each_dict_entry(withdraw_requests_cell, 256, safe_parse::kDefaultMaxDictEntries,
+          [&](td::ConstBitPtr key, int, td::Ref<vm::CellSlice>) -> td::Status {
+            result.withdraw_requests.push_back(nominator_address_from_hash(td::BitArray<256>(key)));
+            return td::Status::OK();
+          }));
     }
   }
 
@@ -122,11 +125,8 @@ td::Result<nominator_pool::ParsedStorage> parse_storage_impl(td::Ref<vm::Cell> d
 namespace nominator_pool {
 
 td::Result<ParsedStorage> parse_storage(td::Ref<vm::Cell> data_cell) {
-  try {
-    return parse_storage_impl(std::move(data_cell));
-  } catch (vm::VmError& e) {
-    return td::Status::Error(PSLICE() << "Failed to parse NominatorPoolStorage: " << e.get_msg());
-  }
+  return safe_parse::guard("Failed to parse NominatorPoolStorage",
+                           [&]() { return parse_storage_impl(std::move(data_cell)); });
 }
 
 }  // namespace nominator_pool
