@@ -122,6 +122,7 @@ var walletParsersMap = map[string]walletInfoParser{
 	"89fKU0k97trCizgZhqhJQDy6w9LFhHea8IEGWvCsS5M=": {Name: "wallet v5 beta", ParseFunc: ParseWalletV5},
 	"IINLe3KxEhR+Gy+0V7hOdNGjDwT3N9T2KmaOlVLSty8=": {Name: "wallet v5 r1", ParseFunc: ParseWalletV5},
 	"kUmuUcHkaJcQzr94MCl7Fqz7rbNjqSClN4k+f/7sp2g=": {Name: "tg-wallet", ParseFunc: ParseWalletTg},
+	"4wkRQgvvEZHAnc5Yud8rTKTC2cODzDtqkRcDSf+nDiw=": {Name: "tg-wallet", ParseFunc: ParseWalletTg},
 }
 
 func ParseWalletState(state models.AccountStateFull) (*models.WalletState, error) {

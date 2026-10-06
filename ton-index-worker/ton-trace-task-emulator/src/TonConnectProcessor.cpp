@@ -135,7 +135,8 @@ WalletType TonConnectProcessor::detect_wallet_type(const td::Bits256& code_hash)
   if (code_hash_b64 == "IINLe3KxEhR+Gy+0V7hOdNGjDwT3N9T2KmaOlVLSty8=") {
     return WALLET_V5R1;
   }
-  if (code_hash_b64 == "kUmuUcHkaJcQzr94MCl7Fqz7rbNjqSClN4k+f/7sp2g=") {
+  if (code_hash_b64 == "kUmuUcHkaJcQzr94MCl7Fqz7rbNjqSClN4k+f/7sp2g=" ||
+      code_hash_b64 == "4wkRQgvvEZHAnc5Yud8rTKTC2cODzDtqkRcDSf+nDiw=") {
     return WALLET_TG;
   }
   
