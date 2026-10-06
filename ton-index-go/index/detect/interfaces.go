@@ -794,6 +794,7 @@ func getInterfaces() []Interface {
 				Name: "tg_wallet",
 				CodeHashes: []string{
 					"kUmuUcHkaJcQzr94MCl7Fqz7rbNjqSClN4k+f/7sp2g=",
+					"4wkRQgvvEZHAnc5Yud8rTKTC2cODzDtqkRcDSf+nDiw=",
 				},
 			},
 			{
