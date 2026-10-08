@@ -59,6 +59,9 @@ td::Result<std::string> parse_chunks_data(td::Ref<vm::CellSlice> data) {
       }
       c++;
     }
+    if (c == kMaxChunks && dict.uint_key_exists(c)) {
+      return td::Status::Error(PSLICE() << "more than " << kMaxChunks << " chunks");
+    }
 
     if (!bw.byte_aligned()) {
       return td::Status::Error("Not byte aligned");
