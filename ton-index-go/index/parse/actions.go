@@ -1154,6 +1154,8 @@ func ParseRawAction(raw *models.RawAction) (*models.Action, error) {
 			Destination: raw.Destination,
 			Value:       raw.Value,
 		}
+	case "unknown":
+		act.Details = struct{}{}
 	default:
 		details := map[string]string{}
 		details["error"] = fmt.Sprintf("unsupported action type: '%s'", act.Type)
