@@ -349,3 +349,8 @@ tmp/
 
 **/ton-mch-engine/generated/
 **/ton-abi/generated/
+
+# The pinned abis catalog is downloaded, and its native bindings generated,
+# before builds and tests.
+/ton-index-go/index/acton/catalog/catalog.json
+/ton-index-go/index/acton/catalog/*_gen.go
