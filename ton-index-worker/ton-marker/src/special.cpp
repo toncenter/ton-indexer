@@ -24,6 +24,27 @@ int count_actions_depth(vm::Ref<vm::Cell> list) {
 // bc it writes failed result to pp
 bool try_parse_special(std::string opcode_name, vm::CellSlice& cs, tlb::JsonPrinter& pp, std::string& output_str,
                        int print_limit) {
+    // Telegram wallet signs the request with the signature at the beginning,
+    // so the first 32 bits of the body are not its opcode.
+    if (cs.have(512 + 32)) {
+        auto request = cs;
+        request.advance(512);
+        const auto opcode = request.prefetch_ulong(32);
+        const schemes::TgWalletRequest tg_request;
+        for (size_t i = 0; i < sizeof(tg_request.cons_tag) / sizeof(tg_request.cons_tag[0]); ++i) {
+            if (tg_request.cons_tag[i] == opcode) {
+                auto copy = cs;
+                const schemes::TgWalletMsgBody parser;
+                if (parser.print_skip(pp, copy) && copy.empty_ext()) {
+                    return true;
+                }
+                output_str = "";
+                pp = tlb::JsonPrinter(&output_str);
+                pp.set_limit(print_limit);
+                break;
+            }
+        }
+    }
     if (opcode_name == "w5_external_signed_request" || opcode_name == "w5_internal_signed_request" || opcode_name == "w5_extension_action_request") {        
         // we can't use W5MsgBody just as is. it has snake cells for actions,
         // and tlb-generated code is not capable of detecting how many cells are in the snake.

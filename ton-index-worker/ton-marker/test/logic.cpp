@@ -11,6 +11,11 @@ const std::string kJettonTransferBoc =
     "te6cckEBAgEAXwABrA+KfqXd1cM7477pClMu6EG4CAGpIg3SmqRBb3f118SmKj9v88uiL"
     "n/wr10L8o/P1edBoQALRoNZaHCTREZ/qCrIa3pc1jOHL2t49dK6CvI3sot9R8IDAQAITSOFQ1gqiHU=";
 
+// Internal request to tg-wallet in https://tonscan.org/tx/a086ecfd8a211c807f3ddd3ec63f619b7c5083f0dbaeb5c9633addf80a60382e
+const std::string kTgWalletSendOneBoc =
+    "te6cckEBAwEAjQABotiOvE4ZYtZkxtd9Se9sbmMXAdUFMt/PJKEKg9WYv40Kiy8QH7eILzwvyND08HsVxJmtmHMsObJYLkjIjnVaaw5jiW50f/9/"
+    "EWrJEDEAAAABAwEBaEIAEH2cJUG60f6QrAzzZPsu4ydsGVofsuan7JkNRKRUDLcgL68IAAAAAAAAAAAAAAAAAAECAAB/RhCT";
+
 const std::string kRecursiveDictionaryBoc =
     "te6cckEBGgEAogABGQMCzXkAAAAAAAAAAMABAgPPWAICAgEgAwMCASAEBAIBIAUFAgEgBgYCASAHBwIBIAgIAgEgCQkC"
     "ASAKCgIBIAsLAgEgDAwBGQDAs15AAAAAAAAAADANAgPPWA4OAgEgDw8CASAQEAIBIBERAgEgEhICASATEwIBIBQUAgEg"
@@ -38,6 +43,18 @@ bool test_regular_message_body() {
         return false;
     }
     return true;
+}
+
+bool test_tg_wallet_signed_request() {
+    const auto result = ton_marker::decode_boc_recursive(kTgWalletSendOneBoc);
+    if (result.find("\"@type\":\"tg_wallet_signed\"") == std::string::npos ||
+        result.find("\"@type\":\"tg_wallet_send_one_internal\"") == std::string::npos ||
+        result.find("\"send_mode\":\"3\"") == std::string::npos) {
+        std::cerr << "tg-wallet request decode failed: " << result << '\n';
+        return false;
+    }
+    return ton_marker::decode_opcode(0x63896e74) == "tg_wallet_send_one_internal" &&
+           ton_marker::decode_opcode(0xeba19948) == "tg_wallet_key_changed";
 }
 
 bool test_recursive_dictionary_amplification() {
@@ -138,7 +155,7 @@ bool test_c_api_limits() {
 }
 
 int main() {
-    if (!test_regular_message_body() || !test_recursive_dictionary_amplification() ||
+    if (!test_regular_message_body() || !test_tg_wallet_signed_request() || !test_recursive_dictionary_amplification() ||
         !test_recursive_decode_budget() || !test_encoded_boc_size_limit() || !test_batch_cardinality_limit()) {
         return 1;
     }
