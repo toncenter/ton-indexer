@@ -89,9 +89,9 @@ jobs:
       uses: actions/cache/restore@v4
       with:
         path: ${{ env.CCACHE_DIR }}
-        key: ccache-v1-${{ runner.os }}-${{ runner.arch }}-ubuntu-24.04-${{ env.CXX }}-${{ env.BUILD_TYPE }}-${{ github.sha }}
+        key: ccache-v2-${{ runner.os }}-${{ runner.arch }}-ubuntu-24.04-${{ env.CXX }}-${{ env.BUILD_TYPE }}-${{ github.sha }}
         restore-keys: |
-          ccache-v1-${{ runner.os }}-${{ runner.arch }}-ubuntu-24.04-${{ env.CXX }}-${{ env.BUILD_TYPE }}-
+          ccache-v2-${{ runner.os }}-${{ runner.arch }}-ubuntu-24.04-${{ env.CXX }}-${{ env.BUILD_TYPE }}-
 
     - name: Reset ccache statistics
       run: ccache --zero-stats
@@ -105,6 +105,8 @@ jobs:
       run: |
         cmake -S . -B build \
           -DCMAKE_BUILD_TYPE="$BUILD_TYPE" \
+          -DPORTABLE=1 \
+          -DTON_ARCH=x86-64 \
           -DCMAKE_C_COMPILER="$CC" \
           -DCMAKE_CXX_COMPILER="$CXX" \
           -DCMAKE_C_COMPILER_LAUNCHER=ccache \
