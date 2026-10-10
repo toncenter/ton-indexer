@@ -8,6 +8,9 @@ execute_process(
 if(NOT run_rc EQUAL 0)
     message(FATAL_ERROR "--actions run failed (${run_rc}):\n${run_err}")
 endif()
+# The traces directory also includes Python-only cases outside the MCH fixture
+# manifest. Their misc/ dumps are not part of the curated golden corpus.
+file(REMOVE_RECURSE "${WORK_DIR}/misc")
 execute_process(
     COMMAND diff -r -q "${GOLDEN_DIR}" "${WORK_DIR}"
     RESULT_VARIABLE diff_rc OUTPUT_VARIABLE diff_out)
