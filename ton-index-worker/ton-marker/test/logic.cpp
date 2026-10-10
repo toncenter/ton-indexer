@@ -1,5 +1,9 @@
 #include "logic.h"
 #include "wrapper.h"
+#include "td/utils/base64.h"
+#include "vm/boc.h"
+#include "vm/cells.h"
+#include "vm/cellslice.h"
 
 #include <iostream>
 #include <stdexcept>
@@ -15,6 +19,26 @@ const std::string kJettonTransferBoc =
 const std::string kTgWalletSendOneBoc =
     "te6cckEBAwEAjQABotiOvE4ZYtZkxtd9Se9sbmMXAdUFMt/PJKEKg9WYv40Kiy8QH7eILzwvyND08HsVxJmtmHMsObJYLkjIjnVaaw5jiW50f/9/"
     "EWrJEDEAAAABAwEBaEIAEH2cJUG60f6QrAzzZPsu4ydsGVofsuan7JkNRKRUDLcgL68IAAAAAAAAAAAAAAAAAAECAAB/RhCT";
+
+std::string tg_wallet_bulk_boc(unsigned declared_count) {
+    auto bytes = td::base64_decode(kTgWalletSendOneBoc).move_as_ok();
+    auto cell = vm::std_boc_deserialize(bytes).move_as_ok();
+    auto message = vm::load_cell_slice(cell).fetch_ref();
+
+    vm::CellBuilder last;
+    last.store_zeroes(1);
+    for (unsigned i = 0; i < 4; ++i) last.store_long(3, 8).store_ref(message);
+    vm::CellBuilder first;
+    first.store_ones(1).store_ref(last.finalize());
+    first.store_long(3, 8).store_ref(message);
+
+    vm::CellBuilder request;
+    request.store_zeroes(512).store_long(0x73896e75, 32);
+    request.store_long(2147450641, 32).store_long(1791561777, 32).store_long(1, 32);
+    request.store_long(declared_count, 8).store_ones(1).store_ref(first.finalize());
+    auto boc = vm::std_boc_serialize(request.finalize()).move_as_ok();
+    return td::base64_encode(boc);
+}
 
 const std::string kRecursiveDictionaryBoc =
     "te6cckEBGgEAogABGQMCzXkAAAAAAAAAAMABAgPPWAICAgEgAwMCASAEBAIBIAUFAgEgBgYCASAHBwIBIAgIAgEgCQkC"
@@ -49,12 +73,35 @@ bool test_tg_wallet_signed_request() {
     const auto result = ton_marker::decode_boc_recursive(kTgWalletSendOneBoc);
     if (result.find("\"@type\":\"tg_wallet_signed\"") == std::string::npos ||
         result.find("\"@type\":\"tg_wallet_send_one_internal\"") == std::string::npos ||
+        result.find("\"message\":{\"@type\":\"message\"") == std::string::npos ||
         result.find("\"send_mode\":\"3\"") == std::string::npos) {
         std::cerr << "tg-wallet request decode failed: " << result << '\n';
         return false;
     }
     return ton_marker::decode_opcode(0x63896e74) == "tg_wallet_send_one_internal" &&
            ton_marker::decode_opcode(0xeba19948) == "tg_wallet_key_changed";
+}
+
+bool test_tg_wallet_bulk_request() {
+    const auto result = ton_marker::decode_boc_recursive(tg_wallet_bulk_boc(5));
+    const std::string item = "\"@type\":\"tg_wallet_message_to_send\"";
+    std::size_t count = 0;
+    for (std::size_t pos = 0; (pos = result.find(item, pos)) != std::string::npos; pos += item.size()) ++count;
+    if (result.find("\"@type\":\"tg_wallet_send_bulk_external\"") == std::string::npos ||
+        result.find("\"messages_count\":\"5\",\"messages\":[") == std::string::npos || count != 5 ||
+        result.find("\"message\":{\"@type\":\"message\"") == std::string::npos) {
+        std::cerr << "tg-wallet bulk decode failed: " << result << '\n';
+        return false;
+    }
+
+    // An inconsistent length still has the original opaque TL-B representation.
+    const auto malformed = ton_marker::decode_boc_recursive(tg_wallet_bulk_boc(6));
+    if (malformed.find("\"first_chunk\"") == std::string::npos ||
+        malformed.find("\"messages\":[") != std::string::npos) {
+        std::cerr << "malformed tg-wallet bulk fallback failed: " << malformed << '\n';
+        return false;
+    }
+    return true;
 }
 
 bool test_recursive_dictionary_amplification() {
@@ -155,7 +202,8 @@ bool test_c_api_limits() {
 }
 
 int main() {
-    if (!test_regular_message_body() || !test_tg_wallet_signed_request() || !test_recursive_dictionary_amplification() ||
+    if (!test_regular_message_body() || !test_tg_wallet_signed_request() || !test_tg_wallet_bulk_request() ||
+        !test_recursive_dictionary_amplification() ||
         !test_recursive_decode_budget() || !test_encoded_boc_size_limit() || !test_batch_cardinality_limit()) {
         return 1;
     }
