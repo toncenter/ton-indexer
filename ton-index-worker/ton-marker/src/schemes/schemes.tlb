@@ -2250,10 +2250,12 @@ dedust_forward#f1989255 query_id:uint64 destination:MsgAddressInt body:^Cell = I
 // Telegram wallet: the 512-bit signature precedes the opcode in both internal and external requests.
 // Bulk messages use a Tolk array: uint8 length + Maybe ^first_chunk. Each chunk
 // starts with Maybe ^next_chunk and holds up to four (mode:uint8, ^message) pairs.
+// first_chunk is an array node, not a MessageRelaxed; special.cpp expands its items.
+tg_wallet_message_to_send$_ send_mode:uint8 message:^(MessageRelaxed Any) = TgWalletMessageToSend;
 tg_wallet_send_one_internal#63896e74 subwallet_id:uint32 valid_until:uint32 seqno:uint32
-        send_mode:uint8 message:^Cell = TgWalletRequest;
+        send_mode:uint8 message:^(MessageRelaxed Any) = TgWalletRequest;
 tg_wallet_send_one_external#63896e75 subwallet_id:uint32 valid_until:uint32 seqno:uint32
-        send_mode:uint8 message:^Cell = TgWalletRequest;
+        send_mode:uint8 message:^(MessageRelaxed Any) = TgWalletRequest;
 tg_wallet_send_bulk_internal#73896e74 subwallet_id:uint32 valid_until:uint32 seqno:uint32
         messages_count:uint8 first_chunk:(Maybe ^Cell) = TgWalletRequest;
 tg_wallet_send_bulk_external#73896e75 subwallet_id:uint32 valid_until:uint32 seqno:uint32
@@ -2267,7 +2269,7 @@ tg_wallet_signed#_ signature:bits512 request:TgWalletRequest = TgWalletMsgBody;
 
 tg_wallet_key_changed#eba19948 encrypted_old_private_key:bits256 = ExternalMsgBody;
 
-// Opcode lookup for the request behind the signature.
+// Opcode names only; signed requests are parsed by the TgWalletMsgBody special parser in special.cpp.
 tg_wallet_send_one_internal#63896e74 rest:Any = InternalMsgBody8;
 tg_wallet_send_one_external#63896e75 rest:Any = InternalMsgBody8;
 tg_wallet_send_bulk_internal#73896e74 rest:Any = InternalMsgBody8;

@@ -1,7 +1,40 @@
 #include "special.h"
 #include "schemes.h"
+#include "tolk_array.h"
 
 namespace ton_marker {
+
+namespace {
+
+bool try_parse_tg_wallet_bulk(unsigned opcode, vm::CellSlice cs, std::string& output, int print_limit) {
+    constexpr unsigned kBulkInternal = 0x73896e74;
+    constexpr unsigned kBulkExternal = 0x73896e75;
+    if (opcode != kBulkInternal && opcode != kBulkExternal) return false;
+
+    std::string json;
+    tlb::JsonPrinter printer(&json);
+    printer.set_limit(print_limit);
+    if (!printer.open("tg_wallet_signed") || !printer.fetch_bits_field(cs, 512, "signature") ||
+        cs.fetch_ulong(32) != opcode || !printer.field("request") ||
+        !printer.open(opcode == kBulkInternal ? "tg_wallet_send_bulk_internal" : "tg_wallet_send_bulk_external") ||
+        !printer.fetch_uint_field(cs, 32, "subwallet_id") ||
+        !printer.fetch_uint_field(cs, 32, "valid_until") ||
+        !printer.fetch_uint_field(cs, 32, "seqno")) {
+        return false;
+    }
+
+    auto array = cs;
+    if (!array.have(8) || !printer.fetch_uint_field(cs, 8, "messages_count") ||
+        !printer.field("messages") ||
+        !TolkArray(schemes::t_TgWalletMessageToSend, 1).print_skip(printer, array) ||
+        !array.empty_ext() || !printer.close() || !printer.close()) {
+        return false;
+    }
+    output = std::move(json);
+    return true;
+}
+
+} // namespace
 
 int count_actions_depth(vm::Ref<vm::Cell> list) {
     if (list.is_null()) {
@@ -33,6 +66,7 @@ bool try_parse_special(std::string opcode_name, vm::CellSlice& cs, tlb::JsonPrin
         const schemes::TgWalletRequest tg_request;
         for (size_t i = 0; i < sizeof(tg_request.cons_tag) / sizeof(tg_request.cons_tag[0]); ++i) {
             if (tg_request.cons_tag[i] == opcode) {
+                if (try_parse_tg_wallet_bulk(opcode, cs, output_str, print_limit)) return true;
                 auto copy = cs;
                 const schemes::TgWalletMsgBody parser;
                 if (parser.print_skip(pp, copy) && copy.empty_ext()) {

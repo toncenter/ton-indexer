@@ -20,6 +20,7 @@ add_custom_command(
 # core library
 add_library(ton-marker-core STATIC
     src/special.cpp
+    src/tolk_array.cpp
     src/logic.cpp
     ${CMAKE_CURRENT_BINARY_DIR}/auto/schemes.h
     ${CMAKE_CURRENT_BINARY_DIR}/auto/schemes.cpp
