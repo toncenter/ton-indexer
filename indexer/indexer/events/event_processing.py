@@ -403,6 +403,8 @@ async def try_classify_basic_actions(trace: Trace) -> list[Action]:
             blocks = await post_processor(blocks)
         actions, _ = serialize_blocks(blocks, trace_id=trace.trace_id, trace=trace)
         return actions
-    except Exception as e:
-        logging.error(f"Failed trace classification fallback for {trace.trace_id}:", e)
+    except Exception:
+        logging.exception(
+            "Failed trace classification fallback for %s", trace.trace_id
+        )
         return []
