@@ -1,0 +1,45 @@
+# Dockerfile for ton-index-worker on Apple Silicon (ARM64)
+FROM ubuntu:24.04 AS builder
+
+RUN DEBIAN_FRONTEND=noninteractive TZ=Etc/UTC apt-get update -y && apt-get -y install tzdata && rm -rf /var/lib/{apt,dpkg,cache,log}/
+
+RUN apt-get update -y \
+    && apt-get install -y build-essential cmake clang openssl libssl-dev zlib1g-dev \
+                   gperf wget git curl ccache libmicrohttpd-dev liblz4-dev \
+                   pkg-config libsecp256k1-dev libsodium-dev libhiredis-dev python3-dev libpq-dev \
+                   automake libjemalloc-dev lsb-release software-properties-common gnupg \
+                   autoconf libtool ninja-build \
+    && rm -rf /var/lib/{apt,dpkg,cache,log}/
+
+# Copy entire ton-index-worker directory
+COPY ton-index-worker/ /app/
+
+WORKDIR /app/build
+
+# Use default clang (not clang-20) and disable problematic CPU features
+ENV CC=clang
+ENV CXX=clang++
+
+RUN touch /app/suppression_mappings.txt && \
+    cmake -DCMAKE_BUILD_TYPE=Release \
+          -DPORTABLE=1 \
+          -DCMAKE_C_FLAGS="-march=armv8-a -mtune=generic" \
+          -DCMAKE_CXX_FLAGS="-march=armv8-a -mtune=generic" \
+          -G Ninja .. && \
+    ninja -j2 ton-index-postgres ton-index-postgres-migrate
+
+# Runtime image
+FROM ubuntu:24.04
+
+RUN apt-get update -y \
+    && apt-get install -y libssl3 libsecp256k1-1 libsodium23 libpq5 liblz4-1 libhiredis1.1.0 libjemalloc2 libatomic1 curl \
+    && rm -rf /var/lib/{apt,dpkg,cache,log}/
+
+COPY --from=builder /app/build/ton-index-postgres/ton-index-postgres /usr/bin/
+COPY --from=builder /app/build/ton-index-postgres/ton-index-postgres-migrate /usr/bin/
+
+COPY ton-index-worker/scripts/entrypoint.sh /app/entrypoint.sh
+RUN chmod +x /app/entrypoint.sh
+
+WORKDIR /app
+ENTRYPOINT ["/app/entrypoint.sh"]
