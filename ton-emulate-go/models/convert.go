@@ -67,7 +67,7 @@ func convertToIndexAccountState(hash *indexModels.HashType, accountStates map[Ha
 }
 
 func TransformToAPIResponse(hset map[string]string, enrichmentReader crud.EnrichmentReader,
-	isTestnet bool, includeAddressBook bool, includeMetadata bool, supportedActionTypes []string) (*EmulateTraceResponse, error) {
+	isTestnet bool, dnsSelfAssignedOnly bool, includeAddressBook bool, includeMetadata bool, supportedActionTypes []string) (*EmulateTraceResponse, error) {
 	emulatedContext := crud.NewEmptyContext(true)
 	raw_traces := make(map[string]map[string]string)
 	raw_traces[hset["root_node"]] = hset
@@ -144,8 +144,9 @@ func TransformToAPIResponse(hset map[string]string, enrichmentReader crud.Enrich
 		}
 
 		settings := indexModels.RequestSettings{
-			Timeout:   3 * time.Second,
-			IsTestnet: isTestnet,
+			Timeout:             3 * time.Second,
+			IsTestnet:           isTestnet,
+			DnsSelfAssignedOnly: dnsSelfAssignedOnly,
 		}
 		addr_list := slices.Collect(maps.Keys(addr_map))
 

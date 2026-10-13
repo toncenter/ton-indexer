@@ -111,6 +111,91 @@ TEST(TonDbScanner, ActionDetector_parse_jetton_burn) {
   CHECK(td::BigIntG<257>(8267792794) == **burn.amount.get());
 }
 
+namespace {
+
+schema::Transaction make_dns_item_transaction(bool success, bool aborted = false) {
+  auto transaction = schema::Transaction();
+  transaction.account = block::StdAddress::parse("0:5F1FCBE33DD66EF4267536C21822E481634E243B35A1AEDBF1B5967F89105087").move_as_ok();
+  transaction.lt = 108213061000003;
+  transaction.in_msg = std::make_optional(schema::Message());
+  transaction.in_msg->source = "0:8D745B27477C40ECB255E1DD360895BDB8C7E72856ECE1F281A0957FF8C15C36";
+  transaction.in_msg->bounced = false;
+  auto* descr = std::get_if<schema::TransactionDescr_ord>(&transaction.description);
+  CHECK(descr != nullptr);
+  descr->aborted = aborted;
+  schema::TrComputePhase_vm compute{};
+  compute.success = success;
+  descr->compute_ph = compute;
+  return transaction;
+}
+
+schema::NFTItemDataV2 make_dot_ton_item() {
+  schema::NFTItemDataV2 item;
+  item.collection_address = NftItemDetectorR::get_dot_ton_dns_root_addr();
+  return item;
+}
+
+td::Ref<vm::CellSlice> change_dns_record_body(td::Slice key, bool with_value) {
+  vm::CellBuilder cb;
+  CHECK(cb.store_long_bool(0x4eb1f0f9, 32));
+  CHECK(cb.store_long_bool(0, 64));
+  CHECK(cb.store_bits_bool(td::sha256_bits256(key)));
+  if (with_value) {
+    CHECK(cb.store_ref_bool(vm::CellBuilder().finalize()));
+  }
+  return vm::load_cell_slice_ref(cb.finalize());
+}
+
+}  // namespace
+
+TEST(TonDbScanner, ActionDetector_parse_dns_wallet_write) {
+  ActionDetector detector(nullptr, td::Promise<ParsedBlockPtr>());
+  auto transaction = make_dns_item_transaction(true);
+  auto item = make_dot_ton_item();
+
+  auto set = detector.parse_dns_wallet_write(item, transaction, change_dns_record_body("wallet", true));
+  CHECK(set.has_value());
+  ASSERT_EQ(transaction.in_msg->source.value(), set->writer);
+  ASSERT_EQ(convert::to_raw_address(transaction.account), convert::to_raw_address(set->nft_item_address));
+  ASSERT_EQ(transaction.lt, set->transaction_lt);
+  ASSERT_EQ(0x4eb1f0f9u, set->op);
+
+  auto del = detector.parse_dns_wallet_write(item, transaction, change_dns_record_body("wallet", false));
+  CHECK(del.has_value());
+
+  vm::CellBuilder edit;
+  CHECK(edit.store_long_bool(0x1a0b9d51, 32));
+  CHECK(edit.store_long_bool(0, 64));
+  CHECK(edit.store_ref_bool(vm::CellBuilder().finalize()));
+  auto edit_content = detector.parse_dns_wallet_write(item, transaction, vm::load_cell_slice_ref(edit.finalize()));
+  CHECK(edit_content.has_value());
+  ASSERT_EQ(0x1a0b9d51u, edit_content->op);
+}
+
+TEST(TonDbScanner, ActionDetector_parse_dns_wallet_write_rejects) {
+  ActionDetector detector(nullptr, td::Promise<ParsedBlockPtr>());
+  auto transaction = make_dns_item_transaction(true);
+  auto item = make_dot_ton_item();
+
+  CHECK(!detector.parse_dns_wallet_write(item, transaction, change_dns_record_body("site", true)));
+
+  vm::CellBuilder short_body;
+  CHECK(short_body.store_long_bool(0x4eb1f0f9, 32));
+  CHECK(short_body.store_long_bool(0, 64));
+  CHECK(short_body.store_long_bool(0, 40));
+  CHECK(!detector.parse_dns_wallet_write(item, transaction, vm::load_cell_slice_ref(short_body.finalize())));
+
+  auto aborted = make_dns_item_transaction(true, true);
+  CHECK(!detector.parse_dns_wallet_write(item, aborted, change_dns_record_body("wallet", true)));
+
+  auto failed = make_dns_item_transaction(false);
+  CHECK(!detector.parse_dns_wallet_write(item, failed, change_dns_record_body("wallet", true)));
+
+  schema::NFTItemDataV2 other_item;
+  other_item.collection_address = block::StdAddress::parse("0:BDF3FA8098D129B54B4F73B5BAC5D1E1FD91EB054169C3916DFC8CCD536D1000").move_as_ok();
+  CHECK(!detector.parse_dns_wallet_write(other_item, transaction, change_dns_record_body("wallet", true)));
+}
+
 
 
 #if TD_PORT_POSIX

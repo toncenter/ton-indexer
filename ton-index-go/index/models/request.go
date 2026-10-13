@@ -17,6 +17,7 @@ type RequestSettings struct {
 	NoAddressBook        bool
 	NoMetadata           bool
 	UseCache             bool
+	DnsSelfAssignedOnly  bool
 }
 
 type LimitParams struct {

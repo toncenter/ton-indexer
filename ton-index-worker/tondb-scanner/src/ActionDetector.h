@@ -4,7 +4,9 @@
 #include "StakingEventProcessor.h"
 #include "convert-utils.h"
 #include "tokens-tlb.h"
+#include "smc-interfaces/Tokens.h"
 
+#include "common/checksum.h"
 #include "crypto/block/block-auto.h"
 #include "td/actor/actor.h"
 #include "td/utils/logging.h"
@@ -88,6 +90,9 @@ public:
           } else {
             block_->events_.push_back(transfer.move_as_ok());
           }
+        }
+        if (auto write = parse_dns_wallet_write(*nft_item_ptr, transaction, in_msg_body_cs)) {
+          block_->events_.push_back(std::move(write.value()));
         }
       }
     }
@@ -231,4 +236,59 @@ public:
     return transfer;
   }
 
+  // edit_content replaces all records, telemint has no handler for it.
+  // ton-blockchain/dns-contract@d081310 func/nft-item.fc:199-224
+  // TelegramMessenger/telemint@1e47b28 func/nft-item.fc:130-142,257-267
+  std::optional<schema::DnsWalletWrite> parse_dns_wallet_write(const schema::NFTItemDataV2& nft_item,
+                                                               const schema::Transaction& transaction,
+                                                               td::Ref<vm::CellSlice> in_msg_body_cs) {
+    constexpr unsigned long long op_change_dns_record = 0x4eb1f0f9;
+    constexpr unsigned long long op_edit_content = 0x1a0b9d51;
+    static const td::Bits256 wallet_key = td::sha256_bits256("wallet");
+
+    if (!nft_item.collection_address) {
+      return std::nullopt;
+    }
+    const auto& collection = nft_item.collection_address.value();
+    auto t_me_root = NftItemDetectorR::dot_t_dot_me_dns_root_addr();
+    bool is_dns_item = collection == NftItemDetectorR::get_dot_ton_dns_root_addr() ||
+                       (t_me_root && collection == t_me_root.value());
+    if (!is_dns_item) {
+      return std::nullopt;
+    }
+
+    auto* descr = std::get_if<schema::TransactionDescr_ord>(&transaction.description);
+    if (!descr || descr->aborted) {
+      return std::nullopt;
+    }
+    auto* compute = std::get_if<schema::TrComputePhase_vm>(&descr->compute_ph);
+    if (!compute || !compute->success) {
+      return std::nullopt;
+    }
+    if (!transaction.in_msg || !transaction.in_msg->source || transaction.in_msg->bounced.value_or(false)) {
+      return std::nullopt;
+    }
+
+    vm::CellSlice body = *in_msg_body_cs;
+    unsigned long long op;
+    if (!body.fetch_ulong_bool(32, op)) {
+      return std::nullopt;
+    }
+    if (op == op_change_dns_record) {
+      td::Bits256 key;
+      if (!body.advance(64) || !body.fetch_bits_to(key) || key != wallet_key) {
+        return std::nullopt;
+      }
+    } else if (op != op_edit_content) {
+      return std::nullopt;
+    }
+
+    schema::DnsWalletWrite write;
+    write.transaction_hash = transaction.hash;
+    write.transaction_lt = transaction.lt;
+    write.nft_item_address = transaction.account;
+    write.writer = transaction.in_msg->source.value();
+    write.op = static_cast<uint32_t>(op);
+    return write;
+  }
 };

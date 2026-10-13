@@ -150,23 +150,24 @@ func (req TonConnectEmulateRequest) Validate() error {
 
 // Command-line flags
 var (
-	redisAddr         = flag.String("redis", "localhost:6379", "Redis server dsn")
-	emulatorQueueName = flag.String("emulator-queue", "emulatorqueue", "Redis queue name")
-	classifierChannel = flag.String("classifier-channel", "classifierchannel", "Redis queue name")
-	pg                = flag.String("pg", "", "PostgreSQL connection string")
-	kvrocksAddr       = flag.String("kvrocks", "", "Kvrocks address or Redis URL for enrichment reads")
-	kvrocksSentinels  = flag.String("kvrocks-sentinels", "", "Comma-separated Kvrocks Sentinel addresses")
-	kvrocksMaster     = flag.String("kvrocks-sentinel-master", "", "Kvrocks Sentinel master name")
-	kvrocksUser       = flag.String("kvrocks-user", "", "Kvrocks username")
-	kvrocksPassword   = flag.String("kvrocks-password", "", "Kvrocks password")
-	kvrocksDB         = flag.Int("kvrocks-db", 0, "Kvrocks database number")
-	kvrocksReplicas   = flag.Bool("kvrocks-replica-reads", false, "Read from Kvrocks replicas discovered via Sentinel")
-	kvrocksStaleness  = flag.Int64("kvrocks-staleness-blocks", 5, "Max watermark lag in masterchain blocks for a Kvrocks replica to serve reads")
-	kvrocksRefreshMS  = flag.Int64("kvrocks-replica-refresh-ms", 300, "Kvrocks replica discovery and freshness poll interval in milliseconds")
-	imgProxyBaseUrl   = flag.String("imgproxy-baseurl", "", "Image proxy base URL")
-	serverPort        = flag.Int("port", 8080, "Server port")
-	prefork           = flag.Bool("prefork", false, "Use prefork")
-	testnet           = flag.Bool("testnet", false, "Use testnet")
+	redisAddr           = flag.String("redis", "localhost:6379", "Redis server dsn")
+	emulatorQueueName   = flag.String("emulator-queue", "emulatorqueue", "Redis queue name")
+	classifierChannel   = flag.String("classifier-channel", "classifierchannel", "Redis queue name")
+	pg                  = flag.String("pg", "", "PostgreSQL connection string")
+	kvrocksAddr         = flag.String("kvrocks", "", "Kvrocks address or Redis URL for enrichment reads")
+	kvrocksSentinels    = flag.String("kvrocks-sentinels", "", "Comma-separated Kvrocks Sentinel addresses")
+	kvrocksMaster       = flag.String("kvrocks-sentinel-master", "", "Kvrocks Sentinel master name")
+	kvrocksUser         = flag.String("kvrocks-user", "", "Kvrocks username")
+	kvrocksPassword     = flag.String("kvrocks-password", "", "Kvrocks password")
+	kvrocksDB           = flag.Int("kvrocks-db", 0, "Kvrocks database number")
+	kvrocksReplicas     = flag.Bool("kvrocks-replica-reads", false, "Read from Kvrocks replicas discovered via Sentinel")
+	kvrocksStaleness    = flag.Int64("kvrocks-staleness-blocks", 5, "Max watermark lag in masterchain blocks for a Kvrocks replica to serve reads")
+	kvrocksRefreshMS    = flag.Int64("kvrocks-replica-refresh-ms", 300, "Kvrocks replica discovery and freshness poll interval in milliseconds")
+	imgProxyBaseUrl     = flag.String("imgproxy-baseurl", "", "Image proxy base URL")
+	serverPort          = flag.Int("port", 8080, "Server port")
+	prefork             = flag.Bool("prefork", false, "Use prefork")
+	testnet             = flag.Bool("testnet", false, "Use testnet")
+	dnsSelfAssignedOnly = flag.Bool("dns-self-assigned-only", false, "Show only self-assigned DNS domains in the address book (Kvrocks only)")
 )
 
 var enrichmentReader crud.EnrichmentReader
@@ -294,7 +295,7 @@ func emulateTrace(c *fiber.Ctx) error {
 		return fiber.NewError(fiber.StatusInternalServerError, "failed to get result from Redis: "+err.Error())
 	}
 
-	result, err := models.TransformToAPIResponse(hset, enrichmentReader, *testnet, req.IncludeAddressBook, req.IncludeMetadata,
+	result, err := models.TransformToAPIResponse(hset, enrichmentReader, *testnet, *dnsSelfAssignedOnly, req.IncludeAddressBook, req.IncludeMetadata,
 		supportedActionTypes)
 	if err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, "failed to transform result: "+err.Error())
@@ -413,7 +414,7 @@ func emulateTonConnect(c *fiber.Ctx) error {
 		return fiber.NewError(fiber.StatusInternalServerError, "failed to get result from Redis: "+err.Error())
 	}
 
-	result, err := models.TransformToAPIResponse(hset, enrichmentReader, *testnet, req.IncludeAddressBook, req.IncludeMetadata,
+	result, err := models.TransformToAPIResponse(hset, enrichmentReader, *testnet, *dnsSelfAssignedOnly, req.IncludeAddressBook, req.IncludeMetadata,
 		supportedActionTypes)
 	if err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, "failed to transform result: "+err.Error())
@@ -434,6 +435,9 @@ func ExtractHeader(ctx *fiber.Ctx, header string) (string, bool) {
 
 func main() {
 	flag.Parse()
+	if *dnsSelfAssignedOnly && *kvrocksAddr == "" && *kvrocksSentinels == "" {
+		log.Fatal("-dns-self-assigned-only requires -kvrocks or -kvrocks-sentinels")
+	}
 
 	redisClient = redis.NewClient(&redis.Options{
 		Addr: *redisAddr,

@@ -31,9 +31,10 @@ import (
 
 // Config provides runtime dependencies for v2 handlers.
 type Config struct {
-	EnrichmentReader crud.EnrichmentReader
-	Testnet          bool
-	ImgProxyBaseURL  string
+	EnrichmentReader    crud.EnrichmentReader
+	Testnet             bool
+	DnsSelfAssignedOnly bool
+	ImgProxyBaseURL     string
 }
 
 var config Config
@@ -610,8 +611,9 @@ func fetchAddressBookAndMetadata(_ context.Context, addrBookAddresses []indexMod
 	}
 
 	settings := indexModels.RequestSettings{
-		Timeout:   3 * time.Second,
-		IsTestnet: config.Testnet,
+		Timeout:             3 * time.Second,
+		IsTestnet:           config.Testnet,
+		DnsSelfAssignedOnly: config.DnsSelfAssignedOnly,
 	}
 
 	if includeAddressBook {

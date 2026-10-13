@@ -8,6 +8,7 @@ type DNSRecord struct {
 	Wallet         *AccountAddress `json:"dns_wallet"`
 	SiteAdnl       *string         `json:"dns_site_adnl"`
 	StorageBagID   *string         `json:"dns_storage_bag_id"`
+	SelfAssigned   *bool           `json:"self_assigned,omitempty"` // owner == wallet == last wallet writer; only with -dns-self-assigned-only
 } // @name DNSRecord
 
 type DNSAuctionRecord struct {

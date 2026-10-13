@@ -673,6 +673,14 @@ struct NFTTransfer {
   td::Ref<vm::Cell> forward_payload;
 };
 
+struct DnsWalletWrite {
+  td::Bits256 transaction_hash;
+  uint64_t transaction_lt;
+  block::StdAddress nft_item_address;
+  std::string writer;
+  uint32_t op;
+};
+
 struct GetGemsNftAuctionData {
   block::StdAddress address;
   bool end;
@@ -806,6 +814,7 @@ struct MasterchainBlockDataState {
 using BlockchainEvent = std::variant<JettonTransfer,
                                      JettonBurn,
                                      NFTTransfer,
+                                     DnsWalletWrite,
                                      NominatorPoolEvent,
                                      NominatorPoolValidatorEvent,
                                      ValidatorEvent>;

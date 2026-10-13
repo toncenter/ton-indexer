@@ -989,6 +989,17 @@ std::string build_payload(const PreparedDnsEntryRow& row) {
   });
 }
 
+std::string build_payload(const PreparedDnsWalletWriterRow& row) {
+  return build_json_payload([&](td::JsonObjectScope& obj) {
+    json_put_common(obj, row.source_mc_seqno);
+    json_put_address(obj, "nft_item_address", row.nft_item_address);
+    json_put_string(obj, "writer", row.writer);
+    json_put_u64_string(obj, "write_lt", row.write_lt);
+    json_put_hash(obj, "write_tx_hash", row.write_tx_hash);
+    json_put_string(obj, "write_op", row.write_op);
+  });
+}
+
 std::string build_payload(const PreparedGetgemsSaleRow& row) {
   return build_json_payload([&](td::JsonObjectScope& obj) {
     json_put_common(obj, row.source_mc_seqno);
@@ -3160,6 +3171,10 @@ void KvrocksBatchWriter::write_once() {
   queue_indexed_interface_current_rows(batch_.nft_items, "nft_items", [](const auto& row) {
     return address_key(row.address);
   });
+  for (const auto& row : batch_.dns_wallet_writers) {
+    queue_set_current("dns_wallet_writers", address_key(row.nft_item_address), row.source_mc_seqno,
+                      build_payload(row));
+  }
   queue_indexed_interface_current_rows(batch_.dns_entries, "dns_entries", [](const auto& row) {
     return address_key(row.nft_item_address);
   });
