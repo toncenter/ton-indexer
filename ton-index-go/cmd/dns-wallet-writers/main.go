@@ -39,6 +39,8 @@ func (k *sourceKV) loadItems(ctx context.Context) (map[string][]candidate, error
 	items := map[string][]candidate{}
 	for _, root := range dnsRoots {
 		key := keyPrefix + ":idx:nft_items:collection:" + root + ":by_index"
+		log.Printf("loading DNS items of collection %s", root)
+		loaded := 0
 		for start := int64(0); ; start += 1000 {
 			time.Sleep(kvPause)
 			members, err := k.c.ZRange(ctx, key, start, start+999).Result()
@@ -52,10 +54,15 @@ func (k *sourceKV) loadItems(ctx context.Context) (map[string][]candidate, error
 				}
 				items[item] = nil
 			}
+			loaded += len(members)
 			if len(members) < 1000 {
 				break
 			}
+			if loaded%100000 == 0 {
+				log.Printf("collection %s: %d items loaded", root, loaded)
+			}
 		}
+		log.Printf("collection %s: %d items", root, loaded)
 	}
 	return items, nil
 }
@@ -63,6 +70,9 @@ func (k *sourceKV) loadItems(ctx context.Context) (map[string][]candidate, error
 func (k *sourceKV) bodies(ctx context.Context, hashes []string) (map[string]string, error) {
 	bodies := map[string]string{}
 	for start := 0; start < len(hashes); start += kvBatch {
+		if start > 0 && start%10000 == 0 {
+			log.Printf("bodies read: %d of %d", start, len(hashes))
+		}
 		batch := hashes[start:min(start+kvBatch, len(hashes))]
 		keys := make([]string, len(batch))
 		for i, hash := range batch {
@@ -158,6 +168,7 @@ func main() {
 	if kvrocksAddr == "" {
 		log.Fatal("-kvrocks is required")
 	}
+	log.Printf("start: kvrocks %s, dry run %v", kvrocksAddr, *dryRun)
 
 	ctx := context.Background()
 	client := redis.NewClient(&redis.Options{Addr: kvrocksAddr, Password: kvrocksPassword, ReadTimeout: 30 * time.Second})

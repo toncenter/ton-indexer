@@ -54,7 +54,9 @@ type candidate struct {
 }
 
 func scanCandidates(ctx context.Context, conn *pgx.Conn, items map[string][]candidate) error {
+	candidates := 0
 	for _, op := range []int32{opChangeDNSRecord, opEditContent} {
+		log.Printf("scanning opcode %x", op)
 		// tonhash rejects an empty hash; lt -1 includes all nonnegative logical times.
 		lt, hash := int64(-1), base64.StdEncoding.EncodeToString(make([]byte, 32))
 		for page := 1; ; page++ {
@@ -78,13 +80,14 @@ func scanCandidates(ctx context.Context, conn *pgx.Conn, items map[string][]cand
 					c.BodyHash = *r.BodyHash
 				}
 				items[*r.Destination] = append(items[*r.Destination], c)
+				candidates++
 			}
 			if len(batch) > 0 {
 				last := batch[len(batch)-1]
 				lt, hash = last.KeyLt, last.MsgHash
 			}
 			if page%50 == 0 || len(batch) < pageSize {
-				log.Printf("opcode %x: page %d, lt %d", op, page, lt)
+				log.Printf("opcode %x: page %d, lt %d, candidates %d", op, page, lt, candidates)
 			}
 			if len(batch) < pageSize {
 				break
@@ -105,12 +108,15 @@ func resolve(ctx context.Context, kv *sourceKV, items map[string][]candidate) ([
 	}
 	var payloads []writerPayload
 	var missing []string
-	for len(items) > 0 {
+	for round := 1; len(items) > 0; round++ {
 		var hashes []string
 		for _, writes := range items {
 			if c := writes[0]; c.Op == opChangeDNSRecord && c.BodyHash != "" {
 				hashes = append(hashes, c.BodyHash)
 			}
+		}
+		if len(hashes) >= 1000 || round%50 == 0 {
+			log.Printf("resolve round %d: %d items left, %d bodies to read, %d writers found", round, len(items), len(hashes), len(payloads))
 		}
 		bodies, err := kv.bodies(ctx, hashes)
 		if err != nil {
@@ -195,6 +201,9 @@ func writeAll(ctx context.Context, dst redis.UniversalClient, out string, payloa
 				} else if n == 1 {
 					applied++
 				}
+			}
+			if done := min(start+kvBatch, len(payloads)); done%10000 == 0 {
+				log.Printf("written %d of %d, applied %d", done, len(payloads), applied)
 			}
 			time.Sleep(kvPause)
 		}
