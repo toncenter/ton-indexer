@@ -201,6 +201,15 @@ struct PreparedDnsEntryRow {
                                 auction_end_time, last_fill_up_time, last_transaction_lt, destroyed);
 };
 
+struct PreparedDnsWalletWriterRow {
+  block::StdAddress nft_item_address;
+  std::string writer;
+  std::uint64_t write_lt;
+  td::Bits256 write_tx_hash;
+  std::string write_op;
+  std::uint32_t source_mc_seqno;
+};
+
 struct PreparedGetgemsSaleRow {
   block::StdAddress address;
   bool is_complete;
@@ -430,6 +439,7 @@ struct StateBatch {
   std::vector<PreparedNftCollectionRow> nft_collections;
   std::vector<PreparedNftItemRow> nft_items;
   std::vector<PreparedDnsEntryRow> dns_entries;
+  std::vector<PreparedDnsWalletWriterRow> dns_wallet_writers;
   std::vector<PreparedGetgemsSaleRow> getgems_nft_sales;
   std::vector<PreparedGetgemsAuctionRow> getgems_nft_auctions;
   std::vector<PreparedMultisigContractRow> multisig_contracts;

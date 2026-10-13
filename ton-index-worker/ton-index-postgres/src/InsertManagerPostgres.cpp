@@ -487,6 +487,15 @@ struct PreparedDnsEntryRow {
                         auction_end_time, last_fill_up_time, last_transaction_lt, destroyed);
 };
 
+struct PreparedDnsWalletWriterRow {
+  block::StdAddress nft_item_address;
+  std::string writer;
+  uint64_t write_lt;
+  td::Bits256 write_tx_hash;
+  std::string write_op;
+  std::uint32_t source_mc_seqno;
+};
+
 struct PreparedGetgemsSaleRow {
   block::StdAddress address;
   bool is_complete;
@@ -809,6 +818,7 @@ struct PreparedBatchPostgres {
   std::vector<PreparedNftCollectionRow> nft_collections;
   std::vector<PreparedNftItemRow> nft_items;
   std::vector<PreparedDnsEntryRow> dns_entries;
+  std::vector<PreparedDnsWalletWriterRow> dns_wallet_writers;
   std::vector<PreparedGetgemsSaleRow> getgems_nft_sales;
   std::vector<PreparedGetgemsAuctionRow> getgems_nft_auctions;
   std::vector<PreparedMultisigContractRow> multisig_contracts;
@@ -976,6 +986,18 @@ kvrocks_state::StateBatch make_kvrocks_state_batch(const PreparedBatchPostgres& 
       .last_fill_up_time = row.last_fill_up_time,
       .last_transaction_lt = row.last_transaction_lt,
       .destroyed = row.destroyed,
+      .source_mc_seqno = row.source_mc_seqno,
+    });
+  }
+
+  result.dns_wallet_writers.reserve(batch.dns_wallet_writers.size());
+  for (const auto& row : batch.dns_wallet_writers) {
+    result.dns_wallet_writers.push_back({
+      .nft_item_address = row.nft_item_address,
+      .writer = row.writer,
+      .write_lt = row.write_lt,
+      .write_tx_hash = row.write_tx_hash,
+      .write_op = row.write_op,
       .source_mc_seqno = row.source_mc_seqno,
     });
   }
@@ -1718,6 +1740,32 @@ void collect_and_prepare_batch_rows(const std::vector<InsertTaskStruct>& insert_
         .forward_payload = std::move(forward_payload_boc),
         .trace_id = transfer.trace_id,
       });
+    }
+  }
+
+  {
+    std::unordered_map<block::StdAddress, PreparedDnsWalletWriterRow> dns_wallet_writers;
+    for (const auto& task : insert_tasks) {
+      for (const auto& write : task.parsed_block_->get_events<schema::DnsWalletWrite>()) {
+        auto it = dns_wallet_writers.find(write.nft_item_address);
+        if (it == dns_wallet_writers.end() || it->second.write_lt < write.transaction_lt) {
+          dns_wallet_writers[write.nft_item_address] = PreparedDnsWalletWriterRow{
+            .nft_item_address = write.nft_item_address,
+            .writer = write.writer,
+            .write_lt = write.transaction_lt,
+            .write_tx_hash = write.transaction_hash,
+            .write_op = write.op == 0x1a0b9d51 ? "edit_content" : "change_dns_record",
+            .source_mc_seqno = task.mc_seqno_,
+          };
+        }
+      }
+    }
+    auto ordered_dns_wallet_writers = get_ordered_map_values(dns_wallet_writers, [](const auto& key, const auto&) {
+      return convert::to_raw_address(key);
+    });
+    prepared_batch.dns_wallet_writers.reserve(ordered_dns_wallet_writers.size());
+    for (const auto& [_, row_ptr] : ordered_dns_wallet_writers) {
+      prepared_batch.dns_wallet_writers.push_back(*row_ptr);
     }
   }
 
