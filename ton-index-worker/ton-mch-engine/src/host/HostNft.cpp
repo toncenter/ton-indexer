@@ -9,7 +9,9 @@
 #include "parse/PSlice.h"
 #include "btypes_gen.h"
 
+#include "block/block.h"
 #include "td/utils/base64.h"
+#include "td/utils/crypto.h"
 #include "vm/boc.h"
 #include "vm/cellslice.h"
 
@@ -245,6 +247,54 @@ EvalResult get_nft_data(BuildEnv &env, const Value &nft_address) {
   return rt_ok(Value::make_dict(std::move(d)));
 }
 
+// Telemint item code (cell hash, cell depth) as deployed on chain
+constexpr std::pair<const char *, int> kTelemintItemCodes[] = {
+    {"p6Jhak1jmgdsL2fnzOBCP9Khwu5VCtZRwe2hbuE7yso=", 9},
+    {"WwkpkWUPvEizKIsIrMdneyLkwl1IRYxW0qF/I+gGtrQ=", 8},
+    {"i3EeaAlnLAM13GHR2h3MQFnJcySK9we9WGJFCF6nCzI=", 0},
+    {"MNzX1bb89ZaMJ5Hh4xrXMvJnLymG4daXDrA8yiLSMlE=", 0},
+};
+
+// The item address is the one its collection derives for a telemint item code (empty initial state).
+bool is_telemint_item(const Value &nft) {
+  const Value *addr = nft.field("address");
+  const Value *idx = nft.field("index");
+  const Value *coll = nft.field("collection");
+  const Value *coll_addr = coll != nullptr && !coll->is_null() ? coll->field("address") : nullptr;
+  if (addr == nullptr || idx == nullptr || coll_addr == nullptr) {
+    return false;
+  }
+  td::RefInt256 index = idx->t == VType::Int   ? idx->num
+                        : idx->t == VType::Str ? td::dec_string_to_int256(idx->str)
+                                               : td::RefInt256{};
+  auto r_item = block::StdAddress::parse(td::Slice(addr->str));
+  auto r_coll = block::StdAddress::parse(td::Slice(coll_addr->str));
+  if (index.is_null() || r_item.is_error() || r_coll.is_error()) {
+    return false;
+  }
+  block::StdAddress collection = r_coll.move_as_ok();
+  vm::CellBuilder config;
+  if (!config.store_int256_bool(index, 256, false) || !config.store_long_bool(4, 3) ||
+      !config.store_long_bool(collection.workchain, 8) || !config.store_bits_bool(collection.addr)) {
+    return false;
+  }
+  vm::CellBuilder data;
+  data.store_ref(config.finalize()).store_long(0, 1);
+  auto data_cell = data.finalize();
+  for (const auto &[hash_b64, depth] : kTelemintItemCodes) {
+    std::string repr = {2, 1, 0b00110100, static_cast<char>(depth >> 8), static_cast<char>(depth & 0xff),
+                        static_cast<char>(data_cell->get_depth() >> 8), static_cast<char>(data_cell->get_depth() & 0xff)};
+    repr += td::base64_decode(td::Slice(hash_b64)).move_as_ok();
+    repr += data_cell->get_hash().as_slice().str();
+    td::Bits256 state_init_hash;
+    td::sha256(repr, state_init_hash.as_slice());
+    if (state_init_hash == r_item.ok().addr) {
+      return true;
+    }
+  }
+  return false;
+}
+
 }  // namespace
 
 // Fixed 13-key record, or Null for an unknown NFT item.
@@ -433,6 +483,14 @@ EvalResult telegram_nft_purchase_data(BuildEnv &env, const std::vector<Value> &a
   if (exists_f == nullptr || exists_f->t != VType::Bool || !exists_f->boolean) {
     return rt_ok(Value::null());  // reject: unknown NFT item
   }
+  // prev_owner is sender-controlled: trust it only for a Fragment bid, a mint or the item's collection
+  const Value *coll = nft.field("collection");
+  const Value *coll_addr = coll != nullptr && !coll->is_null() ? coll->field("address") : nullptr;
+  bool fragment_bid = own.has_payload && own.is_bid && is_telemint_item(nft);
+  if (!fragment_bid && !prev_owner.is_null() &&
+      (coll_addr == nullptr || !same_account(prev_owner, *coll_addr))) {
+    return rt_ok(Value::null());
+  }
 
   bool is_purchase = false;
   Value forward_payload = Value::null();
@@ -447,7 +505,7 @@ EvalResult telegram_nft_purchase_data(BuildEnv &env, const std::vector<Value> &a
   if (own.has_payload) {
     forward_payload = Value::make_str(td::base64_encode(td::Slice(own.payload_raw_boc)));
   }
-  if (own.has_payload && own.is_bid) {
+  if (fragment_bid) {
     is_purchase = true;
     price = to_amount(Value::make_int(own.bid));
     marketplace = Value::make_str("fragment");
