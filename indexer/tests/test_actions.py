@@ -106,6 +106,13 @@ class TestClassificationCommon:
         assert all(a.trace_mc_seqno_end == trace.mc_seqno_end for a in actions[0].get_action_accounts())
 
     @pytest.mark.asyncio
+    async def test_forged_ownership_assigned(self, traces_dir):
+        trace, interfaces = load_trace_from_file(traces_dir / "oMwLC31zjT834v5yz5Yb8lhqq7kwUi7AgooJw_CSuio=.lz4")
+        context.interface_repository.set(TestInterfaceRepository(interfaces))
+        _, _, actions, _ = await process_trace(trace)
+        assert not any(a.type == 'nft_transfer' for a in actions)
+
+    @pytest.mark.asyncio
     async def test_fallback_classification(self, traces_dir):
         trace_id = "utNOlIUjzWv7MRoSUfkjHkBaIg40RkYMLOy9ljAaykQ="
         trace = self.load_trace(trace_id, traces_dir)

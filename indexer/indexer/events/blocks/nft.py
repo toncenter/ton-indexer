@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import base64
+import hashlib
 from dataclasses import dataclass
 
-from pytoniq_core import Slice
+from pytoniq_core import Slice, begin_cell
 
 from indexer.events import context
 
@@ -15,7 +16,6 @@ from indexer.events.blocks.messages import NftOwnershipAssigned, ExcessMessage
 from indexer.events.blocks.messages.nft import NftDiscovery, NftReportStaticData, NftTransfer, TeleitemBidInfo, AuctionFillUp
 from indexer.events.blocks.utils import AccountId, Amount
 from indexer.events.blocks.utils.block_utils import find_call_contracts, get_labeled
-from indexer.events.blocks.utils.block_utils import find_messages
 
 
 class NftMintBlock(Block):
@@ -115,11 +115,10 @@ def _purchase_parent_to_consume(prev_block: 'Block | None') -> 'Block | None':
 
 async def build_nft_transfer_core(
         block: Block,
-        ownership_message: 'NftOwnershipAssigned | None',
         funding_parent: 'Block | None') -> tuple['NftTransferBlock | None', list[Block]]:
     """Shared field build for a base NFT transfer (plain transfer + getgems
     purchase). Pure over the anchor `block` (the NftTransfer call) and the
-    optional ownership notification and funding parent supplied by the caller.
+    optional funding parent supplied by the caller.
 
     Returns `(new_block, extra)` — the produced NftTransferBlock (data set, NOT
     merged) plus the funding parent to consume in the purchase branch (`[]`
@@ -132,10 +131,7 @@ async def build_nft_transfer_core(
     data['is_purchase'] = False
     nft_transfer_message = NftTransfer(
         Slice.one_from_boc(block.event_nodes[0].message.message_content.body))
-    if ownership_message is not None:
-        data['prev_owner'] = AccountId(ownership_message.prev_owner)
-    else:
-        data['prev_owner'] = AccountId(block.event_nodes[0].message.source)
+    data['prev_owner'] = AccountId(block.event_nodes[0].message.source)
     data['query_id'] = nft_transfer_message.query_id
     data['forward_amount'] = Amount(nft_transfer_message.forward_amount)
     if nft_transfer_message.response_destination:
@@ -182,10 +178,7 @@ class NftTransferBlockMatcher(BlockMatcher):
             return True
 
     async def build_block(self, block: Block, other_blocks: list['Block']):
-        ownership_assigned_message = find_messages(other_blocks, NftOwnershipAssigned)
-        ownership_message = ownership_assigned_message[0][1] if len(ownership_assigned_message) > 0 else None
-        new_block, extra = await build_nft_transfer_core(
-            block, ownership_message, block.previous_block)
+        new_block, extra = await build_nft_transfer_core(block, block.previous_block)
         if new_block is None:
             return []
         new_block.merge_blocks([block] + extra + other_blocks)
@@ -343,6 +336,29 @@ class NftDiscoveryBlockMatcher(BlockMatcher):
 
 
 
+# Telemint item code (cell hash, cell depth) as deployed on chain
+TELEMINT_ITEM_CODES = [
+    (base64.b64decode('p6Jhak1jmgdsL2fnzOBCP9Khwu5VCtZRwe2hbuE7yso='), 9),
+    (base64.b64decode('WwkpkWUPvEizKIsIrMdneyLkwl1IRYxW0qF/I+gGtrQ='), 8),
+    (base64.b64decode('i3EeaAlnLAM13GHR2h3MQFnJcySK9we9WGJFCF6nCzI='), 0),
+    (base64.b64decode('MNzX1bb89ZaMJ5Hh4xrXMvJnLymG4daXDrA8yiLSMlE='), 0),
+]
+
+
+def _is_telemint_item(nft: dict) -> bool:
+    """The item address is the one its collection derives for a telemint item code (empty initial state)."""
+    if nft['collection'] is None or nft['index'] is None:
+        return False
+    config = begin_cell().store_uint(int(nft['index']), 256).store_address(nft['collection']['address'].address).end_cell()
+    data = begin_cell().store_ref(config).store_maybe_ref(None).end_cell()
+    for code_hash, code_depth in TELEMINT_ITEM_CODES:
+        state_init = (bytes([2, 1, 0b00110100]) + code_depth.to_bytes(2, 'big') + data.get_depth().to_bytes(2, 'big')
+                      + code_hash + data.hash)
+        if hashlib.sha256(state_init).digest() == nft['address'].address.hash_part:
+            return True
+    return False
+
+
 async def build_telegram_nft_purchase_core(
         block: CallContractBlock,
         prev_block: Block | None,
@@ -377,11 +393,17 @@ async def build_telegram_nft_purchase_core(
     data['nft'] = await _get_nft_data(AccountId(block.get_message().source))
     if not data['nft']['exists']:
         return None, []
-    extra: list[Block] = []
     payload = nft_ownership_message.nft_payload
+    is_bid = payload is not None and isinstance(payload.value, TeleitemBidInfo) and _is_telemint_item(data['nft'])
+    collection = data['nft']['collection']
+    # prev_owner is sender-controlled: trust it only for a Fragment bid, a mint or the item's collection
+    if not (is_bid or prev_owner is None
+            or (collection is not None and prev_owner == collection['address'])):
+        return None, []
+    extra: list[Block] = []
     if payload is not None:
         data['forward_payload'] = base64.b64encode(payload.raw).decode('utf-8')
-    if payload is not None and isinstance(payload.value, TeleitemBidInfo):
+    if is_bid:
         data['is_purchase'] = True
         data['price'] = Amount(payload.value.bid)
         data['marketplace'] = 'fragment'

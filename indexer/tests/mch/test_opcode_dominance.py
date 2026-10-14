@@ -90,8 +90,6 @@ HOST_CALLS = (
              "payout_from_pool is filtered by the corrected wire opcode"),
     HostCall("HostCoffee.cpp", 1, "CoffeeSwapEvent", (0xC0FFEE30,),
              "event is returned by first_next_call(kCoffeeSwapSuccessfulEvent)"),
-    HostCall("HostNft.cpp", 1, "NftOwnershipAssignedPrevOwner", (0x05138D91,),
-             "the sole helper caller receives the exact assigned contract capture"),
 )
 
 
