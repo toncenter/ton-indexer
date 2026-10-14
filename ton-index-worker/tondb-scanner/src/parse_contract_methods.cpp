@@ -30,8 +30,8 @@ td::Result<std::vector<unsigned long long>> parse_contract_methods(td::Ref<vm::C
     }
 
     auto methods_dict_key_len = static_cast<int>(cs.fetch_ulong(10));
-    if (methods_dict_key_len > 64) {
-      return td::Status::Error("Method id is wider than 64 bits");
+    if (methods_dict_key_len > 32) {
+      return td::Status::Error("Method id is wider than 32 bits");
     }
     auto methods_dict_cell = cs.fetch_ref();
     std::vector<unsigned long long> method_ids;
