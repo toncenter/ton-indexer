@@ -16,7 +16,6 @@ from indexer.events.blocks.messages import NftOwnershipAssigned, ExcessMessage
 from indexer.events.blocks.messages.nft import NftDiscovery, NftReportStaticData, NftTransfer, TeleitemBidInfo, AuctionFillUp
 from indexer.events.blocks.utils import AccountId, Amount
 from indexer.events.blocks.utils.block_utils import find_call_contracts, get_labeled
-from indexer.events.blocks.utils.block_utils import find_messages
 
 
 class NftMintBlock(Block):
@@ -116,11 +115,10 @@ def _purchase_parent_to_consume(prev_block: 'Block | None') -> 'Block | None':
 
 async def build_nft_transfer_core(
         block: Block,
-        ownership_message: 'NftOwnershipAssigned | None',
         funding_parent: 'Block | None') -> tuple['NftTransferBlock | None', list[Block]]:
     """Shared field build for a base NFT transfer (plain transfer + getgems
     purchase). Pure over the anchor `block` (the NftTransfer call) and the
-    optional ownership notification and funding parent supplied by the caller.
+    optional funding parent supplied by the caller.
 
     Returns `(new_block, extra)` — the produced NftTransferBlock (data set, NOT
     merged) plus the funding parent to consume in the purchase branch (`[]`
@@ -133,10 +131,7 @@ async def build_nft_transfer_core(
     data['is_purchase'] = False
     nft_transfer_message = NftTransfer(
         Slice.one_from_boc(block.event_nodes[0].message.message_content.body))
-    if ownership_message is not None:
-        data['prev_owner'] = AccountId(ownership_message.prev_owner)
-    else:
-        data['prev_owner'] = AccountId(block.event_nodes[0].message.source)
+    data['prev_owner'] = AccountId(block.event_nodes[0].message.source)
     data['query_id'] = nft_transfer_message.query_id
     data['forward_amount'] = Amount(nft_transfer_message.forward_amount)
     if nft_transfer_message.response_destination:
@@ -183,10 +178,7 @@ class NftTransferBlockMatcher(BlockMatcher):
             return True
 
     async def build_block(self, block: Block, other_blocks: list['Block']):
-        ownership_assigned_message = find_messages(other_blocks, NftOwnershipAssigned)
-        ownership_message = ownership_assigned_message[0][1] if len(ownership_assigned_message) > 0 else None
-        new_block, extra = await build_nft_transfer_core(
-            block, ownership_message, block.previous_block)
+        new_block, extra = await build_nft_transfer_core(block, block.previous_block)
         if new_block is None:
             return []
         new_block.merge_blocks([block] + extra + other_blocks)

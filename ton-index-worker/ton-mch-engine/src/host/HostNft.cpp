@@ -105,14 +105,6 @@ td::Result<NftTransferMsg> parse_nft_transfer(const td::Ref<vm::Cell> &body) {
   return out;
 }
 
-// Only prev_owner is read by the nft_transfer core. The full
-// ownership+payload parse for the telegram core stays hand-written because
-// it is a soft partial parse.
-td::Result<Value> parse_ownership_prev_owner(const td::Ref<vm::Cell> &body) {
-  TRY_RESULT(v, parse_message_body("NftOwnershipAssignedPrevOwner", body));
-  return *v.field("prev_owner");
-}
-
 // Full NftOwnershipAssigned + NftPayload parse for the telegram core.
 struct OwnershipFull {
   td::RefInt256 query_id;
@@ -300,7 +292,6 @@ bool is_telemint_item(const Value &nft) {
 // Fixed 13-key record, or Null for an unknown NFT item.
 EvalResult nft_transfer_data(BuildEnv &env, const std::vector<Value> &args) {
   const Block *transfer = as_block(args[0]);
-  const Block *assigned = as_block(args[1]);
   const Block *funding_parent = as_block(args[2]);
   if (transfer == nullptr) {
     return rt_fault("nft_transfer_data: null transfer");
@@ -320,22 +311,8 @@ EvalResult nft_transfer_data(BuildEnv &env, const std::vector<Value> &args) {
   }
   NftTransferMsg nt = r_nt.move_as_ok();
 
-  // prev_owner: ownership notification's prev_owner if present, else the
-  // anchor message source.
-  Value prev_owner;
-  if (assigned != nullptr) {
-    auto r_ab = block_body(assigned);
-    if (r_ab.is_error()) {
-      return rt_fault("nft_transfer_data: assigned body");
-    }
-    auto r_po = parse_ownership_prev_owner(r_ab.move_as_ok());
-    if (r_po.is_error()) {
-      return rt_fault("nft_transfer_data: ownership parse");
-    }
-    prev_owner = account_from_value(r_po.move_as_ok());
-  } else {
-    prev_owner = account_from_opt(tnode->msg != nullptr ? tnode->msg->source : std::nullopt);
-  }
+  // prev_owner is the transfer sender: the ownership_assigned body is sender-controlled
+  Value prev_owner = account_from_opt(tnode->msg != nullptr ? tnode->msg->source : std::nullopt);
 
   Value new_owner = nt.new_owner;  // Account (addr_none if empty)
   Value response_destination =
