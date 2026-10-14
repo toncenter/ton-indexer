@@ -360,9 +360,9 @@ async def try_process_unknown_event(trace: Trace) -> list[Block]:
         for post_processor in trace_post_processors:
             blocks = await post_processor(blocks)
         return blocks
-    except Exception as e:
-        logging.error(f"Failed to process {trace.trace_id}: {e}" )
-        raise e
+    except Exception:
+        logging.exception("Failed to process %s", trace.trace_id)
+        raise
 
 async def try_classify_unknown_trace(trace):
     actions = []
