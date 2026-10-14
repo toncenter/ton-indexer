@@ -27,7 +27,7 @@ actions:
       is_purchase: true
       marketplace: fragment
       marketplace_address: null
-      nft_item_index: 57674934624844243064798013516832029513427658251992147829192816814515267043328
+      nft_item_index: "57674934624844241602841558568006819487140073343586978869019107457833935742312"
       payout_amount: 105430430142
       payout_comment: null
       payout_comment_encoded: null
