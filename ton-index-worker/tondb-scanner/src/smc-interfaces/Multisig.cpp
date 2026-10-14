@@ -2,23 +2,24 @@
 #include "convert-utils.h"
 #include "execute-smc.h"
 #include "FetchAccountFromShard.h"
+#include "safe-parse.h"
 
 namespace {
 
 td::Result<std::vector<block::StdAddress>> parse_address_dict(td::Ref<vm::Cell> cell) {
   std::vector<block::StdAddress> result;
-  try {
-    vm::Dictionary dict{std::move(cell), 8};
-    for (auto it = dict.begin(); !it.eof(); ++it) {
-      block::StdAddress address;
-      block::tlb::MsgAddressInt address_int{};
-      if (!address_int.extract_std_address(it.cur_value(), address)) {
-        return td::Status::Error("Unable to extract address");
-      }
-      result.push_back(address);
-    }
-  } catch (vm::VmError& e) {
-    return td::Status::Error(PSLICE() << "Failed to parse address dict: " << e.get_msg());
+  auto status = safe_parse::for_each_dict_entry(std::move(cell), 8, 256,
+      [&](td::ConstBitPtr, int, td::Ref<vm::CellSlice> value) -> td::Status {
+        block::StdAddress address;
+        block::tlb::MsgAddressInt address_int{};
+        if (!address_int.extract_std_address(std::move(value), address)) {
+          return td::Status::Error("Unable to extract address");
+        }
+        result.push_back(address);
+        return td::Status::OK();
+      });
+  if (status.is_error()) {
+    return status.move_as_error_prefix("Failed to parse address dict: ");
   }
   return result;
 }
