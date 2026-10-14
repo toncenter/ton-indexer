@@ -3,6 +3,14 @@
 #include "common/checksum.h"
 
 #include "td/utils/utf8.h"
+#include "safe-parse.h"
+
+namespace {
+
+// Empty chunks never fill the buffer, so limit the number of lookups too.
+constexpr unsigned kMaxChunks = 8192;
+
+}  // namespace
 
 
 td::Result<std::string> parse_snake_data(td::Ref<vm::CellSlice> data) {
@@ -31,7 +39,7 @@ td::Result<std::string> parse_snake_data(td::Ref<vm::CellSlice> data) {
 }
 
 td::Result<std::string> parse_chunks_data(td::Ref<vm::CellSlice> data) {
-  try {
+  return safe_parse::guard("Exception while parsing chunks data", [&]() -> td::Result<std::string> {
     vm::Dictionary dict(data, 32);
     
     constexpr size_t bsize = 1024 * 8;
@@ -39,7 +47,7 @@ td::Result<std::string> parse_chunks_data(td::Ref<vm::CellSlice> data) {
     td::BitPtr bw{buffer};
 
     uint32_t c = 0;
-    while (dict.uint_key_exists(c)) {
+    while (c < kMaxChunks && dict.uint_key_exists(c)) {
       auto value = dict.lookup_ref(td::BitArray<32>(c));
       if (value.not_null()) {
         auto data = vm::load_cell_slice_ref(value);
@@ -51,15 +59,16 @@ td::Result<std::string> parse_chunks_data(td::Ref<vm::CellSlice> data) {
       }
       c++;
     }
+    if (c == kMaxChunks && dict.uint_key_exists(c)) {
+      return td::Status::Error(PSLICE() << "more than " << kMaxChunks << " chunks");
+    }
 
     if (!bw.byte_aligned()) {
       return td::Status::Error("Not byte aligned");
     }
 
     return std::string(buffer, bw.get_byte_ptr());
-  } catch (vm::VmError& err) {
-    return td::Status::Error(PSLICE() << "Exception while parsing chunks data: " << err.get_msg());
-  }
+  });
 }
 
 td::Result<std::string> parse_content_data(td::Ref<vm::CellSlice> cs) {
@@ -86,7 +95,7 @@ td::Result<std::string> parse_content_data(td::Ref<vm::CellSlice> cs) {
 td::Result<std::map<std::string, std::string>> parse_token_data(td::Ref<vm::Cell> cell) {
   static std::string attributes[] = {"uri", "name", "description", "image", "image_data", "symbol", "decimals", "amount_style", "render_type"};
   
-  try {
+  return safe_parse::guard("Failed to parse token data", [&]() -> td::Result<std::map<std::string, std::string>> {
     auto cs = vm::load_cell_slice_ref(cell);
     switch (tokens::gen::t_FullContent.check_tag(*cs)) {
       case tokens::gen::FullContent::offchain: {
@@ -147,7 +156,5 @@ td::Result<std::map<std::string, std::string>> parse_token_data(td::Ref<vm::Cell
       default:
         return td::Status::Error("Unknown token data type");
     }
-  } catch (vm::VmError& err) {
-    return td::Status::Error(PSLICE() << "Failed to parse token data: " << err.get_msg());
-  }
+  });
 }

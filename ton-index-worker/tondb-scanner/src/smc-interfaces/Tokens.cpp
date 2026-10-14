@@ -9,6 +9,7 @@
 
 #include "FetchAccountFromShard.h"
 #include "parse_token_data.h"
+#include "safe-parse.h"
 #include "smc-interfaces/execute-smc.h"
 #include "tokens-tlb.h"
 #include "common/checksum.h"
@@ -403,21 +404,21 @@ td::Result<NftItemDetectorR::Result::DNSEntry> NftItemDetectorR::get_dns_entry_d
     return Result::DNSEntry{};
   }
 
-  vm::Dictionary records{recordset_cell, 256};
-  Result::DNSEntry result;
+  return safe_parse::guard("Failed to parse DNSRecord", [&]() -> td::Result<Result::DNSEntry> {
+    vm::Dictionary records{recordset_cell, 256};
+    Result::DNSEntry result;
 
-  // TODO: support ProtoList
-  auto site_cell = records.lookup_ref(td::sha256_bits256("site"));
-  if (site_cell.not_null()) {
-    tokens::gen::DNSRecord::Record_dns_adnl_address site_record;
-    if (!tlb::unpack_cell(site_cell, site_record)) {
-      LOG(ERROR) << "Failed to unpack DNSRecord site for " << address_;
-    } else {
-      result.site_adnl = site_record.adnl_addr;
+    // TODO: support ProtoList
+    auto site_cell = records.lookup_ref(td::sha256_bits256("site"));
+    if (site_cell.not_null()) {
+      tokens::gen::DNSRecord::Record_dns_adnl_address site_record;
+      if (!tlb::unpack_cell(site_cell, site_record)) {
+        LOG(ERROR) << "Failed to unpack DNSRecord site for " << address_;
+      } else {
+        result.site_adnl = site_record.adnl_addr;
+      }
     }
-  }
 
-  try {
     // TODO: support SmcCapList
     auto wallet_cell = records.lookup_ref(td::sha256_bits256("wallet"));
     if (wallet_cell.not_null()) {
@@ -458,11 +459,9 @@ td::Result<NftItemDetectorR::Result::DNSEntry> NftItemDetectorR::get_dns_entry_d
         result.storage_bag_id = dns_storage_record.bag_id;
       }
     }
-  } catch (vm::VmError& e) {
-    return td::Status::Error("Failed to parse DNSRecord: " + std::string(e.get_msg()));
-  }
 
-  return result;
+    return result;
+  });
 }
 
 td::Result<std::string> NftItemDetectorR::get_ton_domain() {

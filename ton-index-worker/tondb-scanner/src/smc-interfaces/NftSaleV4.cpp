@@ -1,6 +1,7 @@
 #include "NftSaleV4.h"
 #include "convert-utils.h"
 #include "execute-smc.h"
+#include "safe-parse.h"
 
 
 GetGemsNftFixPriceSaleV4::GetGemsNftFixPriceSaleV4(block::StdAddress address,
@@ -75,35 +76,25 @@ td::Result<GetGemsNftFixPriceSaleV4::Result> GetGemsNftFixPriceSaleV4::detect(
 
   data.jetton_price_dict = {};
   if (stack[12].is_cell()) {
-    try {
-      auto jetton_dict_cell = stack[12].as_cell();
-      vm::Dictionary jetton_dict{jetton_dict_cell, 256};
-      auto it = jetton_dict.begin();
-      while (!it.eof()) {
-        auto key_data = it.cur_pos();
-        ton::WorkchainId workchain_id = 0;
-        ton::StdSmcAddress addr_bytes{key_data};
-        auto addr = block::StdAddress(workchain_id, addr_bytes);
+    auto jetton_dict_status = safe_parse::for_each_dict_entry(stack[12].as_cell(), 256, safe_parse::kDefaultMaxDictEntries,
+        [&](td::ConstBitPtr key_data, int, td::Ref<vm::CellSlice> value_cs) -> td::Status {
+          ton::WorkchainId workchain_id = 0;
+          ton::StdSmcAddress addr_bytes{key_data};
+          auto addr = block::StdAddress(workchain_id, addr_bytes);
 
-        auto value_cs = it.cur_value();
-        if (value_cs.is_null()) {
-          return td::Status::Error("Invalid jetton dict value entry");
-        }
-        auto price = block::tlb::t_VarUInteger_16.as_integer_skip(value_cs.write());
-        if (price.not_null()) {
-          std::ostringstream addr_stream;
-          addr_stream << addr.workchain << ":" << addr.addr.to_hex();
-          data.jetton_price_dict[addr_stream.str()] = price->to_dec_string();
-        } else {
           if (value_cs.is_null()) {
             return td::Status::Error("Invalid jetton dict value entry");
           }
-        }
-        ++it;
-      }
-    }
-    catch (vm::VmError& e) {
-      LOG(WARNING) << "Failed to parse jetton_price_dict: " << e.get_msg();
+          auto price = block::tlb::t_VarUInteger_16.as_integer_skip(value_cs.write());
+          if (price.not_null()) {
+            std::ostringstream addr_stream;
+            addr_stream << addr.workchain << ":" << addr.addr.to_hex();
+            data.jetton_price_dict[addr_stream.str()] = price->to_dec_string();
+          }
+          return td::Status::OK();
+        });
+    if (jetton_dict_status.is_error()) {
+      LOG(WARNING) << "Failed to parse jetton_price_dict: " << jetton_dict_status;
       return td::Status::Error("Invalid jetton dict");
     }
   }

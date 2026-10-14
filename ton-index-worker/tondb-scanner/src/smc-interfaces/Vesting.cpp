@@ -1,6 +1,7 @@
 #include "Vesting.h"
 #include "convert-utils.h"
 #include "execute-smc.h"
+#include "safe-parse.h"
 
 
 VestingContract::VestingContract(block::StdAddress address,
@@ -63,24 +64,18 @@ void VestingContract::start_up()
   data.owner_address = owner_address.move_as_ok();
 
   // Parse whitelist from the cell
-  try {
-    auto whitelist = stack[7].as_cell();
-    vm::Dictionary whitelist_dict {whitelist, 264};
-    auto it = whitelist_dict.begin();
-    while (!it.eof()) {
-      // Dictionary key is 264 bits: 8 bits for workchain + 256 bits for hash part
-      auto key_data = it.cur_pos();
+  auto whitelist_status = safe_parse::for_each_dict_entry(stack[7].as_cell(), 264, safe_parse::kDefaultMaxDictEntries,
+      [&](td::ConstBitPtr key_data, int, td::Ref<vm::CellSlice>) -> td::Status {
+        // Dictionary key is 264 bits: 8 bits for workchain + 256 bits for hash part
+        ton::WorkchainId workchain_id = (ton::WorkchainId)key_data.get_int(8);
+        td::ConstBitPtr addr_ptr = key_data + 8;
+        ton::StdSmcAddress addr_bytes{addr_ptr};
 
-      ton::WorkchainId workchain_id = (ton::WorkchainId)key_data.get_int(8);
-      td::ConstBitPtr addr_ptr = key_data + 8;
-      ton::StdSmcAddress addr_bytes{addr_ptr};
-
-      auto addr = block::StdAddress(workchain_id, addr_bytes);
-      data.whitelist.push_back(addr);
-      ++it;
-    }
-  } catch (vm::VmError& e) {
-    promise_.set_error(td::Status::Error(PSLICE() << "Failed to parse whitelist: " << e.get_msg()));
+        data.whitelist.push_back(block::StdAddress(workchain_id, addr_bytes));
+        return td::Status::OK();
+      });
+  if (whitelist_status.is_error()) {
+    promise_.set_error(whitelist_status.move_as_error_prefix("Failed to parse whitelist: "));
     stop();
     return;
   }
