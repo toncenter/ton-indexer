@@ -3,10 +3,29 @@ syntax = "proto3";
 package sf.ton.type.v1;
 
 // Produced by ton-index-firehose from the node database.
-// Field names and nesting follow the ton-index-go (API v3) models
-// (ton-index-go/index/models/blockchain.go); numeric types follow TL-B.
-// Hashes and BOCs are raw bytes (base64 in JSON, as in the API),
-// addresses are raw strings ("0:83DF...") exactly as the API returns them.
+//
+// Messages mirror the TL-B types of crypto/block/block.tlb in the TON
+// repository; each one quotes the TL-B it mirrors. The mapping:
+// - a record is a message with the same field names in the same order;
+// - a type with several constructors is a message with a oneof `kind`: one
+//   nested message per constructor, the oneof fields named after the
+//   constructors. Types whose constructors have no fields are enums;
+// - Maybe X is an optional field. ^X, ^[ ... ] and Either X ^X are inlined:
+//   which cell holds a value is serialization, not content;
+// - Grams and VarUInteger 3/7/16 are uint64 or uint32, extra currency amounts
+//   (VarUInteger 32) are decimal strings;
+// - MsgAddressInt is a raw address string ("0:83DF..."). MsgAddressExt is
+//   unset for addr_none and "ext$<len>:<hex>" for addr_extern;
+// - an arbitrary cell (^Cell, the body of Message Any) is a Cell: its hash, and
+//   its BOC where noted;
+// - in InMsg, OutMsg and MsgEnvelope a ^(Message Any) or ^Transaction is given
+//   by the hash of its cell: the message or transaction itself is in the
+//   transactions of this or another block;
+// - dictionaries are repeated fields in key order; the key is a field of the
+//   value, or of an item message, which also holds the augmentation where it
+//   is not just a sum of the values' fees.
+// Constructors and fields of earlier block.tlb versions are kept. Fields that
+// are not in block.tlb are marked so.
 
 // One Firehose block: a masterchain block together with the shard blocks it
 // commits for the first time.
@@ -17,12 +36,12 @@ package sf.ton.type.v1;
 message Block {
   BlockData masterchain_block = 1;
 
-  // Shard blocks committed for the first time by this masterchain block
-  // (the rest of /api/v3/masterchainBlockShards), ordered by (workchain, shard, seqno).
+  // Shard blocks committed for the first time by this masterchain block,
+  // ordered by (workchain, shard, seqno).
   repeated BlockData shard_blocks = 2;
 
-  // Shard tops at this masterchain block (/api/v3/masterchainBlockShardState).
-  repeated BlockId shards = 3;
+  // Shard tops at this masterchain block, the masterchain block included.
+  repeated BlockIdExt shards = 3;
 
   // Traces that became complete or broken in this masterchain block. A broken
   // trace appears again in every later block that extends it.
@@ -36,35 +55,743 @@ message Block {
   reserved 20 to 39;  // actions
 }
 
+// block#11ef55aa global_id:int32 info:^BlockInfo value_flow:^ValueFlow
+//   state_update:^(MERKLE_UPDATE ShardState) extra:^BlockExtra = Block;
 message BlockData {
-  BlockHeader header = 1;
-
-  // Ordered by (lt, account).
-  repeated Transaction transactions = 2;
-
-  // One entry per account with transactions in this block, ordered by account.
-  repeated AccountChange account_changes = 3;
+  BlockIdExt id = 1;  // not in Block: root_hash is the hash of its cell, file_hash of its BOC file
+  int32 global_id = 2;
+  BlockInfo info = 3;
+  ValueFlow value_flow = 4;
+  MerkleUpdate state_update = 5;
+  BlockExtra extra = 6;
 }
 
-// The state of an account before its first transaction in a block and after
-// its last one. Full states exist only at block boundaries: states between two
-// transactions of one block are known by hash only.
-message AccountChange {
-  string account = 1;
-  AccountState state_before = 2;
-  AccountState state_after = 3;
-
-  // Code BOC after the block, when the code hash changed.
-  optional bytes code = 4;
-
-  // Data BOC after the block, when the data hash changed and the BOC is at most
-  // 64 KiB. Larger data (e.g. the elector, rewritten every block) is only
-  // flagged by data_omitted; its hash is in state_after.
-  optional bytes data = 5;
-  bool data_omitted = 6;
+// block_extra in_msg_descr:^InMsgDescr out_msg_descr:^OutMsgDescr
+//   account_blocks:^ShardAccountBlocks rand_seed:bits256 created_by:bits256
+//   custom:(Maybe ^McBlockExtra) = BlockExtra;
+message BlockExtra {
+  repeated InMsgDescrItem in_msg_descr = 1;
+  repeated OutMsgDescrItem out_msg_descr = 2;
+  repeated AccountBlock account_blocks = 3;
+  bytes rand_seed = 4;
+  bytes created_by = 5;
+  reserved 6;  // custom
 }
 
-// API v3 Trace metadata. The transactions of a trace are found by their trace_id.
+// block_info#9bc7a987 version:uint32 not_master:(## 1) after_merge:(## 1)
+//   before_split:(## 1) after_split:(## 1) want_split:Bool want_merge:Bool
+//   key_block:Bool vert_seqno_incr:(## 1) flags:(## 8) seq_no:# vert_seq_no:#
+//   shard:ShardIdent gen_utime:uint32 start_lt:uint64 end_lt:uint64
+//   gen_validator_list_hash_short:uint32 gen_catchain_seqno:uint32
+//   min_ref_mc_seqno:uint32 prev_key_block_seqno:uint32
+//   gen_software:flags.0?GlobalVersion master_ref:not_master?^BlkMasterInfo
+//   prev_ref:^(BlkPrevInfo after_merge)
+//   prev_vert_ref:vert_seqno_incr?^(BlkPrevInfo 0) = BlockInfo;
+message BlockInfo {
+  uint32 version = 1;
+  bool not_master = 2;
+  bool after_merge = 3;
+  bool before_split = 4;
+  bool after_split = 5;
+  bool want_split = 6;
+  bool want_merge = 7;
+  bool key_block = 8;
+  bool vert_seqno_incr = 9;
+  uint32 flags = 10;
+  uint32 seq_no = 11;
+  uint32 vert_seq_no = 12;
+  ShardIdent shard = 13;
+  uint32 gen_utime = 14;
+  uint64 start_lt = 15;
+  uint64 end_lt = 16;
+  uint32 gen_validator_list_hash_short = 17;
+  uint32 gen_catchain_seqno = 18;
+  uint32 min_ref_mc_seqno = 19;
+  uint32 prev_key_block_seqno = 20;
+  GlobalVersion gen_software = 21;
+  BlkMasterInfo master_ref = 22;
+  BlkPrevInfo prev_ref = 23;
+  BlkPrevInfo prev_vert_ref = 24;
+}
+
+// shard_ident$00 shard_pfx_bits:(#<= 60) workchain_id:int32 shard_prefix:uint64 = ShardIdent;
+message ShardIdent {
+  uint32 shard_pfx_bits = 1;
+  int32 workchain_id = 2;
+  uint64 shard_prefix = 3;  // the shard id without its lowest set bit
+}
+
+// block_id_ext$_ shard_id:ShardIdent seq_no:uint32 root_hash:bits256 file_hash:bits256 = BlockIdExt;
+message BlockIdExt {
+  ShardIdent shard_id = 1;
+  uint32 seq_no = 2;
+  bytes root_hash = 3;
+  bytes file_hash = 4;
+}
+
+// ext_blk_ref$_ end_lt:uint64 seq_no:uint32 root_hash:bits256 file_hash:bits256 = ExtBlkRef;
+message ExtBlkRef {
+  uint64 end_lt = 1;
+  uint32 seq_no = 2;
+  bytes root_hash = 3;
+  bytes file_hash = 4;
+}
+
+// master_info$_ master:ExtBlkRef = BlkMasterInfo;
+message BlkMasterInfo {
+  ExtBlkRef master = 1;
+}
+
+message BlkPrevInfo {
+  // prev_blk_info$_ prev:ExtBlkRef = BlkPrevInfo 0;
+  message PrevBlkInfo {
+    ExtBlkRef prev = 1;
+  }
+  // prev_blks_info$_ prev1:^ExtBlkRef prev2:^ExtBlkRef = BlkPrevInfo 1;
+  message PrevBlksInfo {
+    ExtBlkRef prev1 = 1;
+    ExtBlkRef prev2 = 2;
+  }
+  oneof kind {
+    PrevBlkInfo prev_blk_info = 1;
+    PrevBlksInfo prev_blks_info = 2;
+  }
+}
+
+// capabilities#c4 version:uint32 capabilities:uint64 = GlobalVersion;
+message GlobalVersion {
+  uint32 version = 1;
+  uint64 capabilities = 2;
+}
+
+// value_flow#b8e48dfb ^[ from_prev_blk:CurrencyCollection to_next_blk:CurrencyCollection
+//   imported:CurrencyCollection exported:CurrencyCollection ] fees_collected:CurrencyCollection
+//   ^[ fees_imported:CurrencyCollection recovered:CurrencyCollection
+//   created:CurrencyCollection minted:CurrencyCollection ] = ValueFlow;
+// value_flow_v2#3ebf98b7 has burned:CurrencyCollection after fees_collected.
+message ValueFlow {
+  CurrencyCollection from_prev_blk = 1;
+  CurrencyCollection to_next_blk = 2;
+  CurrencyCollection imported = 3;
+  CurrencyCollection exported = 4;
+  CurrencyCollection fees_collected = 5;
+  CurrencyCollection burned = 6;  // value_flow_v2 only
+  CurrencyCollection fees_imported = 7;
+  CurrencyCollection recovered = 8;
+  CurrencyCollection created = 9;
+  CurrencyCollection minted = 10;
+}
+
+// !merkle_update#04 {X:Type} old_hash:bits256 new_hash:bits256 old_depth:uint16
+//   new_depth:uint16 old:^X new:^X = MERKLE_UPDATE X;
+// Without old and new: the block keeps only the cells it changed.
+message MerkleUpdate {
+  bytes old_hash = 1;
+  bytes new_hash = 2;
+  uint32 old_depth = 3;
+  uint32 new_depth = 4;
+}
+
+// update_hashes#72 {X:Type} old_hash:bits256 new_hash:bits256 = HASH_UPDATE X;
+message HashUpdate {
+  bytes old_hash = 1;
+  bytes new_hash = 2;
+}
+
+// currencies$_ grams:Grams other:ExtraCurrencyCollection = CurrencyCollection;
+// extra_currencies$_ dict:(HashmapE 32 (VarUInteger 32)) = ExtraCurrencyCollection;
+message CurrencyCollection {
+  uint64 grams = 1;
+  map<uint32, string> other = 2;
+}
+
+// An arbitrary cell.
+message Cell {
+  bytes hash = 1;
+  optional bytes boc = 2;
+}
+
+// acc_trans#5 account_addr:bits256
+//   transactions:(HashmapAug 64 ^Transaction CurrencyCollection)
+//   state_update:^(HASH_UPDATE Account) = AccountBlock;
+message AccountBlock {
+  string account_addr = 1;  // with the workchain of the block
+  repeated Transaction transactions = 2;  // by lt
+  HashUpdate state_update = 3;
+
+  // Not in AccountBlock: the accounts state_update refers to, unset if the node
+  // does not keep them. Full states exist only at block boundaries; between two
+  // transactions of a block only the hashes in their state_update are known.
+  // In state_after, the BOCs of code, data and library are set when the cell
+  // changed in this block or state_before is unset, data only up to 64 KiB.
+  Account state_before = 4;
+  Account state_after = 5;
+}
+
+// transaction$0111 account_addr:bits256 lt:uint64 prev_trans_hash:bits256
+//   prev_trans_lt:uint64 now:uint32 outmsg_cnt:uint15
+//   orig_status:AccountStatus end_status:AccountStatus
+//   ^[ in_msg:(Maybe ^(Message Any)) out_msgs:(HashmapE 15 ^(Message Any)) ]
+//   total_fees:CurrencyCollection state_update:^(HASH_UPDATE Account)
+//   description:^TransactionDescr = Transaction;
+message Transaction {
+  bytes hash = 1;  // not in Transaction: the hash of its cell
+  string account_addr = 2;  // with the workchain of the block
+  uint64 lt = 3;
+  bytes prev_trans_hash = 4;
+  uint64 prev_trans_lt = 5;
+  uint32 now = 6;
+  uint32 outmsg_cnt = 7;
+  AccountStatus orig_status = 8;
+  AccountStatus end_status = 9;
+  Message in_msg = 10;
+  repeated Message out_msgs = 11;  // the key is the index
+  CurrencyCollection total_fees = 12;
+  HashUpdate state_update = 13;
+  TransactionDescr description = 14;
+
+  // Not in Transaction: the trace the transaction belongs to (API v3 trace_id).
+  // Unset in prepare_transaction.
+  optional bytes trace_id = 15;
+}
+
+// acc_state_uninit$00 acc_state_frozen$01 acc_state_active$10 acc_state_nonexist$11 = AccountStatus;
+enum AccountStatus {
+  ACC_STATE_UNINIT = 0;
+  ACC_STATE_FROZEN = 1;
+  ACC_STATE_ACTIVE = 2;
+  ACC_STATE_NONEXIST = 3;
+}
+
+// message$_ {X:Type} info:CommonMsgInfo init:(Maybe (Either StateInit ^StateInit))
+//   body:(Either X ^X) = Message X;
+message Message {
+  bytes hash = 1;  // not in Message: the hash of its cell
+  CommonMsgInfo info = 2;
+  StateInit init = 3;  // with the BOCs of code, data and library
+  Cell body = 4;  // with the BOC; a body stored in the message cell is put into a cell of its own
+
+  // Not in Message: the hash of the normalized external inbound message
+  // (API v3 hash_norm), set when it differs from hash.
+  optional bytes hash_norm = 5;
+  // Not in Message: the first 32 bits of the body.
+  optional uint32 opcode = 6;
+}
+
+message CommonMsgInfo {
+  // int_msg_info$0 ihr_disabled:Bool bounce:Bool bounced:Bool src:MsgAddressInt
+  //   dest:MsgAddressInt value:CurrencyCollection extra_flags:(VarUInteger 16)
+  //   fwd_fee:Grams created_lt:uint64 created_at:uint32 = CommonMsgInfo;
+  // Before global version 12 extra_flags was ihr_fee:Grams.
+  message IntMsgInfo {
+    bool ihr_disabled = 1;
+    bool bounce = 2;
+    bool bounced = 3;
+    string src = 4;
+    string dest = 5;
+    CurrencyCollection value = 6;
+    optional uint64 ihr_fee = 7;
+    optional uint64 extra_flags = 8;
+    uint64 fwd_fee = 9;
+    uint64 created_lt = 10;
+    uint32 created_at = 11;
+  }
+  // ext_in_msg_info$10 src:MsgAddressExt dest:MsgAddressInt import_fee:Grams = CommonMsgInfo;
+  message ExtInMsgInfo {
+    optional string src = 1;
+    string dest = 2;
+    optional uint64 import_fee = 3;  // set by the sender, unset if it exceeds uint64
+  }
+  // ext_out_msg_info$11 src:MsgAddressInt dest:MsgAddressExt created_lt:uint64
+  //   created_at:uint32 = CommonMsgInfo;
+  message ExtOutMsgInfo {
+    string src = 1;
+    optional string dest = 2;
+    uint64 created_lt = 3;
+    uint32 created_at = 4;
+  }
+  oneof kind {
+    IntMsgInfo int_msg_info = 1;
+    ExtInMsgInfo ext_in_msg_info = 2;
+    ExtOutMsgInfo ext_out_msg_info = 3;
+  }
+}
+
+// _ fixed_prefix_length:(Maybe (## 5)) special:(Maybe TickTock) code:(Maybe ^Cell)
+//   data:(Maybe ^Cell) library:(Maybe ^Cell) = StateInit;
+// fixed_prefix_length was split_depth before.
+message StateInit {
+  optional uint32 fixed_prefix_length = 1;
+  TickTock special = 2;
+  Cell code = 3;
+  Cell data = 4;
+  Cell library = 5;
+}
+
+// tick_tock$_ tick:Bool tock:Bool = TickTock;
+message TickTock {
+  bool tick = 1;
+  bool tock = 2;
+}
+
+message Account {
+  // account_none$0 = Account;
+  message None {}
+  // account$1 addr:MsgAddressInt storage_stat:StorageInfo storage:AccountStorage = Account;
+  message Existing {
+    string addr = 1;
+    StorageInfo storage_stat = 2;
+    AccountStorage storage = 3;
+  }
+  oneof kind {
+    None account_none = 1;
+    Existing account = 2;
+  }
+}
+
+// storage_info$_ used:StorageUsed storage_extra:StorageExtraInfo last_paid:uint32
+//   due_payment:(Maybe Grams) = StorageInfo;
+message StorageInfo {
+  StorageUsed used = 1;
+  StorageExtraInfo storage_extra = 2;
+  uint32 last_paid = 3;
+  optional uint64 due_payment = 4;
+}
+
+// storage_used$_ cells:(VarUInteger 7) bits:(VarUInteger 7) = StorageUsed;
+message StorageUsed {
+  uint64 cells = 1;
+  uint64 bits = 2;
+}
+
+message StorageExtraInfo {
+  // storage_extra_none$000 = StorageExtraInfo;
+  message None {}
+  // storage_extra_info$001 dict_hash:uint256 = StorageExtraInfo;
+  message Info {
+    bytes dict_hash = 1;
+  }
+  oneof kind {
+    None storage_extra_none = 1;
+    Info storage_extra_info = 2;
+  }
+}
+
+// account_storage$_ last_trans_lt:uint64 balance:CurrencyCollection state:AccountState = AccountStorage;
+message AccountStorage {
+  uint64 last_trans_lt = 1;
+  CurrencyCollection balance = 2;
+  AccountState state = 3;
+}
+
+message AccountState {
+  // account_uninit$00 = AccountState;
+  message Uninit {}
+  // account_frozen$01 state_hash:bits256 = AccountState;
+  message Frozen {
+    bytes state_hash = 1;
+  }
+  oneof kind {
+    Uninit account_uninit = 1;
+    StateInit account_active = 2;  // account_active$1 _:StateInit = AccountState;
+    Frozen account_frozen = 3;
+  }
+}
+
+message TransactionDescr {
+  // trans_ord$0000 credit_first:Bool storage_ph:(Maybe TrStoragePhase)
+  //   credit_ph:(Maybe TrCreditPhase) compute_ph:TrComputePhase
+  //   action:(Maybe ^TrActionPhase) aborted:Bool bounce:(Maybe TrBouncePhase)
+  //   destroyed:Bool = TransactionDescr;
+  message Ord {
+    bool credit_first = 1;
+    TrStoragePhase storage_ph = 2;
+    TrCreditPhase credit_ph = 3;
+    TrComputePhase compute_ph = 4;
+    TrActionPhase action = 5;
+    bool aborted = 6;
+    TrBouncePhase bounce = 7;
+    bool destroyed = 8;
+  }
+  // trans_storage$0001 storage_ph:TrStoragePhase = TransactionDescr;
+  message Storage {
+    TrStoragePhase storage_ph = 1;
+  }
+  // trans_tick_tock$001 is_tock:Bool storage_ph:TrStoragePhase compute_ph:TrComputePhase
+  //   action:(Maybe ^TrActionPhase) aborted:Bool destroyed:Bool = TransactionDescr;
+  message TickTock {
+    bool is_tock = 1;
+    TrStoragePhase storage_ph = 2;
+    TrComputePhase compute_ph = 3;
+    TrActionPhase action = 4;
+    bool aborted = 5;
+    bool destroyed = 6;
+  }
+  // trans_split_prepare$0100 split_info:SplitMergeInfo storage_ph:(Maybe TrStoragePhase)
+  //   compute_ph:TrComputePhase action:(Maybe ^TrActionPhase) aborted:Bool
+  //   destroyed:Bool = TransactionDescr;
+  message SplitPrepare {
+    SplitMergeInfo split_info = 1;
+    TrStoragePhase storage_ph = 2;
+    TrComputePhase compute_ph = 3;
+    TrActionPhase action = 4;
+    bool aborted = 5;
+    bool destroyed = 6;
+  }
+  // trans_split_install$0101 split_info:SplitMergeInfo prepare_transaction:^Transaction
+  //   installed:Bool = TransactionDescr;
+  message SplitInstall {
+    SplitMergeInfo split_info = 1;
+    Transaction prepare_transaction = 2;
+    bool installed = 3;
+  }
+  // trans_merge_prepare$0110 split_info:SplitMergeInfo storage_ph:TrStoragePhase
+  //   aborted:Bool = TransactionDescr;
+  message MergePrepare {
+    SplitMergeInfo split_info = 1;
+    TrStoragePhase storage_ph = 2;
+    bool aborted = 3;
+  }
+  // trans_merge_install$0111 split_info:SplitMergeInfo prepare_transaction:^Transaction
+  //   storage_ph:(Maybe TrStoragePhase) credit_ph:(Maybe TrCreditPhase)
+  //   compute_ph:TrComputePhase action:(Maybe ^TrActionPhase) aborted:Bool
+  //   destroyed:Bool = TransactionDescr;
+  message MergeInstall {
+    SplitMergeInfo split_info = 1;
+    Transaction prepare_transaction = 2;
+    TrStoragePhase storage_ph = 3;
+    TrCreditPhase credit_ph = 4;
+    TrComputePhase compute_ph = 5;
+    TrActionPhase action = 6;
+    bool aborted = 7;
+    bool destroyed = 8;
+  }
+  oneof kind {
+    Ord trans_ord = 1;
+    Storage trans_storage = 2;
+    TickTock trans_tick_tock = 3;
+    SplitPrepare trans_split_prepare = 4;
+    SplitInstall trans_split_install = 5;
+    MergePrepare trans_merge_prepare = 6;
+    MergeInstall trans_merge_install = 7;
+  }
+}
+
+// tr_phase_storage$_ storage_fees_collected:Grams storage_fees_due:(Maybe Grams)
+//   status_change:AccStatusChange = TrStoragePhase;
+message TrStoragePhase {
+  uint64 storage_fees_collected = 1;
+  optional uint64 storage_fees_due = 2;
+  AccStatusChange status_change = 3;
+}
+
+// acst_unchanged$0 acst_frozen$10 acst_deleted$11 = AccStatusChange;
+enum AccStatusChange {
+  ACST_UNCHANGED = 0;
+  ACST_FROZEN = 1;
+  ACST_DELETED = 2;
+}
+
+// tr_phase_credit$_ due_fees_collected:(Maybe Grams) credit:CurrencyCollection = TrCreditPhase;
+message TrCreditPhase {
+  optional uint64 due_fees_collected = 1;
+  CurrencyCollection credit = 2;
+}
+
+message TrComputePhase {
+  // tr_phase_compute_skipped$0 reason:ComputeSkipReason = TrComputePhase;
+  message Skipped {
+    ComputeSkipReason reason = 1;
+  }
+  // tr_phase_compute_vm$1 success:Bool msg_state_used:Bool account_activated:Bool
+  //   gas_fees:Grams ^[ gas_used:(VarUInteger 7) gas_limit:(VarUInteger 7)
+  //   gas_credit:(Maybe (VarUInteger 3)) mode:int8 exit_code:int32
+  //   exit_arg:(Maybe int32) vm_steps:uint32 vm_init_state_hash:bits256
+  //   vm_final_state_hash:bits256 ] = TrComputePhase;
+  message Vm {
+    bool success = 1;
+    bool msg_state_used = 2;
+    bool account_activated = 3;
+    uint64 gas_fees = 4;
+    uint64 gas_used = 5;
+    uint64 gas_limit = 6;
+    optional uint32 gas_credit = 7;
+    int32 mode = 8;
+    int32 exit_code = 9;
+    optional int32 exit_arg = 10;
+    uint32 vm_steps = 11;
+    bytes vm_init_state_hash = 12;
+    bytes vm_final_state_hash = 13;
+  }
+  oneof kind {
+    Skipped tr_phase_compute_skipped = 1;
+    Vm tr_phase_compute_vm = 2;
+  }
+}
+
+// cskip_no_state$00 cskip_bad_state$01 cskip_no_gas$10 cskip_suspended$110 = ComputeSkipReason;
+enum ComputeSkipReason {
+  CSKIP_NO_STATE = 0;
+  CSKIP_BAD_STATE = 1;
+  CSKIP_NO_GAS = 2;
+  CSKIP_SUSPENDED = 3;
+}
+
+// tr_phase_action$_ success:Bool valid:Bool no_funds:Bool status_change:AccStatusChange
+//   total_fwd_fees:(Maybe Grams) total_action_fees:(Maybe Grams) result_code:int32
+//   result_arg:(Maybe int32) tot_actions:uint16 spec_actions:uint16
+//   skipped_actions:uint16 msgs_created:uint16 action_list_hash:bits256
+//   tot_msg_size:StorageUsed = TrActionPhase;
+message TrActionPhase {
+  bool success = 1;
+  bool valid = 2;
+  bool no_funds = 3;
+  AccStatusChange status_change = 4;
+  optional uint64 total_fwd_fees = 5;
+  optional uint64 total_action_fees = 6;
+  int32 result_code = 7;
+  optional int32 result_arg = 8;
+  uint32 tot_actions = 9;
+  uint32 spec_actions = 10;
+  uint32 skipped_actions = 11;
+  uint32 msgs_created = 12;
+  bytes action_list_hash = 13;
+  StorageUsed tot_msg_size = 14;
+}
+
+message TrBouncePhase {
+  // tr_phase_bounce_negfunds$00 = TrBouncePhase;
+  message Negfunds {}
+  // tr_phase_bounce_nofunds$01 msg_size:StorageUsed req_fwd_fees:Grams = TrBouncePhase;
+  message Nofunds {
+    StorageUsed msg_size = 1;
+    uint64 req_fwd_fees = 2;
+  }
+  // tr_phase_bounce_ok$1 msg_size:StorageUsed msg_fees:Grams fwd_fees:Grams = TrBouncePhase;
+  message Ok {
+    StorageUsed msg_size = 1;
+    uint64 msg_fees = 2;
+    uint64 fwd_fees = 3;
+  }
+  oneof kind {
+    Negfunds tr_phase_bounce_negfunds = 1;
+    Nofunds tr_phase_bounce_nofunds = 2;
+    Ok tr_phase_bounce_ok = 3;
+  }
+}
+
+// split_merge_info$_ cur_shard_pfx_len:(## 6) acc_split_depth:(## 6)
+//   this_addr:bits256 sibling_addr:bits256 = SplitMergeInfo;
+message SplitMergeInfo {
+  uint32 cur_shard_pfx_len = 1;
+  uint32 acc_split_depth = 2;
+  bytes this_addr = 3;
+  bytes sibling_addr = 4;
+}
+
+// _ (HashmapAugE 256 InMsg ImportFees) = InMsgDescr;
+message InMsgDescrItem {
+  bytes msg_hash = 1;  // the key
+  InMsg in_msg = 2;
+  ImportFees import_fees = 3;  // the augmentation
+}
+
+// _ (HashmapAugE 256 OutMsg CurrencyCollection) = OutMsgDescr;
+message OutMsgDescrItem {
+  bytes msg_hash = 1;  // the key
+  OutMsg out_msg = 2;
+  CurrencyCollection export_value = 3;  // the augmentation
+}
+
+// import_fees$_ fees_collected:Grams value_imported:CurrencyCollection = ImportFees;
+message ImportFees {
+  uint64 fees_collected = 1;
+  CurrencyCollection value_imported = 2;
+}
+
+message InMsg {
+  // msg_import_ext$000 msg:^(Message Any) transaction:^Transaction = InMsg;
+  message ImportExt {
+    bytes msg_hash = 1;
+    bytes transaction_hash = 2;
+  }
+  // msg_import_ihr$010 msg:^(Message Any) transaction:^Transaction ihr_fee:Grams
+  //   proof_created:^Cell = InMsg;
+  message ImportIhr {
+    bytes msg_hash = 1;
+    bytes transaction_hash = 2;
+    uint64 ihr_fee = 3;
+    Cell proof_created = 4;  // without the BOC
+  }
+  // msg_import_imm$011 in_msg:^MsgEnvelope transaction:^Transaction fwd_fee:Grams = InMsg;
+  message ImportImm {
+    MsgEnvelope in_msg = 1;
+    bytes transaction_hash = 2;
+    uint64 fwd_fee = 3;
+  }
+  // msg_import_fin$100 in_msg:^MsgEnvelope transaction:^Transaction fwd_fee:Grams = InMsg;
+  message ImportFin {
+    MsgEnvelope in_msg = 1;
+    bytes transaction_hash = 2;
+    uint64 fwd_fee = 3;
+  }
+  // msg_import_tr$101 in_msg:^MsgEnvelope out_msg:^MsgEnvelope transit_fee:Grams = InMsg;
+  message ImportTr {
+    MsgEnvelope in_msg = 1;
+    MsgEnvelope out_msg = 2;
+    uint64 transit_fee = 3;
+  }
+  // msg_discard_fin$110 in_msg:^MsgEnvelope transaction_id:uint64 fwd_fee:Grams = InMsg;
+  message DiscardFin {
+    MsgEnvelope in_msg = 1;
+    uint64 transaction_id = 2;
+    uint64 fwd_fee = 3;
+  }
+  // msg_discard_tr$111 in_msg:^MsgEnvelope transaction_id:uint64 fwd_fee:Grams
+  //   proof_delivered:^Cell = InMsg;
+  message DiscardTr {
+    MsgEnvelope in_msg = 1;
+    uint64 transaction_id = 2;
+    uint64 fwd_fee = 3;
+    Cell proof_delivered = 4;  // without the BOC
+  }
+  // msg_import_deferred_fin$00100 in_msg:^MsgEnvelope transaction:^Transaction
+  //   fwd_fee:Grams = InMsg;
+  message ImportDeferredFin {
+    MsgEnvelope in_msg = 1;
+    bytes transaction_hash = 2;
+    uint64 fwd_fee = 3;
+  }
+  // msg_import_deferred_tr$00101 in_msg:^MsgEnvelope out_msg:^MsgEnvelope = InMsg;
+  message ImportDeferredTr {
+    MsgEnvelope in_msg = 1;
+    MsgEnvelope out_msg = 2;
+  }
+  oneof kind {
+    ImportExt msg_import_ext = 1;
+    ImportIhr msg_import_ihr = 2;
+    ImportImm msg_import_imm = 3;
+    ImportFin msg_import_fin = 4;
+    ImportTr msg_import_tr = 5;
+    DiscardFin msg_discard_fin = 6;
+    DiscardTr msg_discard_tr = 7;
+    ImportDeferredFin msg_import_deferred_fin = 8;
+    ImportDeferredTr msg_import_deferred_tr = 9;
+  }
+}
+
+message OutMsg {
+  // msg_export_ext$000 msg:^(Message Any) transaction:^Transaction = OutMsg;
+  message ExportExt {
+    bytes msg_hash = 1;
+    bytes transaction_hash = 2;
+  }
+  // msg_export_imm$010 out_msg:^MsgEnvelope transaction:^Transaction reimport:^InMsg = OutMsg;
+  message ExportImm {
+    MsgEnvelope out_msg = 1;
+    bytes transaction_hash = 2;
+    InMsg reimport = 3;
+  }
+  // msg_export_new$001 out_msg:^MsgEnvelope transaction:^Transaction = OutMsg;
+  message ExportNew {
+    MsgEnvelope out_msg = 1;
+    bytes transaction_hash = 2;
+  }
+  // msg_export_tr$011 out_msg:^MsgEnvelope imported:^InMsg = OutMsg;
+  message ExportTr {
+    MsgEnvelope out_msg = 1;
+    InMsg imported = 2;
+  }
+  // msg_export_deq$1100 out_msg:^MsgEnvelope import_block_lt:uint63 = OutMsg;
+  message ExportDeq {
+    MsgEnvelope out_msg = 1;
+    uint64 import_block_lt = 2;
+  }
+  // msg_export_deq_short$1101 msg_env_hash:bits256 next_workchain:int32
+  //   next_addr_pfx:uint64 import_block_lt:uint64 = OutMsg;
+  message ExportDeqShort {
+    bytes msg_env_hash = 1;
+    int32 next_workchain = 2;
+    uint64 next_addr_pfx = 3;
+    uint64 import_block_lt = 4;
+  }
+  // msg_export_tr_req$111 out_msg:^MsgEnvelope imported:^InMsg = OutMsg;
+  message ExportTrReq {
+    MsgEnvelope out_msg = 1;
+    InMsg imported = 2;
+  }
+  // msg_export_deq_imm$100 out_msg:^MsgEnvelope reimport:^InMsg = OutMsg;
+  message ExportDeqImm {
+    MsgEnvelope out_msg = 1;
+    InMsg reimport = 2;
+  }
+  // msg_export_new_defer$10100 out_msg:^MsgEnvelope transaction:^Transaction = OutMsg;
+  message ExportNewDefer {
+    MsgEnvelope out_msg = 1;
+    bytes transaction_hash = 2;
+  }
+  // msg_export_deferred_tr$10101 out_msg:^MsgEnvelope imported:^InMsg = OutMsg;
+  message ExportDeferredTr {
+    MsgEnvelope out_msg = 1;
+    InMsg imported = 2;
+  }
+  oneof kind {
+    ExportExt msg_export_ext = 1;
+    ExportImm msg_export_imm = 2;
+    ExportNew msg_export_new = 3;
+    ExportTr msg_export_tr = 4;
+    ExportDeq msg_export_deq = 5;
+    ExportDeqShort msg_export_deq_short = 6;
+    ExportTrReq msg_export_tr_req = 7;
+    ExportDeqImm msg_export_deq_imm = 8;
+    ExportNewDefer msg_export_new_defer = 9;
+    ExportDeferredTr msg_export_deferred_tr = 10;
+  }
+}
+
+// msg_envelope#4 cur_addr:IntermediateAddress next_addr:IntermediateAddress
+//   fwd_fee_remaining:Grams msg:^(Message Any) = MsgEnvelope;
+// msg_envelope_v2#5 adds emitted_lt:(Maybe uint64) metadata:(Maybe MsgMetadata).
+message MsgEnvelope {
+  IntermediateAddress cur_addr = 1;
+  IntermediateAddress next_addr = 2;
+  uint64 fwd_fee_remaining = 3;
+  bytes msg_hash = 4;
+  optional uint64 emitted_lt = 5;
+  MsgMetadata metadata = 6;
+}
+
+message IntermediateAddress {
+  // interm_addr_regular$0 use_dest_bits:(#<= 96) = IntermediateAddress;
+  message Regular {
+    uint32 use_dest_bits = 1;
+  }
+  // interm_addr_simple$10 workchain_id:int8 addr_pfx:uint64 = IntermediateAddress;
+  message Simple {
+    int32 workchain_id = 1;
+    uint64 addr_pfx = 2;
+  }
+  // interm_addr_ext$11 workchain_id:int32 addr_pfx:uint64 = IntermediateAddress;
+  message Ext {
+    int32 workchain_id = 1;
+    uint64 addr_pfx = 2;
+  }
+  oneof kind {
+    Regular interm_addr_regular = 1;
+    Simple interm_addr_simple = 2;
+    Ext interm_addr_ext = 3;
+  }
+}
+
+// msg_metadata#0 depth:uint32 initiator_addr:MsgAddressInt initiator_lt:uint64 = MsgMetadata;
+message MsgMetadata {
+  uint32 depth = 1;
+  string initiator_addr = 2;
+  uint64 initiator_lt = 3;
+}
+
+// Not in block.tlb: API v3 trace metadata. The transactions of a trace are
+// found by their trace_id.
 message Trace {
   bytes trace_id = 1;
   optional bytes external_hash = 2;
@@ -78,191 +805,4 @@ message Trace {
   string state = 10;  // "complete", "broken"
   uint32 transactions = 11;
   uint32 messages = 12;
-}
-
-message BlockId {
-  int32 workchain = 1;
-  uint64 shard = 2;
-  uint32 seqno = 3;
-}
-
-// API v3 Block.
-message BlockHeader {
-  int32 workchain = 1;
-  uint64 shard = 2;
-  uint32 seqno = 3;
-  bytes root_hash = 4;
-  bytes file_hash = 5;
-  int32 global_id = 6;
-  uint32 version = 7;
-  bool after_merge = 8;
-  bool before_split = 9;
-  bool after_split = 10;
-  bool want_merge = 11;
-  bool want_split = 12;
-  bool key_block = 13;
-  bool vert_seqno_incr = 14;
-  uint32 flags = 15;
-  uint32 gen_utime = 16;
-  uint64 start_lt = 17;
-  uint64 end_lt = 18;
-  uint32 validator_list_hash_short = 19;
-  uint32 gen_catchain_seqno = 20;
-  uint32 min_ref_mc_seqno = 21;
-  uint32 prev_key_block_seqno = 22;
-  uint32 vert_seqno = 23;
-  uint32 master_ref_seqno = 24;
-  bytes rand_seed = 25;
-  bytes created_by = 26;
-  uint32 tx_count = 27;
-  BlockId masterchain_block_ref = 28;
-  repeated BlockId prev_blocks = 29;
-}
-
-// API v3 Transaction. Not included: address_book, emulated, finality,
-// trace_external_hash (pending-only in the API).
-message Transaction {
-  string account = 1;
-  bytes hash = 2;
-  uint64 lt = 3;
-  uint32 now = 4;
-  uint32 mc_block_seqno = 5;
-  optional bytes trace_id = 6;
-  bytes prev_trans_hash = 7;
-  uint64 prev_trans_lt = 8;
-  string orig_status = 9;  // "uninit", "frozen", "active", "nonexist"
-  string end_status = 10;
-  uint64 total_fees = 11;
-  map<uint32, string> total_fees_extra_currencies = 12;
-  TransactionDescr description = 13;
-  BlockId block_ref = 14;
-  Message in_msg = 15;
-  repeated Message out_msgs = 16;
-  AccountState account_state_before = 17;
-  AccountState account_state_after = 18;
-}
-
-// API v3 AccountState as embedded in transactions (no code/data BOCs).
-message AccountState {
-  bytes hash = 1;
-  optional uint64 balance = 2;
-  map<uint32, string> extra_currencies = 3;
-  optional string account_status = 4;
-  optional bytes frozen_hash = 5;
-  optional bytes data_hash = 6;
-  optional bytes code_hash = 7;
-}
-
-// API v3 Message. External messages have no source (ext_in) or no
-// destination (ext_out). Not included: decoded_opcode, message_content.decoded
-// (decoded by the API on request), in_msg_tx_hash / out_msg_tx_hash
-// (the receiving transaction belongs to a later block).
-message Message {
-  bytes hash = 1;
-  optional string source = 2;
-  optional string destination = 3;
-  optional uint64 value = 4;
-  map<uint32, string> value_extra_currencies = 5;
-  optional uint64 fwd_fee = 6;
-  optional uint64 ihr_fee = 7;
-  optional string extra_flags = 8;
-  optional uint64 created_lt = 9;
-  optional uint32 created_at = 10;
-  optional uint32 opcode = 11;
-  optional bool ihr_disabled = 12;
-  optional bool bounce = 13;
-  optional bool bounced = 14;
-  optional uint64 import_fee = 15;
-  MessageContent message_content = 16;
-  MessageContent init_state = 17;
-  optional bytes hash_norm = 18;
-  string type = 19;  // "int", "ext_in", "ext_out"
-}
-
-message MessageContent {
-  bytes hash = 1;
-  bytes body = 2;  // BOC
-}
-
-// API v3 TransactionDescr; the phases are set depending on type.
-message TransactionDescr {
-  string type = 1;  // "ord", "storage", "tick_tock", "split_prepare", "split_install", "merge_prepare", "merge_install"
-  optional bool aborted = 2;
-  optional bool destroyed = 3;
-  optional bool credit_first = 4;
-  optional bool is_tock = 5;
-  optional bool installed = 6;
-  StoragePhase storage_ph = 7;
-  CreditPhase credit_ph = 8;
-  ComputePhase compute_ph = 9;
-  ActionPhase action = 10;
-  BouncePhase bounce = 11;
-  SplitInfo split_info = 12;
-}
-
-message StoragePhase {
-  optional uint64 storage_fees_collected = 1;
-  optional uint64 storage_fees_due = 2;
-  optional string status_change = 3;
-}
-
-message CreditPhase {
-  optional uint64 due_fees_collected = 1;
-  optional uint64 credit = 2;
-  map<uint32, string> credit_extra_currencies = 3;
-}
-
-message ComputePhase {
-  optional bool skipped = 1;
-  optional string reason = 2;
-  optional bool success = 3;
-  optional bool msg_state_used = 4;
-  optional bool account_activated = 5;
-  optional uint64 gas_fees = 6;
-  optional uint64 gas_used = 7;
-  optional uint64 gas_limit = 8;
-  optional uint64 gas_credit = 9;
-  optional int32 mode = 10;
-  optional int32 exit_code = 11;
-  optional int32 exit_arg = 12;
-  optional uint32 vm_steps = 13;
-  optional bytes vm_init_state_hash = 14;
-  optional bytes vm_final_state_hash = 15;
-}
-
-message ActionPhase {
-  optional bool success = 1;
-  optional bool valid = 2;
-  optional bool no_funds = 3;
-  optional string status_change = 4;
-  optional uint64 total_fwd_fees = 5;
-  optional uint64 total_action_fees = 6;
-  optional int32 result_code = 7;
-  optional int32 result_arg = 8;
-  optional uint32 tot_actions = 9;
-  optional uint32 spec_actions = 10;
-  optional uint32 skipped_actions = 11;
-  optional uint32 msgs_created = 12;
-  optional bytes action_list_hash = 13;
-  MsgSize tot_msg_size = 14;
-}
-
-message BouncePhase {
-  optional string type = 1;  // "negfunds", "nofunds", "ok"
-  MsgSize msg_size = 2;
-  optional uint64 req_fwd_fees = 3;
-  optional uint64 msg_fees = 4;
-  optional uint64 fwd_fees = 5;
-}
-
-message MsgSize {
-  optional uint64 cells = 1;
-  optional uint64 bits = 2;
-}
-
-message SplitInfo {
-  optional uint32 cur_shard_pfx_len = 1;
-  optional uint32 acc_split_depth = 2;
-  optional bytes this_addr = 3;
-  optional bytes sibling_addr = 4;
 }
