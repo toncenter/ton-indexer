@@ -1,0 +1,7 @@
+version: v2
+inputs:
+  - directory: proto
+plugins:
+  - local: protoc-gen-go
+    out: pb
+    opt: paths=source_relative

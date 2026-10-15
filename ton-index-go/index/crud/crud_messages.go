@@ -219,7 +219,16 @@ func finalizeMessagePtrs(parentCtx context.Context, msgs []*models.Message, stor
 	if err := attachMessageContentsFromKvrocks(parentCtx, msgs, store, settings); err != nil {
 		return models.IndexError{Code: 500, Message: err.Error()}
 	}
+	markMessages(msgs, settings)
+	return nil
+}
 
+// markMessages decodes message bodies and opcodes; a failure leaves them
+// undecoded and is only logged.
+func markMessages(msgs []*models.Message, settings models.RequestSettings) {
+	if settings.NoDecode {
+		return
+	}
 	if err := detect.MarkMessagesByPtr(msgs); err != nil {
 		hashes := make([]string, 0, len(msgs))
 		for _, msg := range msgs {
@@ -229,7 +238,6 @@ func finalizeMessagePtrs(parentCtx context.Context, msgs []*models.Message, stor
 		}
 		log.Printf("Error marking messages with hashes %v: %v", hashes, err)
 	}
-	return nil
 }
 
 func finalizeMessages(msgs []models.Message, store *KvrocksStore, settings models.RequestSettings) error {

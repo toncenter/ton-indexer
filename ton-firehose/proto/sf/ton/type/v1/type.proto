@@ -1,0 +1,218 @@
+syntax = "proto3";
+
+package sf.ton.type.v1;
+
+option go_package = "github.com/toncenter/ton-indexer/ton-firehose/pb/sf/ton/type/v1;pbton";
+
+// Field names and nesting follow the ton-index-go (API v3) models
+// (ton-index-go/index/models/blockchain.go); numeric types follow TL-B.
+// Hashes and BOCs are raw bytes (base64 in JSON, as in the API),
+// addresses are raw strings ("0:83DF...") exactly as the API returns them.
+
+// One Firehose block: a masterchain block together with the shard blocks it
+// commits for the first time and all their transactions.
+//
+// Firehose metadata: number = masterchain seqno, id = masterchain root_hash
+// in lowercase hex, parent = previous masterchain block, lib_num = number
+// (masterchain blocks are final as soon as they are committed).
+message Block {
+  BlockHeader masterchain_block = 1;
+
+  // Shard blocks with mc_block_seqno equal to this masterchain seqno
+  // (the rest of /api/v3/masterchainBlockShards), ordered by (workchain, shard, seqno).
+  repeated BlockHeader shard_blocks = 2;
+
+  // All transactions of masterchain_block and shard_blocks, ordered by
+  // (lt, account) as /api/v3/transactionsByMasterchainBlock with sort=asc.
+  // block_ref points to the block of each transaction.
+  repeated Transaction transactions = 3;
+
+  // Shard tops at this masterchain block (/api/v3/masterchainBlockShardState).
+  repeated BlockId shards = 4;
+}
+
+message BlockId {
+  int32 workchain = 1;
+  uint64 shard = 2;
+  uint32 seqno = 3;
+}
+
+// API v3 Block.
+message BlockHeader {
+  int32 workchain = 1;
+  uint64 shard = 2;
+  uint32 seqno = 3;
+  bytes root_hash = 4;
+  bytes file_hash = 5;
+  int32 global_id = 6;
+  uint32 version = 7;
+  bool after_merge = 8;
+  bool before_split = 9;
+  bool after_split = 10;
+  bool want_merge = 11;
+  bool want_split = 12;
+  bool key_block = 13;
+  bool vert_seqno_incr = 14;
+  uint32 flags = 15;
+  uint32 gen_utime = 16;
+  uint64 start_lt = 17;
+  uint64 end_lt = 18;
+  uint32 validator_list_hash_short = 19;
+  uint32 gen_catchain_seqno = 20;
+  uint32 min_ref_mc_seqno = 21;
+  uint32 prev_key_block_seqno = 22;
+  uint32 vert_seqno = 23;
+  uint32 master_ref_seqno = 24;
+  bytes rand_seed = 25;
+  bytes created_by = 26;
+  uint32 tx_count = 27;
+  BlockId masterchain_block_ref = 28;
+  repeated BlockId prev_blocks = 29;
+}
+
+// API v3 Transaction. Not included: address_book, emulated, finality,
+// trace_external_hash (pending-only in the API).
+message Transaction {
+  string account = 1;
+  bytes hash = 2;
+  uint64 lt = 3;
+  uint32 now = 4;
+  uint32 mc_block_seqno = 5;
+  optional bytes trace_id = 6;
+  bytes prev_trans_hash = 7;
+  uint64 prev_trans_lt = 8;
+  string orig_status = 9;  // "uninit", "frozen", "active", "nonexist"
+  string end_status = 10;
+  uint64 total_fees = 11;
+  map<uint32, string> total_fees_extra_currencies = 12;
+  TransactionDescr description = 13;
+  BlockId block_ref = 14;
+  Message in_msg = 15;
+  repeated Message out_msgs = 16;
+  AccountState account_state_before = 17;
+  AccountState account_state_after = 18;
+}
+
+// API v3 AccountState as embedded in transactions (no code/data BOCs).
+message AccountState {
+  bytes hash = 1;
+  optional uint64 balance = 2;
+  map<uint32, string> extra_currencies = 3;
+  optional string account_status = 4;
+  optional bytes frozen_hash = 5;
+  optional bytes data_hash = 6;
+  optional bytes code_hash = 7;
+}
+
+// API v3 Message. External messages have no source (ext_in) or no
+// destination (ext_out). Not included: decoded_opcode, message_content.decoded
+// (decoded by the API on request), in_msg_tx_hash / out_msg_tx_hash
+// (the receiving transaction belongs to a later block).
+message Message {
+  bytes hash = 1;
+  optional string source = 2;
+  optional string destination = 3;
+  optional uint64 value = 4;
+  map<uint32, string> value_extra_currencies = 5;
+  optional uint64 fwd_fee = 6;
+  optional uint64 ihr_fee = 7;
+  optional string extra_flags = 8;
+  optional uint64 created_lt = 9;
+  optional uint32 created_at = 10;
+  optional uint32 opcode = 11;
+  optional bool ihr_disabled = 12;
+  optional bool bounce = 13;
+  optional bool bounced = 14;
+  optional uint64 import_fee = 15;
+  MessageContent message_content = 16;
+  MessageContent init_state = 17;
+  optional bytes hash_norm = 18;
+}
+
+message MessageContent {
+  bytes hash = 1;
+  bytes body = 2;  // BOC
+}
+
+// API v3 TransactionDescr; the phases are set depending on type.
+message TransactionDescr {
+  string type = 1;  // "ord", "storage", "tick_tock", "split_prepare", "split_install", "merge_prepare", "merge_install"
+  optional bool aborted = 2;
+  optional bool destroyed = 3;
+  optional bool credit_first = 4;
+  optional bool is_tock = 5;
+  optional bool installed = 6;
+  StoragePhase storage_ph = 7;
+  CreditPhase credit_ph = 8;
+  ComputePhase compute_ph = 9;
+  ActionPhase action = 10;
+  BouncePhase bounce = 11;
+  SplitInfo split_info = 12;
+}
+
+message StoragePhase {
+  optional uint64 storage_fees_collected = 1;
+  optional uint64 storage_fees_due = 2;
+  optional string status_change = 3;
+}
+
+message CreditPhase {
+  optional uint64 due_fees_collected = 1;
+  optional uint64 credit = 2;
+  map<uint32, string> credit_extra_currencies = 3;
+}
+
+message ComputePhase {
+  optional bool skipped = 1;
+  optional string reason = 2;
+  optional bool success = 3;
+  optional bool msg_state_used = 4;
+  optional bool account_activated = 5;
+  optional uint64 gas_fees = 6;
+  optional uint64 gas_used = 7;
+  optional uint64 gas_limit = 8;
+  optional uint64 gas_credit = 9;
+  optional int32 mode = 10;
+  optional int32 exit_code = 11;
+  optional int32 exit_arg = 12;
+  optional uint32 vm_steps = 13;
+  optional bytes vm_init_state_hash = 14;
+  optional bytes vm_final_state_hash = 15;
+}
+
+message ActionPhase {
+  optional bool success = 1;
+  optional bool valid = 2;
+  optional bool no_funds = 3;
+  optional string status_change = 4;
+  optional uint64 total_fwd_fees = 5;
+  optional uint64 total_action_fees = 6;
+  optional int32 result_code = 7;
+  optional int32 result_arg = 8;
+  optional uint32 tot_actions = 9;
+  optional uint32 spec_actions = 10;
+  optional uint32 skipped_actions = 11;
+  optional uint32 msgs_created = 12;
+  optional bytes action_list_hash = 13;
+  MsgSize tot_msg_size = 14;
+}
+
+message BouncePhase {
+  optional string type = 1;  // "negfunds", "nofunds", "ok"
+  MsgSize msg_size = 2;
+  optional uint64 req_fwd_fees = 3;
+  optional uint64 msg_fees = 4;
+  optional uint64 fwd_fees = 5;
+}
+
+message MsgSize {
+  optional uint64 cells = 1;
+  optional uint64 bits = 2;
+}
+
+message SplitInfo {
+  optional uint32 cur_shard_pfx_len = 1;
+  optional uint32 acc_split_depth = 2;
+  optional bytes this_addr = 3;
+  optional bytes sibling_addr = 4;
+}
