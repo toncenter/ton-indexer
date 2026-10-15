@@ -9,24 +9,75 @@ package sf.ton.type.v1;
 // addresses are raw strings ("0:83DF...") exactly as the API returns them.
 
 // One Firehose block: a masterchain block together with the shard blocks it
-// commits for the first time and all their transactions.
+// commits for the first time.
 //
 // Firehose metadata: number = masterchain seqno, id = masterchain root_hash
 // in lowercase hex, parent = previous masterchain block, lib_num = number
 // (masterchain blocks are final as soon as they are committed).
 message Block {
-  BlockHeader masterchain_block = 1;
+  BlockData masterchain_block = 1;
 
-  // Shard blocks with mc_block_seqno equal to this masterchain seqno
+  // Shard blocks committed for the first time by this masterchain block
   // (the rest of /api/v3/masterchainBlockShards), ordered by (workchain, shard, seqno).
-  repeated BlockHeader shard_blocks = 2;
-
-  // All transactions of masterchain_block and shard_blocks, ordered by
-  // (lt, account). block_ref points to the block of each transaction.
-  repeated Transaction transactions = 3;
+  repeated BlockData shard_blocks = 2;
 
   // Shard tops at this masterchain block (/api/v3/masterchainBlockShardState).
-  repeated BlockId shards = 4;
+  repeated BlockId shards = 3;
+
+  // Traces that became complete or broken in this masterchain block. A broken
+  // trace appears again in every later block that extends it.
+  repeated Trace traces = 4;
+
+  // Network configuration, parameter number -> parameter cell BOC. Set on key
+  // blocks, where the configuration may change, and on the first block of the chain.
+  map<int32, bytes> config_params = 5;
+
+  reserved 6 to 19;   // contract interfaces of changed accounts
+  reserved 20 to 39;  // actions
+}
+
+message BlockData {
+  BlockHeader header = 1;
+
+  // Ordered by (lt, account).
+  repeated Transaction transactions = 2;
+
+  // One entry per account with transactions in this block, ordered by account.
+  repeated AccountChange account_changes = 3;
+}
+
+// The state of an account before its first transaction in a block and after
+// its last one. Full states exist only at block boundaries: states between two
+// transactions of one block are known by hash only.
+message AccountChange {
+  string account = 1;
+  AccountState state_before = 2;
+  AccountState state_after = 3;
+
+  // Code BOC after the block, when the code hash changed.
+  optional bytes code = 4;
+
+  // Data BOC after the block, when the data hash changed and the BOC is at most
+  // 64 KiB. Larger data (e.g. the elector, rewritten every block) is only
+  // flagged by data_omitted; its hash is in state_after.
+  optional bytes data = 5;
+  bool data_omitted = 6;
+}
+
+// API v3 Trace metadata. The transactions of a trace are found by their trace_id.
+message Trace {
+  bytes trace_id = 1;
+  optional bytes external_hash = 2;
+  optional bytes external_hash_norm = 3;
+  uint32 mc_seqno_start = 4;
+  uint32 mc_seqno_end = 5;
+  uint64 start_lt = 6;
+  uint32 start_utime = 7;
+  uint64 end_lt = 8;
+  uint32 end_utime = 9;
+  string state = 10;  // "complete", "broken"
+  uint32 transactions = 11;
+  uint32 messages = 12;
 }
 
 message BlockId {
@@ -125,6 +176,7 @@ message Message {
   MessageContent message_content = 16;
   MessageContent init_state = 17;
   optional bytes hash_norm = 18;
+  string type = 19;  // "int", "ext_in", "ext_out"
 }
 
 message MessageContent {

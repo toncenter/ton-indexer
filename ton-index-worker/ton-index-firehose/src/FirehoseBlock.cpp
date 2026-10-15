@@ -3,14 +3,15 @@
 #include <algorithm>
 #include <limits>
 #include <map>
-#include <set>
 #include <google/protobuf/io/coded_stream.h>
 #include <google/protobuf/io/zero_copy_stream_impl_lite.h>
 #include <google/protobuf/util/json_util.h>
 #include "td/utils/base64.h"
 #include "td/utils/check.h"
 #include "td/utils/misc.h"
+#include "crypto/vm/boc.h"
 #include "crypto/vm/cells/CellBuilder.h"
+#include "crypto/vm/dict.h"
 #include "convert-utils.h"
 #include "DataParser.h"
 #include "sf/ton/type/v1/type.pb.h"
@@ -75,21 +76,21 @@ class Converter {
 
   td::Result<pb::Block> convert() {
     pb::Block out;
-    std::vector<std::pair<const schema::Block*, const schema::Transaction*>> txs;
+    const schema::Block* mc_block = nullptr;
     for (const auto& blk : parsed_block_.blocks_) {
-      auto* header = blk.workchain == ton::masterchainId ? out.mutable_masterchain_block() : out.add_shard_blocks();
-      TRY_STATUS(fill_block_header(header, blk));
-      for (const auto& tx : blk.transactions) {
-        txs.emplace_back(&blk, &tx);
+      bool is_masterchain = blk.workchain == ton::masterchainId;
+      TRY_STATUS(fill_block_data(is_masterchain ? out.mutable_masterchain_block() : out.add_shard_blocks(), blk));
+      if (is_masterchain) {
+        mc_block = &blk;
       }
     }
-    if (!out.has_masterchain_block()) {
+    if (mc_block == nullptr) {
       return td::Status::Error("masterchain block is missing");
     }
     std::sort(out.mutable_shard_blocks()->begin(), out.mutable_shard_blocks()->end(),
-              [](const pb::BlockHeader& a, const pb::BlockHeader& b) {
-                return std::make_tuple(a.workchain(), a.shard(), a.seqno()) <
-                       std::make_tuple(b.workchain(), b.shard(), b.seqno());
+              [](const pb::BlockData& a, const pb::BlockData& b) {
+                return std::make_tuple(a.header().workchain(), a.header().shard(), a.header().seqno()) <
+                       std::make_tuple(b.header().workchain(), b.header().shard(), b.header().seqno());
               });
 
     for (const auto& shard : parsed_block_.shard_state_) {
@@ -101,33 +102,131 @@ class Converter {
                        std::make_tuple(b.workchain(), b.shard(), b.seqno());
               });
 
-    // A block lists the transactions of an account consecutively in lt order,
-    // so only the first one starts from a state committed by an earlier block.
-    std::set<std::pair<const schema::Block*, std::string>> seen_accounts;
-    std::vector<std::pair<std::string, pb::Transaction>> converted;
-    converted.reserve(txs.size());
-    for (const auto& [blk, tx] : txs) {
-      auto account = convert::to_raw_address(tx->account);
-      bool first_in_block = seen_accounts.emplace(blk, account).second;
-      pb::Transaction pb_tx;
-      TRY_STATUS(fill_transaction(&pb_tx, *blk, *tx, account, first_in_block));
-      converted.emplace_back(std::move(account), std::move(pb_tx));
-    }
-    std::sort(converted.begin(), converted.end(), [](const auto& a, const auto& b) {
-      if (a.second.lt() != b.second.lt()) {
-        return a.second.lt() < b.second.lt();
+    for (const auto& trace : parsed_block_.traces_) {
+      if (trace.state != schema::Trace::State::pending) {
+        fill_trace(out.add_traces(), trace);
       }
-      return a.first < b.first;
-    });
-    for (auto& [_, tx] : converted) {
-      *out.add_transactions() = std::move(tx);
+    }
+    // traces_ is filled from a hash map
+    std::sort(out.mutable_traces()->begin(), out.mutable_traces()->end(),
+              [](const pb::Trace& a, const pb::Trace& b) { return a.trace_id() < b.trace_id(); });
+
+    if (mc_block->key_block || mc_block->seqno == kFirstMasterchainSeqno) {
+      TRY_STATUS(fill_config_params(out.mutable_config_params()));
     }
     return out;
   }
 
  private:
+  static constexpr std::uint32_t kFirstMasterchainSeqno = 1;
+  static constexpr std::size_t kMaxDataBocSize = 64 * 1024;
+
   const ParsedBlock& parsed_block_;
   std::map<td::Bits256, const schema::AccountState*> block_end_states_;
+  std::map<td::Bits256, std::optional<schema::AccountState>> loaded_states_;
+
+  td::Status fill_block_data(pb::BlockData* out, const schema::Block& blk) {
+    TRY_STATUS(fill_block_header(out->mutable_header(), blk));
+
+    std::vector<std::pair<std::string, const schema::Transaction*>> txs;
+    txs.reserve(blk.transactions.size());
+    for (const auto& tx : blk.transactions) {
+      txs.emplace_back(convert::to_raw_address(tx.account), &tx);
+    }
+    std::sort(txs.begin(), txs.end(), [](const auto& a, const auto& b) {
+      if (a.second->lt != b.second->lt) {
+        return a.second->lt < b.second->lt;
+      }
+      return a.first < b.first;
+    });
+
+    // first and last transaction of every account, keyed by its raw address
+    std::map<std::string, std::pair<const schema::Transaction*, const schema::Transaction*>> accounts;
+    for (const auto& [account, tx] : txs) {
+      auto [it, inserted] = accounts.try_emplace(account, tx, tx);
+      if (!inserted) {
+        it->second.second = tx;
+      }
+    }
+
+    for (const auto& [account, tx] : txs) {
+      bool first_in_block = accounts.at(account).first == tx;
+      TRY_STATUS(fill_transaction(out->add_transactions(), blk, *tx, account, first_in_block));
+    }
+    for (const auto& [account, range] : accounts) {
+      TRY_STATUS(fill_account_change(out->add_account_changes(), account, *range.first, *range.second));
+    }
+    return td::Status::OK();
+  }
+
+  td::Status fill_account_change(pb::AccountChange* out, const std::string& account,
+                                 const schema::Transaction& first_tx, const schema::Transaction& last_tx) {
+    out->set_account(account);
+    const auto* before = committed_state(first_tx.account_state_hash_before, first_tx.account, true);
+    const auto* after = committed_state(last_tx.account_state_hash_after, last_tx.account, false);
+    fill_state(out->mutable_state_before(), first_tx.account_state_hash_before, before);
+    fill_state(out->mutable_state_after(), last_tx.account_state_hash_after, after);
+    if (after == nullptr) {
+      return td::Status::OK();
+    }
+    // An unknown previous state counts as changed.
+    if (after->code.not_null() && (before == nullptr || before->code_hash != after->code_hash)) {
+      TRY_RESULT(code, serialize_boc(after->code));
+      out->set_code(std::move(code));
+    }
+    if (after->data.not_null() && (before == nullptr || before->data_hash != after->data_hash)) {
+      TRY_RESULT(data, serialize_boc(after->data));
+      if (data.size() <= kMaxDataBocSize) {
+        out->set_data(std::move(data));
+      } else {
+        out->set_data_omitted(true);
+      }
+    }
+    return td::Status::OK();
+  }
+
+  static td::Result<std::string> serialize_boc(const td::Ref<vm::Cell>& cell) {
+    TRY_RESULT(boc, vm::std_boc_serialize(cell, vm::BagOfCells::Mode::WithCRC32C));
+    return boc.as_slice().str();
+  }
+
+  static void fill_trace(pb::Trace* out, const schema::Trace& trace) {
+    out->set_trace_id(bytes(trace.trace_id));
+    if (trace.external_hash) {
+      out->set_external_hash(bytes(*trace.external_hash));
+    }
+    if (trace.external_hash_norm && trace.external_hash_norm != trace.external_hash) {
+      out->set_external_hash_norm(bytes(*trace.external_hash_norm));
+    }
+    out->set_mc_seqno_start(trace.mc_seqno_start);
+    out->set_mc_seqno_end(trace.mc_seqno_end);
+    out->set_start_lt(trace.start_lt);
+    out->set_start_utime(trace.start_utime);
+    out->set_end_lt(trace.end_lt);
+    out->set_end_utime(trace.end_utime);
+    out->set_state(trace.state == schema::Trace::State::complete ? "complete" : "broken");
+    out->set_transactions(static_cast<std::uint32_t>(trace.nodes_));
+    out->set_messages(static_cast<std::uint32_t>(trace.edges_));
+  }
+
+  td::Status fill_config_params(google::protobuf::Map<std::int32_t, std::string>* out) {
+    const auto& config = parsed_block_.mc_block_.config_;
+    if (!config) {
+      return td::Status::Error("masterchain config is missing");
+    }
+    td::Status status;
+    vm::Dictionary params{config->get_root_cell(), 32};
+    params.check_for_each([&](td::Ref<vm::CellSlice> value, td::ConstBitPtr key, int key_len) {
+      auto boc = serialize_boc(value->prefetch_ref());
+      if (boc.is_error()) {
+        status = boc.move_as_error_prefix(PSLICE() << "config param " << key.get_int(key_len) << ": ");
+        return false;
+      }
+      (*out)[static_cast<std::int32_t>(key.get_int(key_len))] = boc.move_as_ok();
+      return true;
+    });
+    return status;
+  }
 
   static td::Result<std::string> decode_base64(td::Slice value) {
     return td::base64_decode(value);
@@ -211,47 +310,61 @@ class Converter {
     return hash;
   }
 
-  // Full states exist only at block boundaries: a state an earlier block
-  // committed is loaded from the cell db, intermediate states keep only the hash.
-  std::optional<schema::AccountState> load_committed_state(const td::Bits256& hash, const block::StdAddress& account) {
-    std::optional<schema::AccountState> state;
-    if (parsed_block_.cell_db_reader_) {
-      auto cell = parsed_block_.cell_db_reader_->load_cell(hash.as_slice());
-      if (cell.is_ok()) {
-        td::Ref<vm::Cell> root = cell.move_as_ok();
-        if (block::gen::t_Account.get_tag(vm::load_cell_slice(root)) == block::gen::Account::account) {
-          auto parsed = ParseQuery::parse_account(std::move(root), 0, td::Bits256::zero(), 0);
-          if (parsed.is_ok()) {
-            state = parsed.move_as_ok();
-          } else {
-            LOG(WARNING) << "Failed to parse account state " << hash.to_hex() << ": " << parsed.move_as_error();
-          }
-          return state;
-        }
-      }
-    }
+  // The state a block starts from was committed by an earlier block. The cell db
+  // keeps a cell while any kept state references it, so the state is there as
+  // long as the node keeps the state of the previous block.
+  std::optional<schema::AccountState> load_prior_state(const td::Bits256& hash, const block::StdAddress& account) {
     if (hash == account_none_hash()) {
-      state = schema::AccountState{};
-      state->hash = hash;
-      state->account = account;
-      state->account_status = "nonexist";
-      state->balance = schema::CurrencyCollection{td::make_refint(0), {}};
+      schema::AccountState state;
+      state.hash = hash;
+      state.account = account;
+      state.account_status = "nonexist";
+      state.balance = schema::CurrencyCollection{td::make_refint(0), {}};
+      return state;
     }
-    return state;
+    if (!parsed_block_.cell_db_reader_) {
+      return std::nullopt;
+    }
+    auto cell = parsed_block_.cell_db_reader_->load_cell(hash.as_slice());
+    if (cell.is_error()) {
+      return std::nullopt;
+    }
+    td::Ref<vm::Cell> root = cell.move_as_ok();
+    if (block::gen::t_Account.get_tag(vm::load_cell_slice(root)) != block::gen::Account::account) {
+      return std::nullopt;
+    }
+    auto parsed = ParseQuery::parse_account(std::move(root), 0, td::Bits256::zero(), 0);
+    if (parsed.is_error()) {
+      LOG(WARNING) << "Failed to parse account state " << hash.to_hex() << ": " << parsed.move_as_error();
+      return std::nullopt;
+    }
+    return parsed.move_as_ok();
   }
 
-  void fill_state_ref(pb::AccountState* out, const td::Bits256& hash, const block::StdAddress& account, bool committed_earlier) {
+  // The full state for hash: committed at the end of a block of this round or,
+  // when committed_earlier, by an earlier block. Null for the states between two
+  // transactions of one block, known by hash only.
+  const schema::AccountState* committed_state(const td::Bits256& hash, const block::StdAddress& account,
+                                              bool committed_earlier) {
     if (auto it = block_end_states_.find(hash); it != block_end_states_.end()) {
-      fill_account_state(out, *it->second);
-      return;
+      return it->second;
     }
-    if (committed_earlier) {
-      if (auto state = load_committed_state(hash, account)) {
-        fill_account_state(out, *state);
-        return;
-      }
+    if (!committed_earlier) {
+      return nullptr;
     }
-    out->set_hash(bytes(hash));
+    auto it = loaded_states_.find(hash);
+    if (it == loaded_states_.end()) {
+      it = loaded_states_.emplace(hash, load_prior_state(hash, account)).first;
+    }
+    return it->second ? &*it->second : nullptr;
+  }
+
+  static void fill_state(pb::AccountState* out, const td::Bits256& hash, const schema::AccountState* state) {
+    if (state != nullptr) {
+      fill_account_state(out, *state);
+    } else {
+      out->set_hash(bytes(hash));
+    }
   }
 
   static td::Status fill_content(pb::MessageContent* out, const td::Ref<vm::Cell>& cell, td::Slice boc) {
@@ -314,6 +427,8 @@ class Converter {
     if (msg.hash_norm && *msg.hash_norm != msg.hash) {
       out->set_hash_norm(bytes(*msg.hash_norm));
     }
+    // Only internal messages carry a value, and only inbound external ones lack a source.
+    out->set_type(msg.value ? "int" : (msg.source ? "ext_out" : "ext_in"));
     return td::Status::OK();
   }
 
@@ -498,8 +613,10 @@ class Converter {
     for (const auto& msg : tx.out_msgs) {
       TRY_STATUS(fill_message(out->add_out_msgs(), msg));
     }
-    fill_state_ref(out->mutable_account_state_before(), tx.account_state_hash_before, tx.account, first_in_block);
-    fill_state_ref(out->mutable_account_state_after(), tx.account_state_hash_after, tx.account, false);
+    fill_state(out->mutable_account_state_before(), tx.account_state_hash_before,
+               committed_state(tx.account_state_hash_before, tx.account, first_in_block));
+    fill_state(out->mutable_account_state_after(), tx.account_state_hash_after,
+               committed_state(tx.account_state_hash_after, tx.account, false));
     return td::Status::OK();
   }
 };
@@ -533,12 +650,13 @@ td::Result<FirehoseBlock> make_firehose_block(const ParsedBlock& parsed_block) {
   }
   auto prev = mc_state->handle->one_prev(true);
 
+  const auto& header = block.masterchain_block().header();
   FirehoseBlock out;
-  out.number = block.masterchain_block().seqno();
-  out.id = td::hex_encode(block.masterchain_block().root_hash());
+  out.number = header.seqno();
+  out.id = td::hex_encode(header.root_hash());
   out.parent_num = prev.seqno();
   out.parent_id = td::hex_encode(prev.root_hash.as_slice());
-  out.gen_utime = block.masterchain_block().gen_utime();
+  out.gen_utime = header.gen_utime();
   TRY_RESULT_ASSIGN(out.payload, serialize_deterministic(block));
   return out;
 }
