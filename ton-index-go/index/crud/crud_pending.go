@@ -3,9 +3,11 @@ package crud
 import (
 	"context"
 	"fmt"
+	"log"
 	"sort"
 	"strings"
 
+	"github.com/toncenter/ton-indexer/ton-index-go/index/detect"
 	"github.com/toncenter/ton-indexer/ton-index-go/index/models"
 	"github.com/toncenter/ton-indexer/ton-index-go/index/parse"
 
@@ -313,7 +315,14 @@ func QueryPendingTransactionsImpl(emulatedContext *EmulatedTracesContext, conn *
 			}
 		}
 	}
-	markMessages(msgPtrs, settings)
+	// mark msg bodies and opcodes
+	if err := detect.MarkMessagesByPtr(msgPtrs); err != nil {
+		hashes := make([]string, len(msgPtrs))
+		for i, msg := range msgPtrs {
+			hashes[i] = msg.MsgHash.String()
+		}
+		log.Printf("Error marking messages with hashes %v: %v", hashes, err)
+	}
 	// sort messages
 	for idx := range txs {
 		sort.SliceStable(txs[idx].OutMsgs, func(i, j int) bool {

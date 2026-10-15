@@ -264,23 +264,6 @@ func kvrocksNodeWatermark(ctx context.Context, c redis.Cmdable) (int64, bool) {
 	return watermark, true
 }
 
-// FinalizedMcSeqno reads the watermark from the master. ok is false when the
-// worker has not created the watermark yet.
-func (s *KvrocksStore) FinalizedMcSeqno(ctx context.Context) (seqno int64, ok bool, err error) {
-	value, err := s.client.Get(ctx, kvrocksWatermarkKey).Result()
-	if err == redis.Nil {
-		return 0, false, nil
-	}
-	if err != nil {
-		return 0, false, err
-	}
-	seqno, err = strconv.ParseInt(value, 10, 64)
-	if err != nil {
-		return 0, false, fmt.Errorf("parsing %s: %w", kvrocksWatermarkKey, err)
-	}
-	return seqno, true, nil
-}
-
 func (rs *kvrocksReplicaSet) pick() *kvrocksReplica {
 	if rs == nil {
 		return nil

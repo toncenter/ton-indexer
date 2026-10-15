@@ -1,0 +1,18 @@
+syntax = "proto3";
+
+package sf.bstream.v1;
+
+import "google/protobuf/any.proto";
+import "google/protobuf/timestamp.proto";
+
+// Wire-compatible subset of sf.bstream.v1.Block from github.com/streamingfast/bstream:
+// the envelope of every block in merged-blocks files.
+message Block {
+  uint64 number = 1;
+  string id = 2;
+  string parent_id = 3;
+  google.protobuf.Timestamp timestamp = 4;
+  uint64 lib_num = 5;
+  uint64 parent_num = 10;
+  google.protobuf.Any payload = 11;
+}

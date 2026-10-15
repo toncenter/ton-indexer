@@ -16,7 +16,6 @@ type RequestSettings struct {
 	DebugRequest         bool
 	NoAddressBook        bool
 	NoMetadata           bool
-	NoDecode             bool // skip decoding of message bodies and opcodes
 	UseCache             bool
 	DnsSelfAssignedOnly  bool
 }

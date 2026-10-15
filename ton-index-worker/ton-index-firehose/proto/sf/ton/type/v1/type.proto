@@ -2,8 +2,7 @@ syntax = "proto3";
 
 package sf.ton.type.v1;
 
-option go_package = "github.com/toncenter/ton-indexer/ton-firehose/pb/sf/ton/type/v1;pbton";
-
+// Produced by ton-index-firehose from the node database.
 // Field names and nesting follow the ton-index-go (API v3) models
 // (ton-index-go/index/models/blockchain.go); numeric types follow TL-B.
 // Hashes and BOCs are raw bytes (base64 in JSON, as in the API),
@@ -23,8 +22,7 @@ message Block {
   repeated BlockHeader shard_blocks = 2;
 
   // All transactions of masterchain_block and shard_blocks, ordered by
-  // (lt, account) as /api/v3/transactionsByMasterchainBlock with sort=asc.
-  // block_ref points to the block of each transaction.
+  // (lt, account). block_ref points to the block of each transaction.
   repeated Transaction transactions = 3;
 
   // Shard tops at this masterchain block (/api/v3/masterchainBlockShardState).
