@@ -10,12 +10,17 @@ package sf.ton.type.v1;
 // - a type with several constructors is a message with a oneof `kind`: one
 //   nested message per constructor, the oneof fields named after the
 //   constructors. Types whose constructors have no fields are enums;
+// - only the current block.tlb is followed. Constructors that differ only in
+//   which cell holds a field, or in fields added later, are one message that
+//   quotes the newest of them. A renamed field has its current name in blocks
+//   of every version: extra_flags was ihr_fee before global version 12,
+//   fixed_prefix_length was split_depth;
 // - Maybe X is an optional field. ^X, ^[ ... ] and Either X ^X are inlined:
 //   which cell holds a value is serialization, not content;
 // - Grams and VarUInteger 3/7/16 are uint64 or uint32, extra currency amounts
 //   (VarUInteger 32) are decimal strings;
-// - MsgAddressInt is a raw address string ("0:83DF..."). MsgAddressExt is
-//   unset for addr_none and "ext$<len>:<hex>" for addr_extern;
+// - bits n is bytes. When n is not a multiple of 8, the bits start at the
+//   high bit of the first byte and the last byte is padded with zero bits;
 // - an arbitrary cell (^Cell, the body of Message Any) is a Cell: its hash, and
 //   its BOC where noted;
 // - in InMsg, OutMsg and MsgEnvelope a ^(Message Any) or ^Transaction is given
@@ -23,9 +28,10 @@ package sf.ton.type.v1;
 //   transactions of this or another block;
 // - dictionaries are repeated fields in key order; the key is a field of the
 //   value, or of an item message, which also holds the augmentation where it
-//   is not just a sum of the values' fees.
-// Constructors and fields of earlier block.tlb versions are kept. Fields that
-// are not in block.tlb are marked so.
+//   is not just a sum of the values or of their fees. A dictionary from a
+//   number to a value is a map;
+// - BinTree X is a repeated field of its leaves from left to right.
+// Fields that are not in block.tlb are marked so.
 
 // One Firehose block: a masterchain block together with the shard blocks it
 // commits for the first time.
@@ -40,19 +46,11 @@ message Block {
   // ordered by (workchain, shard, seqno).
   repeated BlockData shard_blocks = 2;
 
-  // Shard tops at this masterchain block, the masterchain block included.
-  repeated BlockIdExt shards = 3;
+  // Not in block.tlb: the traces completed in this masterchain block.
+  repeated Trace traces = 3;
 
-  // Traces that became complete or broken in this masterchain block. A broken
-  // trace appears again in every later block that extends it.
-  repeated Trace traces = 4;
-
-  // Network configuration, parameter number -> parameter cell BOC. Set on key
-  // blocks, where the configuration may change, and on the first block of the chain.
-  map<int32, bytes> config_params = 5;
-
-  reserved 6 to 19;   // contract interfaces of changed accounts
-  reserved 20 to 39;  // actions
+  // Numbers 6 to 19 are kept for contract interfaces of changed accounts,
+  // 20 to 39 for actions.
 }
 
 // block#11ef55aa global_id:int32 info:^BlockInfo value_flow:^ValueFlow
@@ -75,7 +73,7 @@ message BlockExtra {
   repeated AccountBlock account_blocks = 3;
   bytes rand_seed = 4;
   bytes created_by = 5;
-  reserved 6;  // custom
+  McBlockExtra custom = 6;
 }
 
 // block_info#9bc7a987 version:uint32 not_master:(## 1) after_merge:(## 1)
@@ -164,18 +162,20 @@ message GlobalVersion {
   uint64 capabilities = 2;
 }
 
-// value_flow#b8e48dfb ^[ from_prev_blk:CurrencyCollection to_next_blk:CurrencyCollection
-//   imported:CurrencyCollection exported:CurrencyCollection ] fees_collected:CurrencyCollection
-//   ^[ fees_imported:CurrencyCollection recovered:CurrencyCollection
-//   created:CurrencyCollection minted:CurrencyCollection ] = ValueFlow;
-// value_flow_v2#3ebf98b7 has burned:CurrencyCollection after fees_collected.
+// value_flow_v2#3ebf98b7 ^[ from_prev_blk:CurrencyCollection
+//   to_next_blk:CurrencyCollection imported:CurrencyCollection
+//   exported:CurrencyCollection ] fees_collected:CurrencyCollection
+//   burned:CurrencyCollection ^[ fees_imported:CurrencyCollection
+//   recovered:CurrencyCollection created:CurrencyCollection
+//   minted:CurrencyCollection ] = ValueFlow;
+// value_flow#b8e48dfb is the same without burned.
 message ValueFlow {
   CurrencyCollection from_prev_blk = 1;
   CurrencyCollection to_next_blk = 2;
   CurrencyCollection imported = 3;
   CurrencyCollection exported = 4;
   CurrencyCollection fees_collected = 5;
-  CurrencyCollection burned = 6;  // value_flow_v2 only
+  CurrencyCollection burned = 6;  // unset in value_flow
   CurrencyCollection fees_imported = 7;
   CurrencyCollection recovered = 8;
   CurrencyCollection created = 9;
@@ -209,21 +209,24 @@ message CurrencyCollection {
 message Cell {
   bytes hash = 1;
   optional bytes boc = 2;
+  // Set when the BOC is left out for its size, see AccountBlock.
+  bool boc_omitted = 3;
 }
 
 // acc_trans#5 account_addr:bits256
 //   transactions:(HashmapAug 64 ^Transaction CurrencyCollection)
 //   state_update:^(HASH_UPDATE Account) = AccountBlock;
 message AccountBlock {
-  string account_addr = 1;  // with the workchain of the block
+  bytes account_addr = 1;
   repeated Transaction transactions = 2;  // by lt
   HashUpdate state_update = 3;
 
-  // Not in AccountBlock: the accounts state_update refers to, unset if the node
-  // does not keep them. Full states exist only at block boundaries; between two
-  // transactions of a block only the hashes in their state_update are known.
-  // In state_after, the BOCs of code, data and library are set when the cell
-  // changed in this block or state_before is unset, data only up to 64 KiB.
+  // Not in AccountBlock: the accounts state_update refers to. Full states exist
+  // only at block boundaries; between two transactions of a block only the
+  // hashes in their state_update are known.
+  // The cells of state_before have no BOCs. In state_after, code, data and
+  // library have their BOCs when they changed in this block, except that a
+  // data BOC over 64 KiB is left out and boc_omitted is set instead.
   Account state_before = 4;
   Account state_after = 5;
 }
@@ -236,7 +239,7 @@ message AccountBlock {
 //   description:^TransactionDescr = Transaction;
 message Transaction {
   bytes hash = 1;  // not in Transaction: the hash of its cell
-  string account_addr = 2;  // with the workchain of the block
+  bytes account_addr = 2;
   uint64 lt = 3;
   bytes prev_trans_hash = 4;
   uint64 prev_trans_lt = 5;
@@ -282,31 +285,29 @@ message CommonMsgInfo {
   // int_msg_info$0 ihr_disabled:Bool bounce:Bool bounced:Bool src:MsgAddressInt
   //   dest:MsgAddressInt value:CurrencyCollection extra_flags:(VarUInteger 16)
   //   fwd_fee:Grams created_lt:uint64 created_at:uint32 = CommonMsgInfo;
-  // Before global version 12 extra_flags was ihr_fee:Grams.
   message IntMsgInfo {
     bool ihr_disabled = 1;
     bool bounce = 2;
     bool bounced = 3;
-    string src = 4;
-    string dest = 5;
+    MsgAddressInt src = 4;
+    MsgAddressInt dest = 5;
     CurrencyCollection value = 6;
-    optional uint64 ihr_fee = 7;
-    optional uint64 extra_flags = 8;
-    uint64 fwd_fee = 9;
-    uint64 created_lt = 10;
-    uint32 created_at = 11;
+    uint64 extra_flags = 7;
+    uint64 fwd_fee = 8;
+    uint64 created_lt = 9;
+    uint32 created_at = 10;
   }
   // ext_in_msg_info$10 src:MsgAddressExt dest:MsgAddressInt import_fee:Grams = CommonMsgInfo;
   message ExtInMsgInfo {
-    optional string src = 1;
-    string dest = 2;
+    MsgAddressExt src = 1;
+    MsgAddressInt dest = 2;
     optional uint64 import_fee = 3;  // set by the sender, unset if it exceeds uint64
   }
   // ext_out_msg_info$11 src:MsgAddressInt dest:MsgAddressExt created_lt:uint64
   //   created_at:uint32 = CommonMsgInfo;
   message ExtOutMsgInfo {
-    string src = 1;
-    optional string dest = 2;
+    MsgAddressInt src = 1;
+    MsgAddressExt dest = 2;
     uint64 created_lt = 3;
     uint32 created_at = 4;
   }
@@ -317,9 +318,49 @@ message CommonMsgInfo {
   }
 }
 
+message MsgAddressExt {
+  // addr_none$00 = MsgAddressExt;
+  message None {}
+  // addr_extern$01 len:(## 9) external_address:(bits len) = MsgAddressExt;
+  message Extern {
+    uint32 len = 1;
+    bytes external_address = 2;
+  }
+  oneof kind {
+    None addr_none = 1;
+    Extern addr_extern = 2;
+  }
+}
+
+message MsgAddressInt {
+  // addr_std$10 anycast:(Maybe Anycast) workchain_id:int8 address:bits256 = MsgAddressInt;
+  message Std {
+    Anycast anycast = 1;
+    int32 workchain_id = 2;
+    bytes address = 3;
+  }
+  // addr_var$11 anycast:(Maybe Anycast) addr_len:(## 9) workchain_id:int32
+  //   address:(bits addr_len) = MsgAddressInt;
+  message Var {
+    Anycast anycast = 1;
+    uint32 addr_len = 2;
+    int32 workchain_id = 3;
+    bytes address = 4;
+  }
+  oneof kind {
+    Std addr_std = 1;
+    Var addr_var = 2;
+  }
+}
+
+// anycast_info$_ depth:(#<= 30) { depth >= 1 } rewrite_pfx:(bits depth) = Anycast;
+message Anycast {
+  uint32 depth = 1;
+  bytes rewrite_pfx = 2;
+}
+
 // _ fixed_prefix_length:(Maybe (## 5)) special:(Maybe TickTock) code:(Maybe ^Cell)
 //   data:(Maybe ^Cell) library:(Maybe ^Cell) = StateInit;
-// fixed_prefix_length was split_depth before.
 message StateInit {
   optional uint32 fixed_prefix_length = 1;
   TickTock special = 2;
@@ -339,7 +380,7 @@ message Account {
   message None {}
   // account$1 addr:MsgAddressInt storage_stat:StorageInfo storage:AccountStorage = Account;
   message Existing {
-    string addr = 1;
+    MsgAddressInt addr = 1;
     StorageInfo storage_stat = 2;
     AccountStorage storage = 3;
   }
@@ -749,9 +790,10 @@ message OutMsg {
   }
 }
 
-// msg_envelope#4 cur_addr:IntermediateAddress next_addr:IntermediateAddress
-//   fwd_fee_remaining:Grams msg:^(Message Any) = MsgEnvelope;
-// msg_envelope_v2#5 adds emitted_lt:(Maybe uint64) metadata:(Maybe MsgMetadata).
+// msg_envelope_v2#5 cur_addr:IntermediateAddress next_addr:IntermediateAddress
+//   fwd_fee_remaining:Grams msg:^(Message Any) emitted_lt:(Maybe uint64)
+//   metadata:(Maybe MsgMetadata) = MsgEnvelope;
+// msg_envelope#4 is the same without emitted_lt and metadata.
 message MsgEnvelope {
   IntermediateAddress cur_addr = 1;
   IntermediateAddress next_addr = 2;
@@ -786,8 +828,120 @@ message IntermediateAddress {
 // msg_metadata#0 depth:uint32 initiator_addr:MsgAddressInt initiator_lt:uint64 = MsgMetadata;
 message MsgMetadata {
   uint32 depth = 1;
-  string initiator_addr = 2;
+  MsgAddressInt initiator_addr = 2;
   uint64 initiator_lt = 3;
+}
+
+// masterchain_block_extra#cca5 key_block:(## 1) shard_hashes:ShardHashes
+//   shard_fees:ShardFees ^[ prev_blk_signatures:(HashmapE 16 CryptoSignaturePair)
+//   recover_create_msg:(Maybe ^InMsg) mint_msg:(Maybe ^InMsg) ]
+//   config:key_block?ConfigParams = McBlockExtra;
+message McBlockExtra {
+  bool key_block = 1;
+  repeated ShardHashesItem shard_hashes = 2;
+  repeated ShardFeesItem shard_fees = 3;
+  repeated CryptoSignaturePair prev_blk_signatures = 4;  // the key is the index
+  InMsg recover_create_msg = 5;
+  InMsg mint_msg = 6;
+  ConfigParams config = 7;
+}
+
+// _ (HashmapE 32 ^(BinTree ShardDescr)) = ShardHashes;
+// bt_leaf$0 {X:Type} leaf:X = BinTree X;
+// bt_fork$1 {X:Type} left:^(BinTree X) right:^(BinTree X) = BinTree X;
+message ShardHashesItem {
+  ShardIdent shard = 1;  // the workchain is the key, the shard is the path to the leaf
+  ShardDescr shard_descr = 2;
+}
+
+// shard_descr_new#a seq_no:uint32 reg_mc_seqno:uint32 start_lt:uint64
+//   end_lt:uint64 root_hash:bits256 file_hash:bits256 before_split:Bool
+//   before_merge:Bool want_split:Bool want_merge:Bool nx_cc_updated:Bool
+//   flags:(## 3) next_catchain_seqno:uint32 next_validator_shard:uint64
+//   min_ref_mc_seqno:uint32 gen_utime:uint32 split_merge_at:FutureSplitMerge
+//   ^[ fees_collected:CurrencyCollection funds_created:CurrencyCollection ] = ShardDescr;
+// shard_descr#b is the same without the ^[ ].
+message ShardDescr {
+  uint32 seq_no = 1;
+  uint32 reg_mc_seqno = 2;
+  uint64 start_lt = 3;
+  uint64 end_lt = 4;
+  bytes root_hash = 5;
+  bytes file_hash = 6;
+  bool before_split = 7;
+  bool before_merge = 8;
+  bool want_split = 9;
+  bool want_merge = 10;
+  bool nx_cc_updated = 11;
+  uint32 flags = 12;
+  uint32 next_catchain_seqno = 13;
+  uint64 next_validator_shard = 14;
+  uint32 min_ref_mc_seqno = 15;
+  uint32 gen_utime = 16;
+  FutureSplitMerge split_merge_at = 17;
+  CurrencyCollection fees_collected = 18;
+  CurrencyCollection funds_created = 19;
+}
+
+message FutureSplitMerge {
+  // fsm_none$0 = FutureSplitMerge;
+  message None {}
+  // fsm_split$10 split_utime:uint32 interval:uint32 = FutureSplitMerge;
+  message Split {
+    uint32 split_utime = 1;
+    uint32 interval = 2;
+  }
+  // fsm_merge$11 merge_utime:uint32 interval:uint32 = FutureSplitMerge;
+  message Merge {
+    uint32 merge_utime = 1;
+    uint32 interval = 2;
+  }
+  oneof kind {
+    None fsm_none = 1;
+    Split fsm_split = 2;
+    Merge fsm_merge = 3;
+  }
+}
+
+// _ (HashmapAugE 96 ShardFeeCreated ShardFeeCreated) = ShardFees;
+message ShardFeesItem {
+  ShardIdent shard = 1;  // the key: the workchain and the shard id
+  ShardFeeCreated shard_fee_created = 2;
+}
+
+// _ fees:CurrencyCollection create:CurrencyCollection = ShardFeeCreated;
+message ShardFeeCreated {
+  CurrencyCollection fees = 1;
+  CurrencyCollection create = 2;
+}
+
+// sig_pair$_ node_id_short:bits256 sign:CryptoSignature = CryptoSignaturePair;
+message CryptoSignaturePair {
+  bytes node_id_short = 1;
+  CryptoSignature sign = 2;
+}
+
+// _ CryptoSignatureSimple = CryptoSignature;
+// chained_signature#f signed_cert:^SignedCertificate
+//   temp_key_signature:CryptoSignatureSimple = CryptoSignature;
+// Validators sign only with CryptoSignatureSimple, so chained_signature is not
+// converted.
+message CryptoSignature {
+  oneof kind {
+    CryptoSignatureSimple crypto_signature_simple = 1;  // the constructor has no name
+  }
+}
+
+// ed25519_signature#5 R:bits256 s:bits256 = CryptoSignatureSimple;
+message CryptoSignatureSimple {
+  bytes r = 1;
+  bytes s = 2;
+}
+
+// _ config_addr:bits256 config:^(Hashmap 32 ^Cell) = ConfigParams;
+message ConfigParams {
+  bytes config_addr = 1;
+  map<int32, Cell> config = 2;  // with the BOCs
 }
 
 // Not in block.tlb: API v3 trace metadata. The transactions of a trace are
@@ -802,7 +956,6 @@ message Trace {
   uint32 start_utime = 7;
   uint64 end_lt = 8;
   uint32 end_utime = 9;
-  string state = 10;  // "complete", "broken"
-  uint32 transactions = 11;
-  uint32 messages = 12;
+  uint32 transactions = 10;
+  uint32 messages = 11;
 }

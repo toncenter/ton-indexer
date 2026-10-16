@@ -13,7 +13,6 @@
 #include "crypto/vm/boc.h"
 #include "crypto/vm/cells/CellBuilder.h"
 #include "crypto/vm/dict.h"
-#include "convert-utils.h"
 #include "DataParser.h"
 #include "sf/ton/type/v1/type.pb.h"
 
@@ -36,6 +35,16 @@ using vm::CellSlice;
 
 std::string bytes(const td::Bits256& value) {
   return value.as_slice().str();
+}
+
+// bits n: from the high bit of the first byte, the last byte padded with zero bits
+std::string bit_string_bytes(const Ref<td::BitString>& bits) {
+  if (bits.is_null()) {
+    return {};
+  }
+  std::string out((bits->size() + 7) / 8, '\0');
+  td::BitPtr{reinterpret_cast<unsigned char*>(out.data())}.copy_from(bits->cbits(), bits->size());
+  return out;
 }
 
 std::string cell_hash(const Ref<Cell>& cell) {
@@ -135,7 +144,6 @@ void fill_trace(pb::Trace* out, const schema::Trace& trace) {
   out->set_start_utime(trace.start_utime);
   out->set_end_lt(trace.end_lt);
   out->set_end_utime(trace.end_utime);
-  out->set_state(trace.state == schema::Trace::State::complete ? "complete" : "broken");
   out->set_transactions(static_cast<std::uint32_t>(trace.nodes_));
   out->set_messages(static_cast<std::uint32_t>(trace.edges_));
 }
@@ -184,7 +192,6 @@ class Converter {
   }
 
  private:
-  static constexpr std::uint32_t kFirstMasterchainSeqno = 1;
   static constexpr std::size_t kMaxDataBocSize = 64 * 1024;
 
   // An account as converted, with the cells of its code, data and library.
@@ -235,20 +242,68 @@ class Converter {
     return coins(block::tlb::t_Grams.as_integer_skip(value));
   }
 
-  std::string address(const Ref<CellSlice>& cs) {
-    auto address = convert::to_raw_address(cs);
-    if (address.is_error()) {
-      fail(address.move_as_error());
-      return {};
+  void fill_msg_addr_int(pb::MsgAddressInt* out, const Ref<CellSlice>& cs) {
+    using block::gen::MsgAddressInt;
+    switch (block::gen::t_MsgAddressInt.get_tag(*cs)) {
+      case MsgAddressInt::addr_std: {
+        MsgAddressInt::Record_addr_std rec;
+        if (!tlb::csr_unpack(cs, rec)) {
+          return fail_unpack("addr_std");
+        }
+        auto* addr = out->mutable_addr_std();
+        fill_anycast(addr, rec.anycast);
+        addr->set_workchain_id(rec.workchain_id);
+        addr->set_address(bytes(rec.address));
+        return;
+      }
+      case MsgAddressInt::addr_var: {
+        MsgAddressInt::Record_addr_var rec;
+        if (!tlb::csr_unpack(cs, rec)) {
+          return fail_unpack("addr_var");
+        }
+        auto* addr = out->mutable_addr_var();
+        fill_anycast(addr, rec.anycast);
+        addr->set_addr_len(rec.addr_len);
+        addr->set_workchain_id(rec.workchain_id);
+        addr->set_address(bit_string_bytes(rec.address));
+        return;
+      }
     }
-    return address.move_as_ok();
+    fail_unpack("MsgAddressInt");
   }
 
-  std::optional<std::string> ext_address(const Ref<CellSlice>& cs) {
-    if (block::gen::t_MsgAddressExt.get_tag(*cs) == block::gen::MsgAddressExt::addr_none) {
-      return std::nullopt;
+  // Maybe Anycast of addr_std or addr_var
+  template <class Addr>
+  void fill_anycast(Addr* out, const Ref<CellSlice>& cs) {
+    CellSlice value = *cs;
+    if (value.fetch_ulong(1) != 1) {
+      return;
     }
-    return address(cs);
+    block::gen::Anycast::Record anycast;
+    if (!block::gen::t_Anycast.unpack(value, anycast)) {
+      return fail_unpack("Anycast");
+    }
+    out->mutable_anycast()->set_depth(anycast.depth);
+    out->mutable_anycast()->set_rewrite_pfx(bit_string_bytes(anycast.rewrite_pfx));
+  }
+
+  void fill_msg_addr_ext(pb::MsgAddressExt* out, const Ref<CellSlice>& cs) {
+    using block::gen::MsgAddressExt;
+    switch (block::gen::t_MsgAddressExt.get_tag(*cs)) {
+      case MsgAddressExt::addr_none:
+        out->mutable_addr_none();
+        return;
+      case MsgAddressExt::addr_extern: {
+        MsgAddressExt::Record_addr_extern rec;
+        if (!tlb::csr_unpack(cs, rec)) {
+          return fail_unpack("addr_extern");
+        }
+        out->mutable_addr_extern()->set_len(rec.len);
+        out->mutable_addr_extern()->set_external_address(bit_string_bytes(rec.external_address));
+        return;
+      }
+    }
+    fail_unpack("MsgAddressExt");
   }
 
   void fill_cell(pb::Cell* out, const Ref<Cell>& cell, bool with_boc) {
@@ -311,44 +366,21 @@ class Converter {
       return fail(td::Status::Error("masterchain block is missing"));
     }
 
-    std::vector<ton::BlockIdExt> shards;
-    for (const auto& state : parsed_block_.mc_block_.shard_blocks_) {
-      shards.push_back(state.block_data->block_id());
-    }
-    std::sort(shards.begin(), shards.end(), [](const ton::BlockIdExt& a, const ton::BlockIdExt& b) {
-      return std::make_tuple(a.id.workchain, a.id.shard, a.id.seqno) <
-             std::make_tuple(b.id.workchain, b.id.shard, b.id.seqno);
-    });
-    for (const auto& id : shards) {
-      fill_block_id_ext(out->add_shards(), id);
-    }
-
+    // Every trace a transaction of the round joined is in traces_, so failing
+    // on a broken one keeps its trace_id out of the block.
     for (const auto& trace : parsed_block_.traces_) {
-      if (trace.state != schema::Trace::State::pending) {
+      if (trace.state == schema::Trace::State::broken) {
+        return fail(td::Status::Error(PSLICE() << "trace " << trace.trace_id.to_hex()
+                                               << " is broken; if it starts before the TraceAssembler prewarm, "
+                                                  "raise --prewarm"));
+      }
+      if (trace.state == schema::Trace::State::complete) {
         fill_trace(out->add_traces(), trace);
       }
     }
     // traces_ is filled from a hash map
     std::sort(out->mutable_traces()->begin(), out->mutable_traces()->end(),
               [](const pb::Trace& a, const pb::Trace& b) { return a.trace_id() < b.trace_id(); });
-
-    const auto& info = out->masterchain_block().info();
-    if (info.key_block() || info.seq_no() == kFirstMasterchainSeqno) {
-      fill_config_params(out->mutable_config_params());
-    }
-  }
-
-  void fill_config_params(google::protobuf::Map<std::int32_t, std::string>* out) {
-    vm::Dictionary params{parsed_block_.mc_block_.config_->get_root_cell(), 32};
-    params.check_for_each([&](Ref<CellSlice> value, td::ConstBitPtr key, int key_len) {
-      auto boc = serialize_boc(value->prefetch_ref());
-      if (boc.is_error()) {
-        fail(boc.move_as_error_prefix(PSLICE() << "config param " << key.get_int(key_len) << ": "));
-        return false;
-      }
-      (*out)[static_cast<std::int32_t>(key.get_int(key_len))] = boc.move_as_ok();
-      return true;
-    });
   }
 
   void fill_block_data(pb::BlockData* out, const schema::BlockDataState& state) {
@@ -362,7 +394,7 @@ class Converter {
     fill_block_info(out->mutable_info(), blk.info);
     fill_value_flow(out->mutable_value_flow(), blk.value_flow);
     fill_merkle_update(out->mutable_state_update(), blk.state_update);
-    fill_block_extra(out->mutable_extra(), blk.extra, id.id.workchain);
+    fill_block_extra(out->mutable_extra(), blk.extra);
   }
 
   void fill_block_info(pb::BlockInfo* out, const Ref<Cell>& cell) {
@@ -486,7 +518,7 @@ class Converter {
     out->set_new_depth(static_cast<std::uint32_t>(cs.fetch_ulong(16)));
   }
 
-  void fill_block_extra(pb::BlockExtra* out, const Ref<Cell>& cell, ton::WorkchainId workchain) {
+  void fill_block_extra(pb::BlockExtra* out, const Ref<Cell>& cell) {
     block::gen::BlockExtra::Record extra;
     if (!tlb::unpack_cell(cell, extra)) {
       return fail_unpack("BlockExtra");
@@ -521,7 +553,7 @@ class Converter {
     vm::AugmentedDictionary account_blocks{vm::load_cell_slice_ref(extra.account_blocks), 256,
                                            block::tlb::aug_ShardAccountBlocks};
     ok = account_blocks.check_for_each_extra([&](Ref<CellSlice> value, Ref<CellSlice>, td::ConstBitPtr, int) {
-      fill_account_block(out->add_account_blocks(), value, workchain);
+      fill_account_block(out->add_account_blocks(), value);
       return error_.is_ok();
     });
     if (!ok) {
@@ -530,6 +562,202 @@ class Converter {
 
     out->set_rand_seed(bytes(extra.rand_seed));
     out->set_created_by(bytes(extra.created_by));
+    if (auto custom = maybe_ref(extra.custom); custom.not_null()) {
+      fill_mc_block_extra(out->mutable_custom(), custom);
+    }
+  }
+
+  void fill_mc_block_extra(pb::McBlockExtra* out, const Ref<Cell>& cell) {
+    block::gen::McBlockExtra::Record extra;
+    if (!tlb::unpack_cell(cell, extra)) {
+      return fail_unpack("McBlockExtra");
+    }
+    out->set_key_block(extra.key_block);
+
+    // Workchains are signed: invert_first puts the keys in their order.
+    vm::Dictionary shard_hashes{extra.shard_hashes, 32};
+    bool ok = shard_hashes.check_for_each(
+        [&](Ref<CellSlice> value, td::ConstBitPtr key, int key_len) {
+          fill_shard_tree(out, value->prefetch_ref(), static_cast<ton::WorkchainId>(key.get_int(key_len)),
+                          ton::shardIdAll);
+          return error_.is_ok();
+        },
+        true);
+    if (!ok) {
+      return fail_unpack("ShardHashes");
+    }
+
+    vm::AugmentedDictionary shard_fees{extra.shard_fees, 96, block::tlb::aug_ShardFees};
+    ok = shard_fees.check_for_each_extra(
+        [&](Ref<CellSlice> value, Ref<CellSlice>, td::ConstBitPtr key, int) {
+          auto* item = out->add_shard_fees();
+          ::fill_shard_ident(item->mutable_shard(), static_cast<ton::WorkchainId>(key.get_int(32)),
+                             (key + 32).get_uint(64));
+          block::gen::ShardFeeCreated::Record fee;
+          if (!tlb::csr_unpack(value, fee)) {
+            fail_unpack("ShardFeeCreated");
+            return false;
+          }
+          fill_currencies(item->mutable_shard_fee_created()->mutable_fees(), fee.fees);
+          fill_currencies(item->mutable_shard_fee_created()->mutable_create(), fee.create);
+          return error_.is_ok();
+        },
+        true);
+    if (!ok) {
+      return fail_unpack("ShardFees");
+    }
+
+    vm::Dictionary signatures{extra.r1.prev_blk_signatures, 16};
+    unsigned long long index = 0;
+    ok = signatures.check_for_each([&](Ref<CellSlice> value, td::ConstBitPtr key, int key_len) {
+      if (key.get_uint(key_len) != index++) {
+        fail_unpack("prev_blk_signatures: the keys are not the indexes");
+        return false;
+      }
+      fill_signature_pair(out->add_prev_blk_signatures(), value);
+      return error_.is_ok();
+    });
+    if (!ok) {
+      return fail_unpack("prev_blk_signatures");
+    }
+
+    if (auto msg = maybe_ref(extra.r1.recover_create_msg); msg.not_null()) {
+      fill_in_msg(out->mutable_recover_create_msg(), vm::load_cell_slice_ref(msg));
+    }
+    if (auto msg = maybe_ref(extra.r1.mint_msg); msg.not_null()) {
+      fill_in_msg(out->mutable_mint_msg(), vm::load_cell_slice_ref(msg));
+    }
+
+    if (extra.key_block) {
+      block::gen::ConfigParams::Record config;
+      if (!tlb::csr_unpack(extra.config, config)) {
+        return fail_unpack("ConfigParams");
+      }
+      auto* out_config = out->mutable_config();
+      out_config->set_config_addr(bytes(config.config_addr));
+      vm::Dictionary params{config.config, 32};
+      ok = params.check_for_each([&](Ref<CellSlice> value, td::ConstBitPtr key, int key_len) {
+        auto& param = (*out_config->mutable_config())[static_cast<std::int32_t>(key.get_int(key_len))];
+        fill_cell(&param, value->prefetch_ref(), true);
+        return error_.is_ok();
+      });
+      if (!ok) {
+        return fail_unpack("ConfigParams config");
+      }
+    }
+  }
+
+  // BinTree ShardDescr: the path to a leaf gives its shard.
+  void fill_shard_tree(pb::McBlockExtra* out, const Ref<Cell>& cell, ton::WorkchainId workchain,
+                       ton::ShardId shard) {
+    auto cs = vm::load_cell_slice(cell);
+    if (cs.fetch_ulong(1) == 1) {  // bt_fork$1
+      if (cs.size_refs() != 2) {
+        return fail_unpack("bt_fork");
+      }
+      fill_shard_tree(out, cs.prefetch_ref(0), workchain, ton::shard_child(shard, true));
+      fill_shard_tree(out, cs.prefetch_ref(1), workchain, ton::shard_child(shard, false));
+      return;
+    }
+    auto* item = out->add_shard_hashes();
+    ::fill_shard_ident(item->mutable_shard(), workchain, shard);
+    fill_shard_descr(item->mutable_shard_descr(), cs);
+  }
+
+  void fill_shard_descr(pb::ShardDescr* out, CellSlice cs) {
+    using block::gen::ShardDescr;
+    switch (block::gen::t_ShardDescr.get_tag(cs)) {
+      case ShardDescr::shard_descr_new: {
+        ShardDescr::Record_shard_descr_new rec;
+        if (!block::gen::t_ShardDescr.unpack(cs, rec)) {
+          return fail_unpack("shard_descr_new");
+        }
+        fill_shard_descr_fields(out, rec);
+        fill_currencies(out->mutable_fees_collected(), rec.r1.fees_collected);
+        fill_currencies(out->mutable_funds_created(), rec.r1.funds_created);
+        return;
+      }
+      case ShardDescr::shard_descr: {
+        ShardDescr::Record_shard_descr rec;
+        if (!block::gen::t_ShardDescr.unpack(cs, rec)) {
+          return fail_unpack("shard_descr");
+        }
+        fill_shard_descr_fields(out, rec);
+        fill_currencies(out->mutable_fees_collected(), rec.fees_collected);
+        fill_currencies(out->mutable_funds_created(), rec.funds_created);
+        return;
+      }
+    }
+    fail_unpack("ShardDescr");
+  }
+
+  // The fields both constructors of ShardDescr keep in the same cell.
+  template <class Record>
+  void fill_shard_descr_fields(pb::ShardDescr* out, const Record& rec) {
+    out->set_seq_no(rec.seq_no);
+    out->set_reg_mc_seqno(rec.reg_mc_seqno);
+    out->set_start_lt(rec.start_lt);
+    out->set_end_lt(rec.end_lt);
+    out->set_root_hash(bytes(rec.root_hash));
+    out->set_file_hash(bytes(rec.file_hash));
+    out->set_before_split(rec.before_split);
+    out->set_before_merge(rec.before_merge);
+    out->set_want_split(rec.want_split);
+    out->set_want_merge(rec.want_merge);
+    out->set_nx_cc_updated(rec.nx_cc_updated);
+    out->set_flags(rec.flags);
+    out->set_next_catchain_seqno(rec.next_catchain_seqno);
+    out->set_next_validator_shard(rec.next_validator_shard);
+    out->set_min_ref_mc_seqno(rec.min_ref_mc_seqno);
+    out->set_gen_utime(rec.gen_utime);
+    fill_split_merge_at(out->mutable_split_merge_at(), rec.split_merge_at);
+  }
+
+  void fill_split_merge_at(pb::FutureSplitMerge* out, const Ref<CellSlice>& cs) {
+    using block::gen::FutureSplitMerge;
+    switch (block::gen::t_FutureSplitMerge.get_tag(*cs)) {
+      case FutureSplitMerge::fsm_none:
+        out->mutable_fsm_none();
+        return;
+      case FutureSplitMerge::fsm_split: {
+        FutureSplitMerge::Record_fsm_split rec;
+        if (!tlb::csr_unpack(cs, rec)) {
+          return fail_unpack("fsm_split");
+        }
+        out->mutable_fsm_split()->set_split_utime(rec.split_utime);
+        out->mutable_fsm_split()->set_interval(rec.interval);
+        return;
+      }
+      case FutureSplitMerge::fsm_merge: {
+        FutureSplitMerge::Record_fsm_merge rec;
+        if (!tlb::csr_unpack(cs, rec)) {
+          return fail_unpack("fsm_merge");
+        }
+        out->mutable_fsm_merge()->set_merge_utime(rec.merge_utime);
+        out->mutable_fsm_merge()->set_interval(rec.interval);
+        return;
+      }
+    }
+    fail_unpack("FutureSplitMerge");
+  }
+
+  void fill_signature_pair(pb::CryptoSignaturePair* out, const Ref<CellSlice>& cs) {
+    block::gen::CryptoSignaturePair::Record pair;
+    if (!tlb::csr_unpack(cs, pair)) {
+      return fail_unpack("CryptoSignaturePair");
+    }
+    if (block::gen::t_CryptoSignature.get_tag(*pair.sign) != block::gen::CryptoSignature::cons1) {
+      return fail(td::Status::Error("chained_signature is not supported"));
+    }
+    block::gen::CryptoSignature::Record_cons1 sign;
+    block::gen::CryptoSignatureSimple::Record simple;
+    if (!tlb::csr_unpack(pair.sign, sign) || !tlb::csr_unpack(sign.x, simple)) {
+      return fail_unpack("CryptoSignatureSimple");
+    }
+    out->set_node_id_short(bytes(pair.node_id_short));
+    auto* out_simple = out->mutable_sign()->mutable_crypto_signature_simple();
+    out_simple->set_r(bytes(simple.R));
+    out_simple->set_s(bytes(simple.s));
   }
 
   void fill_import_fees(pb::ImportFees* out, const Ref<CellSlice>& cs) {
@@ -792,7 +1020,7 @@ class Converter {
             return fail_unpack("MsgMetadata");
           }
           out->mutable_metadata()->set_depth(md.depth);
-          out->mutable_metadata()->set_initiator_addr(address(md.initiator_addr));
+          fill_msg_addr_int(out->mutable_metadata()->mutable_initiator_addr(), md.initiator_addr);
           out->mutable_metadata()->set_initiator_lt(md.initiator_lt);
         }
         return;
@@ -834,16 +1062,16 @@ class Converter {
     fail_unpack("IntermediateAddress");
   }
 
-  void fill_account_block(pb::AccountBlock* out, const Ref<CellSlice>& cs, ton::WorkchainId workchain) {
+  void fill_account_block(pb::AccountBlock* out, const Ref<CellSlice>& cs) {
     block::gen::AccountBlock::Record rec;
     if (!tlb::csr_unpack(cs, rec)) {
       return fail_unpack("AccountBlock");
     }
-    out->set_account_addr(convert::to_raw_address(block::StdAddress(workchain, rec.account_addr)));
+    out->set_account_addr(bytes(rec.account_addr));
     vm::AugmentedDictionary transactions{vm::DictNonEmpty(), rec.transactions, 64,
                                          block::tlb::aug_AccountTransactions};
     bool ok = transactions.check_for_each_extra([&](Ref<CellSlice> value, Ref<CellSlice>, td::ConstBitPtr, int) {
-      fill_transaction(out->add_transactions(), value->prefetch_ref(), workchain, true);
+      fill_transaction(out->add_transactions(), value->prefetch_ref(), true);
       return error_.is_ok();
     });
     if (!ok) {
@@ -858,22 +1086,18 @@ class Converter {
 
     const auto* before = account_at(update.old_hash);
     const auto* after = account_at(update.new_hash);
-    if (before != nullptr) {
-      *out->mutable_state_before() = before->account;
+    if (before == nullptr || after == nullptr) {
+      return;  // account_at has recorded the error
     }
-    if (after == nullptr) {
-      return;
-    }
+    *out->mutable_state_before() = before->account;
     *out->mutable_state_after() = after->account;
     if (!after->account.account().storage().state().has_account_active()) {
       return;
     }
     auto* state_init =
         out->mutable_state_after()->mutable_account()->mutable_storage()->mutable_state()->mutable_account_active();
-    // An unknown previous state counts as changed.
     auto changed = [before](const Ref<Cell>& cell, Ref<Cell> LoadedAccount::*field) {
-      return cell.not_null() &&
-             (before == nullptr || (before->*field).is_null() || (before->*field)->get_hash() != cell->get_hash());
+      return cell.not_null() && ((before->*field).is_null() || (before->*field)->get_hash() != cell->get_hash());
     };
     if (changed(after->code, &LoadedAccount::code)) {
       fill_cell(state_init->mutable_code(), after->code, true);
@@ -885,6 +1109,8 @@ class Converter {
       }
       if (boc.ok().size() <= kMaxDataBocSize) {
         state_init->mutable_data()->set_boc(boc.move_as_ok());
+      } else {
+        state_init->mutable_data()->set_boc_omitted(true);
       }
     }
     if (changed(after->library, &LoadedAccount::library)) {
@@ -894,7 +1120,8 @@ class Converter {
 
   // Accounts are loaded from the cell db by hash. The cell db keeps a cell while
   // any kept state references it, so the state a block starts from is there as
-  // long as the node keeps the state of the previous block.
+  // long as the node keeps the state of the previous block. A missing account
+  // is an error: the block is not written without it.
   const LoadedAccount* account_at(const td::Bits256& hash) {
     auto it = accounts_.find(hash);
     if (it == accounts_.end()) {
@@ -910,10 +1137,12 @@ class Converter {
       return account;
     }
     if (!parsed_block_.cell_db_reader_) {
+      fail(td::Status::Error("cell db reader is missing"));
       return std::nullopt;
     }
     auto cell = parsed_block_.cell_db_reader_->load_cell(hash.as_slice());
     if (cell.is_error()) {
+      fail(cell.move_as_error_prefix(PSLICE() << "account state " << hash.to_hex() << ": "));
       return std::nullopt;
     }
     fill_account(&account, cell.move_as_ok());
@@ -931,7 +1160,7 @@ class Converter {
       return fail_unpack("Account");
     }
     auto* account = out->account.mutable_account();
-    account->set_addr(address(rec.addr));
+    fill_msg_addr_int(account->mutable_addr(), rec.addr);
     fill_storage_info(account->mutable_storage_stat(), rec.storage_stat);
 
     block::gen::AccountStorage::Record storage;
@@ -1041,14 +1270,14 @@ class Converter {
     }
   }
 
-  void fill_transaction(pb::Transaction* out, const Ref<Cell>& cell, ton::WorkchainId workchain, bool with_trace_id) {
+  void fill_transaction(pb::Transaction* out, const Ref<Cell>& cell, bool with_trace_id) {
     block::gen::Transaction::Record tx;
     if (!tlb::unpack_cell(cell, tx)) {
       return fail_unpack("Transaction");
     }
     td::Bits256 hash{cell->get_hash().bits()};
     out->set_hash(bytes(hash));
-    out->set_account_addr(convert::to_raw_address(block::StdAddress(workchain, tx.account_addr)));
+    out->set_account_addr(bytes(tx.account_addr));
     out->set_lt(tx.lt);
     out->set_prev_trans_hash(bytes(tx.prev_trans_hash));
     out->set_prev_trans_lt(tx.prev_trans_lt);
@@ -1076,7 +1305,7 @@ class Converter {
     }
     out->mutable_state_update()->set_old_hash(bytes(update.old_hash));
     out->mutable_state_update()->set_new_hash(bytes(update.new_hash));
-    fill_descr(out->mutable_description(), tx.description, workchain);
+    fill_descr(out->mutable_description(), tx.description);
     if (with_trace_id) {
       if (auto it = trace_ids_.find(hash); it != trace_ids_.end()) {
         out->set_trace_id(bytes(it->second));
@@ -1127,16 +1356,10 @@ class Converter {
         info->set_ihr_disabled(rec.ihr_disabled);
         info->set_bounce(rec.bounce);
         info->set_bounced(rec.bounced);
-        info->set_src(address(rec.src));
-        info->set_dest(address(rec.dest));
+        fill_msg_addr_int(info->mutable_src(), rec.src);
+        fill_msg_addr_int(info->mutable_dest(), rec.dest);
         fill_currencies(info->mutable_value(), rec.value);
-        // global version 12 turned ihr_fee into extra_flags
-        auto extra_flags = grams(rec.extra_flags);
-        if (global_version_ >= 12) {
-          info->set_extra_flags(extra_flags);
-        } else {
-          info->set_ihr_fee(extra_flags);
-        }
+        info->set_extra_flags(grams(rec.extra_flags));
         info->set_fwd_fee(grams(rec.fwd_fee));
         info->set_created_lt(rec.created_lt);
         info->set_created_at(rec.created_at);
@@ -1148,10 +1371,8 @@ class Converter {
           return fail_unpack("ext_in_msg_info");
         }
         auto* info = out->mutable_ext_in_msg_info();
-        if (auto src = ext_address(rec.src)) {
-          info->set_src(*src);
-        }
-        info->set_dest(address(rec.dest));
+        fill_msg_addr_ext(info->mutable_src(), rec.src);
+        fill_msg_addr_int(info->mutable_dest(), rec.dest);
         if (auto import_fee = to_uint64(block::tlb::t_Grams.as_integer(*rec.import_fee))) {
           info->set_import_fee(*import_fee);
         }
@@ -1163,10 +1384,8 @@ class Converter {
           return fail_unpack("ext_out_msg_info");
         }
         auto* info = out->mutable_ext_out_msg_info();
-        info->set_src(address(rec.src));
-        if (auto dest = ext_address(rec.dest)) {
-          info->set_dest(*dest);
-        }
+        fill_msg_addr_int(info->mutable_src(), rec.src);
+        fill_msg_addr_ext(info->mutable_dest(), rec.dest);
         info->set_created_lt(rec.created_lt);
         info->set_created_at(rec.created_at);
         return;
@@ -1176,7 +1395,7 @@ class Converter {
   }
 
   // The phases come from the indexer's parser of TransactionDescr, which follows block.tlb.
-  void fill_descr(pb::TransactionDescr* out, const Ref<Cell>& cell, ton::WorkchainId workchain) {
+  void fill_descr(pb::TransactionDescr* out, const Ref<Cell>& cell) {
     auto cs = vm::load_cell_slice(cell);
     auto descr = ParseQuery::process_transaction_descr(cs);
     if (descr.is_error()) {
@@ -1222,7 +1441,7 @@ class Converter {
                      if (!tlb::unpack_cell(cell, rec)) {
                        return fail_unpack("trans_split_install");
                      }
-                     fill_transaction(o->mutable_prepare_transaction(), rec.prepare_transaction, workchain, false);
+                     fill_transaction(o->mutable_prepare_transaction(), rec.prepare_transaction, false);
                      o->set_installed(d.installed);
                    },
                    [&](const schema::TransactionDescr_merge_prepare& d) {
@@ -1238,7 +1457,7 @@ class Converter {
                      if (!tlb::unpack_cell(cell, rec)) {
                        return fail_unpack("trans_merge_install");
                      }
-                     fill_transaction(o->mutable_prepare_transaction(), rec.prepare_transaction, workchain, false);
+                     fill_transaction(o->mutable_prepare_transaction(), rec.prepare_transaction, false);
                      if (d.storage_ph) fill_storage_ph(o->mutable_storage_ph(), *d.storage_ph);
                      if (d.credit_ph) fill_credit_ph(o->mutable_credit_ph(), *d.credit_ph);
                      fill_compute_ph(o->mutable_compute_ph(), d.compute_ph);
@@ -1374,6 +1593,8 @@ td::Result<std::string> firehose_payload_to_json(const std::string& payload) {
   }
   google::protobuf::util::JsonPrintOptions options;
   options.preserve_proto_field_names = true;
+  // enums start with a meaningful zero value, such as ACC_STATE_UNINIT
+  options.always_print_primitive_fields = true;
   std::string out;
   auto status = google::protobuf::util::MessageToJsonString(block, &out, options);
   if (!status.ok()) {

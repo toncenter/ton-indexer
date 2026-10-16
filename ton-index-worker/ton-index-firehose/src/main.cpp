@@ -82,7 +82,9 @@ int main(int argc, char *argv[]) {
                [&](td::Slice value) { json_dir = value.str(); });
   p.add_option('\0', "db-event-fifo", "Path to the node db event FIFO for event-driven reading",
                [&](td::Slice value) { db_event_fifo_path = value.str(); });
-  p.add_checked_option('\0', "prewarm", "Masterchain blocks used for TraceAssembler warmup before the start (default: 50)",
+  p.add_checked_option('\0', "prewarm",
+                       "Masterchain blocks used for TraceAssembler warmup before the start; every trace that crosses "
+                       "the start must begin within them (default: 50)",
                        [&](td::Slice value) {
                          TRY_RESULT_ASSIGN(prewarm_count, parse_uint(value, "prewarm"));
                          return td::Status::OK();

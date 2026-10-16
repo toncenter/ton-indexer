@@ -68,9 +68,10 @@ void InsertManagerFirehose::write_ready() {
     queue_state_ -= task.get_queue_state();
 
     if (block.is_error()) {
-      // The scheduler refetches the round, nothing after it is written meanwhile.
-      task.promise_.set_error(block.move_as_error_prefix(PSLICE() << "masterchain block " << task.mc_seqno_ << ": "));
-      return;
+      // A block is not written without its account states or with a broken
+      // trace. TraceAssembler cannot take a round again, so the process stops
+      // and resumes from the cursor.
+      LOG(FATAL) << "Failed to convert masterchain block " << task.mc_seqno_ << ": " << block.move_as_error();
     }
     for (auto& output : outputs_) {
       auto status = output->write(block.ok());
