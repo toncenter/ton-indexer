@@ -96,7 +96,7 @@ type NFTSaleDetailsTeleitem struct {
 	Bid                *string         `json:"bid,omitempty"`
 	BidTs              *string         `json:"bid_ts,omitempty"`
 	MinBid             *string         `json:"min_bid,omitempty"`
-	EndTime            *int32          `json:"end_time,omitempty"`
+	EndTime            *int64          `json:"end_time,omitempty"`
 	BeneficiaryAddress *AccountAddress `json:"beneficiary_address,omitempty"`
 	InitialMinBid      *string         `json:"initial_min_bid,omitempty"`
 	MaxBid             *string         `json:"max_bid,omitempty"`
@@ -147,7 +147,7 @@ type RawNFTSale struct {
 	Bid                *string
 	BidTs              *string
 	TelemintMinBid     *string
-	TelemintEndTime    *int32
+	TelemintEndTime    *int64
 	BeneficiaryAddress *AccountAddress
 	InitialMinBid      *string
 	TelemintMaxBid     *string

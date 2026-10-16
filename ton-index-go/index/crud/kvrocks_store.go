@@ -1530,7 +1530,9 @@ func (s *KvrocksStore) attachNFTItemDetails(ctx context.Context, items []models.
 	collectionSeen := map[string]struct{}{}
 	ownerIDs := []models.AccountAddress{}
 	ownerSeen := map[string]struct{}{}
+	itemIDs := make([]models.AccountAddress, 0, len(items))
 	for _, item := range items {
+		itemIDs = append(itemIDs, item.Address)
 		if item.CollectionAddress != nil {
 			id := string(*item.CollectionAddress)
 			if _, ok := collectionSeen[id]; !ok {
@@ -1559,12 +1561,23 @@ func (s *KvrocksStore) attachNFTItemDetails(ctx context.Context, items []models.
 	for _, sale := range sales {
 		salesByOwner[sale.Address] = append(salesByOwner[sale.Address], sale)
 	}
+	telemint, err := s.getTelemintItems(ctx, itemIDs)
+	if err != nil {
+		return err
+	}
+	telemintOnSale := make(map[models.AccountAddress]struct{}, len(telemint))
+	for _, sale := range telemint {
+		telemintOnSale[sale.Address] = struct{}{}
+	}
 
 	for i := range items {
 		if items[i].CollectionAddress != nil {
 			if collection, ok := collections[*items[i].CollectionAddress]; ok {
 				items[i].Collection = collection
 			}
+		}
+		if _, ok := telemintOnSale[items[i].Address]; ok {
+			items[i].OnSale = true
 		}
 		if items[i].OwnerAddress == nil {
 			continue
@@ -2102,6 +2115,7 @@ func (s *KvrocksStore) getTelemintItems(ctx context.Context, addresses []models.
 		return nil, err
 	}
 
+	now := time.Now().Unix()
 	res := make([]models.RawNFTSale, 0, len(payloads))
 	for id, payload := range payloads {
 		destroyed, err := kvrocksPayloadDestroyed(id, "telemint_nft_items", payload)
@@ -2114,6 +2128,10 @@ func (s *KvrocksStore) getTelemintItems(ctx context.Context, addresses []models.
 		var row kvTelemintPayload
 		if err := json.Unmarshal([]byte(payload), &row); err != nil {
 			return nil, fmt.Errorf("decode telemint_nft_items %s: %w", id, err)
+		}
+		// The contract keeps an ended auction until the item's next transaction.
+		if row.EndTime == nil || int64(*row.EndTime) <= now {
+			continue
 		}
 		res = append(res, row.raw())
 	}
@@ -2291,7 +2309,7 @@ type kvTelemintPayload struct {
 	Bid                *string                `json:"bid"`
 	BidTs              *jsonString            `json:"bid_ts"`
 	MinBid             *string                `json:"min_bid"`
-	EndTime            *jsonInt32             `json:"end_time"`
+	EndTime            *jsonInt64             `json:"end_time"`
 	BeneficiaryAddress *models.AccountAddress `json:"beneficiary_address"`
 	InitialMinBid      *string                `json:"initial_min_bid"`
 	MaxBid             *string                `json:"max_bid"`

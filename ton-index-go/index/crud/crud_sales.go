@@ -254,7 +254,7 @@ func queryTelemintImpl(addresses []models.AccountAddress, conn *pgxpool.Conn, se
 			t.code_hash,
 			t.data_hash
 		FROM telemint_nft_items as t
-		WHERE t.address = ANY($1::tonaddr[]) AND NOT t.destroyed
+		WHERE t.address = ANY($1::tonaddr[]) AND NOT t.destroyed AND t.end_time > extract(epoch from now())
 	`
 
 	ctx, cancel_ctx := context.WithTimeout(context.Background(), settings.Timeout)

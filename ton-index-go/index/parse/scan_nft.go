@@ -30,13 +30,15 @@ func ScanNFTItemWithCollection(row pgx.Row) (*models.NFTItem, error) {
 	var col models.NFTCollectionNullable
 	var saleAddress, saleOwner *models.AccountAddress
 	var auctionAddress, auctionOwner *models.AccountAddress
+	var telemintAddress *models.AccountAddress
 
 	err := row.Scan(&res.Address, &res.Init, &res.Index, &res.CollectionAddress,
 		&res.OwnerAddress, &res.Content, &res.LastTransactionLt, &res.CodeHash, &res.DataHash,
 		&col.Address, &col.NextItemIndex, &col.OwnerAddress, &col.CollectionContent,
 		&col.DataHash, &col.CodeHash, &col.LastTransactionLt,
 		&saleAddress, &saleOwner,
-		&auctionAddress, &auctionOwner)
+		&auctionAddress, &auctionOwner,
+		&telemintAddress)
 
 	if col.Address != nil {
 		res.Collection = new(models.NFTCollection)
@@ -62,6 +64,8 @@ func ScanNFTItemWithCollection(row pgx.Row) (*models.NFTItem, error) {
 		if auctionOwner != nil {
 			res.RealOwner = auctionOwner
 		}
+	} else if telemintAddress != nil {
+		res.OnSale = true
 	}
 
 	if err != nil {
