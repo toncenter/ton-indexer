@@ -4,6 +4,27 @@
 #include "td/utils/misc.h"
 #include "td/utils/port/path.h"
 
+namespace {
+
+// Converts one round on whatever scheduler thread runs it.
+class ConvertRound : public td::actor::Actor {
+ public:
+  ConvertRound(ParsedBlockPtr parsed_block, td::Promise<FirehoseBlock> promise)
+      : parsed_block_(std::move(parsed_block)), promise_(std::move(promise)) {
+  }
+
+  void start_up() override {
+    promise_.set_result(make_firehose_block(*parsed_block_));
+    stop();
+  }
+
+ private:
+  ParsedBlockPtr parsed_block_;
+  td::Promise<FirehoseBlock> promise_;
+};
+
+}  // namespace
+
 void InsertManagerFirehose::insert(std::uint32_t mc_seqno, ParsedBlockPtr block_ds, bool force,
                                    td::Promise<QueueState> queued_promise, td::Promise<InsertResult> inserted_promise) {
   InsertTaskStruct task{mc_seqno, std::move(block_ds), std::move(inserted_promise)};
@@ -14,22 +35,38 @@ void InsertManagerFirehose::insert(std::uint32_t mc_seqno, ParsedBlockPtr block_
   }
   queue_state_ += task.get_queue_state();
   if (auto it = pending_.find(mc_seqno); it != pending_.end()) {
-    queue_state_ -= it->second.get_queue_state();
-    it->second.promise_.set_error(td::Status::Error("superseded by a newer insert of the same seqno"));
+    queue_state_ -= it->second.task.get_queue_state();
+    it->second.task.promise_.set_error(td::Status::Error("superseded by a newer insert of the same seqno"));
     pending_.erase(it);
   }
-  pending_.emplace(mc_seqno, std::move(task));
+  auto generation = next_generation_++;
+  auto parsed_block = task.parsed_block_;
+  pending_.emplace(mc_seqno, Round{std::move(task), generation, std::nullopt});
   queued_promise.set_value(QueueState{queue_state_});
+  auto promise = td::PromiseCreator::lambda(
+      [SelfId = actor_id(this), mc_seqno, generation](td::Result<FirehoseBlock> block) {
+        td::actor::send_closure(SelfId, &InsertManagerFirehose::converted, mc_seqno, generation, std::move(block));
+      });
+  td::actor::create_actor<ConvertRound>("convertround", std::move(parsed_block), std::move(promise)).release();
+}
+
+void InsertManagerFirehose::converted(std::uint32_t mc_seqno, std::uint64_t generation,
+                                      td::Result<FirehoseBlock> block) {
+  auto it = pending_.find(mc_seqno);
+  if (it == pending_.end() || it->second.generation != generation) {
+    return;  // superseded
+  }
+  it->second.block = std::move(block);
   write_ready();
 }
 
 void InsertManagerFirehose::write_ready() {
-  while (!pending_.empty() && pending_.begin()->first == next_seqno_) {
-    auto task = std::move(pending_.begin()->second);
+  while (!pending_.empty() && pending_.begin()->first == next_seqno_ && pending_.begin()->second.block) {
+    auto task = std::move(pending_.begin()->second.task);
+    auto block = std::move(*pending_.begin()->second.block);
     pending_.erase(pending_.begin());
     queue_state_ -= task.get_queue_state();
 
-    auto block = make_firehose_block(*task.parsed_block_);
     if (block.is_error()) {
       // The scheduler refetches the round, nothing after it is written meanwhile.
       task.promise_.set_error(block.move_as_error_prefix(PSLICE() << "masterchain block " << task.mc_seqno_ << ": "));

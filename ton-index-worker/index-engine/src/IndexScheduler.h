@@ -50,6 +50,7 @@ private:
   std::int32_t read_from_seqno_{0};
   std::int32_t to_seqno_{0};
   bool force_index_{false};
+  bool detect_interfaces_and_actions_{true};
   std::uint32_t prewarm_count_{50};
   bool is_in_sync_{false};
   std::uint32_t last_indexed_block_utime_{0};
@@ -94,6 +95,10 @@ public:
   void alarm() override;
   void run();
   void get_contiguous_indexed_seqno(td::Promise<std::int32_t> promise);
+  // Sinks that use neither contract interfaces nor actions skip their detection.
+  void set_detect_interfaces_and_actions(bool value) {
+    detect_interfaces_and_actions_ = value;
+  }
 private:
   void advance_contiguous_indexed_seqno();
   void schedule_next_seqnos();

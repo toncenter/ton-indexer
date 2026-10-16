@@ -38,6 +38,7 @@ int main(int argc, char *argv[]) {
   td::actor::ActorOwn<IndexScheduler> index_scheduler_;
 
   td::uint32 threads = 7;
+  td::uint64 celldb_cache_size = td::uint64{1024} << 20;  // RocksDB's default is far too small for cell reads
   td::uint32 io_workers = 1;
   td::int32 stats_timeout = 10;
   std::string db_root;
@@ -105,6 +106,12 @@ int main(int argc, char *argv[]) {
     stats_timeout = static_cast<td::int32>(v);
     return td::Status::OK();
   });
+  p.add_checked_option('\0', "celldb-cache-size", "Block cache of the node cell db in MiB (default: 1024)",
+                       [&](td::Slice value) {
+                         TRY_RESULT(v, parse_uint(value, "celldb-cache-size"));
+                         celldb_cache_size = static_cast<td::uint64>(v) << 20;
+                         return td::Status::OK();
+                       });
   p.add_option('\0', "testnet", "Use for testnet", [&]() { testnet = true; });
   auto S = p.run(argc, argv);
   if (S.is_error()) {
@@ -168,12 +175,13 @@ int main(int argc, char *argv[]) {
   scheduler.run_in_context([&] {
     db_scanner_ = td::actor::create_actor<DbScanner>("scanner", db_root, dbs_secondary,
                                                      working_dir + "/secondary_logs", db_catch_up_interval,
-                                                     !bounded_range);
+                                                     !bounded_range, celldb_cache_size);
   });
   scheduler.run_in_context([&, watcher = std::move(watcher)] {
     index_scheduler_ = td::actor::create_actor<IndexScheduler>("indexscheduler", db_scanner_.get(),
         insert_manager_.get(), parse_manager_.get(), working_dir, from_seqno, to_seqno, false, max_active_tasks,
         max_queue, stats_timeout, watcher, prewarm_count, db_event_fifo_path);
+    td::actor::send_closure(index_scheduler_, &IndexScheduler::set_detect_interfaces_and_actions, false);
   });
   scheduler.run_in_context([&] { td::actor::send_closure(index_scheduler_, &IndexScheduler::run); });
 

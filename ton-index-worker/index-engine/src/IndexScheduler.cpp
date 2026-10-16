@@ -498,6 +498,10 @@ void IndexScheduler::seqno_parsed(std::uint32_t mc_seqno, ParsedBlockPtr parsed_
 
 void IndexScheduler::seqno_traces_assembled(std::uint32_t mc_seqno, ParsedBlockPtr parsed_block) {
     LOG(DEBUG) << "Assembled traces for seqno " << mc_seqno;
+    if (!detect_interfaces_and_actions_) {
+        seqno_actions_processed(mc_seqno, std::move(parsed_block));
+        return;
+    }
     finish_seqno_otel_stage(mc_seqno);
     start_seqno_otel_stage(mc_seqno, "detect_interfaces");
 

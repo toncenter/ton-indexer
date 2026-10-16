@@ -295,6 +295,9 @@ void DbScanner::start_up() {
         ton::BlockIdExt{ton::masterchainId, ton::shardIdAll, 0, ton::RootHash::zero(), ton::FileHash::zero()},
         ton::BlockIdExt{ton::masterchainId, ton::shardIdAll, 0, ton::RootHash::zero(), ton::FileHash::zero()});
   opts.write().set_max_open_archive_files(500);
+  if (celldb_cache_size_) {
+    opts.write().set_celldb_cache_size(celldb_cache_size_.value());
+  }
   if (mode_ == dbs_secondary) {
     CHECK(secondary_working_dir_.has_value());
     opts.write().set_secondary_working_dir(secondary_working_dir_.value());

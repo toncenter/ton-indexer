@@ -1,14 +1,16 @@
 #pragma once
 #include <map>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 #include "InsertManagerBase.h"
+#include "FirehoseBlock.h"
 #include "FirehoseOutput.h"
 
 // Sink of the index pipeline that turns masterchain rounds into Firehose
-// blocks. The scheduler completes rounds out of order, so they are buffered and
-// written strictly by seqno; rounds below the next one to write (TraceAssembler
+// blocks. Rounds are converted in parallel, each by its own actor, and written
+// strictly by seqno; rounds below the next one to write (TraceAssembler
 // prewarm, rounds written before a restart) are acknowledged without output.
 class InsertManagerFirehose : public InsertManagerInterface {
  public:
@@ -27,12 +29,20 @@ class InsertManagerFirehose : public InsertManagerInterface {
   void get_resume_seqno(td::Promise<ResumeState> promise, std::int32_t from_seqno = 0, std::int32_t to_seqno = 0) override;
 
  private:
+  struct Round {
+    InsertTaskStruct task;
+    std::uint64_t generation;
+    std::optional<td::Result<FirehoseBlock>> block;  // set when converted
+  };
+
   std::vector<std::unique_ptr<FirehoseOutput>> outputs_;
   std::string cursor_path_;
   std::uint32_t next_seqno_{0};
-  std::map<std::uint32_t, InsertTaskStruct> pending_;
+  std::uint64_t next_generation_{0};
+  std::map<std::uint32_t, Round> pending_;
   QueueState queue_state_;
 
+  void converted(std::uint32_t mc_seqno, std::uint64_t generation, td::Result<FirehoseBlock> block);
   void write_ready();
   td::Status save_cursor(std::uint32_t seqno);
 };
