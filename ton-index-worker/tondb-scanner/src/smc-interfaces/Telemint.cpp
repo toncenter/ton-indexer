@@ -65,8 +65,8 @@ void TelemintContract::start_up()
   
 
   // 2. Get auction state (may throw if no auction)
-  auto auction_state_r = execute_smc_method<5>(address_, code_cell_, data_cell_, config_, "get_telemint_auction_state", {},
-            {vm::StackEntry::Type::t_slice, vm::StackEntry::Type::t_int, vm::StackEntry::Type::t_int,
+  auto auction_state_r = execute_smc_method_nullable<5>(address_, code_cell_, data_cell_, config_, "get_telemint_auction_state", {},
+            {nullable(vm::StackEntry::Type::t_slice), vm::StackEntry::Type::t_int, vm::StackEntry::Type::t_int,
              vm::StackEntry::Type::t_int, vm::StackEntry::Type::t_int});
 
   bool has_auction = auction_state_r.is_ok();
@@ -76,7 +76,7 @@ void TelemintContract::start_up()
 
     // Parse bidder_address (can be null)
     auto bidder_slice = auction_state_stack[0].as_slice();
-    if (bidder_slice->size() > 0) {
+    if (bidder_slice.not_null() && bidder_slice->size() > 0) {
       auto bidder_address = convert::to_std_address(bidder_slice);
       if (bidder_address.is_error()) {
         promise_.set_error(bidder_address.move_as_error_prefix("bidder address parsing failed: "));
@@ -100,8 +100,8 @@ void TelemintContract::start_up()
   }
 
   // 3. Get auction config (returns nulls if no auction, doesn't throw)
-  auto auction_config_r = execute_smc_method<6>(address_, code_cell_, data_cell_, config_, "get_telemint_auction_config", {},
-            {vm::StackEntry::Type::t_slice, vm::StackEntry::Type::t_int, vm::StackEntry::Type::t_int,
+  auto auction_config_r = execute_smc_method_nullable<6>(address_, code_cell_, data_cell_, config_, "get_telemint_auction_config", {},
+            {nullable(vm::StackEntry::Type::t_slice), vm::StackEntry::Type::t_int, vm::StackEntry::Type::t_int,
              vm::StackEntry::Type::t_int, vm::StackEntry::Type::t_int, vm::StackEntry::Type::t_int});
 
   if (auction_config_r.is_error()) {
@@ -114,7 +114,7 @@ void TelemintContract::start_up()
 
   // Parse beneficiary_address (can be null)
   auto beneficiary_slice = auction_config_stack[0].as_slice();
-  if (beneficiary_slice->size() > 0) {
+  if (beneficiary_slice.not_null() && beneficiary_slice->size() > 0) {
     auto beneficiary_address = convert::to_std_address(beneficiary_slice);
     if (beneficiary_address.is_error()) {
       promise_.set_error(beneficiary_address.move_as_error_prefix("beneficiary address parsing failed: "));

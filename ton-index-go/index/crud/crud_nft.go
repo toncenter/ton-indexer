@@ -60,11 +60,13 @@ func buildNFTItemsQuery(req models.NFTItemRequest, settings models.RequestSettin
                 C.address, C.next_item_index, C.owner_address, C.collection_content, 
                 C.data_hash, C.code_hash, C.last_transaction_lt,
                 S.address, S.nft_owner_address,
-                A.address, A.nft_owner`
+                A.address, A.nft_owner,
+                T.address`
 	from_query := ` nft_items as N 
                 left join nft_collections as C on N.collection_address = C.address and not C.destroyed
                 left join getgems_nft_sales as S on N.owner_address = S.address and N.address = S.nft_address and not S.destroyed
-                left join getgems_nft_auctions as A on N.owner_address = A.address and N.address = A.nft_addr and not A.destroyed`
+                left join getgems_nft_auctions as A on N.owner_address = A.address and N.address = A.nft_addr and not A.destroyed
+                left join telemint_nft_items as T on N.address = T.address and not T.destroyed and T.end_time > extract(epoch from now())`
 	filter_list := []string{"not N.destroyed"}
 	filter_query := ``
 	orderby_query := ` order by N.id asc`
