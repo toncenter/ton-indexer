@@ -55,6 +55,7 @@ public:
   void request_catch_up(td::Promise<td::Unit> promise,
                         ton::validator::CatchUpMode mode = ton::validator::CatchUpMode::Force);
 private:
+  void periodic_catch_up_done(td::Result<td::Unit> R);
   void start_catch_up_with_primary();
   void catch_up_finished(td::Result<td::Unit> result, double elapsed_ms);
   static ton::validator::CatchUpMode strongest_catch_up_mode(ton::validator::CatchUpMode left,

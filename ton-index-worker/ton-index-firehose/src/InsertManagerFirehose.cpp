@@ -80,9 +80,13 @@ void InsertManagerFirehose::write_ready() {
         LOG(FATAL) << "Failed to write masterchain block " << task.mc_seqno_ << ": " << status;
       }
     }
-    auto status = save_cursor(task.mc_seqno_);
-    if (status.is_error()) {
-      LOG(FATAL) << "Failed to save cursor " << task.mc_seqno_ << ": " << status;
+    // The cursor lags behind the output: reader-node may still hold the last
+    // blocks written to stdout unstored, so after a crash they are written again.
+    if (task.mc_seqno_ > kCursorLag && task.mc_seqno_ - kCursorLag > cursor_) {
+      auto status = save_cursor(task.mc_seqno_ - kCursorLag);
+      if (status.is_error()) {
+        LOG(FATAL) << "Failed to save cursor " << task.mc_seqno_ - kCursorLag << ": " << status;
+      }
     }
     task.promise_.set_value(InsertResult{});
     ++next_seqno_;
@@ -95,7 +99,9 @@ td::Status InsertManagerFirehose::save_cursor(std::uint32_t seqno) {
   }
   auto tmp_path = cursor_path_ + ".tmp";
   TRY_STATUS(td::write_file(tmp_path, std::to_string(seqno)));
-  return td::rename(tmp_path, cursor_path_);
+  TRY_STATUS(td::rename(tmp_path, cursor_path_));
+  cursor_ = seqno;
+  return td::Status::OK();
 }
 
 void InsertManagerFirehose::get_insert_queue_state(td::Promise<QueueState> promise) {
@@ -124,9 +130,12 @@ void InsertManagerFirehose::get_resume_seqno(td::Promise<ResumeState> promise, s
       promise.set_error(last_seqno.move_as_error_prefix("bad cursor file: "));
       return;
     }
-    next_seqno_ = last_seqno.ok() + 1;
-    LOG(INFO) << "Resuming after masterchain block " << last_seqno.ok() << " from " << cursor_path_;
+    cursor_ = last_seqno.ok();
+    next_seqno_ = cursor_ + 1;
+    LOG(INFO) << "Resuming after masterchain block " << cursor_ << " from " << cursor_path_;
   } else if (from_seqno > 0) {
+    // the cursor never goes below the first start
+    cursor_ = static_cast<std::uint32_t>(from_seqno) - 1;
     next_seqno_ = static_cast<std::uint32_t>(from_seqno);
   } else {
     promise.set_error(td::Status::Error("no cursor yet, the first start needs --from"));

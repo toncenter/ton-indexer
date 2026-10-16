@@ -428,9 +428,15 @@ void DbScanner::alarm() {
     return;
   }
 
-  auto P = td::PromiseCreator::lambda([](td::Result<td::Unit> R) {
-    R.ensure();
+  // Checked by the scanner itself: a catch-up still in flight when the scanner
+  // is destroyed on shutdown loses its promise, which is not an error.
+  auto P = td::PromiseCreator::lambda([SelfId = actor_id(this)](td::Result<td::Unit> R) {
+    td::actor::send_closure(SelfId, &DbScanner::periodic_catch_up_done, std::move(R));
   });
 
   request_catch_up(std::move(P), CatchUpMode::Throttled);
+}
+
+void DbScanner::periodic_catch_up_done(td::Result<td::Unit> R) {
+  R.ensure();
 }

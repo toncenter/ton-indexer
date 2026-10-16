@@ -14,8 +14,8 @@
 // prewarm, rounds written before a restart) are acknowledged without output.
 class InsertManagerFirehose : public InsertManagerInterface {
  public:
-  // cursor_path keeps the last written seqno to resume after a restart; it is
-  // empty for bounded ranges, which always start from --from.
+  // cursor_path keeps the seqno to resume after (see kCursorLag); it is empty
+  // for bounded ranges, which always start from --from.
   InsertManagerFirehose(std::vector<std::unique_ptr<FirehoseOutput>> outputs, std::string cursor_path)
       : outputs_(std::move(outputs)), cursor_path_(std::move(cursor_path)) {
   }
@@ -29,6 +29,11 @@ class InsertManagerFirehose : public InsertManagerInterface {
   void get_resume_seqno(td::Promise<ResumeState> promise, std::int32_t from_seqno = 0, std::int32_t to_seqno = 0) override;
 
  private:
+  // How far the cursor stays behind the last block written to stdout: more than
+  // reader-node can lose when it is killed, its 10000-line channel
+  // (node-manager/mindreader) and 100-block channel plus the pipe buffer.
+  static constexpr std::uint32_t kCursorLag = 11000;
+
   struct Round {
     InsertTaskStruct task;
     std::uint64_t generation;
@@ -37,6 +42,7 @@ class InsertManagerFirehose : public InsertManagerInterface {
 
   std::vector<std::unique_ptr<FirehoseOutput>> outputs_;
   std::string cursor_path_;
+  std::uint32_t cursor_{0};  // the seqno in the cursor file
   std::uint32_t next_seqno_{0};
   std::uint64_t next_generation_{0};
   std::map<std::uint32_t, Round> pending_;

@@ -16,6 +16,14 @@
 
 namespace {
 
+// Set by SIGTERM/SIGINT: firecore's reader-node stops its child with SIGTERM
+// and treats any exit but a clean one as a crash.
+std::atomic_bool g_stop_requested{false};
+
+void request_stop(int) {
+  g_stop_requested.store(true);
+}
+
 td::Result<std::uint32_t> parse_uint(td::Slice value, td::Slice name) {
   auto r = td::to_integer_safe<std::uint32_t>(value);
   if (r.is_error()) {
@@ -187,9 +195,10 @@ int main(int argc, char *argv[]) {
   });
   scheduler.run_in_context([&] { td::actor::send_closure(index_scheduler_, &IndexScheduler::run); });
 
-  while (!finish_requested->load() && scheduler.run(1)) {
+  td::set_signal_handler(td::SignalType::Quit, request_stop).ensure();
+  while (!finish_requested->load() && !g_stop_requested.load() && scheduler.run(1)) {
   }
-  if (finish_requested->load()) {
+  if (finish_requested->load() || g_stop_requested.load()) {
     scheduler.run_in_context([&] {
       index_scheduler_.reset();
       insert_manager_.reset();
