@@ -221,6 +221,11 @@ class ToncoPoolV3Swap:
             ret_forward_payload:(Maybe ^Cell)
         ]
     = ContractMessages;
+
+    v2 pools put a header between query_id and params_cell
+    input_jetton_wallet plays the v1 source_wallet role
+        source_type:uint4 from_user:MsgAddress owner_address:MsgAddress
+        zeroForOne:uint1 input_jetton_wallet:MsgAddress
     """
 
     opcode = 0xA7FB58F8
@@ -228,8 +233,24 @@ class ToncoPoolV3Swap:
     def __init__(self, body: Slice):
         body.load_uint(32)
         self.query_id = body.load_uint(64)
-        self.owner_address = body.load_address()
-        self.source_wallet = body.load_address()
+        self.is_v2 = False
+        v2 = body.copy()
+        try:
+            v2.load_uint(4)  # source_type
+            v2.load_address()  # from_user
+            owner_address = v2.load_address()
+            v2.load_bit()  # zeroForOne
+            input_jetton_wallet = v2.load_address()
+            self.is_v2 = v2.remaining_bits == 0 and v2.remaining_refs == 2
+        except Exception:
+            pass
+        if self.is_v2:
+            body = v2
+            self.owner_address = owner_address
+            self.source_wallet = input_jetton_wallet
+        else:
+            self.owner_address = body.load_address()
+            self.source_wallet = body.load_address()
         params_cell = body.load_ref().to_slice()
         self.amount = params_cell.load_coins() or 0
         self.sqrt_price_limit_x96 = params_cell.load_uint(160)
@@ -321,6 +342,8 @@ class ToncoRouterV3PayTo:
             amount1:(VarUInteger 16)
             jetton1_address:MsgAddress
         ] )
+        (v2 pools order coinsinfo_cell as jetton0_address jetton1_address amount0 amount1;
+         the cell alone does not tell the layouts apart, the pool's SWAP body does)
         (exit_code = 200)?(
             indexer_swap_info_cell:(Maybe ^[
                 liquidity:uint128
@@ -344,7 +367,7 @@ class ToncoRouterV3PayTo:
 
     opcode = 0xA1DAA96D
 
-    def __init__(self, body: Slice):
+    def __init__(self, body: Slice, v2: bool = False):
         body.load_uint(32)  # payload opcode
         self.query_id = body.load_uint(64)
         self.receiver0 = body.load_address()
@@ -360,10 +383,16 @@ class ToncoRouterV3PayTo:
         coinsinfo_cell_ref = body.load_maybe_ref()
         if coinsinfo_cell_ref:
             coinsinfo_slice = coinsinfo_cell_ref.to_slice()
-            self.amount0 = coinsinfo_slice.load_coins() or 0
-            self.jetton0_address = coinsinfo_slice.load_address()
-            self.amount1 = coinsinfo_slice.load_coins() or 0
-            self.jetton1_address = coinsinfo_slice.load_address()
+            if v2:
+                self.jetton0_address = coinsinfo_slice.load_address()
+                self.jetton1_address = coinsinfo_slice.load_address()
+                self.amount0 = coinsinfo_slice.load_coins() or 0
+                self.amount1 = coinsinfo_slice.load_coins() or 0
+            else:
+                self.amount0 = coinsinfo_slice.load_coins() or 0
+                self.jetton0_address = coinsinfo_slice.load_address()
+                self.amount1 = coinsinfo_slice.load_coins() or 0
+                self.jetton1_address = coinsinfo_slice.load_address()
 
         # indexer_swap_info_cell (conditional)
         self.liquidity = None
