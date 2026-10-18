@@ -1,7 +1,9 @@
 #include "FirehoseOutput.h"
 
 #include <cstdio>
+#include <vector>
 #include <zstd.h>
+#include "td/actor/actor.h"
 #include "td/utils/base64.h"
 #include "td/utils/filesystem.h"
 #include "td/utils/format.h"
@@ -29,7 +31,7 @@ class FireProtocolOutput : public FirehoseOutput {
     std::fflush(stdout);
   }
 
-  td::Status write(const FirehoseBlock& block) override {
+  void write(const FirehoseBlock& block, td::Promise<td::Unit> written) override {
     // FIRE BLOCK <num> <id> <parent_num> <parent_id> <lib_num> <timestamp_ns> <payload_base64>
     // Plain concatenation: PSTRING truncates long strings to its fixed buffer.
     std::string line = "FIRE BLOCK " + std::to_string(block.number) + " " + block.id + " " +
@@ -37,9 +39,46 @@ class FireProtocolOutput : public FirehoseOutput {
                        " " + std::to_string(static_cast<std::uint64_t>(block.gen_utime) * 1000000000ULL) + " " +
                        td::base64_encode(block.payload) + "\n";
     if (std::fwrite(line.data(), 1, line.size(), stdout) != line.size() || std::fflush(stdout) != 0) {
-      return td::Status::Error("failed to write to stdout");
+      return written.set_error(td::Status::Error("failed to write to stdout"));
     }
-    return td::Status::OK();
+    written.set_value(td::Unit());
+  }
+};
+
+// Compresses and writes one merged-blocks bundle on whatever scheduler thread
+// runs it: zstd over a bundle of heavy blocks takes long enough to hold up the
+// actor that writes blocks in order. Its blocks are written when the file is.
+class WriteBundle : public td::actor::Actor {
+ public:
+  WriteBundle(std::string path, std::string data, std::vector<td::Promise<td::Unit>> written)
+      : path_(std::move(path)), data_(std::move(data)), written_(std::move(written)) {
+  }
+
+  void start_up() override {
+    auto status = compress_and_write();
+    for (auto& promise : written_) {
+      if (status.is_ok()) {
+        promise.set_value(td::Unit());
+      } else {
+        promise.set_error(status.clone());
+      }
+    }
+    stop();
+  }
+
+ private:
+  std::string path_;
+  std::string data_;
+  std::vector<td::Promise<td::Unit>> written_;
+
+  td::Status compress_and_write() {
+    std::string compressed(ZSTD_compressBound(data_.size()), '\0');
+    auto size = ZSTD_compress(compressed.data(), compressed.size(), data_.data(), data_.size(), 3);
+    if (ZSTD_isError(size)) {
+      return td::Status::Error(PSLICE() << "zstd: " << ZSTD_getErrorName(size));
+    }
+    compressed.resize(size);
+    return write_file_atomically(path_, compressed);
   }
 };
 
@@ -56,18 +95,19 @@ class MergedBlocksOutput : public FirehoseOutput {
     }
   }
 
-  td::Status write(const FirehoseBlock& block) override {
+  void write(const FirehoseBlock& block, td::Promise<td::Unit> written) override {
     if (!has_bundle_) {
       start_bundle(block.number - block.number % kBundleSize);
     } else if (block.number != last_number_ + 1) {
-      return td::Status::Error(PSLICE() << "block " << block.number << " does not follow " << last_number_);
+      return written.set_error(
+          td::Status::Error(PSLICE() << "block " << block.number << " does not follow " << last_number_));
     }
     append_block(block);
+    written_.push_back(std::move(written));
     last_number_ = block.number;
     if ((block.number + 1) % kBundleSize == 0) {
-      return flush_bundle();
+      flush_bundle();
     }
-    return td::Status::OK();
   }
 
  private:
@@ -76,6 +116,7 @@ class MergedBlocksOutput : public FirehoseOutput {
   std::uint64_t bundle_base_{0};
   std::uint64_t last_number_{0};
   std::string data_;
+  std::vector<td::Promise<td::Unit>> written_;  // of the blocks in the bundle
 
   void start_bundle(std::uint64_t base) {
     has_bundle_ = true;
@@ -105,18 +146,13 @@ class MergedBlocksOutput : public FirehoseOutput {
     data_ += message;
   }
 
-  td::Status flush_bundle() {
-    std::string compressed(ZSTD_compressBound(data_.size()), '\0');
-    auto size = ZSTD_compress(compressed.data(), compressed.size(), data_.data(), data_.size(), 3);
-    if (ZSTD_isError(size)) {
-      return td::Status::Error(PSLICE() << "zstd: " << ZSTD_getErrorName(size));
-    }
-    compressed.resize(size);
+  void flush_bundle() {
     auto path = PSTRING() << dir_ << "/" << td::lpad0(std::to_string(bundle_base_), 10) << ".dbin.zst";
-    TRY_STATUS(write_file_atomically(path, compressed));
+    td::actor::create_actor<WriteBundle>("writebundle", std::move(path), std::move(data_), std::move(written_))
+        .release();
     has_bundle_ = false;
     data_.clear();
-    return td::Status::OK();
+    written_.clear();
   }
 };
 
@@ -125,9 +161,16 @@ class JsonOutput : public FirehoseOutput {
   explicit JsonOutput(std::string dir) : dir_(std::move(dir)) {
   }
 
-  td::Status write(const FirehoseBlock& block) override {
-    TRY_RESULT(json, firehose_payload_to_json(block.payload));
-    return write_file_atomically(PSTRING() << dir_ << "/" << block.number << ".json", json);
+  void write(const FirehoseBlock& block, td::Promise<td::Unit> written) override {
+    auto json = firehose_payload_to_json(block.payload);
+    if (json.is_error()) {
+      return written.set_error(json.move_as_error());
+    }
+    auto status = write_file_atomically(PSTRING() << dir_ << "/" << block.number << ".json", json.ok());
+    if (status.is_error()) {
+      return written.set_error(std::move(status));
+    }
+    written.set_value(td::Unit());
   }
 
  private:

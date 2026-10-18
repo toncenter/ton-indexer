@@ -1,24 +1,44 @@
 #include "InsertManagerFirehose.h"
 
+#include "td/actor/MultiPromise.h"
 #include "td/utils/filesystem.h"
+#include "td/utils/format.h"
 #include "td/utils/misc.h"
 #include "td/utils/port/path.h"
+#include "td/utils/Time.h"
+#include "rocksdb/perf_level.h"
+#include "CellCache.h"
 
 namespace {
 
 // Converts one round on whatever scheduler thread runs it.
 class ConvertRound : public td::actor::Actor {
  public:
-  ConvertRound(ParsedBlockPtr parsed_block, td::Promise<FirehoseBlock> promise)
-      : parsed_block_(std::move(parsed_block)), promise_(std::move(promise)) {
+  ConvertRound(std::uint32_t mc_seqno, ParsedBlockPtr parsed_block, td::Promise<FirehoseBlock> promise)
+      : mc_seqno_(mc_seqno), parsed_block_(std::move(parsed_block)), promise_(std::move(promise)) {
   }
 
   void start_up() override {
-    promise_.set_result(make_firehose_block(*parsed_block_));
+    // RocksDB counts into its thread-local perf context on every cell read by
+    // default; nothing here reads the counts.
+    rocksdb::SetPerfLevel(rocksdb::PerfLevel::kDisable);
+    td::Timer timer;
+    auto block = make_firehose_block(*parsed_block_);
+    // Blocks are written in order, so a slow one holds up all after it.
+    if (timer.elapsed() > 2.0) {
+      std::size_t transactions = 0;
+      for (const auto& blk : parsed_block_->blocks_) {
+        transactions += blk.transactions.size();
+      }
+      LOG(WARNING) << "Converting masterchain block " << mc_seqno_ << " took " << td::format::as_time(timer.elapsed())
+                   << ": " << parsed_block_->blocks_.size() << " blocks, " << transactions << " transactions";
+    }
+    promise_.set_result(std::move(block));
     stop();
   }
 
  private:
+  std::uint32_t mc_seqno_;
   ParsedBlockPtr parsed_block_;
   td::Promise<FirehoseBlock> promise_;
 };
@@ -47,7 +67,7 @@ void InsertManagerFirehose::insert(std::uint32_t mc_seqno, ParsedBlockPtr block_
       [SelfId = actor_id(this), mc_seqno, generation](td::Result<FirehoseBlock> block) {
         td::actor::send_closure(SelfId, &InsertManagerFirehose::converted, mc_seqno, generation, std::move(block));
       });
-  td::actor::create_actor<ConvertRound>("convertround", std::move(parsed_block), std::move(promise)).release();
+  td::actor::create_actor<ConvertRound>("convertround", mc_seqno, std::move(parsed_block), std::move(promise)).release();
 }
 
 void InsertManagerFirehose::converted(std::uint32_t mc_seqno, std::uint64_t generation,
@@ -65,7 +85,6 @@ void InsertManagerFirehose::write_ready() {
     auto task = std::move(pending_.begin()->second.task);
     auto block = std::move(*pending_.begin()->second.block);
     pending_.erase(pending_.begin());
-    queue_state_ -= task.get_queue_state();
 
     if (block.is_error()) {
       // A block is not written without its account states or with a broken
@@ -73,11 +92,21 @@ void InsertManagerFirehose::write_ready() {
       // and resumes from the cursor.
       LOG(FATAL) << "Failed to convert masterchain block " << task.mc_seqno_ << ": " << block.move_as_error();
     }
-    for (auto& output : outputs_) {
-      auto status = output->write(block.ok());
-      if (status.is_error()) {
-        // Blocks must not be skipped, so the process stops and resumes from the cursor.
-        LOG(FATAL) << "Failed to write masterchain block " << task.mc_seqno_ << ": " << status;
+    // The round stays in the queue until every output has written it, which
+    // bounds the bundles being compressed; its parsed block is not needed.
+    auto queue_state = task.get_queue_state();
+    task.parsed_block_.reset();
+    {
+      td::MultiPromise mp;
+      auto ig = mp.init_guard();
+      ig.add_promise(td::PromiseCreator::lambda(
+          [SelfId = actor_id(this), mc_seqno = task.mc_seqno_, queue_state,
+           promise = std::move(task.promise_)](td::Result<td::Unit> result) mutable {
+            td::actor::send_closure(SelfId, &InsertManagerFirehose::written, mc_seqno, queue_state, std::move(result),
+                                    std::move(promise));
+          }));
+      for (auto& output : outputs_) {
+        output->write(block.ok(), ig.get_promise());
       }
     }
     // The cursor lags behind the output: reader-node may still hold the last
@@ -88,9 +117,23 @@ void InsertManagerFirehose::write_ready() {
         LOG(FATAL) << "Failed to save cursor " << task.mc_seqno_ - kCursorLag << ": " << status;
       }
     }
-    task.promise_.set_value(InsertResult{});
     ++next_seqno_;
+    if (task.mc_seqno_ % 1000 == 0) {
+      auto stats = firehose::cell_cache_stats();
+      LOG(INFO) << "Cell cache after " << task.mc_seqno_ << ": " << stats.hits << " hits, " << stats.misses
+                << " misses, " << td::format::as_size(stats.bytes) << "; " << firehose_account_stats();
+    }
   }
+}
+
+void InsertManagerFirehose::written(std::uint32_t mc_seqno, QueueState queue_state, td::Result<td::Unit> result,
+                                    td::Promise<InsertResult> promise) {
+  if (result.is_error()) {
+    // Blocks must not be skipped, so the process stops and resumes from the cursor.
+    LOG(FATAL) << "Failed to write masterchain block " << mc_seqno << ": " << result.move_as_error();
+  }
+  queue_state_ -= queue_state;
+  promise.set_value(InsertResult{});
 }
 
 td::Status InsertManagerFirehose::save_cursor(std::uint32_t seqno) {

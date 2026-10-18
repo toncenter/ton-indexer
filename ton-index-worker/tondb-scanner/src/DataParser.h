@@ -11,6 +11,9 @@ private:
   ParsedBlockPtr result;
   td::Promise<ParsedBlockPtr> promise_;
 public:
+  // Sinks that never read ParsedBlock::account_states_ skip loading them.
+  static inline bool parse_account_states = true;
+
   ParseQuery(int mc_seqno, schema::MasterchainBlockDataState mc_block, std::shared_ptr<vm::CellDbReader> cell_db_reader, td::Promise<ParsedBlockPtr> promise)
     : mc_seqno_(mc_seqno), mc_block_(std::move(mc_block)), cell_db_reader_(std::move(cell_db_reader)), result(std::make_shared<ParsedBlock>()), promise_(std::move(promise)) {}
 

@@ -1,11 +1,18 @@
 #include "FirehoseBlock.h"
 
 #include <algorithm>
+#include <array>
+#include <atomic>
 #include <map>
+#include <memory>
+#include <optional>
+#include <vector>
+#include <google/protobuf/arena.h>
 #include <google/protobuf/io/coded_stream.h>
 #include <google/protobuf/io/zero_copy_stream_impl_lite.h>
 #include <google/protobuf/util/json_util.h>
 #include "td/utils/check.h"
+#include "td/utils/format.h"
 #include "td/utils/misc.h"
 #include "crypto/block/block-auto.h"
 #include "crypto/block/block-parse.h"
@@ -13,7 +20,9 @@
 #include "crypto/vm/boc.h"
 #include "crypto/vm/cells/CellBuilder.h"
 #include "crypto/vm/dict.h"
+#include "CellCache.h"
 #include "DataParser.h"
+#include "LruCache.h"
 #include "sf/ton/type/v1/type.pb.h"
 
 namespace pb = sf::ton::type::v1;
@@ -160,6 +169,29 @@ void fill_msg_size(pb::StorageUsed* out, const schema::StorageUsed& size) {
   out->set_bits(size.bits);
 }
 
+// An account as converted, with the hashes of its code, data and library:
+// their cells are loaded through the reader of the block that needs them, so
+// an account kept across blocks keeps no cell db snapshot alive.
+struct LoadedAccount {
+  pb::Account account;
+  std::optional<vm::CellHash> code;
+  std::optional<vm::CellHash> data;
+  std::optional<vm::CellHash> library;
+};
+
+// Accounts by the hash of their state, across blocks: the state an account
+// starts a block with is the one it ended an earlier block with.
+using AccountCache = firehose::LruCache<td::Bits256, std::shared_ptr<const LoadedAccount>>;
+std::unique_ptr<AccountCache> g_account_cache;
+
+// Where converted accounts came from, for the log.
+struct AccountStats {
+  std::atomic<std::uint64_t> cache{0};
+  std::atomic<std::uint64_t> state_update{0};
+  std::atomic<std::uint64_t> cell_db{0};
+};
+AccountStats g_account_stats;
+
 class Converter {
  public:
   explicit Converter(const ParsedBlock& parsed_block) : parsed_block_(parsed_block) {
@@ -173,40 +205,33 @@ class Converter {
     }
   }
 
-  td::Result<pb::Block> convert() {
+  td::Status convert(pb::Block* out) {
     const auto& config = parsed_block_.mc_block_.config_;
     if (!config) {
       return td::Status::Error("masterchain config is missing");
     }
     global_version_ = config->get_global_version();
-    pb::Block out;
+    cache_accounts_after();
     try {
-      fill_block(&out);
+      fill_block(out);
     } catch (vm::VmError& e) {
       fail(td::Status::Error(PSLICE() << "malformed cell: " << e.get_msg()));
     }
-    if (error_.is_error()) {
-      return std::move(error_);
-    }
-    return out;
+    return std::move(error_);
   }
 
  private:
   static constexpr std::size_t kMaxDataBocSize = 64 * 1024;
 
-  // An account as converted, with the cells of its code, data and library.
-  struct LoadedAccount {
-    pb::Account account;
-    Ref<Cell> code;
-    Ref<Cell> data;
-    Ref<Cell> library;
-  };
-
   const ParsedBlock& parsed_block_;
   int global_version_{0};
   std::map<td::Bits256, td::Bits256> trace_ids_;
   std::map<td::Bits256, td::Bits256> norm_hashes_;
-  std::map<td::Bits256, std::optional<LoadedAccount>> accounts_;
+  // null when the account failed to load
+  std::map<td::Bits256, std::shared_ptr<const LoadedAccount>> accounts_;
+  // The accounts of the old and the new state of the block being filled, see
+  // unpack_state_update_accounts.
+  std::array<std::vector<vm::AugmentedDictionary>, 2> state_update_accounts_;
   // The first error: the fill functions record it and go on, convert() returns it.
   td::Status error_;
 
@@ -394,7 +419,117 @@ class Converter {
     fill_block_info(out->mutable_info(), blk.info);
     fill_value_flow(out->mutable_value_flow(), blk.value_flow);
     fill_merkle_update(out->mutable_state_update(), blk.state_update);
+    state_update_accounts_ = {unpack_state_update_accounts(blk.state_update, 0),
+                              unpack_state_update_accounts(blk.state_update, 1)};
     fill_block_extra(out->mutable_extra(), blk.extra);
+    state_update_accounts_ = {};
+  }
+
+  // The accounts dictionaries of the old (side 0) or the new (side 1) state of
+  // a state update: two for the old state of a block after a merge. An update
+  // holds every cell its block changed, so the accounts the block changed are
+  // there in full, before and after; the cells it did not change are pruned.
+  static std::vector<vm::AugmentedDictionary> unpack_state_update_accounts(const Ref<Cell>& update, int side) {
+    std::vector<vm::AugmentedDictionary> result;
+    try {
+      bool is_special;
+      auto cs = vm::load_cell_slice_special(update, is_special);
+      if (!is_special || cs.special_type() != Cell::SpecialType::MerkleUpdate || cs.size_refs() != 2) {
+        return {};
+      }
+      // At level 0 a virtualized tree has the hashes of the cells it stands for.
+      auto state = cs.prefetch_ref(side)->virtualize(0);
+      std::vector<Ref<Cell>> shard_states;
+      if (block::gen::t_ShardState.get_tag(vm::load_cell_slice(state)) == block::gen::ShardState::split_state) {
+        block::gen::ShardState::Record_split_state split;
+        if (!tlb::unpack_cell(state, split)) {
+          return {};
+        }
+        shard_states = {split.left, split.right};
+      } else {
+        shard_states = {state};
+      }
+      for (const auto& shard_state : shard_states) {
+        // Only accounts:^ShardAccounts, the second reference, is read: a full
+        // unpack would load cells that an old state may have pruned.
+        auto unsplit = vm::load_cell_slice(shard_state);
+        if (unsplit.prefetch_ulong(32) != 0x9023afe2 || unsplit.size_refs() < 3) {
+          return {};
+        }
+        result.emplace_back(vm::load_cell_slice_ref(unsplit.prefetch_ref(1)), 256, block::tlb::aug_ShardAccounts);
+      }
+    } catch (vm::VmVirtError&) {
+      return {};
+    } catch (vm::VmError&) {
+      return {};
+    }
+    return result;
+  }
+
+  // The root cell of the account at addr with this state hash in the accounts
+  // dictionaries of a state update. Null when it is not there in full: a new
+  // state has every account its block changed, an old state often prunes them.
+  static Ref<Cell> account_root_in(std::vector<vm::AugmentedDictionary>& dicts, const td::Bits256& addr,
+                                   const td::Bits256& hash) {
+    for (auto& accounts : dicts) {
+      try {
+        auto shard_account = accounts.lookup(addr.bits(), 256);
+        if (shard_account.is_null()) {
+          continue;
+        }
+        auto account = shard_account->prefetch_ref();
+        if (account.not_null() && td::Bits256{account->get_hash().bits()} == hash) {
+          return account;
+        }
+        return {};
+      } catch (vm::VmVirtError&) {
+      } catch (vm::VmError&) {
+      }
+    }
+    return {};
+  }
+
+  // Puts the states the round ends its accounts with into the account cache
+  // before anything else: the rounds after it, converted at the same time,
+  // start from them.
+  void cache_accounts_after() {
+    if (!g_account_cache) {
+      return;
+    }
+    for (const auto& state : parsed_block_.mc_block_.shard_blocks_diff_) {
+      try {
+        block::gen::Block::Record blk;
+        block::gen::BlockExtra::Record extra;
+        if (!tlb::unpack_cell(state.block_data->root_cell(), blk) || !tlb::unpack_cell(blk.extra, extra)) {
+          continue;
+        }
+        auto dicts = unpack_state_update_accounts(blk.state_update, 1);
+        if (dicts.empty()) {
+          continue;
+        }
+        vm::AugmentedDictionary account_blocks{vm::load_cell_slice_ref(extra.account_blocks), 256,
+                                               block::tlb::aug_ShardAccountBlocks};
+        account_blocks.check_for_each_extra([&](Ref<CellSlice> value, Ref<CellSlice>, td::ConstBitPtr, int) {
+          block::gen::AccountBlock::Record rec;
+          block::gen::HASH_UPDATE::Record update;
+          if (!tlb::csr_unpack(value, rec) ||
+              !tlb::type_unpack_cell(rec.state_update, block::gen::t_HASH_UPDATE_Account, update) ||
+              update.new_hash == account_none_hash() || accounts_.count(update.new_hash) != 0) {
+            return true;
+          }
+          auto root = account_root_in(dicts, rec.account_addr, update.new_hash);
+          if (root.not_null()) {
+            if (auto account = account_from_root(root)) {
+              accounts_.emplace(update.new_hash, account);
+              g_account_cache->put(update.new_hash, account, account->account.SpaceUsedLong() + 160);
+            }
+          }
+          return true;
+        });
+      } catch (vm::VmVirtError&) {
+      } catch (vm::VmError&) {
+      }
+    }
   }
 
   void fill_block_info(pb::BlockInfo* out, const Ref<Cell>& cell) {
@@ -1084,8 +1219,8 @@ class Converter {
     out->mutable_state_update()->set_old_hash(bytes(update.old_hash));
     out->mutable_state_update()->set_new_hash(bytes(update.new_hash));
 
-    const auto* before = account_at(update.old_hash);
-    const auto* after = account_at(update.new_hash);
+    const auto* before = account_at(rec.account_addr, update.old_hash, false);
+    const auto* after = account_at(rec.account_addr, update.new_hash, true);
     if (before == nullptr || after == nullptr) {
       return;  // account_at has recorded the error
     }
@@ -1096,56 +1231,141 @@ class Converter {
     }
     auto* state_init =
         out->mutable_state_after()->mutable_account()->mutable_storage()->mutable_state()->mutable_account_active();
-    auto changed = [before](const Ref<Cell>& cell, Ref<Cell> LoadedAccount::*field) {
-      return cell.not_null() && ((before->*field).is_null() || (before->*field)->get_hash() != cell->get_hash());
+    using CellHashField = std::optional<vm::CellHash> LoadedAccount::*;
+    auto changed = [before](const std::optional<vm::CellHash>& hash, CellHashField field) {
+      return hash && (!(before->*field) || *(before->*field) != *hash);
     };
     if (changed(after->code, &LoadedAccount::code)) {
-      fill_cell(state_init->mutable_code(), after->code, true);
+      if (auto code = loaded_tree(*after->code); code.not_null()) {
+        fill_cell(state_init->mutable_code(), code, true);
+      }
     }
     if (changed(after->data, &LoadedAccount::data)) {
-      auto boc = serialize_boc(after->data);
-      if (boc.is_error()) {
-        return fail(boc.move_as_error());
+      // Data over the limit is found out before all its cells are loaded.
+      if (!parsed_block_.cell_db_reader_) {
+        return fail(td::Status::Error("cell db reader is missing"));
       }
-      if (boc.ok().size() <= kMaxDataBocSize) {
-        state_init->mutable_data()->set_boc(boc.move_as_ok());
-      } else {
+      auto data = firehose::load_cell_tree_up_to(*after->data, *parsed_block_.cell_db_reader_, kMaxDataBocSize);
+      if (data.is_error()) {
+        return fail(data.move_as_error_prefix(PSLICE() << "cell " << after->data->to_hex() << ": "));
+      }
+      if (data.ok().is_null()) {
         state_init->mutable_data()->set_boc_omitted(true);
+      } else {
+        auto boc = serialize_boc(data.ok());
+        if (boc.is_error()) {
+          return fail(boc.move_as_error());
+        }
+        if (boc.ok().size() <= kMaxDataBocSize) {
+          state_init->mutable_data()->set_boc(boc.move_as_ok());
+        } else {
+          state_init->mutable_data()->set_boc_omitted(true);
+        }
       }
     }
     if (changed(after->library, &LoadedAccount::library)) {
-      fill_cell(state_init->mutable_library(), after->library, true);
+      if (auto library = loaded_tree(*after->library); library.not_null()) {
+        fill_cell(state_init->mutable_library(), library, true);
+      }
     }
+  }
+
+  // The cells of code, data and library from the cell cache, loading the
+  // rest: a BOC of them visits every cell. Null on error.
+  Ref<Cell> loaded_tree(const vm::CellHash& hash) {
+    if (!parsed_block_.cell_db_reader_) {
+      fail(td::Status::Error("cell db reader is missing"));
+      return {};
+    }
+    auto tree = firehose::load_cell_tree(hash, *parsed_block_.cell_db_reader_);
+    if (tree.is_error()) {
+      fail(tree.move_as_error_prefix(PSLICE() << "cell " << hash.to_hex() << ": "));
+      return {};
+    }
+    return tree.move_as_ok();
+  }
+
+  // The account at addr with this state hash, before (after = false) or after
+  // the block being filled: from the account cache, from the state update of
+  // the block, or else from the cell db.
+  const LoadedAccount* account_at(const td::Bits256& addr, const td::Bits256& hash, bool after) {
+    auto it = accounts_.find(hash);
+    if (it == accounts_.end()) {
+      it = accounts_.emplace(hash, find_account(addr, hash, after)).first;
+    }
+    return it->second.get();
+  }
+
+  std::shared_ptr<const LoadedAccount> find_account(const td::Bits256& addr, const td::Bits256& hash, bool after) {
+    if (hash == account_none_hash()) {
+      auto account = std::make_shared<LoadedAccount>();
+      account->account.mutable_account_none();
+      return account;
+    }
+    if (g_account_cache) {
+      if (auto cached = g_account_cache->get(hash)) {
+        g_account_stats.cache++;
+        return std::move(*cached);
+      }
+    }
+    std::shared_ptr<const LoadedAccount> account;
+    if (auto root = account_root_in(state_update_accounts_[after ? 1 : 0], addr, hash); root.not_null()) {
+      account = account_from_root(root);
+    }
+    if (account) {
+      g_account_stats.state_update++;
+    } else {
+      account = load_account(hash);
+      if (!account) {
+        return nullptr;
+      }
+      g_account_stats.cell_db++;
+    }
+    // An account converted with an error is not reused: its block is not written.
+    if (g_account_cache && error_.is_ok()) {
+      g_account_cache->put(hash, account, account->account.SpaceUsedLong() + 160);
+    }
+    return account;
+  }
+
+  // The account with this root cell from a state update, null if it needs a
+  // cell the update pruned.
+  std::shared_ptr<const LoadedAccount> account_from_root(const Ref<Cell>& root) {
+    // The fill functions record an error on a cell that does not unpack: here
+    // that means only that the cell db is read instead.
+    auto error = std::move(error_);
+    error_ = td::Status::OK();
+    auto account = std::make_shared<LoadedAccount>();
+    try {
+      fill_account(account.get(), root);
+    } catch (vm::VmVirtError&) {
+      account.reset();
+    } catch (vm::VmError&) {
+      account.reset();
+    }
+    if (error_.is_error()) {
+      account.reset();
+    }
+    error_ = std::move(error);
+    return account;
   }
 
   // Accounts are loaded from the cell db by hash. The cell db keeps a cell while
   // any kept state references it, so the state a block starts from is there as
   // long as the node keeps the state of the previous block. A missing account
   // is an error: the block is not written without it.
-  const LoadedAccount* account_at(const td::Bits256& hash) {
-    auto it = accounts_.find(hash);
-    if (it == accounts_.end()) {
-      it = accounts_.emplace(hash, load_account(hash)).first;
-    }
-    return it->second ? &*it->second : nullptr;
-  }
-
-  std::optional<LoadedAccount> load_account(const td::Bits256& hash) {
-    LoadedAccount account;
-    if (hash == account_none_hash()) {
-      account.account.mutable_account_none();
-      return account;
-    }
+  std::shared_ptr<const LoadedAccount> load_account(const td::Bits256& hash) {
     if (!parsed_block_.cell_db_reader_) {
       fail(td::Status::Error("cell db reader is missing"));
-      return std::nullopt;
+      return nullptr;
     }
     auto cell = parsed_block_.cell_db_reader_->load_cell(hash.as_slice());
     if (cell.is_error()) {
       fail(cell.move_as_error_prefix(PSLICE() << "account state " << hash.to_hex() << ": "));
-      return std::nullopt;
+      return nullptr;
     }
-    fill_account(&account, cell.move_as_ok());
+    auto account = std::make_shared<LoadedAccount>();
+    fill_account(account.get(), cell.move_as_ok());
     return account;
   }
 
@@ -1264,9 +1484,12 @@ class Converter {
       fill_cell(out->mutable_library(), library, with_bocs);
     }
     if (cells != nullptr) {
-      cells->code = std::move(code);
-      cells->data = std::move(data);
-      cells->library = std::move(library);
+      auto hash = [](const Ref<Cell>& cell) {
+        return cell.not_null() ? std::optional<vm::CellHash>(cell->get_hash()) : std::nullopt;
+      };
+      cells->code = hash(code);
+      cells->data = hash(data);
+      cells->library = hash(library);
     }
   }
 
@@ -1570,8 +1793,29 @@ td::Result<std::string> serialize_deterministic(const google::protobuf::Message&
 
 }  // namespace
 
+void set_account_cache_size(std::size_t bytes) {
+  g_account_cache = bytes == 0 ? nullptr : std::make_unique<AccountCache>(bytes);
+}
+
+std::string firehose_account_stats() {
+  td::StringBuilder sb;
+  sb << "accounts " << g_account_stats.cache.load() << " cached, " << g_account_stats.state_update.load()
+     << " from state updates, " << g_account_stats.cell_db.load() << " from the cell db";
+  if (g_account_cache) {
+    sb << ", account cache " << td::format::as_size(g_account_cache->bytes());
+  }
+  return sb.as_cslice().str();
+}
+
 td::Result<FirehoseBlock> make_firehose_block(const ParsedBlock& parsed_block) {
-  TRY_RESULT(block, Converter(parsed_block).convert());
+  // A block is many thousands of small messages and strings: on an arena they
+  // are allocated in bulk and freed at once.
+  google::protobuf::ArenaOptions arena_options;
+  arena_options.start_block_size = 1 << 20;
+  arena_options.max_block_size = 16 << 20;
+  google::protobuf::Arena arena(arena_options);
+  auto& block = *google::protobuf::Arena::CreateMessage<pb::Block>(&arena);
+  TRY_STATUS(Converter(parsed_block).convert(&block));
 
   const auto& mc_block = block.masterchain_block();
   // a masterchain block has a single previous block

@@ -18,6 +18,7 @@ private:
   float catch_up_interval_;
   bool force_catch_up_on_get_max_seqno_;
   std::optional<td::uint64> celldb_cache_size_;
+  bool celldb_direct_io_;
   bool is_ready_ = false;
   ton::BlockSeqno last_known_seqno_{0};
   bool catch_up_in_progress_{false};
@@ -32,12 +33,14 @@ private:
   td::actor::ActorOwn<ton::validator::RootDb> db_;
 public:
   // celldb_cache_size is the block cache of the cell db, RocksDB's small default when unset.
+  // With celldb_direct_io the cell db is read past the page cache, which then
+  // holds none of it: the block cache is its only cache.
   DbScanner(std::string db_root, ScannerMode mode, std::optional<std::string> secondary_working_dir = std::nullopt,
             float catch_up_interval = 1.0, bool force_catch_up_on_get_max_seqno = true,
-            std::optional<td::uint64> celldb_cache_size = std::nullopt)
+            std::optional<td::uint64> celldb_cache_size = std::nullopt, bool celldb_direct_io = false)
     : db_root_(db_root), mode_(mode), secondary_working_dir_(secondary_working_dir),
       catch_up_interval_(catch_up_interval), force_catch_up_on_get_max_seqno_(force_catch_up_on_get_max_seqno),
-      celldb_cache_size_(celldb_cache_size) {}
+      celldb_cache_size_(celldb_cache_size), celldb_direct_io_(celldb_direct_io) {}
 
   void start_up() override;
   void alarm() override;

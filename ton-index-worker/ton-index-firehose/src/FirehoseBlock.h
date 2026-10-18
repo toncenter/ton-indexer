@@ -1,4 +1,5 @@
 #pragma once
+#include <cstddef>
 #include <cstdint>
 #include <string>
 #include "td/utils/Status.h"
@@ -19,6 +20,12 @@ struct FirehoseBlock {
 };
 
 td::Result<FirehoseBlock> make_firehose_block(const ParsedBlock& parsed_block);
+
+// Sets the size in bytes of the cache of converted accounts across blocks; 0 disables it.
+void set_account_cache_size(std::size_t bytes);
+
+// Counts of where converted accounts came from, for the log.
+std::string firehose_account_stats();
 
 // The payload as JSON with proto field names, to compare against API v3.
 td::Result<std::string> firehose_payload_to_json(const std::string& payload);

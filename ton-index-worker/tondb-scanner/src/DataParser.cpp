@@ -59,12 +59,14 @@ td::Status ParseQuery::parse_impl() {
     TRY_RESULT_ASSIGN(schema_block.transactions, parse_transactions(block_ds.block_data->block_id(), blk, info, extra, account_states_to_get));
     g_statistics.record_time(PARSE_TRANSACTION, transactions_timer.elapsed() * 1e6, schema_block.transactions.size());
 
-    td::Timer acc_states_timer;
-    TRY_RESULT(account_states_fast, parse_account_states_new(schema_block.workchain, schema_block.gen_utime, account_states_to_get));
-    g_statistics.record_time(PARSE_ACCOUNT_STATE, acc_states_timer.elapsed() * 1e6, account_states_fast.size());
-    
-    for (auto &acc : account_states_fast) {
-      result->account_states_.push_back(std::move(acc));
+    if (parse_account_states) {
+      td::Timer acc_states_timer;
+      TRY_RESULT(account_states_fast, parse_account_states_new(schema_block.workchain, schema_block.gen_utime, account_states_to_get));
+      g_statistics.record_time(PARSE_ACCOUNT_STATE, acc_states_timer.elapsed() * 1e6, account_states_fast.size());
+
+      for (auto &acc : account_states_fast) {
+        result->account_states_.push_back(std::move(acc));
+      }
     }
 
     result->blocks_.push_back(schema_block);

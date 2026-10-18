@@ -25,6 +25,7 @@ add_executable(ton-index-firehose
     src/main.cpp
     src/InsertManagerFirehose.cpp
     src/FirehoseBlock.cpp
+    src/CellCache.cpp
     src/FirehoseOutput.cpp
     ${FIREHOSE_PROTO_SRCS}
 )

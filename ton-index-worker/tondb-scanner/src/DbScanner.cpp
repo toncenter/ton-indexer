@@ -298,6 +298,7 @@ void DbScanner::start_up() {
   if (celldb_cache_size_) {
     opts.write().set_celldb_cache_size(celldb_cache_size_.value());
   }
+  opts.write().set_celldb_direct_io(celldb_direct_io_);
   if (mode_ == dbs_secondary) {
     CHECK(secondary_working_dir_.has_value());
     opts.write().set_secondary_working_dir(secondary_working_dir_.value());

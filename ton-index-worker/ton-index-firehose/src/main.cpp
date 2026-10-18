@@ -9,6 +9,7 @@
 
 #include "crypto/vm/cp0.h"
 
+#include "CellCache.h"
 #include "InsertManagerFirehose.h"
 #include "DataParser.h"
 #include "DbScanner.h"
@@ -47,6 +48,8 @@ int main(int argc, char *argv[]) {
 
   td::uint32 threads = 7;
   td::uint64 celldb_cache_size = td::uint64{1024} << 20;  // RocksDB's default is far too small for cell reads
+  td::uint64 cell_cache_size = td::uint64{4096} << 20;
+  td::uint64 account_cache_size = td::uint64{1024} << 20;
   td::uint32 io_workers = 1;
   td::int32 stats_timeout = 10;
   std::string db_root;
@@ -59,6 +62,7 @@ int main(int argc, char *argv[]) {
   std::string merged_blocks_dir;
   std::string json_dir;
   bool testnet = false;
+  bool celldb_direct_io = false;
   QueueState max_queue{10000, 100000, 1000000, 1000000};
 
   td::OptionParser p;
@@ -107,6 +111,15 @@ int main(int argc, char *argv[]) {
     max_queue.blocks_ = v * 10;
     return td::Status::OK();
   });
+  p.add_checked_option('\0', "max-queue-messages",
+                       "Max transactions and max messages of the blocks waiting for output (default: 1000000); "
+                       "blocks are written in order, so a slow one makes the others wait in the queue",
+                       [&](td::Slice value) {
+                         TRY_RESULT(v, parse_uint(value, "max-queue-messages"));
+                         max_queue.txs_ = static_cast<std::int32_t>(v);
+                         max_queue.msgs_ = static_cast<std::int32_t>(v);
+                         return td::Status::OK();
+                       });
   p.add_checked_option('t', "threads", "Scheduler threads (default: 7)", [&](td::Slice value) {
     TRY_RESULT_ASSIGN(threads, parse_uint(value, "threads"));
     return td::Status::OK();
@@ -116,6 +129,20 @@ int main(int argc, char *argv[]) {
     stats_timeout = static_cast<td::int32>(v);
     return td::Status::OK();
   });
+  p.add_checked_option('\0', "cell-cache-size",
+                       "Cache of loaded code, data and library cells across blocks in MiB, 0 to disable (default: 4096)",
+                       [&](td::Slice value) {
+                         TRY_RESULT(v, parse_uint(value, "cell-cache-size"));
+                         cell_cache_size = static_cast<td::uint64>(v) << 20;
+                         return td::Status::OK();
+                       });
+  p.add_checked_option('\0', "account-cache-size",
+                       "Cache of converted accounts across blocks in MiB, 0 to disable (default: 1024)",
+                       [&](td::Slice value) {
+                         TRY_RESULT(v, parse_uint(value, "account-cache-size"));
+                         account_cache_size = static_cast<td::uint64>(v) << 20;
+                         return td::Status::OK();
+                       });
   p.add_checked_option('\0', "celldb-cache-size", "Block cache of the node cell db in MiB (default: 1024)",
                        [&](td::Slice value) {
                          TRY_RESULT(v, parse_uint(value, "celldb-cache-size"));
@@ -123,6 +150,10 @@ int main(int argc, char *argv[]) {
                          return td::Status::OK();
                        });
   p.add_option('\0', "testnet", "Use for testnet", [&]() { testnet = true; });
+  p.add_option('\0', "celldb-direct-io",
+               "Read the cell db with direct IO: many threads reading through the page cache contend in the kernel, "
+               "so the block cache (--celldb-cache-size) becomes the only cache and should be large",
+               [&]() { celldb_direct_io = true; });
   auto S = p.run(argc, argv);
   if (S.is_error()) {
     LOG(ERROR) << "failed to parse options: " << S.move_as_error();
@@ -171,6 +202,10 @@ int main(int argc, char *argv[]) {
 
   const float db_catch_up_interval = bounded_range ? 60.0f : 1.0f;
   NftItemDetectorR::is_testnet = testnet;
+  // Blocks carry account states from their state updates, not from the parser.
+  ParseQuery::parse_account_states = false;
+  firehose::set_cell_cache_size(cell_cache_size);
+  set_account_cache_size(account_cache_size);
 
   auto finish_requested = std::make_shared<std::atomic_bool>(false);
   auto watcher = td::create_shared_destructor([finish_requested] {
@@ -185,7 +220,7 @@ int main(int argc, char *argv[]) {
   scheduler.run_in_context([&] {
     db_scanner_ = td::actor::create_actor<DbScanner>("scanner", db_root, dbs_secondary,
                                                      working_dir + "/secondary_logs", db_catch_up_interval,
-                                                     !bounded_range, celldb_cache_size);
+                                                     !bounded_range, celldb_cache_size, celldb_direct_io);
   });
   scheduler.run_in_context([&, watcher = std::move(watcher)] {
     index_scheduler_ = td::actor::create_actor<IndexScheduler>("indexscheduler", db_scanner_.get(),
