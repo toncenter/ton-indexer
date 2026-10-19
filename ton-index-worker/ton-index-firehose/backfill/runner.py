@@ -29,6 +29,7 @@ import time
 BUNDLE = 100
 # The tool opens every SST file of the cell db.
 OPEN_FILES = 1048576
+# The most a broken trace raises the prewarm to; a prewarm set higher by hand is kept.
 MAX_PREWARM = 20000
 MAX_ATTEMPTS = 3
 
@@ -201,7 +202,8 @@ class Runner:
                 self.chunks.update(chunk, status="failed", error=error)
                 return
             self.chunks.update(chunk, attempts=chunk["attempts"] + 1, error=error,
-                               prewarm=min(chunk["prewarm"] * 4, MAX_PREWARM) if broken else chunk["prewarm"])
+                               prewarm=max(chunk["prewarm"], min(chunk["prewarm"] * 4, MAX_PREWARM)) if broken
+                               else chunk["prewarm"])
         size = sum(f.stat().st_size for f in (chunk_dir / "merged").iterdir())
         blocks = chunk["to"] - chunk["from"] + 1
         log(f"{chunk['id']}: converted in {elapsed:.0f}s, {blocks / elapsed:.1f} blocks/s, "
