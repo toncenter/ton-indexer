@@ -1,0 +1,27 @@
+[Unit]
+Description=firecore firehose: block streams of merged-blocks and the relayer
+After=network-online.target garage.service firecore-relayer.service
+Wants=network-online.target
+
+[Service]
+User=firecore
+Group=firecore
+EnvironmentFile=/etc/firecore/garage.env
+WorkingDirectory=/srv/scratch/firecore
+ExecStart=/usr/local/bin/firecore start firehose --config-file= \
+  --data-dir=/srv/scratch/firecore/firehose --log-to-file=false \
+  --common-first-streamable-block=1 \
+  "--common-merged-blocks-store-url=s3://localhost:3900/firehose/merged-blocks?region=garage&insecure=true" \
+  "--common-one-block-store-url=s3://localhost:3900/firehose/one-blocks?region=garage&insecure=true" \
+  "--common-forked-blocks-store-url=s3://localhost:3900/firehose/forked-blocks?region=garage&insecure=true" \
+  --common-live-blocks-addr=127.0.0.1:10014 \
+  --advertise-chain-name=ton --advertise-block-id-encoding=hex --ignore-advertise-validation \
+  --firehose-grpc-listen-addr=127.0.0.1:10015 \
+  --metrics-listen-addr=192.0.2.20:9102 --pprof-listen-addr=127.0.0.1:6063 --log-level-switcher-listen-addr=127.0.0.1:1068
+Restart=always
+RestartSec=5
+LimitNOFILE=1048576
+MemoryMax=32G
+
+[Install]
+WantedBy=multi-user.target

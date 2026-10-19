@@ -1,0 +1,31 @@
+[Unit]
+Description=firecore substreams tier1 and tier2
+After=network-online.target garage.service firecore-relayer.service
+Wants=network-online.target
+
+[Service]
+User=firecore
+Group=firecore
+EnvironmentFile=/etc/firecore/garage.env
+WorkingDirectory=/srv/scratch/firecore
+ExecStart=/usr/local/bin/firecore start substreams-tier1 substreams-tier2 --config-file= \
+  --data-dir=/srv/scratch/firecore/substreams --log-to-file=false \
+  --common-first-streamable-block=1 \
+  "--common-merged-blocks-store-url=s3://localhost:3900/firehose/merged-blocks?region=garage&insecure=true" \
+  "--common-one-block-store-url=s3://localhost:3900/firehose/one-blocks?region=garage&insecure=true" \
+  "--common-forked-blocks-store-url=s3://localhost:3900/firehose/forked-blocks?region=garage&insecure=true" \
+  --common-live-blocks-addr=127.0.0.1:10014 \
+  --advertise-chain-name=ton --advertise-block-id-encoding=hex --ignore-advertise-validation \
+  --substreams-tier1-block-type=sf.ton.type.v1.Block \
+  --substreams-tier1-grpc-listen-addr=127.0.0.1:10016 \
+  --substreams-tier2-grpc-listen-addr=127.0.0.1:10017 \
+  --substreams-tier1-subrequests-endpoint=127.0.0.1:10017 \
+  --substreams-state-store-url=/srv/scratch/firecore/substreams-states \
+  --metrics-listen-addr=192.0.2.20:9105 --pprof-listen-addr=127.0.0.1:6064 --log-level-switcher-listen-addr=127.0.0.1:1069
+Restart=always
+RestartSec=5
+LimitNOFILE=1048576
+MemoryMax=128G
+
+[Install]
+WantedBy=multi-user.target

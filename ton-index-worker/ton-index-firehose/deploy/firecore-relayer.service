@@ -14,7 +14,7 @@ ExecStart=/usr/local/bin/firecore start relayer --config-file= \
   "--common-one-block-store-url=s3://localhost:3900/firehose/one-blocks?region=garage&insecure=true" \
   --relayer-source=192.0.2.10:10010 \
   --relayer-grpc-listen-addr=127.0.0.1:10014 --relayer-http-healthz-addr=127.0.0.1:10018 \
-  --metrics-listen-addr=127.0.0.1:9104 --pprof-listen-addr=127.0.0.1:6062 --log-level-switcher-listen-addr=127.0.0.1:1067
+  --metrics-listen-addr=192.0.2.20:9104 --pprof-listen-addr=127.0.0.1:6062 --log-level-switcher-listen-addr=127.0.0.1:1067
 Restart=always
 RestartSec=5
 LimitNOFILE=1048576

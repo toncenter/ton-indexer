@@ -322,10 +322,9 @@ Reader-node разворачивается плейбуком `deploy-firehose.y
 | `services.firehose_reader.node_args` | аргументы tool: `--from <X 100 000>`, `--prewarm 3000`, потоки |
 | `services.firehose_reader.additional_args` | флаги reader-node, в том числе `--reader-node-start-block-num <X 100 000>` |
 
-В inventory для каждого хоста задать `firehose_reader_grpc_addr` — приватный
-адрес, к которому подключается relayer, например
-`<READER_PRIVATE_IP>:10010`. Остальные порты reader-node слушают только
-localhost.
+В inventory для каждого хоста задать `firehose_reader_private_ip` — приватный
+адрес хоста. На нём слушают поток blocks для relayer (`:10010`) и метрики
+(`:9102`), остальные порты reader-node — только localhost.
 
 ```bash
 ansible-playbook -i <INVENTORY> deploy-firehose.yaml \
@@ -353,7 +352,7 @@ ansible-playbook -i <INVENTORY> deploy-firehose.yaml \
 - После старта reader-node догоняет сеть за минуты: на этих эпохах tool выдаёт
   1–2 тысячи blocks в секунду, дальше отставание от сети — 1–2 секунды.
 
-## 10. Запустить merger и relayer на store host
+## 10. Запустить firecore на store host
 
 firecore ставится из release с проверкой sha256:
 
@@ -372,16 +371,35 @@ sudo install -d -m 0755 /etc/firecore
 sudo install -o root -g firecore -m 0640 <FIRECORE_KEY_FILE> /etc/firecore/garage.env
 ```
 
-Units лежат в `ton-index-worker/ton-index-firehose/deploy`. В
-`firecore-relayer.service` указать в `--relayer-source` адрес reader-node,
-затем:
+Units лежат в `ton-index-worker/ton-index-firehose/deploy`, по одному на
+процесс:
+
+| Unit | Компоненты | gRPC | Метрики |
+| --- | --- | --- | --- |
+| `firecore-merger` | merger | `127.0.0.1:10012` | `<STORE_PRIVATE_IP>:9103` |
+| `firecore-relayer` | relayer | `127.0.0.1:10014` | `<STORE_PRIVATE_IP>:9104` |
+| `firecore-firehose` | firehose | `127.0.0.1:10015` | `<STORE_PRIVATE_IP>:9102` |
+| `firecore-substreams` | substreams tier1 и tier2 | `127.0.0.1:10016`, `127.0.0.1:10017` | `<STORE_PRIVATE_IP>:9105` |
+
+Метрики слушают приватный адрес хоста, остальные порты — localhost. В units
+заменить адрес метрик на приватный адрес store host, а в
+`firecore-relayer.service` указать в `--relayer-source` адрес reader-node.
+Затем:
 
 ```bash
-sudo install -m 0644 firecore-merger.service firecore-relayer.service /etc/systemd/system/
-sudo install -d -o firecore -g firecore /srv/scratch/firecore/merger /srv/scratch/firecore/relayer
+sudo install -m 0644 firecore-merger.service firecore-relayer.service \
+  firecore-firehose.service firecore-substreams.service /etc/systemd/system/
+sudo install -d -o firecore -g firecore /srv/scratch/firecore/merger /srv/scratch/firecore/relayer \
+  /srv/scratch/firecore/firehose /srv/scratch/firecore/substreams /srv/scratch/firecore/substreams-states
 sudo systemctl daemon-reload
 sudo systemctl enable --now firecore-merger firecore-relayer
+sudo systemctl enable --now firecore-firehose firecore-substreams
 ```
+
+Firehose и substreams берут историю из merged-blocks, live blocks — из
+relayer (`--common-live-blocks-addr=127.0.0.1:10014`), а промежуток между ними
+— из one-blocks. Кэш состояний substreams лежит в
+`/srv/scratch/firecore/substreams-states`.
 
 Merger при старте листает merged-blocks (на миллионе bundles около 30 секунд)
 и пишет, с какого блока продолжает:
@@ -409,27 +427,9 @@ Live и бэкфил дают одинаковые данные: bundle, соб�
 files, побайтно совпадает (после распаковки zstd) с bounded-конвертацией того
 же диапазона. Это стоит проверить на одном bundle после первого развёртывания.
 
-## 12. Firehose и Substreams
+## 12. Проверить firehose и substreams
 
-Firehose и substreams tiers запускаются на store host тем же `firecore`, от
-пользователя `firecore` с `EnvironmentFile=/etc/firecore/garage.env`. Пример
-запуска:
-
-```text
-firecore start firehose substreams-tier1 substreams-tier2 --config-file= \
-  --data-dir=/srv/scratch/firecore/data --log-to-file=false \
-  --common-first-streamable-block=1 \
-  "--common-merged-blocks-store-url=s3://localhost:3900/firehose/merged-blocks?region=garage&insecure=true" \
-  --common-live-blocks-addr=127.0.0.1:10014 \
-  --advertise-chain-name=ton --advertise-block-id-encoding=hex --ignore-advertise-validation \
-  --substreams-tier1-block-type=sf.ton.type.v1.Block \
-  --firehose-grpc-listen-addr=127.0.0.1:10015 \
-  --substreams-tier1-grpc-listen-addr=127.0.0.1:10016 \
-  --substreams-tier2-grpc-listen-addr=127.0.0.1:10017 \
-  --substreams-tier1-subrequests-endpoint=127.0.0.1:10017 \
-  --substreams-state-store-url=/srv/scratch/firecore/substreams-states \
-  --metrics-listen-addr=127.0.0.1:9102
-```
+Особенности флагов в units:
 
 - Без `--config-file=` firecore ищет `./firehose.yaml` и не стартует.
 - `--advertise-*`, `--ignore-advertise-validation` и
@@ -440,6 +440,15 @@ firecore start firehose substreams-tier1 substreams-tier2 --config-file= \
 - По умолчанию порты слушают все интерфейсы: задать адреса явно.
 - `firecore tools print` и `check -f` декодируют blocks, только если передать
   proto: `--proto-paths <DIR>` с содержимым `ton-index-firehose/proto`.
+
+Проверка firehose — несколько исторических и live blocks:
+
+```bash
+firecore tools firehose-client --plaintext --proto-paths /etc/firecore/proto -o jsonl \
+  127.0.0.1:10015 40000000:40000002
+firecore tools firehose-client --plaintext --proto-paths /etc/firecore/proto -o jsonl \
+  127.0.0.1:10015 -- -2
+```
 
 Smoke-модуль `ton-index-worker/ton-index-firehose/substreams/smoke` считает
 shard blocks, транзакции и traces каждого блока и держит итоги в store, так что
@@ -465,7 +474,58 @@ blocks. Store-модуль нельзя вывести напрямую, поэ�
 `map_totals`. `--limit-processed-blocks 0` снимает ограничение CLI в 10 000
 blocks на подготовку stores.
 
-## 13. Частые ошибки
+## 13. Мониторинг
+
+Метрики всех процессов собираются одним Prometheus job. Пример для
+`scrape_configs`:
+
+```yaml
+  - job_name: firehose
+    scrape_interval: 5s
+    scrape_timeout: 5s
+    static_configs:
+      - targets: ['<ARCHIVE_NODE_HOST>:9102']
+        labels: {network: mainnet, component: reader-node}
+      - targets: ['<STORE_HOST>:9103']
+        labels: {network: mainnet, component: merger}
+      - targets: ['<STORE_HOST>:9104']
+        labels: {network: mainnet, component: relayer}
+      - targets: ['<STORE_HOST>:9102']
+        labels: {network: mainnet, component: firehose}
+      - targets: ['<STORE_HOST>:9105']
+        labels: {network: mainnet, component: substreams}
+```
+
+Основные метрики:
+
+| Метрика | Значение |
+| --- | --- |
+| `head_block_time_drift{app}` | секунды между текущим временем и временем последнего block компонента; растёт и тогда, когда blocks перестали приходить |
+| `head_block_number{app}` | номер последнего block компонента |
+| `ready{app}` | готовность приложения; каждый процесс отдаёт её для всех приложений firecore, для чужих — `0` |
+| `head_block_relative_time_bucket{app}` | гистограмма задержки blocks на выходе firehose (`firehose_output`) и substreams (`substreams_output`) |
+
+Значения `app`: `reader-node`, `relayer`, `merger`, `firehose`,
+`substreams-tier1` (в `ready` — `substreams_tier1` и `substreams_tier2`).
+Masterchain blocks идут каждые 0.3–0.4 секунды, в норме drift reader-node и
+relayer — 1–3 секунды, merger — до пары секунд больше.
+
+Выражения для алертов:
+
+| Алерт | Выражение | Рекомендация |
+| --- | --- | --- |
+| reader-node отстаёт от сети | `head_block_time_drift{job="firehose", app="reader-node"} > 60` | for 2m; отставание самой ноды тоже попадает сюда |
+| relayer отстаёт от сети | `head_block_time_drift{job="firehose", app="relayer"} > 60` | for 2m |
+| merger отстаёт от сети | `head_block_time_drift{job="firehose", app="merger"} > 120` | for 5m |
+| процесс недоступен | `up{job="firehose"} == 0` | for 1m |
+| процесс не готов | `max by (component) (ready{job="firehose"}) == 0` | for 2m |
+
+Если процесс упал, его метрики пропадают и drift не вычисляется: алерт на
+`up` обязателен. Для отставания от сети достаточно reader-node, relayer и
+merger: firehose и substreams получают live blocks от relayer и отстают вместе
+с ним.
+
+## 14. Частые ошибки
 
 | Симптом | Причина и решение |
 | --- | --- |

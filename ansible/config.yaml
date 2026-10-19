@@ -57,7 +57,8 @@ services:
   firehose_reader:
     # ton-index-firehose: --from is for the first start only, then it resumes from its cursor
     node_args: --db /var/ton-work/db --working-dir /var/ton-firehose --from 100100000 --prewarm 3000 --threads 16 --max-active-tasks 16
-    # firecore reader-node: only the block stream for the relayer listens beyond localhost
+    # firecore reader-node: the block stream for the relayer and the metrics listen on the private
+    # address, everything else on localhost
     additional_args: >-
       --data-dir /var/firehose-reader --log-to-file=false
       --common-first-streamable-block 1
@@ -65,9 +66,9 @@ services:
       --reader-node-start-block-num 100100000
       --reader-node-one-block-suffix {{ inventory_hostname | regex_replace('[^A-Za-z0-9]', '') }}
       --reader-node-blocks-chan-capacity 2000
-      --reader-node-grpc-listen-addr {{ firehose_reader_grpc_addr }}
+      --reader-node-grpc-listen-addr {{ firehose_reader_private_ip }}:10010
       --reader-node-manager-api-addr 127.0.0.1:10011
-      --metrics-listen-addr 127.0.0.1:9102
+      --metrics-listen-addr {{ firehose_reader_private_ip }}:9102
     directories: [/var/ton-firehose, /var/firehose-reader]
     environment_file: "{{ deploy_path }}/{{ stack_name }}__firehose_reader.env"
     memory_max: 32G

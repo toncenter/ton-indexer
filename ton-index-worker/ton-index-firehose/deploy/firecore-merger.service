@@ -15,7 +15,7 @@ ExecStart=/usr/local/bin/firecore start merger --config-file= \
   "--common-merged-blocks-store-url=s3://localhost:3900/firehose/merged-blocks?region=garage&insecure=true" \
   "--common-forked-blocks-store-url=s3://localhost:3900/firehose/forked-blocks?region=garage&insecure=true" \
   --merger-grpc-listen-addr=127.0.0.1:10012 --merger-http-healthz-addr=127.0.0.1:10013 \
-  --metrics-listen-addr=127.0.0.1:9103 --pprof-listen-addr=127.0.0.1:6061 --log-level-switcher-listen-addr=127.0.0.1:1066
+  --metrics-listen-addr=192.0.2.20:9103 --pprof-listen-addr=127.0.0.1:6061 --log-level-switcher-listen-addr=127.0.0.1:1066
 Restart=always
 RestartSec=5
 LimitNOFILE=1048576
