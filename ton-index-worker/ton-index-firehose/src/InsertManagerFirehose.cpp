@@ -92,17 +92,20 @@ void InsertManagerFirehose::write_ready() {
       // and resumes from the cursor.
       LOG(FATAL) << "Failed to convert masterchain block " << task.mc_seqno_ << ": " << block.move_as_error();
     }
-    // The round stays in the queue until every output has written it, which
-    // bounds the bundles being compressed; its parsed block is not needed.
-    auto queue_state = task.get_queue_state();
+    // The parsed block is freed here, so the round leaves the queue. It is
+    // inserted once every output has written it: a bundle is written when its
+    // last round comes, and rounds kept in the queue until then would stop the
+    // scheduler from reading that round when a bundle of them is over the
+    // queue limit (around seqno 3.29M, rounds of 90k transactions).
+    queue_state_ -= task.get_queue_state();
     task.parsed_block_.reset();
     {
       td::MultiPromise mp;
       auto ig = mp.init_guard();
       ig.add_promise(td::PromiseCreator::lambda(
-          [SelfId = actor_id(this), mc_seqno = task.mc_seqno_, queue_state,
+          [SelfId = actor_id(this), mc_seqno = task.mc_seqno_,
            promise = std::move(task.promise_)](td::Result<td::Unit> result) mutable {
-            td::actor::send_closure(SelfId, &InsertManagerFirehose::written, mc_seqno, queue_state, std::move(result),
+            td::actor::send_closure(SelfId, &InsertManagerFirehose::written, mc_seqno, std::move(result),
                                     std::move(promise));
           }));
       for (auto& output : outputs_) {
@@ -126,13 +129,12 @@ void InsertManagerFirehose::write_ready() {
   }
 }
 
-void InsertManagerFirehose::written(std::uint32_t mc_seqno, QueueState queue_state, td::Result<td::Unit> result,
+void InsertManagerFirehose::written(std::uint32_t mc_seqno, td::Result<td::Unit> result,
                                     td::Promise<InsertResult> promise) {
   if (result.is_error()) {
     // Blocks must not be skipped, so the process stops and resumes from the cursor.
     LOG(FATAL) << "Failed to write masterchain block " << mc_seqno << ": " << result.move_as_error();
   }
-  queue_state_ -= queue_state;
   promise.set_value(InsertResult{});
 }
 

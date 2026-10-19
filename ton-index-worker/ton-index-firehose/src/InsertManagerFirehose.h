@@ -50,7 +50,6 @@ class InsertManagerFirehose : public InsertManagerInterface {
 
   void converted(std::uint32_t mc_seqno, std::uint64_t generation, td::Result<FirehoseBlock> block);
   void write_ready();
-  void written(std::uint32_t mc_seqno, QueueState queue_state, td::Result<td::Unit> result,
-               td::Promise<InsertResult> promise);
+  void written(std::uint32_t mc_seqno, td::Result<td::Unit> result, td::Promise<InsertResult> promise);
   td::Status save_cursor(std::uint32_t seqno);
 };
