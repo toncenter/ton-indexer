@@ -1,4 +1,4 @@
-tolk 1.4
+tolk 1.5.0
 
 struct StonfiPaymentRequestInfo {
     amount0_out: coins;

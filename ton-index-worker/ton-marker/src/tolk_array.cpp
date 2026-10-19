@@ -1,5 +1,7 @@
 #include "tolk_array.h"
 
+#include <string>
+
 namespace ton_marker {
 
 bool TolkArray::print_skip(tlb::JsonPrinter& pp, vm::CellSlice& cs) const {
@@ -9,7 +11,7 @@ bool TolkArray::print_skip(tlb::JsonPrinter& pp, vm::CellSlice& cs) const {
     if (!declared_count || !cs.fetch_ulong(1) || !cs.size_refs()) return false;
     auto chunk = cs.fetch_ref();
 
-    pp.write_raw("[");
+    std::string json = "[";
     unsigned count = 0;
     while (chunk.not_null()) {
         auto slice = vm::load_cell_slice(chunk);
@@ -26,17 +28,21 @@ bool TolkArray::print_skip(tlb::JsonPrinter& pp, vm::CellSlice& cs) const {
         const unsigned chunk_items = refs / refs_per_item_;
         for (unsigned i = 0; i < chunk_items; ++i) {
             const auto before_refs = slice.size_refs();
-            if (count && !pp.write_raw(",")) return false;
-            if (!item_.print_skip(pp, slice) || before_refs - slice.size_refs() != refs_per_item_) {
+            tlb::JsonPrinter item_printer;
+            if (!item_.print_skip(item_printer, slice) || !item_printer.ok() ||
+                before_refs - slice.size_refs() != refs_per_item_) {
                 return false;
             }
+            if (count) json += ',';
+            json += item_printer.get_json();
             ++count;
         }
         if (!slice.empty_ext()) return false;
         chunk = std::move(next);
     }
     if (count != declared_count) return false;
-    return pp.write_raw("]");
+    json += ']';
+    return pp.write_raw(json);
 }
 
 } // namespace ton_marker

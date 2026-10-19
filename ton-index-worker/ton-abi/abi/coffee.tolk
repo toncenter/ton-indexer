@@ -1,4 +1,4 @@
-tolk 1.4
+tolk 1.5.0
 
 struct (0b00) AssetTon {}
 
