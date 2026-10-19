@@ -89,7 +89,7 @@ void OverlayListener::start_up() {
         LOG(ERROR) << "Failed to parse inet_addr: " << inet_addr_ << ". OverlayListener stopped.";
         return;
     }
-    adnl_network_manager_ = ton::adnl::AdnlNetworkManager::create(td::narrow_cast<td::uint16>(addr.get_port()));
+    adnl_network_manager_ = ton::adnl::AdnlNetworkManager::create();
     ton::adnl::AdnlCategoryMask cat_mask;
     cat_mask[0] = true;
     td::actor::send_closure(adnl_network_manager_, &ton::adnl::AdnlNetworkManager::add_self_addr, addr, std::move(cat_mask), 0);
