@@ -23,10 +23,13 @@ du -s --block-size=1M /nvmepool/ton-db/archive/packages/arch* > arch_sizes.txt
 ## Run
 
 As a transient service, so it survives the ssh session and stops on
-`systemctl stop`. On a stopped db dump:
+`systemctl stop`. A runner that crashed is started again and goes on from its
+state; a tool killed for memory is a failed attempt of its chunk, not the end
+of the service (OOMPolicy=continue). On a stopped db dump:
 
 ```bash
-sudo systemd-run --unit=fh-backfill-history -p User=toncenter -p Group=toncenter \
+sudo systemd-run --unit=fh-backfill-history -p Restart=on-failure -p RestartSec=60 -p OOMPolicy=continue \
+  -p User=toncenter -p Group=toncenter \
   -p LimitNOFILE=1048576 -p MemoryMax=150G -p TimeoutStopSec=300 \
   -p StandardOutput=append:$HOME/fh-backfill/history.log -p StandardError=append:$HOME/fh-backfill/history.log \
   -E GARAGE_ENV=$HOME/.config/garage/backfill.env \
@@ -42,7 +45,8 @@ the node host lacks some libraries of the build, they are in `$H/lib`:
 
 ```bash
 H=/var/tmp/fh-backfill
-sudo systemd-run --unit=fh-backfill-tail -p User=validator -p Group=validator \
+sudo systemd-run --unit=fh-backfill-tail -p Restart=on-failure -p RestartSec=60 -p OOMPolicy=continue \
+  -p User=validator -p Group=validator \
   -p LimitNOFILE=1048576 -p MemoryMax=64G -p TimeoutStopSec=300 \
   -p StandardOutput=append:$H/tail.log -p StandardError=append:$H/tail.log \
   -E GARAGE_ENV=/etc/fh-backfill/backfill.env -E RCLONE=$H/rclone \
