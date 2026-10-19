@@ -1,0 +1,41 @@
+specVersion: v0.1.0
+package:
+  name: ton_smoke
+  version: v0.1.0
+  doc: Counts what every TON block holds; a smoke test of the TON Firehose.
+
+protobuf:
+  files:
+    - sf/ton/type/v1/type.proto
+    - smoke/v1/smoke.proto
+  importPaths:
+    - ../../proto
+    - ./proto
+
+binaries:
+  default:
+    type: wasm/rust-v1
+    file: ./target/wasm32-unknown-unknown/release/ton_smoke.wasm
+
+modules:
+  - name: map_block_stats
+    kind: map
+    inputs:
+      - source: sf.ton.type.v1.Block
+    output:
+      type: proto:smoke.v1.BlockStats
+
+  - name: store_totals
+    kind: store
+    updatePolicy: add
+    valueType: int64
+    inputs:
+      - map: map_block_stats
+
+  - name: map_totals
+    kind: map
+    inputs:
+      - map: map_block_stats
+      - store: store_totals
+    output:
+      type: proto:smoke.v1.Totals

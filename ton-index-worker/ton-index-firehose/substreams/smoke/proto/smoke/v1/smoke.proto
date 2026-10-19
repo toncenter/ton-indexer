@@ -1,0 +1,21 @@
+syntax = "proto3";
+
+package smoke.v1;
+
+// What a block of sf.ton.type.v1.Block holds, counted.
+message BlockStats {
+  uint32 seqno = 1;
+  uint32 gen_utime = 2;
+  uint32 shard_blocks = 3;
+  uint64 transactions = 4;
+  uint64 out_messages = 5;
+  uint32 traces = 6;
+}
+
+// The totals of store_totals after a block.
+message Totals {
+  uint32 seqno = 1;
+  int64 blocks = 2;
+  int64 transactions = 3;
+  int64 traces = 4;
+}
