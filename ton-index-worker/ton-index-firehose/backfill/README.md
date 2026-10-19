@@ -62,6 +62,15 @@ chunk is kept in `<state>/logs`.
 
 ## Check
 
+In minutes, from the runner states (copy the states of every machine to one
+place): the done chunks cover the range once, the store lists every bundle with
+the sizes the runner uploaded, and the blocks link up across every chunk
+boundary. The inside of a chunk was checked by the runner and the upload.
+
 ```bash
-GARAGE_ENV=... ./verify.py --rclone ./rclone-garage.sh --src garage:firehose/merged-blocks --from 1 --to 67880999
+GARAGE_ENV=... ./verify.py --rclone ./rclone-garage.sh --src garage:firehose/merged-blocks --from 1 --to 99999999 \
+  --states history states-live/history states-live/tail --jobs 16
 ```
+
+Without `--states` every bundle of the range is downloaded and read, at about
+the speed of the network.

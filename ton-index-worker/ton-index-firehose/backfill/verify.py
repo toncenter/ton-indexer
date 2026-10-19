@@ -1,14 +1,22 @@
 #!/usr/bin/env python3
 """Checks the merged-blocks bundles of a block range in the store.
 
-    verify.py --rclone RCLONE --src garage:firehose/merged-blocks --from N --to M
+    verify.py --rclone RCLONE --src garage:firehose/merged-blocks --from N --to M [--states DIR...]
 
 Every bundle of the range must be there and hold its blocks in order, each
 linked to the one before by parent_num and parent_id, across bundles too.
 Needs zstd.
+
+With --states, the bundles are not all read. The runner already made sure of
+the inside of each chunk: the tool writes rounds strictly in order, the runner
+checked the bundle names and the upload checked their MD5. What is left is
+checked: the done chunks of the runner states cover the range once, the store
+lists every bundle of it with the sizes the runner uploaded, and the bundles
+on both sides of every chunk boundary link up.
 """
 import argparse
 import concurrent.futures
+import json
 import pathlib
 import struct
 import subprocess
@@ -83,45 +91,104 @@ def read_batch(rclone, src, bases):
                 for name in names]
 
 
+def check_blocks(items):
+    """Checks bundles of consecutive bases, (base, name, envelopes or error) in order; returns blocks, errors."""
+    errors = 0
+    checked = 0
+    prev = None  # number and id of the last block checked
+    for base, name, blocks in items:
+        if isinstance(blocks, str):
+            print(f"{name}: {blocks}")
+            errors += 1
+            prev = None
+            continue
+        # Block 0 is the zero state, not a block.
+        want = list(range(max(base, 1), base + BUNDLE))
+        got = [number for number, _, _, _ in blocks]
+        if got != want:
+            print(f"{name}: blocks {got[:3]}..{got[-3:]} ({len(got)}), want {want[0]}..{want[-1]}")
+            errors += 1
+            prev = None
+            continue
+        for number, block_id, parent_num, parent_id in blocks:
+            if parent_num != number - 1 or (prev is not None and (prev[0], prev[1]) != (parent_num, parent_id)):
+                print(f"{name}: block {number} has parent {parent_num} {parent_id}, the block before is {prev}")
+                errors += 1
+            prev = (number, block_id)
+        checked += len(blocks)
+    return checked, errors
+
+
+def check_all(args, bases):
+    batches = [bases[i:i + args.batch] for i in range(0, len(bases), args.batch)]
+    with concurrent.futures.ThreadPoolExecutor(args.jobs) as pool:
+        results = (item for batch in pool.map(lambda b: read_batch(args.rclone, args.src, b), batches)
+                   for item in batch)
+        checked, errors = check_blocks((base, name, blocks) for base, (name, blocks) in zip(bases, results))
+    print(f"{checked} blocks in {len(bases)} bundles checked, {errors} errors")
+    return errors
+
+
+def check_states(args, bases):
+    chunks = []
+    for state in args.states:
+        chunks += [json.loads(f.read_text()) for f in pathlib.Path(state, "chunks").glob("*.json")]
+    done = sorted((c for c in chunks if c["status"] == "done"), key=lambda c: c["from"])
+    errors = 0
+    # Chunks handed to another runner are done in its state.
+    seqno = args.first
+    for c in done:
+        if c["from"] != seqno:
+            print(f"chunks: {seqno}..{c['from'] - 1} not done" if c["from"] > seqno else f"chunks: {c['id']} overlaps")
+            errors += 1
+        seqno = max(seqno, c["to"] + 1)
+    if seqno != args.last + 1:
+        print(f"chunks: done up to {seqno - 1}, not {args.last}")
+        errors += 1
+    print(f"{len(done)} done chunks of {len(chunks)} in {len(args.states)} states, {errors} errors")
+
+    # Sizes as the store lists them, against the sizes the runner uploaded.
+    listing = subprocess.run([args.rclone, "lsf", "--files-only", "--format", "sp", args.src],
+                             capture_output=True, text=True, check=True).stdout
+    sizes = {}
+    for line in listing.splitlines():
+        size, name = line.split(";", 1)
+        sizes[name] = int(size)
+    names = [f"{base:010d}.dbin.zst" for base in bases]
+    missing = [name for name in names if name not in sizes]
+    empty = [name for name in names if sizes.get(name) == 0]
+    stored = sum(sizes.get(name, 0) for name in names)
+    uploaded = sum(c.get("bytes", 0) for c in done)
+    print(f"store: {len(sizes)} bundles, {len(missing)} of {len(names)} missing, {len(empty)} empty, "
+          f"{stored} bytes stored, {uploaded} uploaded")
+    for name in missing[:20]:
+        print(f"{name}: missing")
+    errors += len(missing) + len(empty) + (stored != uploaded)
+
+    # The bundles around every chunk boundary, and the first and the last.
+    groups = [[bases[0]], [bases[-1]]]
+    groups += [[c["from"] - BUNDLE, c["from"]] for c in done if c["from"] > bases[0] + BUNDLE]
+    with concurrent.futures.ThreadPoolExecutor(args.jobs) as pool:
+        results = list(pool.map(
+            lambda g: check_blocks((b, *item) for b, item in zip(g, read_batch(args.rclone, args.src, g))), groups))
+    checked = sum(r[0] for r in results)
+    print(f"{len(groups) - 2} chunk boundaries: {checked} blocks checked, {sum(r[1] for r in results)} errors")
+    return errors + sum(r[1] for r in results)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--rclone", default="rclone")
     parser.add_argument("--src", required=True)
     parser.add_argument("--from", dest="first", type=int, required=True)
     parser.add_argument("--to", dest="last", type=int, required=True)
+    parser.add_argument("--states", nargs="+", help="runner state directories: check the chunk boundaries only")
     parser.add_argument("--jobs", type=int, default=4, help="batches downloaded and read at once")
     parser.add_argument("--batch", type=int, default=100, help="bundles in a batch")
     args = parser.parse_args()
 
     bases = range(args.first - args.first % BUNDLE, args.last + 1, BUNDLE)
-    batches = [bases[i:i + args.batch] for i in range(0, len(bases), args.batch)]
-    errors = 0
-    checked = 0
-    prev = None  # number and id of the last block checked
-    with concurrent.futures.ThreadPoolExecutor(args.jobs) as pool:
-        results = (item for batch in pool.map(lambda b: read_batch(args.rclone, args.src, b), batches)
-                   for item in batch)
-        for base, (name, blocks) in zip(bases, results):
-            if isinstance(blocks, str):
-                print(f"{name}: {blocks}")
-                errors += 1
-                prev = None
-                continue
-            # Block 0 is the zero state, not a block.
-            want = list(range(max(base, 1), base + BUNDLE))
-            got = [number for number, _, _, _ in blocks]
-            if got != want:
-                print(f"{name}: blocks {got[:3]}..{got[-3:]} ({len(got)}), want {want[0]}..{want[-1]}")
-                errors += 1
-                prev = None
-                continue
-            for number, block_id, parent_num, parent_id in blocks:
-                if parent_num != number - 1 or (prev is not None and (prev[0], prev[1]) != (parent_num, parent_id)):
-                    print(f"{name}: block {number} has parent {parent_num} {parent_id}, the block before is {prev}")
-                    errors += 1
-                prev = (number, block_id)
-            checked += len(blocks)
-    print(f"{checked} blocks in {len(bases)} bundles checked, {errors} errors")
+    errors = check_states(args, bases) if args.states else check_all(args, bases)
     sys.exit(1 if errors else 0)
 
 
