@@ -496,6 +496,9 @@ blocks на подготовку stores.
         labels: {network: mainnet, component: substreams}
 ```
 
+Дашборд для Grafana — `monitoring/grafana/firehose.json`: импортировать через
+**Dashboards → New → Import** и выбрать Prometheus в переменной `datasource`.
+
 Основные метрики:
 
 | Метрика | Значение |
