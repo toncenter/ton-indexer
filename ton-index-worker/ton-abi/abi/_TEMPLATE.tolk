@@ -1,4 +1,4 @@
-tolk 1.4
+tolk 1.5.0
 
 // Copy this template to abi/<contract>.tolk and add authoritative declarations.
 // The contract directive is what makes tolk export them: messages go into
