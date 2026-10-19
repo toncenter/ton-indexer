@@ -18,6 +18,13 @@ clickhouse_password: REPLACEME
 
 pendings_redis_password: REPLACEME
 
+# firehose: firecore release for the reader-node and the store of its one-block files
+firecore_version: v1.20.1
+firecore_sha256: 06813c9b5d796f499fc1e0dc4179fc8238cc0dabbbb5fce342d73d3d1eecfb51
+firehose_store: s3://garage-host:3900/firehose
+firehose_s3_access_key_id: REPLACEME
+firehose_s3_secret_access_key: REPLACEME
+
 # deploy config. Adjust this also
 deploy_path: /opt/ton-index
 systemd_service_path: /etc/systemd/system
@@ -47,5 +54,22 @@ services:
     environment:
       - "TON_INDEXER_REDIS_DSN=redis://127.0.0.1:6379"
       - "TON_INDEXER_PG_DSN=postgresql+asyncpg://{{ pg_master_user }}:{{ pg_master_password }}@{{ pg_master_host }}:5432/{{ pg_database }}?application_name={{ stack_name }}__index_classifier"
+  firehose_reader:
+    # ton-index-firehose: --from is for the first start only, then it resumes from its cursor
+    node_args: --db /var/ton-work/db --working-dir /var/ton-firehose --from 100100000 --prewarm 3000 --threads 16 --max-active-tasks 16
+    # firecore reader-node: only the block stream for the relayer listens beyond localhost
+    additional_args: >-
+      --data-dir /var/firehose-reader --log-to-file=false
+      --common-first-streamable-block 1
+      "--common-one-block-store-url={{ firehose_store }}/one-blocks?region=garage&insecure=true"
+      --reader-node-start-block-num 100100000
+      --reader-node-one-block-suffix {{ inventory_hostname | regex_replace('[^A-Za-z0-9]', '') }}
+      --reader-node-blocks-chan-capacity 2000
+      --reader-node-grpc-listen-addr {{ firehose_reader_grpc_addr }}
+      --reader-node-manager-api-addr 127.0.0.1:10011
+      --metrics-listen-addr 127.0.0.1:9102
+    directories: [/var/ton-firehose, /var/firehose-reader]
+    environment_file: "{{ deploy_path }}/{{ stack_name }}__firehose_reader.env"
+    memory_max: 32G
   streaming_api:
     additional_args: -testnet -redis "redis://:{{ pendings_redis_password }}@localhost:6379" -pg "postgresql://{{ pg_readonly_user }}:{{ pg_readonly_password }}@localhost:5432/{{ pg_database }}"

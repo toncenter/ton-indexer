@@ -1,0 +1,24 @@
+[Unit]
+Description=firecore relayer: live blocks of the reader-node on the archive node
+After=network-online.target garage.service
+Wants=network-online.target
+
+[Service]
+User=firecore
+Group=firecore
+EnvironmentFile=/etc/firecore/garage.env
+WorkingDirectory=/srv/scratch/firecore
+ExecStart=/usr/local/bin/firecore start relayer --config-file= \
+  --data-dir=/srv/scratch/firecore/relayer --log-to-file=false \
+  --common-first-streamable-block=1 \
+  "--common-one-block-store-url=s3://localhost:3900/firehose/one-blocks?region=garage&insecure=true" \
+  --relayer-source=192.0.2.10:10010 \
+  --relayer-grpc-listen-addr=127.0.0.1:10014 --relayer-http-healthz-addr=127.0.0.1:10018 \
+  --metrics-listen-addr=127.0.0.1:9104 --pprof-listen-addr=127.0.0.1:6062 --log-level-switcher-listen-addr=127.0.0.1:1067
+Restart=always
+RestartSec=5
+LimitNOFILE=1048576
+MemoryMax=16G
+
+[Install]
+WantedBy=multi-user.target

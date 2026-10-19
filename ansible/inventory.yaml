@@ -27,6 +27,10 @@ all:
       hosts:
         pendings-01:
           host_addr: 1.2.3.4:9876 # public ip of this machine with port to be used for ton-trace-emulator
+    ton_index__firehose_reader:
+      hosts:
+        archive-01:
+          firehose_reader_grpc_addr: 10.0.0.1:10010 # private ip the relayer connects to
     ton_index__index_classifier:
       hosts:
         classifier-01:

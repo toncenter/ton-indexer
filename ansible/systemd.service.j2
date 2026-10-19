@@ -20,6 +20,12 @@ Environment="{{ env_var }}"
 {% endfor %}
 {% endif %}
 {% endif %}
+{% if service.environment_file is defined %}
+EnvironmentFile={{ service.environment_file }}
+{% endif %}
+{% if service.memory_max is defined %}
+MemoryMax={{ service.memory_max }}
+{% endif %}
 {% if workdir is defined or service.workdir is defined %}
 WorkingDirectory={{ workdir | default(service.workdir) }}
 {% endif %}

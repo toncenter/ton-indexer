@@ -1,0 +1,188 @@
+- name: Prepare to build
+  hosts: builder
+  tasks:
+    - name: Install requirements
+      become: true
+      ansible.builtin.apt:
+        update_cache: true
+        cache_valid_time: 3600
+        name:
+          - build-essential
+          - cmake
+          - clang
+          - ninja-build
+          - openssl
+          - libssl-dev
+          - zlib1g-dev
+          - gperf
+          - wget
+          - git
+          - curl
+          - liblz4-dev
+          - pkg-config
+          - libsecp256k1-dev
+          - libsodium-dev
+          - libhiredis-dev
+          - python3-dev
+          - libpq-dev
+          - automake
+          - libjemalloc-dev
+          - autoconf
+          - libtool
+          - libmicrohttpd-dev
+          - libcurl4-openssl-dev
+          - libprotobuf-dev
+          - protobuf-compiler
+          - libzstd-dev
+          - ccache
+          - rsync
+        state: present
+
+    - name: Ensure shared caches exist
+      ansible.builtin.file:
+        path: "{{ ansible_env.HOME }}/.cache/ccache"
+        state: directory
+        mode: "0775"
+
+- name: Build ton-index-firehose
+  hosts: builder
+  tasks:
+    - name: Create temp workspace
+      ansible.builtin.tempfile:
+        state: directory
+        suffix: ton-indexer
+      register: builddir
+
+    - block:
+        - name: Copy project to builder from . to "{{ builddir.path }}" with rsync
+          ansible.builtin.synchronize:
+            src: "./"
+            dest: "{{ builddir.path }}"
+            rsync_opts:
+              - "--exclude=.git"
+              - "--exclude=artifacts"
+              - "--exclude=/build"
+            recursive: yes
+            delete: no
+
+        # Only the C++ worker project: the root one needs Go. GSL and BLAS are
+        # optional for rldp2, which the reader does not use; without them the
+        # binary needs no BLAS libraries on the node host.
+        - name: Build ton-index-firehose
+          ansible.builtin.shell: |
+            set -e
+            cmake -DCMAKE_BUILD_TYPE=Release \
+                  -S ton-index-worker -B "{{ builddir.path }}/build" \
+                  -G Ninja \
+                  -DTON_USE_JEMALLOC=ON \
+                  -DCMAKE_DISABLE_FIND_PACKAGE_GSL=ON \
+                  -DCMAKE_DISABLE_FIND_PACKAGE_BLAS=ON \
+                  -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+                  -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+            cmake --build "{{ builddir.path }}/build" \
+                  --parallel {{ ansible_facts.processor_vcpus | default(2) }} \
+                  --target ton-index-firehose
+          args:
+            chdir: "{{ builddir.path }}"
+          environment:
+            # ton does not build with gcc; the Dockerfile uses clang too
+            CC: clang
+            CXX: clang++
+            CCACHE_DIR: "{{ ansible_env.HOME }}/.cache/ccache"
+            CCACHE_BASEDIR: "{{ builddir.path }}"
+            CCACHE_SLOPPINESS: "file_macro"
+
+        - name: Collect built binaries
+          ansible.builtin.fetch:
+            src: "{{ builddir.path }}/build/ton-index-firehose/ton-index-firehose"
+            dest: "artifacts/"
+            flat: true
+      always:
+        - name: Cleanup workspace
+          ansible.builtin.file:
+            path: "{{ builddir.path }}"
+            state: absent
+
+# firecore reader-node runs ton-index-firehose on the node db and writes
+# one-block files to the store; merger and relayer run elsewhere.
+- name: Deploy firehose reader-node service
+  hosts: "{{ stack_name }}__firehose_reader"
+  become: true
+  tags: [deploy]
+  vars:
+    service_name: "{{ stack_name }}__firehose_reader"
+    service: "{{ services.firehose_reader }}"
+    firecore_dir: "{{ deploy_path }}/firecore-{{ firecore_version }}"
+
+  tasks:
+    - name: Install requirements
+      ansible.builtin.apt:
+        name:
+          - libjemalloc2
+          - curl
+          - zstd
+        state: present
+
+    - name: Ensure directories
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        mode: "0755"
+      loop: "{{ [deploy_path, firecore_dir] + service.directories }}"
+
+    - name: Download firecore
+      ansible.builtin.get_url:
+        url: "https://github.com/streamingfast/firehose-core/releases/download/{{ firecore_version }}/firehose-core_linux_x86_64.tar.gz"
+        dest: "{{ firecore_dir }}/firehose-core_linux_x86_64.tar.gz"
+        checksum: "sha256:{{ firecore_sha256 }}"
+        mode: "0644"
+
+    - name: Unpack firecore
+      ansible.builtin.unarchive:
+        src: "{{ firecore_dir }}/firehose-core_linux_x86_64.tar.gz"
+        dest: "{{ firecore_dir }}"
+        remote_src: true
+        include: [firecore]
+
+    - name: Copy ton-index-firehose binary
+      ansible.builtin.copy:
+        src: "artifacts/ton-index-firehose"
+        dest: "{{ deploy_path }}/{{ service_name }}"
+        mode: "0755"
+        owner: root
+        group: root
+
+    - name: Write store credentials
+      ansible.builtin.copy:
+        dest: "{{ service.environment_file }}"
+        content: |
+          AWS_ACCESS_KEY_ID={{ firehose_s3_access_key_id }}
+          AWS_SECRET_ACCESS_KEY={{ firehose_s3_secret_access_key }}
+        mode: "0600"
+        owner: root
+        group: root
+      no_log: true
+
+    - name: Create systemd service from template
+      ansible.builtin.template:
+        src: "ansible/systemd.service.j2"
+        dest: "{{ systemd_service_path }}/{{ service_name }}.service"
+        mode: "0644"
+        owner: root
+        group: root
+        force: true
+      vars:
+        start_cmd: >-
+          {{ firecore_dir }}/firecore start reader-node --config-file=
+          --reader-node-path={{ deploy_path }}/{{ service_name }}
+          "--reader-node-arguments={{ service.node_args }}"
+          {{ service.additional_args }}
+
+    - name: Restart and enable service
+      ansible.builtin.systemd:
+        name: "{{ service_name }}"
+        state: restarted
+        enabled: true
+        daemon_reload: true
+        force: true
+      throttle: 1
