@@ -53,9 +53,15 @@ add_library(ton-tvm-executor-grpc STATIC
 target_compile_features(ton-tvm-executor-grpc PRIVATE cxx_std_17)
 target_link_libraries(ton-tvm-executor-grpc PUBLIC ton-tvm-executor-proto PRIVATE PkgConfig::GRPCPP)
 
-add_executable(ton-tvm-executor src/main.cpp src/Executor.cpp)
+add_executable(ton-tvm-executor src/main.cpp src/Executor.cpp src/GetMethod.cpp src/Stack.cpp)
 target_compile_features(ton-tvm-executor PRIVATE cxx_std_20)
 target_link_libraries(ton-tvm-executor PRIVATE ton-tvm-executor-grpc ton-firehose-convert)
 target_link_options(ton-tvm-executor PUBLIC -rdynamic)
+
+add_executable(test-ton-tvm-calls test/calls.cpp src/GetMethod.cpp src/Stack.cpp)
+target_compile_features(test-ton-tvm-calls PRIVATE cxx_std_20)
+target_include_directories(test-ton-tvm-calls PRIVATE src)
+target_link_libraries(test-ton-tvm-calls PRIVATE ton-tvm-executor-proto ton-firehose-convert)
+add_test(NAME test-ton-tvm-calls COMMAND test-ton-tvm-calls)
 
 install(TARGETS ton-tvm-executor RUNTIME DESTINATION bin)

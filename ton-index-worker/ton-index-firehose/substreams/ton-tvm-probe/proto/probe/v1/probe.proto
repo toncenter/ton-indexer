@@ -22,3 +22,16 @@ message AccountCheck {
   uint32 mismatches = 3;
   repeated string details = 4;  // of the first mismatches
 }
+
+// get_method on the accounts that changed in the round, before it and after,
+// on the network state and on the ShardAccount BOC get_account gives of it:
+// both run in the VM context of the block, so they must answer alike.
+message GetMethodCheck {
+  uint32 mc_seqno = 1;
+  uint32 calls = 2;  // compared pairs
+  uint32 mismatches = 3;
+  repeated string details = 4;  // of the first mismatches
+  uint32 executed = 5;  // of the calls, those with exit code 0
+  uint32 errors = 6;  // of the calls, CallErrors, as ACCOUNT_NOT_ACTIVE
+  uint32 omitted = 7;  // states without a BOC to compare on
+}

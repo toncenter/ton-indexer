@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Compares get_account of ton-tvm-executor with a liteserver on random blocks.
+"""Compares get_account or get_method of ton-tvm-executor with a liteserver on random blocks.
 
 For every block N sampled: the elector and the config account (they change in
 every masterchain block), accounts of transactions of the first shard block
@@ -9,6 +9,11 @@ of the state, the last transaction (lt and hash), the balance, and whether
 the account exists. The ShardAccount BOC of every answer must hold the same
 last transaction.
 
+With --get-methods, get-methods of those accounts at after_block instead,
+against runmethod of lite-client at N: the exit code, and the result stack as
+lite-client prints it, cells by their hashes. A list of methods is tried on
+every account; those it does not have fail alike.
+
 Needs lite-client and grpcurl. Run on the host of the liteserver, e.g.:
 
   ./check-liteserver.py --executor 192.0.2.10:10060 --liteserver 127.0.0.1:20700 \
@@ -16,6 +21,7 @@ Needs lite-client and grpcurl. Run on the host of the liteserver, e.g.:
 """
 import argparse
 import base64
+import hashlib
 import json
 import os
 import random
@@ -42,6 +48,7 @@ def parse_args():
     p.add_argument("--head-samples", type=int, default=5, help="blocks near the head")
     p.add_argument("--from-seqno", type=int, default=1_000_000)
     p.add_argument("--seed", type=int, default=None)
+    p.add_argument("--get-methods", action="store_true", help="check get-methods instead of accounts")
     return p.parse_args()
 
 
@@ -72,6 +79,20 @@ class LiteClient:
         out = self.run(f"listblocktrans {shard_block} {count}")
         return ["0:" + a.lower() for a in re.findall(r"account ([0-9A-F]{64})", out)]
 
+    def run_method(self, address, block, method, args):
+        """The remote result: ("error", exit code), ("result", stack text) or None for no state to run."""
+        out = self.run(" ".join(["runmethod", address, block, method] + [str(a) for a in args]))
+        if "cannot serialize resulting stack" in out:
+            # Within 1000 recursive calls, which a list of a few hundred pairs is not.
+            return ("unserializable", None)
+        m = re.search(r"^remote result(?: \(not to be trusted\))?:\s*(.*?)\s*$", out, re.M)
+        if not m:
+            return None
+        text = m.group(1)
+        if text.startswith("error"):
+            return ("error", int(text.split()[1]))
+        return ("result", " ".join(text.split()))
+
     def account(self, address, block):
         out = self.run(f"getaccount {address} {block}")
         m = re.search(r"got account state for \S+ with respect to blocks (" + BLOCK_ID + r")(?: and (" + BLOCK_ID + "))?", out)
@@ -86,22 +107,29 @@ class LiteClient:
                 "balance": int(balance.group(1))}
 
 
-def executor_calls(args, seqno, root_hash, calls):
-    def address(a):
-        wc, hexid = a.split(":")
-        return {"workchain": int(wc), "accountId": base64.b64encode(bytes.fromhex(hexid)).decode()}
+def address_pb(a):
+    wc, hexid = a.split(":")
+    return {"workchain": int(wc), "accountId": base64.b64encode(bytes.fromhex(hexid)).decode()}
 
+
+def executor_calls(args, seqno, root_hash, calls):
+    """calls are (address, at) for get_account, or already made Call messages."""
     request = {"mcSeqno": seqno, "mcRootHash": base64.b64encode(bytes.fromhex(root_hash)).decode(),
                "request": {"calls": []}}
-    for a, at in calls:
-        ref = {"address": address(a)}
+    for call in calls:
+        if isinstance(call, dict):
+            request["request"]["calls"].append(call)
+            continue
+        a, at = call
+        ref = {"address": address_pb(a)}
         if at == "before":
             ref["at"] = {"beforeBlock": {}}
         request["request"]["calls"].append({"getAccount": {"account": ref}})
     start = time.monotonic()
     out = subprocess.run([args.grpcurl, "-plaintext", "-max-msg-sz", str(256 << 20), "-import-path", args.proto_dir,
-                          "-proto", "ton/tvm/v1/executor.proto", "-d", json.dumps(request), args.executor,
-                          "ton.tvm.v1.Executor/Execute"], capture_output=True, text=True, timeout=300)
+                          "-proto", "ton/tvm/v1/executor.proto", "-d", "@", args.executor,
+                          "ton.tvm.v1.Executor/Execute"], input=json.dumps(request), capture_output=True, text=True,
+                         timeout=300)
     elapsed = time.monotonic() - start
     if out.returncode != 0:
         raise RuntimeError(f"executor at {seqno}: {out.stdout} {out.stderr}")
@@ -129,6 +157,148 @@ def boc_root_data(boc):
         pos += (d2 + 1) // 2 + size * (d1 & 7)
         if i == root:
             return data
+
+
+def boc_cells(boc):
+    """The cells of a BOC, root first: (d1, d2, data, refs) each."""
+    if boc[:4] != bytes.fromhex("b5ee9c72"):
+        raise ValueError("not a BOC")
+    flags = boc[4]
+    size, off_bytes = flags & 7, boc[5]
+    count = int.from_bytes(boc[6:6 + size], "big")
+    roots = int.from_bytes(boc[6 + size:6 + 2 * size], "big")
+    pos = 6 + 3 * size + off_bytes + roots * size
+    if flags & 0x80:
+        pos += count * off_bytes
+    cells = []
+    for _ in range(count):
+        d1, d2 = boc[pos], boc[pos + 1]
+        pos += 2 + (32 + 2) * ((d1 >> 5) + 1 if d1 & 16 else 0)
+        data = boc[pos:pos + (d2 + 1) // 2]
+        pos += (d2 + 1) // 2
+        refs = [int.from_bytes(boc[pos + i * size:pos + (i + 1) * size], "big") for i in range(d1 & 7)]
+        pos += size * (d1 & 7)
+        cells.append((d1 & ~16, d2, data, refs))
+    return cells
+
+
+def cell_hash(boc):
+    """The hash of the root, as lite-client prints it; None for a cell with a level."""
+    cells = boc_cells(boc)
+    hashes, depths = [None] * len(cells), [0] * len(cells)
+    for i in reversed(range(len(cells))):
+        d1, d2, data, refs = cells[i]
+        if d1 >> 5 or any(hashes[r] is None for r in refs):
+            continue
+        depths[i] = 1 + max(depths[r] for r in refs) if refs else 0
+        repr_ = bytes([d1, d2]) + data + b"".join(depths[r].to_bytes(2, "big") for r in refs)
+        hashes[i] = hashlib.sha256(repr_ + b"".join(hashes[r] for r in refs)).digest()
+    return hashes[0].hex().upper() if hashes[0] else None
+
+
+def stack_text(entries):
+    """A result stack as lite-client prints it."""
+    def entry(e):
+        if "null" in e:
+            return "()"
+        if "nan" in e:
+            return "NaN"
+        if "integer" in e:
+            return str(int.from_bytes(base64.b64decode(e["integer"]), "big", signed=True))
+        if "cell" in e:
+            # * for a tree with Merkle proofs, whose hash is not computed here.
+            return "C{%s}" % (cell_hash(base64.b64decode(e["cell"])) or "*")
+        if "slice" in e:
+            s = e["slice"]
+            d1, d2, data, _ = boc_cells(base64.b64decode(s["cellBoc"]))[0]
+            return "CS{Cell{%s} bits: %d..%d; refs: %d..%d}" % (
+                (bytes([d1, d2]) + data).hex(), s.get("startBit", 0), s.get("endBit", 0), s.get("startRef", 0),
+                s.get("endRef", 0))
+        if "tuple" in e:
+            return "[" + " ".join(entry(i) for i in e["tuple"].get("items", [])) + "]"
+        if "list" in e:
+            return "(" + " ".join(entry(i) for i in e["list"].get("items", [])) + ")"
+        return "?" + json.dumps(e)
+    return " ".join(["["] + [entry(e) for e in entries] + ["]"])
+
+
+def int_pb(n):
+    return {"integer": base64.b64encode(n.to_bytes((n + (n < 0)).bit_length() // 8 + 1, "big", signed=True)).decode()}
+
+
+# client_method_gas_limit of liteserver, given to the executor as gas_limit so
+# that running out of gas compares too: the default of v1 is higher.
+LITESERVER_GAS = 300000
+
+# Tried on every account of its kind; an account without one fails alike.
+METHODS = {
+    ELECTOR: [("active_election_id", []), ("participant_list", []), ("past_elections", []),
+              ("compute_returned_stake", [0])],
+    CONFIG: [("seqno", []), ("get_public_key", [])],
+}
+OTHER_METHODS = [("seqno", []), ("get_public_key", []), ("get_wallet_data", []), ("get_jetton_data", []),
+                 ("get_nft_data", []), ("get_subwallet_id", []), ("get_plugin_list", [])]
+
+
+def compare_get_method(ours, theirs):
+    """The differences, or None when the liteserver gave nothing to compare with."""
+    if theirs is not None and theirs[0] == "unserializable":
+        return None
+    if theirs is None:
+        code = ours.get("error", {}).get("code")
+        return [] if code == "ERROR_CODE_ACCOUNT_NOT_ACTIVE" else [f"no state to run at the liteserver, executor: {ours}"]
+    if "getMethod" not in ours:
+        return [f"executor: {ours}"]
+    result = ours["getMethod"]
+    exit_code = result.get("exitCode", 0)
+    if theirs[0] == "error":
+        return [] if exit_code == theirs[1] else [f"exit {exit_code} vs {theirs[1]}"]
+    if exit_code != 0:
+        return [f"exit {exit_code} vs 0"]
+    text = stack_text(result.get("stack", []))
+    pattern = re.escape(text).replace(re.escape("C{*}"), r"C\{[0-9A-F]{64}\}")
+    return [] if re.fullmatch(pattern, theirs[1]) else [f"stack {text[:300]} vs {theirs[1][:300]}"]
+
+
+def check_get_methods(args, lc, rnd, seqnos):
+    checked, failed, skipped, unhashed, latencies = 0, 0, 0, 0, []
+    outcomes = {}  # (method, exit code or error) to count
+    for seqno in seqnos:
+        block = lc.block_id(seqno)
+        addresses = [ELECTOR, CONFIG]
+        shard = lc.first_shard(block)
+        if shard:
+            addresses += lc.accounts(shard, 3)
+        calls = [(a, method, margs) for a in addresses for method, margs in METHODS.get(a, OTHER_METHODS)]
+        made = [{"getMethod": {"account": {"onchain": {"address": address_pb(a)}}, "name": method,
+                               "stack": [int_pb(x) for x in margs], "gasLimit": str(LITESERVER_GAS)}}
+                for a, method, margs in calls]
+        try:
+            results, elapsed = executor_calls(args, seqno, block.split(":")[1], made)
+        except RuntimeError as e:
+            print(f"block {seqno}: {e}")
+            failed += len(calls)
+            continue
+        latencies.append(elapsed)
+        for (address, method, margs), ours in zip(calls, results):
+            diffs = compare_get_method(ours, lc.run_method(address, block, method, margs))
+            if diffs is None:
+                skipped += 1
+                continue
+            checked += 1
+            unhashed += "C{*}" in stack_text(ours.get("getMethod", {}).get("stack", []))
+            outcome = ours["getMethod"].get("exitCode", 0) if "getMethod" in ours else ours.get("error", {}).get("code")
+            outcomes[(method, outcome)] = outcomes.get((method, outcome), 0) + 1
+            if diffs:
+                failed += 1
+                print(f"block {seqno} {address} {method}: " + "; ".join(diffs))
+        print(f"block {seqno}: {len(calls)} calls in {elapsed * 1000:.0f} ms", flush=True)
+    for (method, outcome), n in sorted(outcomes.items(), key=lambda kv: (kv[0][0], str(kv[0][1]))):
+        print(f"  {method}: {outcome} x{n}")
+    print(f"checked {checked}, failed {failed}, not serializable at the liteserver {skipped}, "
+          f"with cells of Merkle proofs not hashed {unhashed}; per request: "
+          f"median {statistics.median(latencies) * 1000:.0f} ms, max {max(latencies) * 1000:.0f} ms")
+    sys.exit(1 if failed else 0)
 
 
 def shard_text(block):
@@ -175,6 +345,8 @@ def main():
     head = lc.head()
     seqnos = sorted(rnd.randrange(args.from_seqno, head - 100) for _ in range(args.samples))
     seqnos += [head - 10 - i for i in range(args.head_samples)]
+    if args.get_methods:
+        return check_get_methods(args, lc, rnd, seqnos)
     checked, failed, latencies, omitted = 0, 0, [], 0
     for seqno in seqnos:
         block, prev = lc.block_id(seqno), lc.block_id(seqno - 1)

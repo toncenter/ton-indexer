@@ -210,3 +210,42 @@ func TestAggregateCallSizeIsLimitedBeforeBackendAccess(t *testing.T) {
 		t.Fatalf("response: %v", response)
 	}
 }
+
+func TestStackNestingAndTupleSizeAreLimited(t *testing.T) {
+	null := &pbtvm.StackEntry{Value: &pbtvm.StackEntry_Null{Null: &emptypb.Empty{}}}
+	nested := func(depth int, wrap func(*pbtvm.StackEntry) *pbtvm.StackEntry) *pbtvm.StackEntry {
+		entry := null
+		for range depth {
+			entry = wrap(entry)
+		}
+		return entry
+	}
+	tuple := func(item *pbtvm.StackEntry) *pbtvm.StackEntry {
+		return &pbtvm.StackEntry{Value: &pbtvm.StackEntry_Tuple{Tuple: &pbtvm.Tuple{Items: []*pbtvm.StackEntry{item}}}}
+	}
+	list := func(item *pbtvm.StackEntry) *pbtvm.StackEntry {
+		return &pbtvm.StackEntry{Value: &pbtvm.StackEntry_List{List: &pbtvm.Tuple{Items: []*pbtvm.StackEntry{null, item}}}}
+	}
+	wide := &pbtvm.Tuple{}
+	for range protocol.MaxTupleSize + 1 {
+		wide.Items = append(wide.Items, null)
+	}
+	long := &pbtvm.Tuple{Items: wide.Items}
+	for _, tc := range []struct {
+		entry *pbtvm.StackEntry
+		valid bool
+	}{
+		{nested(protocol.MaxStackDepth, tuple), true},
+		{nested(protocol.MaxStackDepth+1, tuple), false},
+		{nested(protocol.MaxStackDepth, list), true},
+		{nested(protocol.MaxStackDepth+1, list), false},
+		{&pbtvm.StackEntry{Value: &pbtvm.StackEntry_Tuple{Tuple: wide}}, false},
+		{&pbtvm.StackEntry{Value: &pbtvm.StackEntry_List{List: long}}, true},
+		{&pbtvm.StackEntry{Value: &pbtvm.StackEntry_List{List: &pbtvm.Tuple{}}}, true},
+	} {
+		err := validateGetMethod(getMethod(onchain(elector), tc.entry).GetGetMethod())
+		if (err == nil) != tc.valid {
+			t.Errorf("valid %v: got %v", tc.valid, err)
+		}
+	}
+}

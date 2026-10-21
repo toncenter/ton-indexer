@@ -17,6 +17,15 @@ const (
 	MaxInputBocSize = 1 << 20
 	// Of a serialized Call, with all its fields.
 	MaxCallRequestSize = 8 << 20
+	// Of a serialized CallResult: over it the call is TOO_LARGE.
+	MaxCallResultSize = 8 << 20
+	// The end of the VM log that is kept.
+	MaxVmLogSize = 64 << 10
+	// Tuples and lists within each other in a stack: within the recursion
+	// limit of protobuf decoders, 100 messages in prost and C++.
+	MaxStackDepth = 32
+	// Items of a tuple, as in TVM.
+	MaxTupleSize = 255
 )
 
 // Transport only: the host splits a batch into router requests within these,

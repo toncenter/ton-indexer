@@ -26,7 +26,7 @@ const (
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 //
-// Between fireton and ton-state-router, and between the router and its
+// Between fireton and ton-tvm-router, and between the router and its
 // backends; not seen by modules.
 type ExecutorClient interface {
 	// Executes a batch of a module on one masterchain block. Fails with
@@ -58,7 +58,7 @@ func (c *executorClient) Execute(ctx context.Context, in *BlockRequest, opts ...
 // All implementations must embed UnimplementedExecutorServer
 // for forward compatibility.
 //
-// Between fireton and ton-state-router, and between the router and its
+// Between fireton and ton-tvm-router, and between the router and its
 // backends; not seen by modules.
 type ExecutorServer interface {
 	// Executes a batch of a module on one masterchain block. Fails with

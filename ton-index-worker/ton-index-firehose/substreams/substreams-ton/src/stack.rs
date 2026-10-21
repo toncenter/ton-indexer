@@ -3,7 +3,7 @@
 
 use num_bigint::BigInt;
 
-use crate::pb::ton::tvm::v1::{stack_entry::Value, StackEntry};
+use crate::pb::ton::tvm::v1::{stack_entry::Value, StackEntry, Tuple};
 use crate::tvm::Error;
 
 /// An integer: int257, minimal two's complement big-endian.
@@ -18,6 +18,16 @@ pub fn cell(boc: Vec<u8>) -> StackEntry {
 
 pub fn null() -> StackEntry {
     StackEntry { value: Some(Value::Null(())) }
+}
+
+pub fn tuple(items: Vec<StackEntry>) -> StackEntry {
+    StackEntry { value: Some(Value::Tuple(Tuple { items })) }
+}
+
+/// A lisp-style list: the service builds the pairs `[x1, [x2, … [xn, null]]]`
+/// of TVM. An empty list is null.
+pub fn list(items: Vec<StackEntry>) -> StackEntry {
+    StackEntry { value: Some(Value::List(Tuple { items })) }
 }
 
 /// Typed access to the values of a result stack.
@@ -39,6 +49,24 @@ pub trait StackExt {
             other => Err(type_error(index, "cell", other)),
         }
     }
+
+    /// The items of the tuple at index.
+    fn tuple(&self, index: usize) -> Result<&[StackEntry], Error> {
+        match self.value(index)? {
+            Value::Tuple(tuple) => Ok(&tuple.items),
+            other => Err(type_error(index, "tuple", other)),
+        }
+    }
+
+    /// The items of the list at index. A result has every chain of pairs
+    /// ending in null as a list, and null itself as null: the empty list.
+    fn list(&self, index: usize) -> Result<&[StackEntry], Error> {
+        match self.value(index)? {
+            Value::List(list) => Ok(&list.items),
+            Value::Null(_) => Ok(&[]),
+            other => Err(type_error(index, "list", other)),
+        }
+    }
 }
 
 impl StackExt for [StackEntry] {
@@ -58,6 +86,7 @@ fn type_error(index: usize, expected: &str, got: &Value) -> Error {
         Value::Slice(_) => "slice",
         Value::Builder(_) => "builder",
         Value::Tuple(_) => "tuple",
+        Value::List(_) => "list",
         Value::Nan(_) => "nan",
         Value::Unsupported(name) => name.as_str(),
     };
@@ -88,6 +117,16 @@ mod tests {
         assert_eq!(vec![int(max.clone())].int(0).unwrap(), max);
         let min: BigInt = -(&one << 256usize);
         assert_eq!(vec![int(min.clone())].int(0).unwrap(), min);
+    }
+
+    #[test]
+    fn lists_and_tuples_nest() {
+        let stack = vec![list(vec![tuple(vec![int(1), int(2)]), tuple(vec![int(3), int(4)])]), null()];
+        let items = stack.list(0).unwrap();
+        assert_eq!(items.len(), 2);
+        assert_eq!(items.tuple(1).unwrap().int(0).unwrap(), BigInt::from(3));
+        assert!(stack.list(1).unwrap().is_empty());
+        assert!(stack.tuple(0).is_err());
     }
 
     #[test]

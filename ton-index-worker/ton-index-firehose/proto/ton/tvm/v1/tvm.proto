@@ -132,11 +132,17 @@ message StackEntry {
     bytes cell = 3;  // the BOC of one cell
     Slice slice = 4;
     bytes builder = 5;  // the BOC of a cell with the content of the builder
-    Tuple tuple = 6;
+    Tuple tuple = 6;  // up to 255 items, as in TVM
     google.protobuf.Empty nan = 7;
     // Results only: a value of a type outside this model, by the name of the
-    // type, e.g. "continuation". INVALID_REQUEST in a request.
+    // type, e.g. "continuation", and a tuple or list nested deeper than 32
+    // levels. INVALID_REQUEST in a request.
     string unsupported = 8;
+    // A lisp-style list, the pairs [x1, [x2, … [xn, null]]] of TVM, with its
+    // items x1…xn in order. A result has every such chain, of one item or
+    // more, as a list; null stays null. A request builds the pairs again;
+    // an empty list is null.
+    Tuple list = 9;
   }
 }
 

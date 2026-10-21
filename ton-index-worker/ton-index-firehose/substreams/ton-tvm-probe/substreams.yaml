@@ -36,3 +36,12 @@ modules:
       - source: sf.ton.type.v1.Block
     output:
       type: proto:probe.v1.AccountCheck
+
+  # get_method on the network state against the same on its BOC, with
+  # ton-tvm-executor as the backend.
+  - name: map_get_method_check
+    kind: map
+    inputs:
+      - source: sf.ton.type.v1.Block
+    output:
+      type: proto:probe.v1.GetMethodCheck

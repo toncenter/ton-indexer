@@ -8,6 +8,7 @@
 #include "td/utils/port/path.h"
 #include "td/utils/port/signals.h"
 
+#include "crypto/vm/vm.h"
 #include "CellCache.h"
 #include "DbScanner.h"
 #include "Executor.h"
@@ -82,6 +83,9 @@ int main(int argc, char* argv[]) {
     std::_Exit(2);
   }
   td::mkpath(working_dir + "/").ensure();
+  // Debug primitives stay off, as in liteserver: their output costs time, and
+  // gas does not pay for it.
+  vm::init_vm(false).ensure();
   // ShardAccount BOCs over the limit are found out before all their cells are
   // loaded only with the cache.
   firehose::set_cell_cache_size(cell_cache_size);

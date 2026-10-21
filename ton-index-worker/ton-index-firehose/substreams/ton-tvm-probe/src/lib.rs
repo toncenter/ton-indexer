@@ -12,6 +12,7 @@ mod pb {
 }
 
 mod account_check;
+mod get_method_check;
 
 use std::iter::once;
 

@@ -5,9 +5,9 @@ node database, which it reads as a RocksDB secondary: the backend of
 ton-tvm-router (`../ton-index-firehose/fireton`). The design is in
 `../ton-index-firehose/substreams-tvm.md`.
 
-It answers `get_account` at `after_block` and `before_block`. A request with
-any other call is `Unimplemented`, an error of infrastructure, until the
-steps of get-methods and emulation. Other answers:
+It answers `get_account` and `get_method` at `after_block` and
+`before_block`. A request with any other call or point is `Unimplemented`, an
+error of infrastructure, until the step of emulation. Other answers:
 
 - `Unavailable` for a block the database has not reached: a request beyond
   the head makes the secondary catch up with the node at once, and it does
@@ -27,6 +27,21 @@ masterchain state of the block, its top block then, and the account in the
 back; that is found out before every cell of a large account is loaded. A
 nonexistent account is `account_none` with no last transaction, even when it
 had transactions in the block: TON does not store such accounts.
+
+A get-method runs as liteserver runs it (`LiteQuery::finish_runSmcMethod`),
+in the VM context of block N for every point: now and lt of the state of the
+shard of the account at N, config, public libraries and prev blocks of the
+masterchain state of N, the account's own libraries, and a rand seed of
+SHA256(rand seed of that shard block, account id) instead of a random one.
+The rand seed is read from the block itself, one block data read per shard
+block and request. A state of the call, `shard_account_boc`, runs in the same
+context of its address. The overrides of the call replace config params by
+number, add libraries by hash and set now, lt and the rand seed. The result
+stack has lisp-style lists as `list`, values nested over 32 levels as
+`unsupported`, and is `TOO_LARGE` over 8 MiB, which is counted while it is
+made: the BOCs of large cells are found to be over it before all their cells
+are read. The constants are in `src/Calls.h`, the same as in
+`../ton-index-firehose/fireton/protocol/limits.go`.
 
 ## Execution model
 
@@ -60,6 +75,13 @@ sudo apt-get install libgrpc++-dev protobuf-compiler-grpc libprotobuf-dev protob
 
 ```bash
 cmake --build build --target ton-tvm-executor
+```
+
+Stack conversion and request account validation have regression tests:
+
+```bash
+cmake --build build --target test-ton-tvm-calls
+./build/ton-index-worker/ton-tvm-executor/test-ton-tvm-calls
 ```
 
 grpc++ from the system packages is built with the system Abseil, TON with
@@ -98,6 +120,21 @@ the elector and the config account, and 30 ms warm.
 ./check-liteserver.py --executor 192.0.2.10:10060 --liteserver 127.0.0.1:20700 --liteserver-key /tmp/ls.pub --proto-dir ~/tvm-proto --samples 40
 ```
 
+With `--get-methods` it compares get-methods instead, against `runmethod`
+of lite-client at the same block, with the gas limit of liteserver (300 000):
+the exit code and the result stack as lite-client prints it, cells by their
+hashes (cells of trees with Merkle proofs, as in the complaints of the
+elector, are not hashed by the script). On an archive node (2026-10-22), 2353 calls
+over 90 blocks agreed, among them 69 `participant_list` of the elector with
+up to a few hundred participants and 41 `get_plugin_list`; 7 more were lists
+liteserver cannot serialize.
+
+```bash
+./check-liteserver.py --executor 192.0.2.10:10060 --liteserver 127.0.0.1:20700 --liteserver-key /tmp/ls.pub --proto-dir ~/tvm-proto --samples 80 --get-methods
+```
+
 Inside substreams, `map_account_check` of `../ton-index-firehose/substreams/ton-tvm-probe`
 compares the accounts that changed in each block with the states the block
-has for them.
+has for them, and `map_get_method_check` runs get-methods of those accounts
+on the network state and on the BOC that `get_account` gives of it: both run
+in the context of the block and must answer alike.

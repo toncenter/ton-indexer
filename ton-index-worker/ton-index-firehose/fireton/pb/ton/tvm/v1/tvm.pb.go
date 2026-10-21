@@ -1139,6 +1139,7 @@ type StackEntry struct {
 	//	*StackEntry_Tuple
 	//	*StackEntry_Nan
 	//	*StackEntry_Unsupported
+	//	*StackEntry_List
 	Value         isStackEntry_Value `protobuf_oneof:"value"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -1253,6 +1254,15 @@ func (x *StackEntry) GetUnsupported() string {
 	return ""
 }
 
+func (x *StackEntry) GetList() *Tuple {
+	if x != nil {
+		if x, ok := x.Value.(*StackEntry_List); ok {
+			return x.List
+		}
+	}
+	return nil
+}
+
 type isStackEntry_Value interface {
 	isStackEntry_Value()
 }
@@ -1279,7 +1289,7 @@ type StackEntry_Builder struct {
 }
 
 type StackEntry_Tuple struct {
-	Tuple *Tuple `protobuf:"bytes,6,opt,name=tuple,proto3,oneof"`
+	Tuple *Tuple `protobuf:"bytes,6,opt,name=tuple,proto3,oneof"` // up to 255 items, as in TVM
 }
 
 type StackEntry_Nan struct {
@@ -1288,8 +1298,17 @@ type StackEntry_Nan struct {
 
 type StackEntry_Unsupported struct {
 	// Results only: a value of a type outside this model, by the name of the
-	// type, e.g. "continuation". INVALID_REQUEST in a request.
+	// type, e.g. "continuation", and a tuple or list nested deeper than 32
+	// levels. INVALID_REQUEST in a request.
 	Unsupported string `protobuf:"bytes,8,opt,name=unsupported,proto3,oneof"`
+}
+
+type StackEntry_List struct {
+	// A lisp-style list, the pairs [x1, [x2, … [xn, null]]] of TVM, with its
+	// items x1…xn in order. A result has every such chain, of one item or
+	// more, as a list; null stays null. A request builds the pairs again;
+	// an empty list is null.
+	List *Tuple `protobuf:"bytes,9,opt,name=list,proto3,oneof"`
 }
 
 func (*StackEntry_Null) isStackEntry_Value() {}
@@ -1307,6 +1326,8 @@ func (*StackEntry_Tuple) isStackEntry_Value() {}
 func (*StackEntry_Nan) isStackEntry_Value() {}
 
 func (*StackEntry_Unsupported) isStackEntry_Value() {}
+
+func (*StackEntry_List) isStackEntry_Value() {}
 
 // A slice as its cell and both pairs of bounds.
 type Slice struct {
@@ -1515,7 +1536,7 @@ const file_ton_tvm_v1_tvm_proto_rawDesc = "" +
 	"\x13ExternalNotAccepted\x12 \n" +
 	"\fvm_exit_code\x18\x01 \x01(\x05R\n" +
 	"vmExitCode\x12\x15\n" +
-	"\x06vm_log\x18\x02 \x01(\tR\x05vmLog\"\xb7\x02\n" +
+	"\x06vm_log\x18\x02 \x01(\tR\x05vmLog\"\xe0\x02\n" +
 	"\n" +
 	"StackEntry\x12,\n" +
 	"\x04null\x18\x01 \x01(\v2\x16.google.protobuf.EmptyH\x00R\x04null\x12\x1a\n" +
@@ -1525,7 +1546,8 @@ const file_ton_tvm_v1_tvm_proto_rawDesc = "" +
 	"\abuilder\x18\x05 \x01(\fH\x00R\abuilder\x12)\n" +
 	"\x05tuple\x18\x06 \x01(\v2\x11.ton.tvm.v1.TupleH\x00R\x05tuple\x12*\n" +
 	"\x03nan\x18\a \x01(\v2\x16.google.protobuf.EmptyH\x00R\x03nan\x12\"\n" +
-	"\vunsupported\x18\b \x01(\tH\x00R\vunsupportedB\a\n" +
+	"\vunsupported\x18\b \x01(\tH\x00R\vunsupported\x12'\n" +
+	"\x04list\x18\t \x01(\v2\x11.ton.tvm.v1.TupleH\x00R\x04listB\a\n" +
 	"\x05value\"\x8e\x01\n" +
 	"\x05Slice\x12\x19\n" +
 	"\bcell_boc\x18\x01 \x01(\fR\acellBoc\x12\x1b\n" +
@@ -1611,12 +1633,13 @@ var file_ton_tvm_v1_tvm_proto_depIdxs = []int32{
 	16, // 24: ton.tvm.v1.StackEntry.slice:type_name -> ton.tvm.v1.Slice
 	17, // 25: ton.tvm.v1.StackEntry.tuple:type_name -> ton.tvm.v1.Tuple
 	23, // 26: ton.tvm.v1.StackEntry.nan:type_name -> google.protobuf.Empty
-	15, // 27: ton.tvm.v1.Tuple.items:type_name -> ton.tvm.v1.StackEntry
-	28, // [28:28] is the sub-list for method output_type
-	28, // [28:28] is the sub-list for method input_type
-	28, // [28:28] is the sub-list for extension type_name
-	28, // [28:28] is the sub-list for extension extendee
-	0,  // [0:28] is the sub-list for field type_name
+	17, // 27: ton.tvm.v1.StackEntry.list:type_name -> ton.tvm.v1.Tuple
+	15, // 28: ton.tvm.v1.Tuple.items:type_name -> ton.tvm.v1.StackEntry
+	29, // [29:29] is the sub-list for method output_type
+	29, // [29:29] is the sub-list for method input_type
+	29, // [29:29] is the sub-list for extension type_name
+	29, // [29:29] is the sub-list for extension extendee
+	0,  // [0:29] is the sub-list for field type_name
 }
 
 func init() { file_ton_tvm_v1_tvm_proto_init() }
@@ -1658,6 +1681,7 @@ func file_ton_tvm_v1_tvm_proto_init() {
 		(*StackEntry_Tuple)(nil),
 		(*StackEntry_Nan)(nil),
 		(*StackEntry_Unsupported)(nil),
+		(*StackEntry_List)(nil),
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{

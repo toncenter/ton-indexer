@@ -65,7 +65,7 @@ func validateGetMethod(call *pbtvm.GetMethod) *callError {
 		return invalid("get_method without method")
 	}
 	for i, entry := range call.GetStack() {
-		if err := validateStackEntry(entry, fmt.Sprintf("stack[%d]", i)); err != nil {
+		if err := validateStackEntry(entry, fmt.Sprintf("stack[%d]", i), 0); err != nil {
 			return err
 		}
 	}
@@ -163,7 +163,8 @@ func validateContext(ctx *pbtvm.ContextOverrides) *callError {
 	return nil
 }
 
-func validateStackEntry(entry *pbtvm.StackEntry, where string) *callError {
+// depth is the number of tuples and lists the entry is within.
+func validateStackEntry(entry *pbtvm.StackEntry, where string, depth int) *callError {
 	switch v := entry.GetValue().(type) {
 	case *pbtvm.StackEntry_Null, *pbtvm.StackEntry_Nan:
 		return nil
@@ -183,16 +184,28 @@ func validateStackEntry(entry *pbtvm.StackEntry, where string) *callError {
 		}
 		return validateStackBoc(s.GetCellBoc(), where)
 	case *pbtvm.StackEntry_Tuple:
-		for i, item := range v.Tuple.GetItems() {
-			if err := validateStackEntry(item, fmt.Sprintf("%s[%d]", where, i)); err != nil {
-				return err
-			}
+		if n := len(v.Tuple.GetItems()); n > protocol.MaxTupleSize {
+			return invalid("%s is a tuple of %d items, over %d", where, n, protocol.MaxTupleSize)
 		}
-		return nil
+		return validateItems(v.Tuple.GetItems(), where, depth)
+	case *pbtvm.StackEntry_List:
+		return validateItems(v.List.GetItems(), where, depth)
 	case *pbtvm.StackEntry_Unsupported:
 		return invalid("%s is unsupported, which is for results only", where)
 	}
 	return invalid("%s is empty", where)
+}
+
+func validateItems(items []*pbtvm.StackEntry, where string, depth int) *callError {
+	if depth == protocol.MaxStackDepth {
+		return invalid("%s is nested deeper than %d", where, protocol.MaxStackDepth)
+	}
+	for i, item := range items {
+		if err := validateStackEntry(item, fmt.Sprintf("%s[%d]", where, i), depth+1); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func validateStackBoc(boc []byte, where string) *callError {

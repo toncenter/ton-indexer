@@ -79,8 +79,10 @@ the store host, on localhost only and apart from the production units:
 binaries in `/srv/scratch/fireton-test/bin`, tier1 on 127.0.0.1:10041. The
 router has the stub backend, or the ton-tvm-executor at `EXECUTOR_ADDR`. The
 module `../substreams/ton-tvm-probe` has `map_probe`, which calls every kind
-of call on every block, for the stub, and `map_account_check`, which checks
-get_account against the block, for the executor.
+of call on every block, for the stub, and for the executor
+`map_account_check`, which checks get_account against the block, and
+`map_get_method_check`, which checks get-methods on the network state against
+the same on its BOC.
 
 ```bash
 sudo ./stand.sh start
