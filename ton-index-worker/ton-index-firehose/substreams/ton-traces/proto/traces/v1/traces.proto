@@ -1,0 +1,86 @@
+syntax = "proto3";
+
+package traces.v1;
+
+import "sf/ton/type/v1/type.proto";
+
+// The traces that ended in a masterchain block, by trace_id.
+message Traces {
+  uint32 seqno = 1;
+  uint32 utime = 2;
+  repeated Trace traces = 3;
+}
+
+// A trace: the transactions caused by one external message (or one system
+// transaction), across all the blocks they took. trace_id is the hash of its
+// first transaction, the same as in toncenter API v3.
+message Trace {
+  bytes trace_id = 1;
+  optional bytes external_hash = 2;
+  optional bytes external_hash_norm = 3;
+  uint32 mc_seqno_start = 4;
+  uint32 mc_seqno_end = 5;
+  uint64 start_lt = 6;
+  uint64 end_lt = 7;
+  uint32 start_utime = 8;
+  uint32 end_utime = 9;
+  // In the whole trace, even when only part of it is in transactions.
+  uint32 transactions_total = 10;
+  uint32 messages_total = 11;
+  State state = 12;
+  // By lt. In a complete trace the first is the root, every other has a
+  // parent, and a parent always comes before its children.
+  repeated Node transactions = 13;
+
+  enum State {
+    COMPLETE = 0;
+    // The trace has more than max_transactions transactions (a param of
+    // store_pending, 1000 by default): the first ones by block, then by lt,
+    // are given. The parent of each of them is given too, so they are the
+    // tree of the trace from its root, cut off.
+    TRUNCATED = 1;
+    // The beginning is missing: the trace began before the initialBlock of
+    // the modules. Only with an initialBlock other than 1.
+    INCOMPLETE = 2;
+  }
+}
+
+message Node {
+  // Index of the transaction that sent its inbound message; unset for the
+  // root, and for transactions whose parent is not in the list.
+  optional uint32 parent = 1;
+  // Which of the parent's out_msgs is its inbound message.
+  optional uint32 out_msg_index = 2;
+  // Indexes of the transactions its outbound messages caused, by lt.
+  repeated uint32 children = 3;
+  // 0 for a root, parent's depth + 1 otherwise.
+  uint32 depth = 4;
+  // The masterchain block it was committed in.
+  uint32 mc_seqno = 5;
+  sf.ton.type.v1.Transaction transaction = 6;
+}
+
+// A transaction waiting in the store for its trace to end.
+message PendingTransaction {
+  uint32 mc_seqno = 1;
+  sf.ton.type.v1.Transaction transaction = 2;
+}
+
+// What map_traces gives, without the transactions: for checks.
+message TraceDigests {
+  uint32 seqno = 1;
+  repeated TraceDigest traces = 2;
+}
+
+message TraceDigest {
+  string trace_id = 1;
+  string state = 2;
+  uint32 mc_seqno_start = 3;
+  uint32 mc_seqno_end = 4;
+  uint64 start_lt = 5;
+  uint64 end_lt = 6;
+  uint32 transactions_total = 7;
+  repeated string transactions = 8;  // hex hashes, by lt
+  repeated int32 parents = 9;         // -1 when unset
+  repeated uint32 depths = 10;
+}

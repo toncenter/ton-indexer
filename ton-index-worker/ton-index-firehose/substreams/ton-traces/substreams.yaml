@@ -1,0 +1,67 @@
+specVersion: v0.1.0
+package:
+  name: ton_traces
+  version: v0.1.0
+  doc: |
+    TON traces: every trace once, with its transactions linked into a tree,
+    in the masterchain block where it ended. At most max_transactions
+    (1000) transactions of a trace are given; the rest are counted.
+
+network: ton
+
+protobuf:
+  files:
+    - sf/ton/type/v1/type.proto
+    - traces/v1/traces.proto
+  importPaths:
+    - ../../proto
+    - ./proto
+
+binaries:
+  default:
+    type: wasm/rust-v1
+    file: ./target/wasm32-unknown-unknown/release/ton_traces.wasm
+
+# From the first block, so that every trace is seen from its beginning. The
+# stores only hold the traces that have not ended yet.
+modules:
+  - name: store_trace_size
+    kind: store
+    initialBlock: 1
+    updatePolicy: add
+    valueType: int64
+    inputs:
+      - source: sf.ton.type.v1.Block
+
+  - name: store_pending
+    kind: store
+    initialBlock: 1
+    updatePolicy: set
+    valueType: proto:traces.v1.PendingTransaction
+    inputs:
+      - params: string
+      - source: sf.ton.type.v1.Block
+      - store: store_trace_size
+
+  - name: map_traces
+    kind: map
+    initialBlock: 1
+    inputs:
+      - source: sf.ton.type.v1.Block
+      - store: store_pending
+        mode: deltas
+      - store: store_trace_size
+        mode: deltas
+    output:
+      type: proto:traces.v1.Traces
+
+  - name: map_trace_digests
+    kind: map
+    initialBlock: 1
+    inputs:
+      - map: map_traces
+    output:
+      type: proto:traces.v1.TraceDigests
+
+params:
+  store_pending: "max_transactions=1000"
