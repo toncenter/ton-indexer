@@ -1,9 +1,10 @@
-// Package router is ton-state-router: the ton.tvm.v1 Executor that fireton
+// Package router is ton-tvm-router: the ton.tvm.v1 Executor that fireton
 // calls, which checks the calls and has a backend answer them on the block.
 package router
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	pbtvm "github.com/toncenter/ton-indexer/ton-index-worker/ton-index-firehose/fireton/pb/ton/tvm/v1"
@@ -83,11 +84,16 @@ func (s *Server) execute(ctx context.Context, block *pbtvm.BlockRequest) (*pbtvm
 		}
 		answered, err := s.backend.Execute(ctx, block, valid)
 		if err != nil {
-			s.logger.Warn("backend failed", zap.String("backend", s.backend.Name()), zap.Uint32("block", block.GetMcSeqno()), zap.Error(err))
-			if _, ok := status.FromError(err); ok {
-				return nil, "backend_error", err
+			st, ok := status.FromError(err)
+			if !ok {
+				st = status.Newf(codes.Unavailable, "backend %s: %v", s.backend.Name(), err)
 			}
-			return nil, "backend_error", status.Errorf(codes.Unavailable, "backend %s: %v", s.backend.Name(), err)
+			// Unavailable is a block not reached yet, or a backend away: the
+			// usual at the head, so not worth a warning.
+			if st.Code() != codes.Unavailable {
+				s.logger.Warn("backend failed", zap.String("backend", s.backend.Name()), zap.Uint32("block", block.GetMcSeqno()), zap.Error(err))
+			}
+			return nil, "backend_" + strings.ToLower(st.Code().String()), st.Err()
 		}
 		if len(answered) != len(valid) {
 			return nil, "backend_error", status.Errorf(codes.Internal, "backend %s gave %d results for %d calls", s.backend.Name(), len(answered), len(valid))

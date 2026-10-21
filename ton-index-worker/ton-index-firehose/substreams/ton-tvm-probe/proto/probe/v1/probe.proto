@@ -11,3 +11,14 @@ message Probe {
   // One line per call, in the order of the calls, over both batches.
   repeated string results = 3;
 }
+
+// get_account against the block, for the accounts that changed in the round:
+// before_block must be the state before their first transaction in it, and
+// after_block the state after their last one, as the block has them, BOCs
+// aside, with that last transaction unless the account is none after it.
+message AccountCheck {
+  uint32 mc_seqno = 1;
+  uint32 accounts = 2;  // checked at both points
+  uint32 mismatches = 3;
+  repeated string details = 4;  // of the first mismatches
+}

@@ -13,7 +13,7 @@ import (
 )
 
 // StubBackend answers without a node: for testing fireton, the router and
-// the SDK before ton-state-svc. It knows no accounts, so in its answers:
+// the SDK before ton-tvm-executor. It knows no accounts, so in its answers:
 //   - every account on chain is account_none; it has no transactions, so
 //     before_tx and after_tx are INVALID_REQUEST;
 //   - a get-method on chain is ACCOUNT_NOT_ACTIVE; on a given ShardAccount it

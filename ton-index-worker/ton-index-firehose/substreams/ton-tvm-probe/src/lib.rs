@@ -1,5 +1,5 @@
 //! Calls every kind of the ton_v1 extension on every block and tells what it
-//! answered, a line per call. Made for the stub backend of ton-state-router,
+//! answered, a line per call. Made for the stub backend of ton-tvm-router,
 //! whose answers are known (router/stub.go): a test of the way from a module
 //! through fireton to the router and back.
 //!
@@ -10,6 +10,8 @@
 mod pb {
     include!(concat!(env!("OUT_DIR"), "/probe.v1.rs"));
 }
+
+mod account_check;
 
 use std::iter::once;
 

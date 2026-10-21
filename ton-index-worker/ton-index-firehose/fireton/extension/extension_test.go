@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"context"
 	"encoding/hex"
+	"fmt"
 	"net"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -102,9 +104,8 @@ func TestWaitsUntilTheRouterAnswers(t *testing.T) {
 }
 
 func TestOtherFailuresAreErrorsAtOnce(t *testing.T) {
-	// ResourceExhausted is also what gRPC gives for a message over the limit,
 	// DeadlineExceeded comes from no deadline of ours.
-	for _, code := range []codes.Code{codes.FailedPrecondition, codes.ResourceExhausted, codes.DeadlineExceeded, codes.Unimplemented} {
+	for _, code := range []codes.Code{codes.FailedPrecondition, codes.DeadlineExceeded, codes.Unimplemented} {
 		router := &fakeRouter{failWith: code}
 		execute := serve(t, router)
 		if _, err := execute(context.Background(), "test", clock, request(t)); err == nil {
@@ -266,5 +267,76 @@ func TestTier2JobsShareConnectionsWithinTheExtensioner(t *testing.T) {
 	}
 	if len(e.clients) != 1 {
 		t.Fatalf("%d connections for two jobs", len(e.clients))
+	}
+}
+
+// Actual transport errors on either hop must split the batch at the host,
+// without changing block identity, result order, or per-call errors.
+func TestSplitsOversizedReplies(t *testing.T) {
+	for _, backendLimit := range []bool{false, true} {
+		t.Run(fmt.Sprintf("backend_limit_%v", backendLimit), func(t *testing.T) {
+			listener, err := net.Listen("tcp", "127.0.0.1:0")
+			if err != nil {
+				t.Fatal(err)
+			}
+			server := grpc.NewServer(grpc.MaxSendMsgSize(512))
+			var attempts atomic.Int32
+			pbtvm.RegisterExecutorServer(server, &replySizeServer{backendLimit: backendLimit, attempts: &attempts, t: t})
+			go server.Serve(listener)
+			t.Cleanup(server.Stop)
+			e := New(listener.Addr().String(), zap.NewNop())
+			c, err := e.routerClient(listener.Addr().String())
+			if err != nil {
+				t.Fatal(err)
+			}
+			results := execute(t, c, emulations(9, []byte{1}))
+			for i, result := range results {
+				want := fmt.Sprintf("%d:%s", i+1, strings.Repeat("x", 160))
+				if result.GetError().GetMessage() != want {
+					t.Fatalf("result %d: %v", i, result)
+				}
+			}
+			if attempts.Load() <= 1 {
+				t.Fatal("oversized response was not split")
+			}
+		})
+	}
+}
+
+type replySizeServer struct {
+	pbtvm.UnimplementedExecutorServer
+	backendLimit bool
+	attempts     *atomic.Int32
+	t            *testing.T
+}
+
+func (s *replySizeServer) Execute(_ context.Context, req *pbtvm.BlockRequest) (*pbtvm.ExecuteResponse, error) {
+	s.attempts.Add(1)
+	if req.McSeqno != uint32(clock.Number) || hex.EncodeToString(req.McRootHash) != clock.Id || req.McGenUtime != uint32(clock.Timestamp.Seconds) {
+		s.t.Error("lost block identity while splitting replies")
+	}
+	response := &pbtvm.ExecuteResponse{}
+	for _, call := range req.Request.Calls {
+		response.Results = append(response.Results, protocol.CallError(pbtvm.ErrorCode_ERROR_CODE_INVALID_REQUEST,
+			fmt.Sprintf("%d:%s", call.GetEmulate().GetContext().GetNow(), strings.Repeat("x", 160))))
+	}
+	if s.backendLimit && proto.Size(response) > 512 {
+		return nil, status.Error(codes.ResourceExhausted, "executor reply is too large")
+	}
+	return response, nil
+}
+
+func TestSingleOversizedReplyIsTerminal(t *testing.T) {
+	attempts := 0
+	c := &client{logger: zap.NewNop(), executor: executorFunc(func(context.Context, *pbtvm.BlockRequest) (*pbtvm.ExecuteResponse, error) {
+		attempts++
+		return nil, status.Error(codes.ResourceExhausted, "one result is too large")
+	})}
+	in, _ := proto.Marshal(emulations(1, []byte{1}))
+	if _, err := c.executeBlock(context.Background(), "test", clock, in); err == nil {
+		t.Fatal("expected terminal error")
+	}
+	if attempts != 1 {
+		t.Fatalf("%d attempts, want 1", attempts)
 	}
 }

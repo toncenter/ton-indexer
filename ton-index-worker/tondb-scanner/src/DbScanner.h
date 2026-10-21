@@ -53,6 +53,9 @@ public:
   void get_oldest_mc_seqno(td::Promise<ton::BlockSeqno> promise);
   void get_mc_block_handle(ton::BlockSeqno seqno, td::Promise<ton::validator::ConstBlockHandle> promise);
   void get_cell_db_reader(td::Promise<std::shared_ptr<vm::CellDbReader>> promise);
+  void get_block_handle(ton::BlockIdExt block_id, td::Promise<ton::validator::ConstBlockHandle> promise);
+  // The root of the state after the block, its cells loaded from the cell db as they are read.
+  void get_block_state_root(ton::validator::ConstBlockHandle handle, td::Promise<td::Ref<vm::Cell>> promise);
   void iterate_temp_block_handles(std::function<void(const ton::validator::BlockHandleInterface&)> f);
   void fetch_block_by_id(ton::BlockIdExt block_id, td::Promise<schema::BlockDataState> promise);
   void request_catch_up(td::Promise<td::Unit> promise,

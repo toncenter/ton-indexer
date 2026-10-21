@@ -1,8 +1,9 @@
 # Дизайн: TVM и стейты TON в substreams-модулях
 
-Статус: предложение от 2026-10-21. Сделан шаг 1 порядка работ: протоколы в
-`proto/ton`, fireton и ton-state-router со stub-бэкендом в `fireton/`, SDK в
-`substreams/substreams-ton`.
+Статус: предложение от 2026-10-21. Сделаны шаги 1 и 2 порядка работ:
+протоколы в `proto/ton`, fireton и ton-tvm-router в `fireton/`, SDK в
+`substreams/substreams-ton`, ton-tvm-executor с `get_account` на
+`after_block` и `before_block` в `ton-index-worker/ton-tvm-executor`.
 
 Цель: дать пользовательским substreams-модулям TON то же, что есть в acton:
 get-методы, эмуляцию транзакции, стейт любого аккаунта на любом блоке истории.
@@ -121,15 +122,15 @@ flowchart LR
     subgraph Substreams["хост Substreams"]
         Module["пользовательский модуль (wasm)"]
         Tier["fireton: tier1, tier2"]
-        Router["ton-state-router"]
+        Router["ton-tvm-router"]
         Module -- "ton_v1.execute" --> Tier
         Tier -- "ton.tvm.v1 gRPC" --> Router
     end
     subgraph Full["полные ноды"]
-        SvcF["ton-state-svc"] --> DbF["node DB, secondary"]
+        SvcF["ton-tvm-executor"] --> DbF["node DB, secondary"]
     end
     subgraph Archive["архивные ноды"]
-        SvcA["ton-state-svc"] --> DbA["node DB, secondary"]
+        SvcA["ton-tvm-executor"] --> DbA["node DB, secondary"]
         Reader["reader-node, на одной архивной ноде"] --> DbA
     end
     Router -- "блоки в окне полных нод" --> SvcF
@@ -146,7 +147,7 @@ tier1 или tier2. Firehose-часть (reader-node, merger, relayer, firehose)
   задаётся флагом fireton на tier1, как `--substreams-rpc-endpoints` у fireeth.
   Собран на firehose-core v1.21.1 (substreams v1.25.1, ещё не релиз), а не на
   v1.20.1 установленного firecore.
-- **ton-state-router** (Go, на хосте Substreams) — один адрес для `ton.tvm.v1`.
+- **ton-tvm-router** (Go, на хосте Substreams) — один адрес для `ton.tvm.v1`.
   - Знает у каждого бэкенда диапазон [нижняя граница, head] и направляет пачку
     по номеру блока: все вызовы пачки привязаны к одному блоку N.
   - Если до блока ещё никто не дошёл — ждёт. Если блок вне окна бэкенда —
@@ -154,13 +155,24 @@ tier1 или tier2. Firehose-часть (reader-node, merger, relayer, firehose)
   - Может кэшировать ответы: они детерминированы. Это выгодно на голове, где все
     спрашивают один и тот же блок.
   - Проверяет лимиты v1.
-- **ton-state-svc** (C++, новый бинарь в `ton-index-worker`) — secondary-инстанс
+- **ton-tvm-executor** (C++, новый бинарь в `ton-index-worker`) — secondary-инстанс
   к базе ноды. Читает стейты на mc-блоке и исполняет через libemulator прямо
   рядом с celldb, ячейки грузит лениво: большой data не перекачивается.
   Переиспользует DbScanner, CellCache, перевод Transaction → proto из
   `FirehoseBlock.cpp`, настройку `emulator::TransactionEmulator` из
   TraceEmulator и execute-smc. Отдельный процесс, а не код
   внутри tier2: падение нативного кода не роняет tier2, который обслуживает всех.
+  Говорит тем же gRPC `ton.tvm.v1.Executor`, что и роутер: grpc++ из системных
+  пакетов, собран с системным Abseil, а TON — со своим. Символы двух Abseil не
+  пересекаются (у каждого свой inline namespace), а их заголовки не встречаются
+  в одном исходнике: gRPC-сервер — отдельная библиотека без заголовков TON.
+  gRPC работает через callback API: кладёт запрос в ограниченную очередь,
+  которую читает IO-актор TON. Каждую RPC-пачку исполняет отдельный CPU-актор;
+  ответы DbScanner приходят сообщениями через `td::Promise`, между вызовами
+  актор отдаёт управление scheduler. Отмена передаётся через атомарный флаг
+  и проверяется также таймером при ожидании БД. При остановке scheduler
+  работает до завершения RPC. `--max-requests` ограничивает число пачек в
+  очереди и исполнении; перегрузка возвращается как `Unavailable`.
 
 ### Отставание нод
 
@@ -176,6 +188,10 @@ tier1 или tier2. Firehose-часть (reader-node, merger, relayer, firehose)
   насколько отставала нода в момент запроса.
 - «Ещё нет» — ошибка инфраструктуры. Расширение повторяет запрос, пока жив
   контекст запроса пользователя; обработка блока при этом просто ждёт.
+- Данные прочитаны, но не разбираются (например, вариант TL-B, которого не
+  знает конвертер), — тоже ошибка инфраструктуры, но не «ещё нет»: сервис
+  отвечает `Internal`, и расширение сразу завершает запрос ошибкой, а не ждёт
+  вечно. Ошибки чтения базы остаются `Unavailable`.
 - Для головы хватает полных нод с окном `--state-ttl` (по умолчанию сутки).
   Маршрутизация идёт по номеру блока, а не по tier: dev mode заставляет tier1
   спрашивать старые блоки, а свежие сегменты tier2 могут уходить на полные ноды.
@@ -304,7 +320,10 @@ message AccountSnapshot {
 - `AccountValue.last_trans_lt` не дублирует
   `Account.account.storage.last_trans_lt`: первое — начало последней
   транзакции, второе — конец её LT-интервала.
-- Несуществующий аккаунт возвращается обычным значением с `account_none`.
+- Несуществующий аккаунт возвращается обычным значением с `account_none`,
+  нулевым `last_trans_hash` и `last_trans_lt=0` — даже если у него были
+  транзакции в блоке, например отскок сообщения: TON такие аккаунты не
+  хранит, и сведений о последней транзакции у них нет.
 
 ```proto
 // ton/tvm/v1/tvm.proto
@@ -606,9 +625,12 @@ gRPC 256 MiB. Это транспорт: на ответы он не влияе�
 
 В каркасе шага 1 предварительно выбраны: 1 MiB на BOC, 8 MiB на
 сериализованный `Call`, газ get-метода 1M по умолчанию и не больше 10M.
-Константы — в `fireton/protocol/limits.go`, в SDK их нет. `ResourceExhausted`
-не повторяется: gRPC отдаёт его и на сообщение больше лимита. О временной
-перегрузке бэкенд сообщает через `Unavailable`.
+Константы — в `fireton/protocol/limits.go`, в SDK их нет. При
+`ResourceExhausted` расширение делит пачку пополам и повторяет меньшие части:
+так ограничивается ответ на обоих участках executor → router → fireton.
+Ошибка для единственного вызова завершает запрос. Executor также прекращает
+сборку ответа при достижении транспортного лимита. О временной перегрузке
+бэкенд сообщает через `Unavailable`.
 
 ## Порядок работ
 
@@ -616,7 +638,7 @@ gRPC 256 MiB. Это транспорт: на ответы он не влияе�
    `ton_v1.execute`, который пока отвечает заглушкой через роутер. Прогнать на
    голове и в tier2: передача параметров расширения из tier1 в tier2, кэш
    сегментов, метрики, ожидание блока.
-2. ton-state-svc на архивной ноде: `get_account` на `after_block` и `before_block`.
+2. ton-tvm-executor на архивной ноде: `get_account` на `after_block` и `before_block`.
 3. get-методы.
 4. Эмуляция одной транзакции; затем `before_tx` и `after_tx`.
 5. Переигрывание реальных транзакций по диапазонам блоков: это и проверка

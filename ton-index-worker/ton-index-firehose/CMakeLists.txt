@@ -21,21 +21,30 @@ foreach(proto sf/ton/type/v1/type.proto sf/bstream/v1/bstream.proto)
     COMMENT "Generating C++ for ${proto}")
 endforeach()
 
+# The messages, also for ton-tvm-executor, whose protos import type.proto.
+add_library(ton-firehose-proto STATIC ${FIREHOSE_PROTO_SRCS})
+target_include_directories(ton-firehose-proto PUBLIC ${FIREHOSE_PROTO_OUT} ${Protobuf_INCLUDE_DIRS})
+target_link_libraries(ton-firehose-proto PUBLIC ${Protobuf_LIBRARIES})
+
+# Cells to messages, also for ton-tvm-executor.
+add_library(ton-firehose-convert STATIC
+    src/FirehoseBlock.cpp
+    src/CellCache.cpp
+)
+target_include_directories(ton-firehose-convert PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_compile_features(ton-firehose-convert PUBLIC cxx_std_20)
+target_link_libraries(ton-firehose-convert PUBLIC tondb-scanner ton-firehose-proto)
+
 add_executable(ton-index-firehose
     src/main.cpp
     src/InsertManagerFirehose.cpp
-    src/FirehoseBlock.cpp
-    src/CellCache.cpp
     src/FirehoseOutput.cpp
-    ${FIREHOSE_PROTO_SRCS}
 )
-target_include_directories(ton-index-firehose PRIVATE ${FIREHOSE_PROTO_OUT} ${Protobuf_INCLUDE_DIRS})
 target_compile_features(ton-index-firehose PRIVATE cxx_std_20)
 target_link_libraries(ton-index-firehose
         index-engine-core
-        tondb-scanner
+        ton-firehose-convert
         ton-observability
-        ${Protobuf_LIBRARIES}
         ${ZSTD_LIBRARY})
 target_link_options(ton-index-firehose PUBLIC -rdynamic)
 

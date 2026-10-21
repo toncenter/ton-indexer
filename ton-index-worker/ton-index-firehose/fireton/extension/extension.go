@@ -1,11 +1,12 @@
 // Package extension is the ton_v1 extension of substreams modules: the
 // import ton_v1.execute, which sends a batch of calls of a module, with the
-// masterchain block the module is processing, to ton-state-router.
+// masterchain block the module is processing, to ton-tvm-router.
 //
 // Determinism: the router answers a block only from that block. Whatever it
 // cannot answer yet (no backend has reached the block, the router is down) is
-// retried for as long as the request of the user lives; any other failure is
-// an error of the extension, which substreams treats as non-deterministic.
+// retried for as long as the request of the user lives, and a reply over the
+// transport limit is asked for again in halves; any other failure is an error
+// of the extension, which substreams treats as non-deterministic.
 package extension
 
 import (
@@ -201,10 +202,27 @@ func (c *client) executeRequest(ctx context.Context, requestID string, blockRequ
 		if ctx.Err() != nil {
 			return nil, fmt.Errorf("block %d: %w", blockRequest.McSeqno, context.Cause(ctx))
 		}
-		// Unavailable is what the router cannot answer yet (the block is not
-		// reached, the router is down or overloaded); anything else it cannot
-		// answer at all. ResourceExhausted is not retried: gRPC also gives it
-		// for messages over the size limit.
+		// A small request may yield a large response. Split at the host so
+		// both executor -> router and router -> host replies fit. Each
+		// recursive request is smaller; a single-call failure is terminal.
+		if status.Code(err) == codes.ResourceExhausted && len(blockRequest.Request.Calls) > 1 {
+			calls := blockRequest.Request.Calls
+			response := &pbtvm.ExecuteResponse{}
+			for _, part := range [][]*pbtvm.Call{calls[:len(calls)/2], calls[len(calls)/2:]} {
+				chunk := &pbtvm.BlockRequest{
+					McSeqno: blockRequest.McSeqno, McRootHash: blockRequest.McRootHash,
+					McGenUtime: blockRequest.McGenUtime, Request: &pbtvm.ExecuteRequest{Calls: part},
+				}
+				answered, err := c.executeRequest(ctx, requestID, chunk)
+				if err != nil {
+					return nil, err
+				}
+				response.Results = append(response.Results, answered.Results...)
+			}
+			return response, nil
+		}
+		// Unavailable is a block not reached or a backend down/overloaded.
+		// It is the only error retried with the same batch.
 		if status.Code(err) != codes.Unavailable {
 			return nil, fmt.Errorf("block %d: router %s: %w", blockRequest.McSeqno, c.addr, err)
 		}

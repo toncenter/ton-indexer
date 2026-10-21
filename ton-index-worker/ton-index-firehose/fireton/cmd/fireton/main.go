@@ -36,7 +36,7 @@ func main() {
 		Tools:                &firecore.ToolsConfig[*pbbstream.Block]{},
 
 		RegisterExtraStartFlags: func(flags *pflag.FlagSet) {
-			flags.String("substreams-ton-router-addr", "", "Address of ton-state-router for the ton_v1 extension. "+
+			flags.String("substreams-ton-router-addr", "", "Address of ton-tvm-router for the ton_v1 extension. "+
 				"Set on tier1 only: tier1 sends it to tier2 with every request. Empty: modules importing ton_v1 do not run")
 		},
 		RegisterSubstreamsExtensions: func() (wasm.WASMExtensioner, error) {

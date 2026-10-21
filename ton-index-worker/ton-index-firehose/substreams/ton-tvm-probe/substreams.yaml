@@ -4,7 +4,7 @@ package:
   version: v0.1.0
   doc: |
     Calls every kind of the ton_v1 extension on every block: a test of
-    fireton, ton-state-router and the SDK, made for the stub backend.
+    fireton, ton-tvm-router and the SDK, made for the stub backend.
 
 network: ton
 
@@ -28,3 +28,11 @@ modules:
       - source: sf.ton.type.v1.Block
     output:
       type: proto:probe.v1.Probe
+
+  # get_account against the block, with ton-tvm-executor as the backend.
+  - name: map_account_check
+    kind: map
+    inputs:
+      - source: sf.ton.type.v1.Block
+    output:
+      type: proto:probe.v1.AccountCheck

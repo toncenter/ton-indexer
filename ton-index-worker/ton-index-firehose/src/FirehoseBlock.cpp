@@ -192,47 +192,23 @@ struct AccountStats {
 };
 AccountStats g_account_stats;
 
-class Converter {
+class CellConverter {
  public:
-  explicit Converter(const ParsedBlock& parsed_block) : parsed_block_(parsed_block) {
-    for (const auto& blk : parsed_block.blocks_) {
-      for (const auto& tx : blk.transactions) {
-        trace_ids_.emplace(tx.hash, tx.trace_id);
-        if (tx.in_msg && tx.in_msg->hash_norm && *tx.in_msg->hash_norm != tx.in_msg->hash) {
-          norm_hashes_.emplace(tx.in_msg->hash, *tx.in_msg->hash_norm);
-        }
-      }
-    }
-  }
-
-  td::Status convert(pb::Block* out) {
-    const auto& config = parsed_block_.mc_block_.config_;
-    if (!config) {
-      return td::Status::Error("masterchain config is missing");
-    }
-    global_version_ = config->get_global_version();
-    cache_accounts_after();
+  // One account outside of any block, code, data and library by their hashes.
+  td::Result<pb::Account> convert_account(const Ref<Cell>& root) {
+    LoadedAccount account;
     try {
-      fill_block(out);
+      fill_account(&account, root);
+    } catch (vm::VmVirtError&) {
+      fail(td::Status::Error("pruned cell in account"));
     } catch (vm::VmError& e) {
       fail(td::Status::Error(PSLICE() << "malformed cell: " << e.get_msg()));
     }
-    return std::move(error_);
+    TRY_STATUS(std::move(error_));
+    return std::move(account.account);
   }
 
- private:
-  static constexpr std::size_t kMaxDataBocSize = 64 * 1024;
-
-  const ParsedBlock& parsed_block_;
-  int global_version_{0};
-  std::map<td::Bits256, td::Bits256> trace_ids_;
-  std::map<td::Bits256, td::Bits256> norm_hashes_;
-  // null when the account failed to load
-  std::map<td::Bits256, std::shared_ptr<const LoadedAccount>> accounts_;
-  // The accounts of the old and the new state of the block being filled, see
-  // unpack_state_update_accounts.
-  std::array<std::vector<vm::AugmentedDictionary>, 2> state_update_accounts_;
-  // The first error: the fill functions record it and go on, convert() returns it.
+ protected:
   td::Status error_;
 
   void fail(td::Status error) {
@@ -370,6 +346,172 @@ class Converter {
       (*out->mutable_other())[id] = amount->to_dec_string();
     }
   }
+
+  void fill_account(LoadedAccount* out, const Ref<Cell>& root) {
+    auto cs = vm::load_cell_slice_ref(root);
+    if (block::gen::t_Account.get_tag(*cs) == block::gen::Account::account_none) {
+      out->account.mutable_account_none();
+      return;
+    }
+    block::gen::Account::Record_account rec;
+    if (!tlb::csr_unpack(cs, rec)) {
+      return fail_unpack("Account");
+    }
+    auto* account = out->account.mutable_account();
+    fill_msg_addr_int(account->mutable_addr(), rec.addr);
+    fill_storage_info(account->mutable_storage_stat(), rec.storage_stat);
+
+    block::gen::AccountStorage::Record storage;
+    if (!tlb::csr_unpack(rec.storage, storage)) {
+      return fail_unpack("AccountStorage");
+    }
+    auto* out_storage = account->mutable_storage();
+    out_storage->set_last_trans_lt(storage.last_trans_lt);
+    fill_currencies(out_storage->mutable_balance(), storage.balance);
+    auto* state = out_storage->mutable_state();
+    using block::gen::AccountState;
+    switch (block::gen::t_AccountState.get_tag(*storage.state)) {
+      case AccountState::account_uninit:
+        state->mutable_account_uninit();
+        return;
+      case AccountState::account_frozen: {
+        AccountState::Record_account_frozen frozen;
+        if (!tlb::csr_unpack(storage.state, frozen)) {
+          return fail_unpack("account_frozen");
+        }
+        state->mutable_account_frozen()->set_state_hash(bytes(frozen.state_hash));
+        return;
+      }
+      case AccountState::account_active: {
+        AccountState::Record_account_active active;
+        if (!tlb::csr_unpack(storage.state, active)) {
+          return fail_unpack("account_active");
+        }
+        fill_state_init(state->mutable_account_active(), active.x, false, out);
+        return;
+      }
+    }
+    fail_unpack("AccountState");
+  }
+
+  void fill_storage_info(pb::StorageInfo* out, const Ref<CellSlice>& cs) {
+    block::gen::StorageInfo::Record info;
+    if (!tlb::csr_unpack(cs, info)) {
+      return fail_unpack("StorageInfo");
+    }
+    fill_storage_used(out->mutable_used(), info.used);
+    using block::gen::StorageExtraInfo;
+    switch (block::gen::t_StorageExtraInfo.get_tag(*info.storage_extra)) {
+      case StorageExtraInfo::storage_extra_none:
+        out->mutable_storage_extra()->mutable_storage_extra_none();
+        break;
+      case StorageExtraInfo::storage_extra_info: {
+        StorageExtraInfo::Record_storage_extra_info extra;
+        unsigned char dict_hash[32];
+        if (!tlb::csr_unpack(info.storage_extra, extra) ||
+            !extra.dict_hash->export_bytes(dict_hash, sizeof(dict_hash), false)) {
+          return fail_unpack("storage_extra_info");
+        }
+        out->mutable_storage_extra()->mutable_storage_extra_info()->set_dict_hash(
+            std::string(reinterpret_cast<const char*>(dict_hash), sizeof(dict_hash)));
+        break;
+      }
+      default:
+        return fail_unpack("StorageExtraInfo");
+    }
+    out->set_last_paid(info.last_paid);
+    if (auto due_payment = maybe_grams(info.due_payment)) {
+      out->set_due_payment(*due_payment);
+    }
+  }
+
+  void fill_storage_used(pb::StorageUsed* out, const Ref<CellSlice>& cs) {
+    block::gen::StorageUsed::Record used;
+    if (!tlb::csr_unpack(cs, used)) {
+      return fail_unpack("StorageUsed");
+    }
+    out->set_cells(block::tlb::t_VarUInteger_7.as_uint(*used.cells));
+    out->set_bits(block::tlb::t_VarUInteger_7.as_uint(*used.bits));
+  }
+
+  // With cells set, keeps the cells of code, data and library there instead of
+  // adding their BOCs.
+  void fill_state_init(pb::StateInit* out, const Ref<CellSlice>& cs, bool with_bocs, LoadedAccount* cells) {
+    block::gen::StateInit::Record init;
+    if (!tlb::csr_unpack(cs, init)) {
+      return fail_unpack("StateInit");
+    }
+    if (init.fixed_prefix_length->prefetch_ulong(1) == 1) {
+      out->set_fixed_prefix_length(static_cast<std::uint32_t>(init.fixed_prefix_length->prefetch_ulong(6) & 0x1f));
+    }
+    if (init.special->prefetch_ulong(1) == 1) {
+      auto tick_tock = init.special->prefetch_ulong(3);
+      out->mutable_special()->set_tick(tick_tock & 2);
+      out->mutable_special()->set_tock(tick_tock & 1);
+    }
+    auto code = maybe_ref(init.code);
+    auto data = maybe_ref(init.data);
+    auto library = maybe_ref(init.library);
+    if (code.not_null()) {
+      fill_cell(out->mutable_code(), code, with_bocs);
+    }
+    if (data.not_null()) {
+      fill_cell(out->mutable_data(), data, with_bocs);
+    }
+    if (library.not_null()) {
+      fill_cell(out->mutable_library(), library, with_bocs);
+    }
+    if (cells != nullptr) {
+      auto hash = [](const Ref<Cell>& cell) {
+        return cell.not_null() ? std::optional<vm::CellHash>(cell->get_hash()) : std::nullopt;
+      };
+      cells->code = hash(code);
+      cells->data = hash(data);
+      cells->library = hash(library);
+    }
+  }
+};
+
+class Converter : private CellConverter {
+ public:
+  explicit Converter(const ParsedBlock& parsed_block) : parsed_block_(parsed_block) {
+    for (const auto& blk : parsed_block.blocks_) {
+      for (const auto& tx : blk.transactions) {
+        trace_ids_.emplace(tx.hash, tx.trace_id);
+        if (tx.in_msg && tx.in_msg->hash_norm && *tx.in_msg->hash_norm != tx.in_msg->hash) {
+          norm_hashes_.emplace(tx.in_msg->hash, *tx.in_msg->hash_norm);
+        }
+      }
+    }
+  }
+
+  td::Status convert(pb::Block* out) {
+    const auto& config = parsed_block_.mc_block_.config_;
+    if (!config) {
+      return td::Status::Error("masterchain config is missing");
+    }
+    global_version_ = config->get_global_version();
+    cache_accounts_after();
+    try {
+      fill_block(out);
+    } catch (vm::VmError& e) {
+      fail(td::Status::Error(PSLICE() << "malformed cell: " << e.get_msg()));
+    }
+    return std::move(error_);
+  }
+
+ private:
+  static constexpr std::size_t kMaxDataBocSize = 64 * 1024;
+
+  const ParsedBlock& parsed_block_;
+  int global_version_{0};
+  std::map<td::Bits256, td::Bits256> trace_ids_;
+  std::map<td::Bits256, td::Bits256> norm_hashes_;
+  // null when the account failed to load
+  std::map<td::Bits256, std::shared_ptr<const LoadedAccount>> accounts_;
+  // The accounts of the old and the new state of the block being filled, see
+  // unpack_state_update_accounts.
+  std::array<std::vector<vm::AugmentedDictionary>, 2> state_update_accounts_;
 
   void fill_block(pb::Block* out) {
     std::vector<const schema::BlockDataState*> blocks;
@@ -1369,130 +1511,6 @@ class Converter {
     return account;
   }
 
-  void fill_account(LoadedAccount* out, const Ref<Cell>& root) {
-    auto cs = vm::load_cell_slice_ref(root);
-    if (block::gen::t_Account.get_tag(*cs) == block::gen::Account::account_none) {
-      out->account.mutable_account_none();
-      return;
-    }
-    block::gen::Account::Record_account rec;
-    if (!tlb::csr_unpack(cs, rec)) {
-      return fail_unpack("Account");
-    }
-    auto* account = out->account.mutable_account();
-    fill_msg_addr_int(account->mutable_addr(), rec.addr);
-    fill_storage_info(account->mutable_storage_stat(), rec.storage_stat);
-
-    block::gen::AccountStorage::Record storage;
-    if (!tlb::csr_unpack(rec.storage, storage)) {
-      return fail_unpack("AccountStorage");
-    }
-    auto* out_storage = account->mutable_storage();
-    out_storage->set_last_trans_lt(storage.last_trans_lt);
-    fill_currencies(out_storage->mutable_balance(), storage.balance);
-    auto* state = out_storage->mutable_state();
-    using block::gen::AccountState;
-    switch (block::gen::t_AccountState.get_tag(*storage.state)) {
-      case AccountState::account_uninit:
-        state->mutable_account_uninit();
-        return;
-      case AccountState::account_frozen: {
-        AccountState::Record_account_frozen frozen;
-        if (!tlb::csr_unpack(storage.state, frozen)) {
-          return fail_unpack("account_frozen");
-        }
-        state->mutable_account_frozen()->set_state_hash(bytes(frozen.state_hash));
-        return;
-      }
-      case AccountState::account_active: {
-        AccountState::Record_account_active active;
-        if (!tlb::csr_unpack(storage.state, active)) {
-          return fail_unpack("account_active");
-        }
-        fill_state_init(state->mutable_account_active(), active.x, false, out);
-        return;
-      }
-    }
-    fail_unpack("AccountState");
-  }
-
-  void fill_storage_info(pb::StorageInfo* out, const Ref<CellSlice>& cs) {
-    block::gen::StorageInfo::Record info;
-    if (!tlb::csr_unpack(cs, info)) {
-      return fail_unpack("StorageInfo");
-    }
-    fill_storage_used(out->mutable_used(), info.used);
-    using block::gen::StorageExtraInfo;
-    switch (block::gen::t_StorageExtraInfo.get_tag(*info.storage_extra)) {
-      case StorageExtraInfo::storage_extra_none:
-        out->mutable_storage_extra()->mutable_storage_extra_none();
-        break;
-      case StorageExtraInfo::storage_extra_info: {
-        StorageExtraInfo::Record_storage_extra_info extra;
-        unsigned char dict_hash[32];
-        if (!tlb::csr_unpack(info.storage_extra, extra) ||
-            !extra.dict_hash->export_bytes(dict_hash, sizeof(dict_hash), false)) {
-          return fail_unpack("storage_extra_info");
-        }
-        out->mutable_storage_extra()->mutable_storage_extra_info()->set_dict_hash(
-            std::string(reinterpret_cast<const char*>(dict_hash), sizeof(dict_hash)));
-        break;
-      }
-      default:
-        return fail_unpack("StorageExtraInfo");
-    }
-    out->set_last_paid(info.last_paid);
-    if (auto due_payment = maybe_grams(info.due_payment)) {
-      out->set_due_payment(*due_payment);
-    }
-  }
-
-  void fill_storage_used(pb::StorageUsed* out, const Ref<CellSlice>& cs) {
-    block::gen::StorageUsed::Record used;
-    if (!tlb::csr_unpack(cs, used)) {
-      return fail_unpack("StorageUsed");
-    }
-    out->set_cells(block::tlb::t_VarUInteger_7.as_uint(*used.cells));
-    out->set_bits(block::tlb::t_VarUInteger_7.as_uint(*used.bits));
-  }
-
-  // With cells set, keeps the cells of code, data and library there instead of
-  // adding their BOCs.
-  void fill_state_init(pb::StateInit* out, const Ref<CellSlice>& cs, bool with_bocs, LoadedAccount* cells) {
-    block::gen::StateInit::Record init;
-    if (!tlb::csr_unpack(cs, init)) {
-      return fail_unpack("StateInit");
-    }
-    if (init.fixed_prefix_length->prefetch_ulong(1) == 1) {
-      out->set_fixed_prefix_length(static_cast<std::uint32_t>(init.fixed_prefix_length->prefetch_ulong(6) & 0x1f));
-    }
-    if (init.special->prefetch_ulong(1) == 1) {
-      auto tick_tock = init.special->prefetch_ulong(3);
-      out->mutable_special()->set_tick(tick_tock & 2);
-      out->mutable_special()->set_tock(tick_tock & 1);
-    }
-    auto code = maybe_ref(init.code);
-    auto data = maybe_ref(init.data);
-    auto library = maybe_ref(init.library);
-    if (code.not_null()) {
-      fill_cell(out->mutable_code(), code, with_bocs);
-    }
-    if (data.not_null()) {
-      fill_cell(out->mutable_data(), data, with_bocs);
-    }
-    if (library.not_null()) {
-      fill_cell(out->mutable_library(), library, with_bocs);
-    }
-    if (cells != nullptr) {
-      auto hash = [](const Ref<Cell>& cell) {
-        return cell.not_null() ? std::optional<vm::CellHash>(cell->get_hash()) : std::nullopt;
-      };
-      cells->code = hash(code);
-      cells->data = hash(data);
-      cells->library = hash(library);
-    }
-  }
-
   void fill_transaction(pb::Transaction* out, const Ref<Cell>& cell, bool with_trace_id) {
     block::gen::Transaction::Record tx;
     if (!tlb::unpack_cell(cell, tx)) {
@@ -1828,6 +1846,14 @@ td::Result<FirehoseBlock> make_firehose_block(const ParsedBlock& parsed_block) {
   out.gen_utime = mc_block.info().gen_utime();
   TRY_RESULT_ASSIGN(out.payload, serialize_deterministic(block));
   return out;
+}
+
+td::Result<pb::Account> account_to_proto(const Ref<Cell>& root) {
+  return CellConverter().convert_account(root);
+}
+
+void block_id_to_proto(pb::BlockIdExt* out, const ton::BlockIdExt& id) {
+  fill_block_id_ext(out, id);
 }
 
 td::Result<std::string> firehose_payload_to_json(const std::string& payload) {

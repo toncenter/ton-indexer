@@ -105,6 +105,7 @@ add_subdirectory(ton-mch-engine)  # defines mch-classify (linked by ton-index-po
 add_subdirectory(ton-index-postgres)
 add_subdirectory(ton-index-clickhouse)
 add_subdirectory(ton-index-firehose)
+add_subdirectory(ton-tvm-executor)
 add_subdirectory(ton-integrity-checker)
 add_subdirectory(ton-smc-scanner)
 add_subdirectory(ton-trace-emulator)

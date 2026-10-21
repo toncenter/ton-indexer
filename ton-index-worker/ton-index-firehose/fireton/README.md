@@ -1,4 +1,4 @@
-# fireton and ton-state-router
+# fireton and ton-tvm-router
 
 The ton_v1 extension of substreams modules: account states, get-methods and
 the emulation of one transaction, on the masterchain block a module is
@@ -12,12 +12,16 @@ processing. The design is in `../substreams-tvm.md`; the protocols are in
   The import `ton_v1.execute` sends a module's batch of calls with the block
   to the router, and retries what the router cannot answer yet (`Unavailable`:
   no backend has reached the block, the router is down) for as long as the
-  request lives.
-- **ton-state-router** (`cmd/ton-state-router`) serves `ton.tvm.v1.Executor`:
+  request lives. On `ResourceExhausted` it retries smaller batches: a small
+  request can have a reply larger than gRPC permits. A failure for one call
+  is terminal.
+- **ton-tvm-router** (`cmd/ton-tvm-router`) serves `ton.tvm.v1.Executor`:
   it answers the calls that break a rule of requests itself, for any block,
-  and has a backend answer the others. For now the only backend is the stub
-  (`router/stub.go`), which knows no accounts; `--stub-lag` makes it reach
-  each block that long after its gen_utime, as a lagging backend would.
+  and has a backend answer the others: a ton-tvm-executor
+  (`--executor-addr`, `../../ton-tvm-executor`), whose gRPC codes it passes
+  on, or else the stub (`router/stub.go`), which knows no accounts;
+  `--stub-lag` makes the stub reach each block that long after its gen_utime,
+  as a lagging backend would.
 
 As fireeth is for Ethereum, fireton is a chain binary built on
 `firehose-core`, which supplies the apps, the substreams engine and the
@@ -39,8 +43,11 @@ and 16 MiB, which changes no answer; the SDK makes one host call per batch.
 A request with a field the host or the router does not know, such as a kind
 of call from a newer SDK, is an error of the extension: answered as
 `INVALID_REQUEST` it would be cached, and differ from what a newer server
-answers the same module. Only `Unavailable` is retried; `ResourceExhausted`
-is not, since gRPC also gives it for messages over the size limit. Requests
+answers the same module. `Unavailable` is retried with the same request;
+`ResourceExhausted`, which gRPC gives for a reply over the size limit, with
+its two halves, down to a single call. Any other code is an error of the
+extension: `Internal` from the executor, for one, is data it read and cannot
+parse, which would fail the same way again. Requests
 have no deadline of their own: a long batch is not run again, and gRPC
 keepalive finds a dead connection. The connection to a router that was down
 is tried again at least every 2 s, as requests are.
@@ -56,7 +63,7 @@ The module builds with firehose-core v1.21.1 and the forks it builds with
 (the `replace` block of `go.mod`), on Go 1.27 or newer; wasmtime needs cgo.
 
 ```bash
-go build ./cmd/fireton ./cmd/ton-state-router
+go build ./cmd/fireton ./cmd/ton-tvm-router
 ```
 
 ```bash
@@ -67,11 +74,13 @@ After a change of `../proto`, `./gen.sh` generates `pb/` again.
 
 ## Test stand
 
-`stand.sh` runs the router with the stub, tier1 and tier2 of fireton as
-transient units on the store host, on localhost only and apart from the
-production units: binaries in `/srv/scratch/fireton-test/bin`, tier1 on
-127.0.0.1:10041. The module `../substreams/ton-tvm-probe` calls every kind of
-call on every block.
+`stand.sh` runs the router, tier1 and tier2 of fireton as transient units on
+the store host, on localhost only and apart from the production units:
+binaries in `/srv/scratch/fireton-test/bin`, tier1 on 127.0.0.1:10041. The
+router has the stub backend, or the ton-tvm-executor at `EXECUTOR_ADDR`. The
+module `../substreams/ton-tvm-probe` has `map_probe`, which calls every kind
+of call on every block, for the stub, and `map_account_check`, which checks
+get_account against the block, for the executor.
 
 ```bash
 sudo ./stand.sh start
@@ -81,11 +90,21 @@ sudo ./stand.sh start
 substreams run -e 127.0.0.1:10041 --plaintext ton-tvm-probe.spkg map_probe -s 100100000 -t +2000 --production-mode --limit-processed-blocks 0 -o jsonl
 ```
 
+Replace `192.0.2.10` with the executor host's private address:
+
+```bash
+sudo EXECUTOR_ADDR=192.0.2.10:10060 ./stand.sh start
+```
+
+```bash
+substreams run -e 127.0.0.1:10041 --plaintext ton-tvm-probe.spkg map_account_check -s 60000000 -t +2000 --production-mode --limit-processed-blocks 0 -o jsonl
+```
+
 ```bash
 sudo ./stand.sh stop
 ```
 
 Metrics: `substreams_tier{1,2}_wasm_extension_call_counter` (host invocations
 per tier, by substreams) and `fireton_ton_v1_execute_*` (host invocations,
-retries, durations) on 9141 and 9142, `ton_router_*` (requests, and results by
+retries, durations) on 9141 and 9142, `ton_tvm_router_*` (requests, and results by
 call kind) on 9140.

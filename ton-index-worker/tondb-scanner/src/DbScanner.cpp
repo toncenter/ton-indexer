@@ -328,6 +328,17 @@ void DbScanner::get_cell_db_reader(td::Promise<std::shared_ptr<vm::CellDbReader>
   td::actor::send_closure(db_, &RootDb::get_cell_db_reader, std::move(promise));
 }
 
+void DbScanner::get_block_handle(ton::BlockIdExt block_id, td::Promise<ton::validator::ConstBlockHandle> promise) {
+  td::actor::send_closure(db_, &RootDb::get_block_handle, block_id,
+                          promise.wrap([](ton::validator::BlockHandle handle) -> ton::validator::ConstBlockHandle {
+                            return handle;
+                          }));
+}
+
+void DbScanner::get_block_state_root(ton::validator::ConstBlockHandle handle, td::Promise<td::Ref<vm::Cell>> promise) {
+  td::actor::send_closure(db_, &RootDb::get_block_state_root, std::move(handle), std::move(promise));
+}
+
 void DbScanner::iterate_temp_block_handles(std::function<void(const ton::validator::BlockHandleInterface&)> f) {
   td::actor::send_closure(db_, &RootDb::iterate_temp_block_handles, std::move(f));
 }

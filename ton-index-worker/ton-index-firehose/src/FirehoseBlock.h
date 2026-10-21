@@ -3,7 +3,10 @@
 #include <cstdint>
 #include <string>
 #include "td/utils/Status.h"
+#include "crypto/vm/cells/Cell.h"
+#include "ton/ton-types.h"
 #include "IndexData.h"
+#include "sf/ton/type/v1/type.pb.h"
 
 inline constexpr const char kFirehoseBlockType[] = "sf.ton.type.v1.Block";
 
@@ -29,3 +32,9 @@ std::string firehose_account_stats();
 
 // The payload as JSON with proto field names, to compare against API v3.
 td::Result<std::string> firehose_payload_to_json(const std::string& payload);
+
+// The account with this root cell, as in blocks but with code, data and
+// library given by their hashes only. Loads the cells it reads.
+td::Result<sf::ton::type::v1::Account> account_to_proto(const td::Ref<vm::Cell>& root);
+
+void block_id_to_proto(sf::ton::type::v1::BlockIdExt* out, const ton::BlockIdExt& id);
