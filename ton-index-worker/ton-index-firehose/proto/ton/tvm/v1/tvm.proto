@@ -1,0 +1,154 @@
+syntax = "proto3";
+
+package ton.tvm.v1;
+
+import "google/protobuf/empty.proto";
+import "sf/ton/type/v1/type.proto";
+import "ton/state/v1/state.proto";
+
+// The ton_v1.execute import of substreams modules: a batch of calls in, one
+// result per call out, in the same order. Every call is made on the
+// masterchain block the module is processing, N = Clock.Number; the calls are
+// independent of each other. The rules and limits are in substreams-tvm.md.
+
+message ExecuteRequest {
+  repeated Call calls = 1;
+}
+
+message ExecuteResponse {
+  repeated CallResult results = 1;  // one per call, in the order of the calls
+}
+
+message Call {
+  oneof kind {
+    GetMethod get_method = 1;
+    Emulate emulate = 2;
+    GetAccount get_account = 3;  // an AccountSnapshot at any At
+  }
+}
+
+message AccountSource {
+  oneof source {
+    ton.state.v1.AccountRef onchain = 1;
+    bytes shard_account_boc = 2;  // a full TL-B ShardAccount with one root; At does not apply
+  }
+}
+
+message GetMethod {
+  AccountSource account = 1;  // required
+  oneof method {
+    string name = 2;
+    int32 id = 3;
+  }
+  repeated StackEntry stack = 4;  // the arguments, bottom to top, without the method id
+  ContextOverrides context = 5;
+  // Unset: the default gas of v1. Over the ceiling of v1: INVALID_REQUEST.
+  optional uint64 gas_limit = 6;
+  bool vm_log = 7;  // return the log, limited in size
+}
+
+message Emulate {
+  bytes message_boc = 1;  // internal or external-in, one root
+  AccountSource account = 2;  // unset: the network state of the destination after N
+  bool ignore_chksig = 3;  // for external messages without keys
+  bool return_state = 4;
+  ContextOverrides context = 5;
+  bool vm_log = 6;
+}
+
+message GetAccount {
+  ton.state.v1.AccountRef account = 1;  // required
+}
+
+// Overrides of the VM context of block N; an unset field keeps the default.
+message ContextOverrides {
+  optional uint32 now = 1;  // an explicit 0 is INVALID_REQUEST
+  optional uint64 lt = 2;  // an explicit 0 is INVALID_REQUEST
+  optional bytes rand_seed = 3;  // exactly 32 bytes, not all zero
+  map<int32, bytes> config_params = 4;  // the BOC of the cell of each param; an empty BOC is INVALID_REQUEST
+  repeated bytes libraries = 5;  // BOCs of the root cells of extra libraries, one root each
+}
+
+// Exactly one outcome is set; a successful one matches the kind of the call.
+message CallResult {
+  oneof outcome {
+    CallError error = 1;
+    GetMethodResult get_method = 2;
+    EmulateResult emulate = 3;
+    ton.state.v1.AccountSnapshot account = 4;
+  }
+}
+
+// Deterministic: depends only on the call, the block and the constants of v1.
+message CallError {
+  ErrorCode code = 1;
+  string message = 2;
+}
+
+enum ErrorCode {
+  ERROR_CODE_UNSPECIFIED = 0;  // never in a response
+  ERROR_CODE_INVALID_REQUEST = 1;
+  ERROR_CODE_TOO_LARGE = 2;
+  ERROR_CODE_REPLAY_MISMATCH = 3;
+  ERROR_CODE_ACCOUNT_NOT_ACTIVE = 4;  // a get-method on a none, uninit or frozen account
+  ERROR_CODE_EMULATION_FAILED = 5;  // the emulator built no transaction
+}
+
+message GetMethodResult {
+  int32 exit_code = 1;
+  uint64 gas_used = 2;
+  repeated StackEntry stack = 3;  // bottom to top
+  optional bytes missing_library = 4;  // the hash of the first missing library, 32 bytes
+  string vm_log = 5;
+}
+
+message EmulateResult {
+  oneof outcome {
+    ExecutedTransaction executed = 1;
+    ExternalNotAccepted external_not_accepted = 2;
+  }
+}
+
+// A transaction was created; its compute and action phases may still have failed.
+message ExecutedTransaction {
+  sf.ton.type.v1.Transaction transaction = 1;  // with its outbound messages, which are not executed
+  bytes transaction_boc = 2;  // the same transaction
+  ton.state.v1.AccountValue account_after = 3;  // set with return_state
+  string vm_log = 4;
+}
+
+// No transaction was created. The code of the emulator is given as is: 0 is
+// also what it gives when the compute phase was skipped.
+message ExternalNotAccepted {
+  int32 vm_exit_code = 1;
+  string vm_log = 2;
+}
+
+message StackEntry {
+  oneof value {
+    google.protobuf.Empty null = 1;
+    // int257: minimal two's complement big-endian, 1 to 33 bytes; zero is 0x00.
+    bytes integer = 2;
+    bytes cell = 3;  // the BOC of one cell
+    Slice slice = 4;
+    bytes builder = 5;  // the BOC of a cell with the content of the builder
+    Tuple tuple = 6;
+    google.protobuf.Empty nan = 7;
+    // Results only: a value of a type outside this model, by the name of the
+    // type, e.g. "continuation". INVALID_REQUEST in a request.
+    string unsupported = 8;
+  }
+}
+
+// A slice as its cell and both pairs of bounds.
+message Slice {
+  bytes cell_boc = 1;
+  uint32 start_bit = 2;  // inclusive
+  uint32 end_bit = 3;  // exclusive
+  uint32 start_ref = 4;  // inclusive
+  uint32 end_ref = 5;  // exclusive
+}
+
+message Tuple {
+  repeated StackEntry items = 1;
+}

@@ -1,0 +1,22 @@
+syntax = "proto3";
+
+package ton.tvm.v1;
+
+import "ton/tvm/v1/tvm.proto";
+
+// Between fireton and ton-state-router, and between the router and its
+// backends; not seen by modules.
+service Executor {
+  // Executes a batch of a module on one masterchain block. Fails with
+  // UNAVAILABLE while no backend has reached the block, and with
+  // FAILED_PRECONDITION when the block is not the one the backend has under
+  // that seqno.
+  rpc Execute(BlockRequest) returns (ExecuteResponse);
+}
+
+message BlockRequest {
+  uint32 mc_seqno = 1;  // Clock.Number
+  bytes mc_root_hash = 2;  // Clock.Id, 32 bytes
+  uint32 mc_gen_utime = 3;  // Clock.Timestamp, for logs and the lag of backends
+  ExecuteRequest request = 4;
+}

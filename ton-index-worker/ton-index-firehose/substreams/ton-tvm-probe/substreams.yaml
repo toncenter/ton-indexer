@@ -1,0 +1,30 @@
+specVersion: v0.1.0
+package:
+  name: ton_tvm_probe
+  version: v0.1.0
+  doc: |
+    Calls every kind of the ton_v1 extension on every block: a test of
+    fireton, ton-state-router and the SDK, made for the stub backend.
+
+network: ton
+
+protobuf:
+  files:
+    - sf/ton/type/v1/type.proto
+    - probe/v1/probe.proto
+  importPaths:
+    - ../../proto
+    - ./proto
+
+binaries:
+  default:
+    type: wasm/rust-v1
+    file: ./target/wasm32-unknown-unknown/release/ton_tvm_probe.wasm
+
+modules:
+  - name: map_probe
+    kind: map
+    inputs:
+      - source: sf.ton.type.v1.Block
+    output:
+      type: proto:probe.v1.Probe

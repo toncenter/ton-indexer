@@ -1,0 +1,22 @@
+[package]
+name = "ton_tvm_probe"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+hex = "0.4"
+prost = "0.13"
+substreams = "0.7"
+substreams-ton = { path = "../substreams-ton" }
+
+[build-dependencies]
+prost-build = "0.13"
+protoc-bin-vendored = "3"
+
+[profile.release]
+lto = true
+opt-level = "s"
+strip = "debuginfo"

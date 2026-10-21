@@ -1,0 +1,15 @@
+[package]
+name = "substreams-ton"
+version = "0.1.0"
+edition = "2021"
+description = "TON for substreams modules: the types of the TON Firehose and the ton_v1 extension"
+
+[dependencies]
+hex = "0.4"
+num-bigint = "0.4"
+prost = "0.13"
+substreams = "0.7"
+
+[build-dependencies]
+prost-build = "0.13"
+protoc-bin-vendored = "3"

@@ -1,0 +1,60 @@
+syntax = "proto3";
+
+package ton.state.v1;
+
+import "google/protobuf/empty.proto";
+import "sf/ton/type/v1/type.proto";
+
+// Account states for substreams modules, read through the ton_v1 extension
+// (see ton/tvm/v1/tvm.proto and substreams-tvm.md). Every read is made on the
+// masterchain block the module is processing, N = Clock.Number.
+
+message Address {
+  int32 workchain = 1;  // signed, e.g. -1 or 0
+  bytes account_id = 2;  // exactly 32 bytes; checked by the service, not by protobuf
+}
+
+// A point of block N. An unset At, or an At without point, is after_block.
+message At {
+  oneof point {
+    google.protobuf.Empty after_block = 1;  // after masterchain block N
+    google.protobuf.Empty before_block = 2;  // after masterchain block N-1
+    // Before or after the transaction with this lt of the selected account in
+    // the round of block N. States inside a shard block are found by replaying
+    // its transactions in their historical context.
+    uint64 before_tx = 3;
+    uint64 after_tx = 4;
+  }
+}
+
+message AccountRef {
+  Address address = 1;  // required everywhere but in Emulate, where unset is the message destination
+  At at = 2;
+}
+
+// An account state, without a claim that it is recorded on chain.
+message AccountValue {
+  // The parsed Account; code, data and library are given by their hashes only,
+  // their content is in shard_account_boc.
+  sf.ton.type.v1.Account account = 1;
+  // TL-B ShardAccount with one root: the only format of a full state, here and
+  // on input to execution. Unset when boc_omitted is set.
+  optional bytes shard_account_boc = 2;
+  bool boc_omitted = 3;  // the BOC is over the limit and not given
+  bytes last_trans_hash = 4;  // exactly 32 bytes
+  // The start lt of the last transaction; storage.last_trans_lt of the Account
+  // is the end of its lt interval.
+  uint64 last_trans_lt = 5;
+}
+
+// An account state read from the chain, with its origin.
+message AccountSnapshot {
+  AccountRef source = 1;  // the address and the point read
+  AccountValue value = 2;
+  // The shard block the point belongs to: for before_tx and after_tx, the shard
+  // block of that transaction, source.at being the point inside it.
+  sf.ton.type.v1.BlockIdExt block = 3;
+  // Of the shard state of that block, not the time and lt of the transaction.
+  uint32 gen_utime = 4;
+  uint64 gen_lt = 5;
+}

@@ -1,0 +1,43 @@
+//! TON for substreams modules.
+//!
+//! - [`types`]: the TON Firehose block, `sf.ton.type.v1`;
+//! - [`tvm`]: the `ton_v1` extension of fireton: account states, get-methods
+//!   and the emulation of one transaction on the masterchain block the module
+//!   is processing;
+//! - [`stack`]: TVM stack values for get-methods.
+//!
+//! The semantics, the rules of requests and the limits are in
+//! `ton-index-firehose/substreams-tvm.md`.
+
+pub mod pb {
+    pub mod sf {
+        pub mod ton {
+            pub mod r#type {
+                pub mod v1 {
+                    // `type` is a Rust keyword, so prost names the file after r#type.
+                    include!(concat!(env!("OUT_DIR"), "/sf.ton.r#type.v1.rs"));
+                }
+            }
+        }
+    }
+    pub mod ton {
+        pub mod state {
+            pub mod v1 {
+                include!(concat!(env!("OUT_DIR"), "/ton.state.v1.rs"));
+            }
+        }
+        pub mod tvm {
+            pub mod v1 {
+                include!(concat!(env!("OUT_DIR"), "/ton.tvm.v1.rs"));
+            }
+        }
+    }
+}
+
+mod address;
+pub mod stack;
+pub mod tvm;
+
+pub use address::Address;
+pub use pb::sf::ton::r#type::v1 as types;
+pub use tvm::{At, Error};

@@ -1,0 +1,13 @@
+syntax = "proto3";
+
+package probe.v1;
+
+// What ton_v1 answered on one block.
+message Probe {
+  uint32 mc_seqno = 1;
+  // The stub backend names the masterchain block of the request in the
+  // snapshots it gives: set when that is this block, with its root hash.
+  bool clock_matches = 2;
+  // One line per call, in the order of the calls, over both batches.
+  repeated string results = 3;
+}
