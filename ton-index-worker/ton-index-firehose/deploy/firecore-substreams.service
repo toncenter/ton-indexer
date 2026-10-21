@@ -17,7 +17,7 @@ ExecStart=/usr/local/bin/firecore start substreams-tier1 substreams-tier2 --conf
   --common-live-blocks-addr=127.0.0.1:10014 \
   --advertise-chain-name=ton --advertise-block-id-encoding=hex --ignore-advertise-validation \
   --substreams-tier1-block-type=sf.ton.type.v1.Block \
-  --substreams-tier1-grpc-listen-addr=127.0.0.1:10016 \
+  --substreams-tier1-grpc-listen-addr=192.0.2.20:10016 \
   --substreams-tier2-grpc-listen-addr=127.0.0.1:10017 \
   --substreams-tier1-subrequests-endpoint=127.0.0.1:10017 \
   --substreams-state-store-url=/srv/scratch/firecore/substreams-states \

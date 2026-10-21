@@ -16,7 +16,7 @@ ExecStart=/usr/local/bin/firecore start firehose --config-file= \
   "--common-forked-blocks-store-url=s3://localhost:3900/firehose/forked-blocks?region=garage&insecure=true" \
   --common-live-blocks-addr=127.0.0.1:10014 \
   --advertise-chain-name=ton --advertise-block-id-encoding=hex --ignore-advertise-validation \
-  --firehose-grpc-listen-addr=127.0.0.1:10015 \
+  --firehose-grpc-listen-addr=192.0.2.20:10015 \
   --metrics-listen-addr=192.0.2.20:9102 --pprof-listen-addr=127.0.0.1:6063 --log-level-switcher-listen-addr=127.0.0.1:1068
 Restart=always
 RestartSec=5
