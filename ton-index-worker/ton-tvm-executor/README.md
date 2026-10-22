@@ -110,12 +110,94 @@ transaction per turn of the actor, and is kept for the batch with the states
 it made: the points of one account replay its block once. The block data
 stays alive with it, since its lazy archive cells refer to it.
 
-Historical compatibility is limited by the pinned TON emulator. At
-masterchain block 1,000,000 the elector tick has `gas_used=9600` in the
-block, and 7125 in this emulator; the other fields and the resulting state
-hash match. The points after it are `REPLAY_MISMATCH`, and the boundary
-states are read anyway. Gas or hashes are never replaced with the recorded
-values to pass the check.
+Historical compatibility is limited by the pinned TON emulator: see the
+replay of history below. The points after a transaction it does not
+reproduce are `REPLAY_MISMATCH`, and the boundary states are read anyway.
+Gas or hashes are never replaced with the recorded values to pass the check.
+
+## Replay of history
+
+`ton-tvm-replay` (`src/replay_main.cpp`) replays whole masterchain rounds of
+the node database with the code of the replays above: the masterchain block
+and the shard blocks it commits, every transaction of every account from its
+state before the block, in the context of the block. Each transaction and the
+state after it must have the hashes of the block. It is the check of the
+emulator on the history and the reference of the rule of versions
+(`../ton-index-firehose/substreams-tvm.md`, «Версии»): a new TON in the
+executor must replay the reference rounds as the old one did.
+
+Unlike the API, it replays the last transaction of an account in a block
+too, which the API reads from the database. After a mismatch, the other
+transactions of the account in the block are skipped: the state they start
+from is unknown. A mismatch comes with the fields of the transaction that
+differ, hashes aside (`MessageDifferencer` over the Firehose conversion).
+Split and merge transactions, which the emulator does not have, are counted
+as unsupported.
+
+```bash
+ton-tvm-replay --db /var/ton-work/db --working-dir /var/tmp/tvm-replay/work --threads 32 --find-versions 512
+```
+
+```bash
+ton-tvm-replay --db /var/ton-work/db --working-dir /var/tmp/tvm-replay/work --threads 32 --parallel 64 --seqnos-file sample.txt --out run.jsonl
+```
+
+`--find-versions` prints where the global version of config param 8 changes,
+by bisection between probes. A run writes a line of JSON per round, which
+`replay-report.py` sums up by group of rounds and by version, with the causes
+of mismatches; `reference` makes a reference of a run, and `compare` tells
+the rounds where another run differs from it.
+
+```bash
+./replay-report.py summary run.jsonl --sample sample.json
+```
+
+```bash
+./replay-report.py compare replay/reference.jsonl run.jsonl
+```
+
+`replay/` is the reference: the rounds (`seqnos.txt`), their groups
+(`sample.json`) and the answer of this build to them (`reference.jsonl`),
+2,969 rounds and 1,055,845 transactions, replayed in about 4 minutes on 32
+threads. The groups: for each global version, its first 30 rounds and 40
+spread over it; the first 50 rounds of the history and 50 at the head; 300
+random rounds; the rounds around 300 random changes of the number of shards,
+two before and two after; and the rounds of the known incompatibilities
+below.
+
+On an archive node (2026-10-22), 36,916 rounds in all, with 2,302,346
+transactions in 147,443 blocks: the reference, 30,000 more random rounds from
+global version 1 to the head, 2,000 random rounds of version 0 and the last
+2,000 rounds. The global versions of the network, by the first round with
+each: 0 from 1, 1 from 2,908,199, 2 from 3,127,942, 4 from 34,875,663, then
+5 to 15 at 35,865,387, 36,746,858, 37,375,729, 39,939,169, 44,891,369,
+47,557,457, 49,524,026, 53,939,517, 59,015,496, 71,304,031 and 81,421,436,
+and 16 from 100,571,446; there was no version 3.
+
+- From version 1 on, 2,291,213 of 2,291,217 transactions replayed, in 34,816
+  rounds; the two that did not, and the transactions of their accounts after
+  them in the block, are of version 2.
+- Version 0, before the network had global versions, does not replay: gas
+  differs. Of 11,129 transactions in 2,100 rounds, the ticks of the elector
+  and of -1:34517C7B… (3,564 of 4,200), every tock of the config contract
+  (1,782) and 162 of 2,729 ordinary transactions have another `gas_used`,
+  and the fees that follow from it; the other fields match.
+- The rounds around changes of the number of shards, 952,874 transactions,
+  all replayed: an account is followed across splits and merges. The network
+  makes no split or merge transactions, so none was unsupported.
+- The reference replayed twice by separate processes gave the same bytes.
+
+The known incompatibilities, rules of the current TON that the network did
+not have at the time and that no global version gates, both in
+`replay/reference.jsonl`:
+
+- an external message with a StateInit whose hash is not the address of an
+  active account: the emulator skips the compute phase (`in_msg_state hash
+  mismatch in external message`), while the network ran it (round 1,688,098,
+  version 0; round 32,905,538, version 2);
+- the limit of 65,536 cells on an account state in the action phase: an
+  account of 76,490 cells fails its actions with result code 50 in the
+  emulator, and the network sent the message (round 22,467,275, version 2).
 
 ## Execution model
 
@@ -148,7 +230,7 @@ sudo apt-get install libgrpc++-dev protobuf-compiler-grpc libprotobuf-dev protob
 ```
 
 ```bash
-cmake --build build --target ton-tvm-executor
+cmake --build build --target ton-tvm-executor ton-tvm-replay
 ```
 
 Stack conversion, ShardAccount metadata, call context and config validation have

@@ -46,6 +46,11 @@ class Replay {
   // Cell-load exceptions are left to the actor as infrastructure failures.
   td::Result<std::string> advance(const ReplayTransaction& transaction);
   AccountState state() const;
+  // The transaction the emulator made at the last advance, for a diagnosis of
+  // a mismatch; null when it made none.
+  const td::Ref<vm::Cell>& emulated() const {
+    return emulated_;
+  }
 
  private:
   Replay(std::shared_ptr<block::Config> config, block::Account account, td::uint32 now, td::uint64 block_lt)
@@ -55,6 +60,7 @@ class Replay {
   block::Account account_;
   td::uint32 now_;
   td::uint64 block_lt_;
+  td::Ref<vm::Cell> emulated_;
 };
 
 }  // namespace tvm_executor

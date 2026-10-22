@@ -72,6 +72,11 @@ target_link_libraries(ton-tvm-executor PRIVATE ton-tvm-executor-grpc ton-firehos
 target_link_options(ton-tvm-executor PUBLIC -rdynamic)
 executor_crypto_link(ton-tvm-executor)
 
+# Replays rounds of the node database and compares them with the blocks.
+add_executable(ton-tvm-replay src/replay_main.cpp ${EXECUTOR_CALL_SRCS})
+target_compile_features(ton-tvm-replay PRIVATE cxx_std_20)
+target_link_libraries(ton-tvm-replay PRIVATE ton-tvm-executor-proto ton-firehose-convert emulator_static)
+
 add_executable(test-ton-tvm-calls test/calls.cpp ${EXECUTOR_CALL_SRCS})
 target_compile_features(test-ton-tvm-calls PRIVATE cxx_std_20)
 target_include_directories(test-ton-tvm-calls PRIVATE src)
@@ -84,4 +89,4 @@ target_link_libraries(test-ton-tvm-link PRIVATE ton-tvm-executor-grpc ton_crypto
 executor_crypto_link(test-ton-tvm-link)
 add_test(NAME test-ton-tvm-link COMMAND test-ton-tvm-link)
 
-install(TARGETS ton-tvm-executor RUNTIME DESTINATION bin)
+install(TARGETS ton-tvm-executor ton-tvm-replay RUNTIME DESTINATION bin)

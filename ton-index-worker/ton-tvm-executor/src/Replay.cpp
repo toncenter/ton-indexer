@@ -124,14 +124,18 @@ td::Result<std::string> Replay::advance(const ReplayTransaction& transaction) {
   }
   // The config is checked by create(): an error is of this transaction. The
   // account is moved into the emulator; after a mismatch the replay is over.
+  emulated_ = {};
   auto result = emulator_.emulate_transaction(std::move(account_), tx.r1.in_msg->prefetch_ref(), now_, tx.lt, type);
   if (result.is_error()) {
     return mismatch(result.error().message());
   }
   auto* executed = dynamic_cast<emulator::TransactionEmulator::EmulationSuccess*>(result.ok().get());
   if (executed == nullptr) {
-    return mismatch("original transaction was not accepted");
+    auto* rejected = dynamic_cast<emulator::TransactionEmulator::EmulationExternalNotAccepted*>(result.ok().get());
+    return mismatch(PSTRING() << "original transaction was not accepted, exit code "
+                              << (rejected ? rejected->vm_exit_code : 0));
   }
+  emulated_ = executed->transaction;
   if (executed->transaction->get_hash() != transaction.root->get_hash()) {
     return mismatch("transaction hash differs");
   }
