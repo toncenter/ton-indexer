@@ -4,8 +4,9 @@
 протоколы в `proto/ton`, fireton и ton-tvm-router в `fireton/`, SDK в
 `substreams/substreams-ton`, ton-tvm-executor с `get_account`, `get_method` и
 `emulate` на `after_block`, `before_block`, `before_tx` и `after_tx` в
-`ton-index-worker/ton-tvm-executor`, переигрывание истории `ton-tvm-replay` и
-эталонный набор в `ton-tvm-executor/replay`.
+`tvm-executor`, переигрывание истории `ton-tvm-replay` и
+эталонный набор в `tvm-executor/replay`. Пути здесь — от корня стека,
+`ton-index-worker/ton-index-firehose` (карта — в его `README.md`).
 
 Цель: дать пользовательским substreams-модулям TON то же, что есть в acton:
 get-методы, эмуляцию транзакции, стейт любого аккаунта на любом блоке истории.
@@ -681,7 +682,7 @@ fn map_pools(block: Block) -> Result<Pools, Error> {
   обновлять бэкенд внутри v1 можно, только если на старых блоках результаты не
   меняются — например, при добавлении новой global version. Перед выкаткой это
   проверяется эталонным набором переигранных исторических транзакций
-  (`ton-tvm-executor/replay`: раунды выборки и ответ на них, совпадения и
+  (`tvm-executor/replay`: раунды выборки и ответ на них, совпадения и
   известные расхождения; `ton-tvm-replay` переигрывает их новой сборкой, а
   `replay-report.py compare` показывает отличия). Если результаты меняются —
   нужен v2, который работает рядом с v1.
@@ -713,7 +714,7 @@ gRPC 256 MiB. Это транспорт: на ответы он не влияе�
 сериализованный `Call`, газ get-метода 1M по умолчанию и не больше 10M. На
 шаге 3 добавлены: 8 MiB на сериализованный `CallResult` (больше —
 `TOO_LARGE`), вложенность стека 32 и 255 элементов в кортеже.
-Executor держит те же значения у себя (`ton-tvm-executor/src/Calls.h`).
+Executor держит те же значения у себя (`tvm-executor/src/Calls.h`).
 Константы — в `fireton/protocol/limits.go`, в SDK их нет. При
 `ResourceExhausted` расширение делит пачку пополам и повторяет меньшие части:
 так ограничивается ответ на обоих участках executor → router → fireton.
@@ -732,8 +733,8 @@ Executor держит те же значения у себя (`ton-tvm-executor/
 4. Эмуляция одной транзакции; затем `before_tx` и `after_tx`.
 5. Переигрывание реальных транзакций по диапазонам блоков: это и проверка
    корректности, и эталонный набор для правила версий. Сделано:
-   `ton-tvm-replay`, результаты и эталон — в `ton-tvm-executor/README.md` и
-   `ton-tvm-executor/replay`.
+   `ton-tvm-replay`, результаты и эталон — в `tvm-executor/README.md` и
+   `tvm-executor/replay`.
 6. Полные ноды для головы, маршрутизация по окнам, кэш в роутере.
 
 ## Открытые вопросы

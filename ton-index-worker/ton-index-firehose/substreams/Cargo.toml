@@ -1,8 +1,13 @@
 # The substreams modules of the TON Firehose and their SDK: one lock file, one
-# target directory (../target from a crate) and one release profile.
+# target directory and one release profile.
+#
+# - substreams-ton: the SDK;
+# - modules: modules to run;
+# - tests: modules that check the TON Firehose, fireton and ton-tvm-executor;
+# - tools/pbgen: generates the protobuf code of the SDK.
 [workspace]
 resolver = "2"
-members = ["substreams-ton", "pbgen", "smoke", "ton-traces", "ton-tvm-probe"]
+members = ["substreams-ton", "modules/ton-traces", "tests/smoke", "tests/ton-tvm-probe", "tools/pbgen"]
 
 [workspace.package]
 edition = "2021"

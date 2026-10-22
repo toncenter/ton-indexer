@@ -2,7 +2,7 @@
 
 The ton_v1 extension of substreams modules: account states, get-methods and
 the emulation of one transaction, on the masterchain block a module is
-processing. The design is in `../substreams-tvm.md`; the protocols are in
+processing. The design is in `../docs/substreams-tvm.md`; the protocols are in
 `../proto/ton`, the Rust SDK of modules in `../substreams/substreams-ton`.
 
 - **fireton** (`cmd/fireton`) is firecore with the extension: the same apps
@@ -18,7 +18,7 @@ processing. The design is in `../substreams-tvm.md`; the protocols are in
 - **ton-tvm-router** (`cmd/ton-tvm-router`) serves `ton.tvm.v1.Executor`:
   it answers the calls that break a rule of requests itself, for any block,
   and has a backend answer the others: a ton-tvm-executor
-  (`--executor-addr`, `../../ton-tvm-executor`), whose gRPC codes it passes
+  (`--executor-addr`, `../tvm-executor`), whose gRPC codes it passes
   on, or else the stub (`router/stub.go`), which knows no accounts;
   `--stub-lag` makes the stub reach each block that long after its gen_utime,
   as a lagging backend would.
@@ -81,7 +81,7 @@ the store host, on localhost only and apart from the production units:
 binaries in `/srv/scratch/fireton-test/bin`, tier1 on 127.0.0.1:10041, or
 on `TIER1_ADDR`, such as a private address to reach it from the VPN. The
 router has the stub backend, or the ton-tvm-executor at `EXECUTOR_ADDR`. The
-modules of `../substreams/ton-tvm-probe`:
+modules of `../substreams/tests/ton-tvm-probe`:
 
 - `map_probe`: every kind of call on every block, for the stub;
 - `map_account_check`: get_account against the states the block has;
@@ -104,7 +104,7 @@ modules of `../substreams/ton-tvm-probe`:
 Every output must have no `mismatches` and no `details`. The same range run
 again must come from the cache: the same bytes, and no new requests on
 `ton_tvm_router_requests_total`. What the checks gave is in
-`../../ton-tvm-executor/README.md`.
+`../tvm-executor/README.md`.
 
 ```bash
 sudo ./stand.sh start

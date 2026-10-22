@@ -14,13 +14,13 @@ protobuf:
     - sf/ton/type/v1/type.proto
     - traces/v1/traces.proto
   importPaths:
-    - ../../proto
+    - ../../../proto
     - ./proto
 
 binaries:
   default:
     type: wasm/rust-v1
-    file: ../target/wasm32-unknown-unknown/release/ton_traces.wasm
+    file: ../../target/wasm32-unknown-unknown/release/ton_traces.wasm
 
 # From the first block, so that every trace is seen from its beginning. The
 # stores only hold the traces that have not ended yet.

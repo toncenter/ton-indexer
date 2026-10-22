@@ -9,13 +9,13 @@ protobuf:
     - sf/ton/type/v1/type.proto
     - smoke/v1/smoke.proto
   importPaths:
-    - ../../proto
+    - ../../../proto
     - ./proto
 
 binaries:
   default:
     type: wasm/rust-v1
-    file: ../target/wasm32-unknown-unknown/release/ton_smoke.wasm
+    file: ../../target/wasm32-unknown-unknown/release/ton_smoke.wasm
 
 modules:
   - name: map_block_stats

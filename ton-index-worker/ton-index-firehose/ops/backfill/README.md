@@ -34,7 +34,7 @@ sudo systemd-run --unit=fh-backfill-history -p Restart=on-failure -p RestartSec=
   -p StandardOutput=append:$HOME/fh-backfill/history.log -p StandardError=append:$HOME/fh-backfill/history.log \
   -E GARAGE_ENV=$HOME/.config/garage/backfill.env \
   python3 $HOME/fh-backfill/runner.py run --state $HOME/fh-backfill/history --work $HOME/fh-backfill/work \
-  --bin $HOME/ton-indexer-substreams/build/ton-index-worker/ton-index-firehose/ton-index-firehose --db /nvmepool/ton-db \
+  --bin $HOME/ton-indexer-substreams/build/ton-index-worker/ton-index-firehose/reader/ton-index-firehose --db /nvmepool/ton-db \
   --tool-args "--threads 64 --max-active-tasks 64 --celldb-cache-size 8192 --stats-freq 60" \
   --env LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so.2 --workers 4 \
   --rclone $HOME/fh-backfill/rclone-garage.sh --dest garage:firehose/merged-blocks

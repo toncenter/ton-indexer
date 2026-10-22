@@ -56,7 +56,7 @@ reader-node работает рядом с синхронизированной 
 локальной копии кусков на время конвертации нужно `20–40 GB` на worker.
 
 **Инструменты.** На хосте runner нужны `python3`, `rclone` и `zstd`; скрипты
-бэкфила лежат в `ton-index-worker/ton-index-firehose/backfill`.
+бэкфила лежат в `ton-index-worker/ton-index-firehose/ops/backfill`.
 
 **Версии.** firecore `v1.20.1`; он собран с substreams `v1.23.0`, CLI
 substreams должен быть той же версии.
@@ -90,7 +90,7 @@ CC=clang CXX=clang++ cmake -S ton-index-worker -B build -G Ninja \
 cmake --build build --parallel "$(nproc)" --target ton-index-firehose
 ```
 
-Результат: `build/ton-index-firehose/ton-index-firehose`. GSL и BLAS нужны только
+Результат: `build/ton-index-firehose/reader/ton-index-firehose`. GSL и BLAS нужны только
 `rldp2` из ton, который tool не использует; без них binary не требует BLAS на
 хосте ноды. На целевом хосте нужны `libjemalloc2`, `curl` и `zstd`.
 
@@ -134,7 +134,7 @@ Bundle `0000000000` содержит blocks `1..99`: block `0` — zerostate, а
 объёму архива. Команды здесь и ниже выполняются из корня checkout:
 
 ```bash
-B=ton-index-worker/ton-index-firehose/backfill
+B=ton-index-worker/ton-index-firehose/ops/backfill
 du -s --block-size=1M /var/ton-work/db/archive/packages/arch* > arch_sizes.txt
 
 $B/make_chunks.py arch_sizes.txt 1 <S> 15000 2000000 > chunks.tsv
@@ -160,10 +160,10 @@ TraceAssembler: каждый trace, пересекающий начало кус
 со store по MD5. После этого локальная копия удаляется.
 
 ```bash
-B=ton-index-worker/ton-index-firehose/backfill
+B=ton-index-worker/ton-index-firehose/ops/backfill
 H=/var/lib/firehose-backfill
 sudo install -d -o validator -g validator $H $H/state $H/work
-sudo install -m 0755 build/ton-index-firehose/ton-index-firehose $H/ton-index-firehose
+sudo install -m 0755 build/ton-index-firehose/reader/ton-index-firehose $H/ton-index-firehose
 sudo install -m 0755 $B/runner.py $B/rclone-garage.sh $B/verify.py $H/
 
 sudo -u validator python3 $H/runner.py init --state $H/state --chunks chunks.tsv
@@ -371,7 +371,7 @@ sudo install -d -m 0755 /etc/firecore
 sudo install -o root -g firecore -m 0640 <FIRECORE_KEY_FILE> /etc/firecore/garage.env
 ```
 
-Units лежат в `ton-index-worker/ton-index-firehose/deploy`, по одному на
+Units лежат в `ton-index-worker/ton-index-firehose/ops/deploy`, по одному на
 процесс:
 
 | Unit | Компоненты | gRPC | Метрики |
@@ -450,7 +450,7 @@ firecore tools firehose-client --plaintext --proto-paths /etc/firecore/proto -o 
   127.0.0.1:10015 -- -2
 ```
 
-Smoke-модуль `ton-index-worker/ton-index-firehose/substreams/smoke` считает
+Smoke-модуль `ton-index-worker/ton-index-firehose/substreams/tests/smoke` считает
 shard blocks, транзакции и traces каждого блока и держит итоги в store, так что
 его запуск проходит через оба tier. Модули — на `substreams = "0.8"` и buffa,
 типы TON берут из SDK `substreams-ton`; все они в одном cargo workspace
@@ -458,7 +458,7 @@ shard blocks, транзакции и traces каждого блока и дер
 
 ```bash
 rustup target add wasm32-unknown-unknown
-cd ton-index-worker/ton-index-firehose/substreams/smoke
+cd ton-index-worker/ton-index-firehose/substreams/tests/smoke
 cargo build --target wasm32-unknown-unknown --release
 substreams pack substreams.yaml -o ton-smoke.spkg
 

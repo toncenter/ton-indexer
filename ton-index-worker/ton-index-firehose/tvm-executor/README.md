@@ -2,8 +2,8 @@
 
 Answers `ton.tvm.v1.Executor` over gRPC for the masterchain blocks of a TON
 node database, which it reads as a RocksDB secondary: the backend of
-ton-tvm-router (`../ton-index-firehose/fireton`). The design is in
-`../ton-index-firehose/substreams-tvm.md`.
+ton-tvm-router (`../fireton`). The design is in
+`../docs/substreams-tvm.md`.
 
 It answers `get_account`, `get_method` and single-transaction `emulate` at
 `after_block`, `before_block`, `before_tx` and `after_tx`. Other answers:
@@ -25,7 +25,7 @@ It answers `get_account`, `get_method` and single-transaction `emulate` at
   retries smaller batches, preserving each call's result.
 
 The constants of v1 are in `src/Calls.h`, the same as in
-`../ton-index-firehose/fireton/protocol/limits.go`.
+`../fireton/protocol/limits.go`.
 
 ## Calls
 
@@ -123,7 +123,7 @@ and the shard blocks it commits, every transaction of every account from its
 state before the block, in the context of the block. Each transaction and the
 state after it must have the hashes of the block. It is the check of the
 emulator on the history and the reference of the rule of versions
-(`../ton-index-firehose/substreams-tvm.md`, «Версии»): a new TON in the
+(`../docs/substreams-tvm.md`, «Версии»): a new TON in the
 executor must replay the reference rounds as the old one did.
 
 Unlike the API, it replays the last transaction of an account in a block
@@ -238,8 +238,8 @@ regression tests:
 
 ```bash
 cmake --build build --target test-ton-tvm-calls test-ton-tvm-link
-./build/ton-index-worker/ton-tvm-executor/test-ton-tvm-calls
-./build/ton-index-worker/ton-tvm-executor/test-ton-tvm-link
+./build/ton-index-worker/ton-index-firehose/tvm-executor/test-ton-tvm-calls
+./build/ton-index-worker/ton-index-firehose/tvm-executor/test-ton-tvm-link
 ```
 
 On Linux with TON's static OpenSSL and system gRPC, the executor includes
@@ -298,8 +298,8 @@ accounts and 1,280 get-methods over 45 blocks each agreed again.
 ./check-liteserver.py --executor 192.0.2.10:10060 --liteserver 127.0.0.1:20700 --liteserver-key /tmp/ls.pub --proto-dir ~/tvm-proto --samples 80 --get-methods
 ```
 
-Inside substreams, the modules of `../ton-index-firehose/substreams/ton-tvm-probe`
-check the calls on the stand (`../ton-index-firehose/fireton/README.md`). On
+Inside substreams, the modules of `../substreams/tests/ton-tvm-probe`
+check the calls on the stand (`../fireton/README.md`). On
 2026-10-22, in tier2 and again from the cache, with no mismatches:
 
 - `map_emulate_check`: 2,000 blocks from 80,042,000, 14,380 calls, 8,180

@@ -13,13 +13,13 @@ protobuf:
     - sf/ton/type/v1/type.proto
     - probe/v1/probe.proto
   importPaths:
-    - ../../proto
+    - ../../../proto
     - ./proto
 
 binaries:
   default:
     type: wasm/rust-v1
-    file: ../target/wasm32-unknown-unknown/release/ton_tvm_probe.wasm
+    file: ../../target/wasm32-unknown-unknown/release/ton_tvm_probe.wasm
 
 modules:
   - name: map_probe

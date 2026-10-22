@@ -12,8 +12,8 @@ const FILES: &[&str] = &["sf/ton/type/v1/type.proto", "ton/state/v1/state.proto"
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let here = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let proto = here.join("../../proto");
-    let out = here.join("../substreams-ton/src/pb");
+    let proto = here.join("../../../proto");
+    let out = here.join("../../substreams-ton/src/pb");
     // Files of .proto that are gone must not stay behind.
     if out.exists() {
         std::fs::remove_dir_all(&out)?;

@@ -94,7 +94,7 @@
 
         - name: Collect built binaries
           ansible.builtin.fetch:
-            src: "{{ builddir.path }}/build/ton-index-firehose/ton-index-firehose"
+            src: "{{ builddir.path }}/build/ton-index-firehose/reader/ton-index-firehose"
             dest: "artifacts/"
             flat: true
       always:
