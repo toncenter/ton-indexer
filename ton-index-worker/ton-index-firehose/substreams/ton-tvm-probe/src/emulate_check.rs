@@ -196,15 +196,14 @@ fn map_emulate_check(block: Block) -> Result<pb::EmulateCheck, Error> {
             .shard_account(fixture(include_str!("../fixtures/signature_account.boc.hex")))
             .context(context(8));
         batch
-            .add("accept", accept.clone().return_state().vm_log())
-            .add("accept again", accept.clone().return_state().vm_log())
+            .add("accept", accept.clone().return_state())
+            .add("accept again", accept.clone().return_state())
             .add("accept plain", accept.clone())
             .add(
                 "reject",
                 tvm::emulate(external.clone())
                     .shard_account(fixture(include_str!("../fixtures/rejected_account.boc.hex")))
-                    .context(context(8))
-                    .vm_log(),
+                    .context(context(8)),
             )
             .add(
                 "bounce",
@@ -262,9 +261,8 @@ fn map_emulate_check(block: Block) -> Result<pb::EmulateCheck, Error> {
             "external message has no normalized hash",
         );
         if let (Some(full), Some(plain)) = (executed(first.get("accept")), executed(first.get("accept plain"))) {
-            checks.check(full.transaction_boc == plain.transaction_boc, "return_state/vm_log changed transaction");
-            checks.check(plain.account_after.is_none() && plain.vm_log.is_empty(), "optional output flags ignored");
-            checks.check(!full.vm_log.is_empty(), "requested VM log is empty");
+            checks.check(full.transaction_boc == plain.transaction_boc, "return_state changed transaction");
+            checks.check(plain.account_after.is_none(), "return_state ignored");
         }
         checks.check(
             rejected_with(first.get("reject")) == Some(42),

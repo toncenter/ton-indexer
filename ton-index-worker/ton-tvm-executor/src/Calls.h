@@ -10,7 +10,6 @@
 #include "crypto/block/transaction.h"
 #include "crypto/vm/dict.h"
 #include "crypto/vm/stack.hpp"
-#include "td/utils/logging.h"
 #include "ExecutorServer.h"
 
 namespace tvm_executor {
@@ -18,7 +17,6 @@ namespace tvm_executor {
 // The constants of ton_v1 that decide answers, as in fireton/protocol/limits.go.
 inline constexpr std::size_t kMaxInputBocSize = 1 << 20;
 inline constexpr std::size_t kMaxCallResultSize = 8 << 20;
-inline constexpr std::size_t kMaxVmLogSize = 64 << 10;
 inline constexpr int kMaxStackDepth = 32;
 inline constexpr std::size_t kMaxTupleSize = 255;
 inline constexpr td::uint64 kDefaultGetMethodGas = 1'000'000;
@@ -154,18 +152,6 @@ td::Result<CallOverrides> parse_overrides(const ton::tvm::v1::ContextOverrides& 
 // a get-method needs capabilities only, a transaction kTransactionConfig.
 td::Result<CallContext> resolve_context(const VmContext& context, CallOverrides overrides,
                                         int config_mode = block::Config::needCapabilities);
-
-// Shared by streamed get-method logs and the transaction emulator's log.
-// Bound the tail to 64 KiB and sanitize to printable ASCII.
-std::string vm_log_tail(std::string text);
-class TailLog : public td::LogInterface {
- public:
-  void append(td::CSlice slice) override;
-  std::string tail() const;
-
- private:
-  std::string text_;
-};
 
 // A get-method on an account, a cell of TL-B Account. An account that does not
 // parse is INVALID_REQUEST when it came with the call and an Internal error

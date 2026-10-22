@@ -87,8 +87,7 @@ Before the emulator, the executor prepares the transaction config as the
 emulator does first: an error is `INVALID_REQUEST` with config params of the
 call and `Internal` without them. An error of the emulator after that is of
 this message on this account: `EMULATION_FAILED`. Native C++ precompiled
-execution is disabled in this build, so those contracts execute in TVM;
-elapsed time is omitted from returned precompiled logs.
+execution is disabled in this build, so those contracts execute in TVM.
 
 ### before_tx and after_tx
 
@@ -152,7 +151,7 @@ sudo apt-get install libgrpc++-dev protobuf-compiler-grpc libprotobuf-dev protob
 cmake --build build --target ton-tvm-executor
 ```
 
-Stack conversion, ShardAccount metadata, call context and VM log bounds have
+Stack conversion, ShardAccount metadata, call context and config validation have
 regression tests:
 
 ```bash

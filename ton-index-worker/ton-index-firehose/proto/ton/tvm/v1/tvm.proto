@@ -44,7 +44,6 @@ message GetMethod {
   ContextOverrides context = 5;
   // Unset: the default gas of v1. Over the ceiling of v1: INVALID_REQUEST.
   optional uint64 gas_limit = 6;
-  bool vm_log = 7;  // return the log, limited in size
 }
 
 message Emulate {
@@ -53,7 +52,6 @@ message Emulate {
   bool ignore_chksig = 3;  // for external messages without keys
   bool return_state = 4;
   ContextOverrides context = 5;
-  bool vm_log = 6;
 }
 
 message GetAccount {
@@ -102,7 +100,6 @@ message GetMethodResult {
   uint64 gas_used = 2;
   repeated StackEntry stack = 3;  // bottom to top
   optional bytes missing_library = 4;  // the hash of the first missing library, 32 bytes
-  string vm_log = 5;
 }
 
 message EmulateResult {
@@ -119,14 +116,12 @@ message ExecutedTransaction {
   sf.ton.type.v1.Transaction transaction = 1;
   bytes transaction_boc = 2;  // the same transaction
   ton.state.v1.AccountValue account_after = 3;  // set with return_state
-  string vm_log = 4;
 }
 
 // No transaction was created. The code of the emulator is given as is: 0 is
 // also what it gives when the compute phase was skipped.
 message ExternalNotAccepted {
   int32 vm_exit_code = 1;
-  string vm_log = 2;
 }
 
 message StackEntry {

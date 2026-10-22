@@ -357,37 +357,4 @@ td::Bits256 CallContext::vm_seed(const block::StdAddress& address, int global_ve
   return seed;
 }
 
-std::string vm_log_tail(std::string text) {
-  // Native precompiled execution adds elapsed wall time to its one-line
-  // log. It is not part of execution semantics and must not enter caches.
-  if (text.starts_with("Running precompiled smart contract ")) {
-    auto elapsed = text.rfind(" time=");
-    if (elapsed != std::string::npos) {
-      text.erase(elapsed);
-    }
-  }
-  if (text.size() > kMaxVmLogSize) {
-    text.erase(0, text.size() - kMaxVmLogSize);
-    auto line = text.find('\n');
-    text.erase(0, line == std::string::npos ? text.size() : line + 1);
-  }
-  for (auto& c : text) {
-    if ((c < 0x20 || c > 0x7e) && c != '\n' && c != '\t') {
-      c = '?';
-    }
-  }
-  return text;
-}
-
-void TailLog::append(td::CSlice slice) {
-  text_.append(slice.data(), slice.size());
-  if (text_.size() > 2 * kMaxVmLogSize) {
-    text_.erase(0, text_.size() - kMaxVmLogSize);
-  }
-}
-
-std::string TailLog::tail() const {
-  return vm_log_tail(text_);
-}
-
 }  // namespace tvm_executor

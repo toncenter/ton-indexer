@@ -290,9 +290,8 @@ tier1 или tier2. Firehose-часть (reader-node, merger, relayer, firehose)
   внутреннего сообщения. Это позволяет передать `account_after` в следующий
   вызов при том же контексте. Значения LT без запаса для исходящих сообщений
   отклоняются как `INVALID_REQUEST`.
-  Лог возвращается без времени выполнения precompiled-контрактов, чтобы
-  ответ оставался детерминированным. `ignore_chksig` обрабатывается штатным
-  эмулятором; нативные C++ precompiled-реализации в этой сборке выключены.
+  `ignore_chksig` обрабатывается штатным эмулятором; нативные C++
+  precompiled-реализации в этой сборке выключены.
 
 ## API: импорт `ton_v1.execute`
 
@@ -408,7 +407,6 @@ message GetMethod {
   repeated StackEntry stack = 4;
   ContextOverrides context = 5;
   optional uint64 gas_limit = 6;   // не задан — газ по умолчанию v1; выше потолка — INVALID_REQUEST
-  bool vm_log = 7;                 // вернуть лог с ограничением размера
 }
 
 message Emulate {
@@ -417,7 +415,6 @@ message Emulate {
   bool ignore_chksig = 3;          // для внешних сообщений без ключей
   bool return_state = 4;
   ContextOverrides context = 5;
-  bool vm_log = 6;
 }
 
 message GetAccount { ton.state.v1.AccountRef account = 1; }
@@ -460,7 +457,6 @@ message GetMethodResult {
   uint64 gas_used = 2;
   repeated StackEntry stack = 3;
   optional bytes missing_library = 4;  // хэш первой недостающей библиотеки, 32 байта
-  string vm_log = 5;
 }
 
 message EmulateResult {
@@ -474,13 +470,11 @@ message ExecutedTransaction {
   sf.ton.type.v1.Transaction transaction = 1;  // включает исходящие сообщения и hash_norm внешнего входящего
   bytes transaction_boc = 2;                  // та же транзакция в BOC
   ton.state.v1.AccountValue account_after = 3; // присутствует при return_state=true
-  string vm_log = 4;
 }
 
 message ExternalNotAccepted {
   // Транзакция не создана. Возвращаем код эмулятора без интерпретации.
   int32 vm_exit_code = 1;          // 0 также бывает при пропущенной compute-фазе
-  string vm_log = 2;
 }
 
 message StackEntry {
@@ -550,14 +544,13 @@ message Tuple { repeated StackEntry items = 1; }
   сети не попадает в кэш как `EMULATION_FAILED`. Созданная транзакция
   может содержать неуспешные compute/action-фазы: `executed` означает, что
   транзакция создана, а не что контракт успешно выполнил все действия.
-- В `ExternalNotAccepted` возвращаются фактические `vm_exit_code` и лог
+- В `ExternalNotAccepted` возвращается фактический `vm_exit_code`
   эмулятора. `vm_exit_code=0` не означает принятия сообщения и не позволяет
   отличить запуск TVM от пропуска compute-фазы. Отдельной причины пропуска
   в API нет.
 - `account_after` содержит только новое значение аккаунта, без реквизитов
   реального блока. Полный BOC, если он не превышает лимит, можно передать
-  обратно через `AccountSource.shard_account_boc`. При `vm_log=false` лог
-  пуст; при `true` возвращается с ограничением размера.
+  обратно через `AccountSource.shard_account_boc`.
 - `missing_library` есть только у get-методов: для транзакций эмулятор TON
   недостающую библиотеку не сообщает.
 - Стек передаётся от дна к вершине; в запросе это только аргументы, id метода
@@ -666,7 +659,7 @@ fn map_pools(block: Block) -> Result<Pools, Error> {
 - `ton_v1` — контракт. Импорт `ton_v1` зашит в wasm, а хэш модуля включает
   wasm, поэтому переход на `ton_v2` сам по себе даёт новый кэш.
 - В контракт входят и лимиты (см. ниже): от них зависят ответы — out of gas,
-  `TOO_LARGE`, `boc_omitted`, обрезка лога.
+  `TOO_LARGE`, `boc_omitted`.
 - Хэш модуля не учитывает версию эмулятора и лимиты на бэкенде. Поэтому
   обновлять бэкенд внутри v1 можно, только если на старых блоках результаты не
   меняются — например, при добавлении новой global version. Перед выкаткой это
@@ -690,8 +683,7 @@ fn map_pools(block: Block) -> Result<Pools, Error> {
   остальные поля вместе: больше — `TOO_LARGE` для этого вызова;
 - максимальный размер `shard_account_boc` в ответе: больше — `boc_omitted`;
 - максимальный размер ответа одного вызова (стек, транзакция): больше —
-  `TOO_LARGE`;
-- уровень подробности и максимальный размер vm_log.
+  `TOO_LARGE`.
 
 Числа вызовов в пачке контракт не ограничивает. Расширение само отправляет
 пачку роутеру частями — не больше 1000 вызовов и 16 MiB в запросе, при лимите
@@ -700,11 +692,8 @@ gRPC 256 MiB. Это транспорт: на ответы он не влияе�
 В каркасе шага 1 предварительно выбраны: 1 MiB на BOC, 8 MiB на
 сериализованный `Call`, газ get-метода 1M по умолчанию и не больше 10M. На
 шаге 3 добавлены: 8 MiB на сериализованный `CallResult` (больше —
-`TOO_LARGE`), последние 64 KiB лога VM с исполняемыми инструкциями, местом в
-коде и остатком газа (с начала первой целой строки, непечатные байты
-заменены на `?`, так как строка protobuf должна быть UTF-8), вложенность
-стека 32 и 255 элементов в кортеже. Executor держит те же значения у себя
-(`ton-tvm-executor/src/Calls.h`).
+`TOO_LARGE`), вложенность стека 32 и 255 элементов в кортеже.
+Executor держит те же значения у себя (`ton-tvm-executor/src/Calls.h`).
 Константы — в `fireton/protocol/limits.go`, в SDK их нет. При
 `ResourceExhausted` расширение делит пачку пополам и повторяет меньшие части:
 так ограничивается ответ на обоих участках executor → router → fireton.

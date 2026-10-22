@@ -108,7 +108,7 @@ td::Result<pb::CallResult> run_emulate(const pb::Emulate& call, const EmulationM
   }
   TRY_RESULT(libraries, resolved.merged_libraries());
 
-  emulator::TransactionEmulator emulator{resolved.config, call.vm_log() ? 3 : 0};
+  emulator::TransactionEmulator emulator{resolved.config, 0};
   emulator.set_libs(std::move(libraries));
   emulator.set_ignore_chksig(call.ignore_chksig());
   auto seed = chain.block_rand_seed;
@@ -127,9 +127,6 @@ td::Result<pb::CallResult> run_emulate(const pb::Emulate& call, const EmulationM
   if (auto* rejected = dynamic_cast<emulator::TransactionEmulator::EmulationExternalNotAccepted*>(native.get())) {
     auto* value = out.mutable_emulate()->mutable_external_not_accepted();
     value->set_vm_exit_code(rejected->vm_exit_code);
-    if (call.vm_log()) {
-      value->set_vm_log(vm_log_tail(std::move(rejected->vm_log)));
-    }
     return out;
   }
   auto* executed = dynamic_cast<emulator::TransactionEmulator::EmulationSuccess*>(native.get());
@@ -154,9 +151,6 @@ td::Result<pb::CallResult> run_emulate(const pb::Emulate& call, const EmulationM
     return malformed(transaction.error().message());
   }
   *value->mutable_transaction() = transaction.move_as_ok();
-  if (call.vm_log()) {
-    value->set_vm_log(vm_log_tail(std::move(executed->vm_log)));
-  }
   if (call.return_state()) {
     // As get_account gives it: TON stores no metadata of an account that
     // does not exist.

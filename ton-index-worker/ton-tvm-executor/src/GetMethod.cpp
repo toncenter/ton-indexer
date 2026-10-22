@@ -163,12 +163,6 @@ td::Result<pbtvm::CallResult> run_get_method(const pbtvm::GetMethod& call, const
 
   auto args = stack.move_as_ok();
   args.push_back(vm::StackEntry{td::make_refint(method_id)});
-  TailLog log_text;
-  vm::VmLog log = vm::VmLog::Null();
-  if (call.vm_log()) {
-    log = vm::VmLog{&log_text, td::LogOptions(VERBOSITY_NAME(DEBUG), true, false)};
-    log.log_mask |= vm::VmLog::ExecLocation | vm::VmLog::GasRemaining;
-  }
   auto gas = static_cast<long long>(gas_limit);
   vm::VmState vm{active.code,
                  config.get_global_version(),
@@ -176,7 +170,7 @@ td::Result<pbtvm::CallResult> run_get_method(const pbtvm::GetMethod& call, const
                  vm::GasLimits{gas, gas},
                  1,
                  active.data,
-                 log,
+                 vm::VmLog::Null(),
                  resolved.libraries(active.library)};
   vm.set_c7(vm::make_tuple_ref(std::move(info)));
   int exit_code = ~vm.run();
@@ -187,9 +181,6 @@ td::Result<pbtvm::CallResult> run_get_method(const pbtvm::GetMethod& call, const
   out->set_gas_used(static_cast<td::uint64>(vm.get_gas_limits().gas_consumed()));
   if (auto missing = vm.get_missing_library()) {
     out->set_missing_library(missing.value().as_slice().str());
-  }
-  if (call.vm_log()) {
-    out->set_vm_log(log_text.tail());
   }
   std::size_t budget = kMaxCallResultSize;
   TRY_RESULT(within, stack_to_proto(vm.get_stack(), out->mutable_stack(), budget));

@@ -272,11 +272,6 @@ impl GetMethodCall {
         self
     }
 
-    pub fn vm_log(mut self) -> Self {
-        self.0.vm_log = true;
-        self
-    }
-
     pub fn execute(self) -> Result<pb::GetMethodResult, Error> {
         execute_one(self)?.get_method()
     }
@@ -330,11 +325,6 @@ impl EmulateCall {
     /// `block_rand_seed` is a nonzero 32-byte block seed, not a final TVM seed.
     pub fn context(mut self, context: pb::ContextOverrides) -> Self {
         self.0.context = Some(context);
-        self
-    }
-
-    pub fn vm_log(mut self) -> Self {
-        self.0.vm_log = true;
         self
     }
 

@@ -228,20 +228,6 @@ TEST(TvmCalls, replay_follows_the_account_across_shard_splits_and_merges) {
   ASSERT_TRUE(account_predecessor(data, block::StdAddress{-1, hash}).is_error());
 }
 
-TEST(TvmCalls, vm_log_tail_is_bounded_and_safe_for_protobuf) {
-  std::string precompiled = "Running precompiled smart contract test: exit_code=0 accepted=1 success=1 gas_used=100";
-  ASSERT_EQ(precompiled, vm_log_tail(precompiled + " time=0.0001s"));
-  ASSERT_EQ(precompiled, vm_log_tail(precompiled + " time=0.1234s"));
-  std::string text = "discarded\n" + std::string(kMaxVmLogSize, 'x') + "\nlast\tline\xff\n";
-  ASSERT_EQ("last\tline?\n", vm_log_tail(text));
-  TailLog streamed;
-  for (int i = 0; i < 4; ++i) streamed.append(text);
-  auto tail = streamed.tail();
-  ASSERT_TRUE(tail.size() <= kMaxVmLogSize);
-  ASSERT_TRUE(tail.ends_with("last\tline?\n"));
-  ASSERT_TRUE(tail.find('\xff') == std::string::npos);
-}
-
 TEST(TvmCalls, malformed_config_overrides_are_invalid_requests) {
   auto none = vm::CellBuilder{}.store_long(0, 1).finalize();
   // A valid BOC whose root cannot be used as a config slice.

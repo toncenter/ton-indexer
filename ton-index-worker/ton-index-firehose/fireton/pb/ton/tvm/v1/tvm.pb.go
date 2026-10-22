@@ -362,7 +362,6 @@ type GetMethod struct {
 	Context *ContextOverrides  `protobuf:"bytes,5,opt,name=context,proto3" json:"context,omitempty"`
 	// Unset: the default gas of v1. Over the ceiling of v1: INVALID_REQUEST.
 	GasLimit      *uint64 `protobuf:"varint,6,opt,name=gas_limit,json=gasLimit,proto3,oneof" json:"gas_limit,omitempty"`
-	VmLog         bool    `protobuf:"varint,7,opt,name=vm_log,json=vmLog,proto3" json:"vm_log,omitempty"` // return the log, limited in size
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -450,13 +449,6 @@ func (x *GetMethod) GetGasLimit() uint64 {
 	return 0
 }
 
-func (x *GetMethod) GetVmLog() bool {
-	if x != nil {
-		return x.VmLog
-	}
-	return false
-}
-
 type isGetMethod_Method interface {
 	isGetMethod_Method()
 }
@@ -480,7 +472,6 @@ type Emulate struct {
 	IgnoreChksig  bool                   `protobuf:"varint,3,opt,name=ignore_chksig,json=ignoreChksig,proto3" json:"ignore_chksig,omitempty"` // for external messages without keys
 	ReturnState   bool                   `protobuf:"varint,4,opt,name=return_state,json=returnState,proto3" json:"return_state,omitempty"`
 	Context       *ContextOverrides      `protobuf:"bytes,5,opt,name=context,proto3" json:"context,omitempty"`
-	VmLog         bool                   `protobuf:"varint,6,opt,name=vm_log,json=vmLog,proto3" json:"vm_log,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -548,13 +539,6 @@ func (x *Emulate) GetContext() *ContextOverrides {
 		return x.Context
 	}
 	return nil
-}
-
-func (x *Emulate) GetVmLog() bool {
-	if x != nil {
-		return x.VmLog
-	}
-	return false
 }
 
 type GetAccount struct {
@@ -855,7 +839,6 @@ type GetMethodResult struct {
 	GasUsed        uint64                 `protobuf:"varint,2,opt,name=gas_used,json=gasUsed,proto3" json:"gas_used,omitempty"`
 	Stack          []*StackEntry          `protobuf:"bytes,3,rep,name=stack,proto3" json:"stack,omitempty"`                                               // bottom to top
 	MissingLibrary []byte                 `protobuf:"bytes,4,opt,name=missing_library,json=missingLibrary,proto3,oneof" json:"missing_library,omitempty"` // the hash of the first missing library, 32 bytes
-	VmLog          string                 `protobuf:"bytes,5,opt,name=vm_log,json=vmLog,proto3" json:"vm_log,omitempty"`
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
 }
@@ -916,13 +899,6 @@ func (x *GetMethodResult) GetMissingLibrary() []byte {
 		return x.MissingLibrary
 	}
 	return nil
-}
-
-func (x *GetMethodResult) GetVmLog() string {
-	if x != nil {
-		return x.VmLog
-	}
-	return ""
 }
 
 type EmulateResult struct {
@@ -1015,7 +991,6 @@ type ExecutedTransaction struct {
 	Transaction    *v11.Transaction `protobuf:"bytes,1,opt,name=transaction,proto3" json:"transaction,omitempty"`
 	TransactionBoc []byte           `protobuf:"bytes,2,opt,name=transaction_boc,json=transactionBoc,proto3" json:"transaction_boc,omitempty"` // the same transaction
 	AccountAfter   *v1.AccountValue `protobuf:"bytes,3,opt,name=account_after,json=accountAfter,proto3" json:"account_after,omitempty"`       // set with return_state
-	VmLog          string           `protobuf:"bytes,4,opt,name=vm_log,json=vmLog,proto3" json:"vm_log,omitempty"`
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
 }
@@ -1071,19 +1046,11 @@ func (x *ExecutedTransaction) GetAccountAfter() *v1.AccountValue {
 	return nil
 }
 
-func (x *ExecutedTransaction) GetVmLog() string {
-	if x != nil {
-		return x.VmLog
-	}
-	return ""
-}
-
 // No transaction was created. The code of the emulator is given as is: 0 is
 // also what it gives when the compute phase was skipped.
 type ExternalNotAccepted struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	VmExitCode    int32                  `protobuf:"varint,1,opt,name=vm_exit_code,json=vmExitCode,proto3" json:"vm_exit_code,omitempty"`
-	VmLog         string                 `protobuf:"bytes,2,opt,name=vm_log,json=vmLog,proto3" json:"vm_log,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1123,13 +1090,6 @@ func (x *ExternalNotAccepted) GetVmExitCode() int32 {
 		return x.VmExitCode
 	}
 	return 0
-}
-
-func (x *ExternalNotAccepted) GetVmLog() string {
-	if x != nil {
-		return x.VmLog
-	}
-	return ""
 }
 
 type StackEntry struct {
@@ -1475,26 +1435,24 @@ const file_ton_tvm_v1_tvm_proto_rawDesc = "" +
 	"\rAccountSource\x124\n" +
 	"\aonchain\x18\x01 \x01(\v2\x18.ton.state.v1.AccountRefH\x00R\aonchain\x12,\n" +
 	"\x11shard_account_boc\x18\x02 \x01(\fH\x00R\x0fshardAccountBocB\b\n" +
-	"\x06source\"\x9f\x02\n" +
+	"\x06source\"\x88\x02\n" +
 	"\tGetMethod\x123\n" +
 	"\aaccount\x18\x01 \x01(\v2\x19.ton.tvm.v1.AccountSourceR\aaccount\x12\x14\n" +
 	"\x04name\x18\x02 \x01(\tH\x00R\x04name\x12\x10\n" +
 	"\x02id\x18\x03 \x01(\x05H\x00R\x02id\x12,\n" +
 	"\x05stack\x18\x04 \x03(\v2\x16.ton.tvm.v1.StackEntryR\x05stack\x126\n" +
 	"\acontext\x18\x05 \x01(\v2\x1c.ton.tvm.v1.ContextOverridesR\acontext\x12 \n" +
-	"\tgas_limit\x18\x06 \x01(\x04H\x01R\bgasLimit\x88\x01\x01\x12\x15\n" +
-	"\x06vm_log\x18\a \x01(\bR\x05vmLogB\b\n" +
+	"\tgas_limit\x18\x06 \x01(\x04H\x01R\bgasLimit\x88\x01\x01B\b\n" +
 	"\x06methodB\f\n" +
 	"\n" +
-	"_gas_limit\"\xf6\x01\n" +
+	"_gas_limit\"\xdf\x01\n" +
 	"\aEmulate\x12\x1f\n" +
 	"\vmessage_boc\x18\x01 \x01(\fR\n" +
 	"messageBoc\x123\n" +
 	"\aaccount\x18\x02 \x01(\v2\x19.ton.tvm.v1.AccountSourceR\aaccount\x12#\n" +
 	"\rignore_chksig\x18\x03 \x01(\bR\fignoreChksig\x12!\n" +
 	"\freturn_state\x18\x04 \x01(\bR\vreturnState\x126\n" +
-	"\acontext\x18\x05 \x01(\v2\x1c.ton.tvm.v1.ContextOverridesR\acontext\x12\x15\n" +
-	"\x06vm_log\x18\x06 \x01(\bR\x05vmLog\"@\n" +
+	"\acontext\x18\x05 \x01(\v2\x1c.ton.tvm.v1.ContextOverridesR\acontext\"@\n" +
 	"\n" +
 	"GetAccount\x122\n" +
 	"\aaccount\x18\x01 \x01(\v2\x18.ton.state.v1.AccountRefR\aaccount\"\xc2\x02\n" +
@@ -1520,27 +1478,24 @@ const file_ton_tvm_v1_tvm_proto_rawDesc = "" +
 	"\aoutcome\"P\n" +
 	"\tCallError\x12)\n" +
 	"\x04code\x18\x01 \x01(\x0e2\x15.ton.tvm.v1.ErrorCodeR\x04code\x12\x18\n" +
-	"\amessage\x18\x02 \x01(\tR\amessage\"\xd0\x01\n" +
+	"\amessage\x18\x02 \x01(\tR\amessage\"\xb9\x01\n" +
 	"\x0fGetMethodResult\x12\x1b\n" +
 	"\texit_code\x18\x01 \x01(\x05R\bexitCode\x12\x19\n" +
 	"\bgas_used\x18\x02 \x01(\x04R\agasUsed\x12,\n" +
 	"\x05stack\x18\x03 \x03(\v2\x16.ton.tvm.v1.StackEntryR\x05stack\x12,\n" +
-	"\x0fmissing_library\x18\x04 \x01(\fH\x00R\x0emissingLibrary\x88\x01\x01\x12\x15\n" +
-	"\x06vm_log\x18\x05 \x01(\tR\x05vmLogB\x12\n" +
+	"\x0fmissing_library\x18\x04 \x01(\fH\x00R\x0emissingLibrary\x88\x01\x01B\x12\n" +
 	"\x10_missing_library\"\xb0\x01\n" +
 	"\rEmulateResult\x12=\n" +
 	"\bexecuted\x18\x01 \x01(\v2\x1f.ton.tvm.v1.ExecutedTransactionH\x00R\bexecuted\x12U\n" +
 	"\x15external_not_accepted\x18\x02 \x01(\v2\x1f.ton.tvm.v1.ExternalNotAcceptedH\x00R\x13externalNotAcceptedB\t\n" +
-	"\aoutcome\"\xd5\x01\n" +
+	"\aoutcome\"\xbe\x01\n" +
 	"\x13ExecutedTransaction\x12=\n" +
 	"\vtransaction\x18\x01 \x01(\v2\x1b.sf.ton.type.v1.TransactionR\vtransaction\x12'\n" +
 	"\x0ftransaction_boc\x18\x02 \x01(\fR\x0etransactionBoc\x12?\n" +
-	"\raccount_after\x18\x03 \x01(\v2\x1a.ton.state.v1.AccountValueR\faccountAfter\x12\x15\n" +
-	"\x06vm_log\x18\x04 \x01(\tR\x05vmLog\"N\n" +
+	"\raccount_after\x18\x03 \x01(\v2\x1a.ton.state.v1.AccountValueR\faccountAfter\"7\n" +
 	"\x13ExternalNotAccepted\x12 \n" +
 	"\fvm_exit_code\x18\x01 \x01(\x05R\n" +
-	"vmExitCode\x12\x15\n" +
-	"\x06vm_log\x18\x02 \x01(\tR\x05vmLog\"\xe0\x02\n" +
+	"vmExitCode\"\xe0\x02\n" +
 	"\n" +
 	"StackEntry\x12,\n" +
 	"\x04null\x18\x01 \x01(\v2\x16.google.protobuf.EmptyH\x00R\x04null\x12\x1a\n" +

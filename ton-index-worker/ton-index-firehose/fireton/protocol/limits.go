@@ -19,8 +19,6 @@ const (
 	MaxCallRequestSize = 8 << 20
 	// Of a serialized CallResult: over it the call is TOO_LARGE.
 	MaxCallResultSize = 8 << 20
-	// The end of the VM log that is kept.
-	MaxVmLogSize = 64 << 10
 	// Tuples and lists within each other in a stack: within the recursion
 	// limit of protobuf decoders, 100 messages in prost and C++.
 	MaxStackDepth = 32
