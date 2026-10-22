@@ -264,6 +264,9 @@ impl GetMethodCall {
         self
     }
 
+    /// Overrides the context at N. `lt` sets both BLOCKLT and LTIME;
+    /// `block_rand_seed` is a nonzero 32-byte block seed, from which the
+    /// service derives this account's TVM seed using the config's version.
     pub fn context(mut self, context: pb::ContextOverrides) -> Self {
         self.0.context = Some(context);
         self
@@ -321,6 +324,10 @@ impl EmulateCall {
         self
     }
 
+    /// Overrides the public execution context, never historical replay.
+    /// TON rounds the requested `lt` down to a multiple of 1,000,000 for
+    /// BLOCKLT and may raise the transaction LT to follow prior events.
+    /// `block_rand_seed` is a nonzero 32-byte block seed, not a final TVM seed.
     pub fn context(mut self, context: pb::ContextOverrides) -> Self {
         self.0.context = Some(context);
         self

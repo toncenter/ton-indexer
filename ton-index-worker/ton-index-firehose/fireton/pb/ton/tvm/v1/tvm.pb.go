@@ -603,12 +603,15 @@ func (x *GetAccount) GetAccount() *v1.AccountRef {
 
 // Overrides of the VM context of block N; an unset field keeps the default.
 type ContextOverrides struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Now           *uint32                `protobuf:"varint,1,opt,name=now,proto3,oneof" json:"now,omitempty"`                                                                                                           // an explicit 0 is INVALID_REQUEST
-	Lt            *uint64                `protobuf:"varint,2,opt,name=lt,proto3,oneof" json:"lt,omitempty"`                                                                                                             // an explicit 0 is INVALID_REQUEST
-	RandSeed      []byte                 `protobuf:"bytes,3,opt,name=rand_seed,json=randSeed,proto3,oneof" json:"rand_seed,omitempty"`                                                                                  // exactly 32 bytes, not all zero
-	ConfigParams  map[int32][]byte       `protobuf:"bytes,4,rep,name=config_params,json=configParams,proto3" json:"config_params,omitempty" protobuf_key:"varint,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"` // the BOC of the cell of each param; an empty BOC is INVALID_REQUEST
-	Libraries     [][]byte               `protobuf:"bytes,5,rep,name=libraries,proto3" json:"libraries,omitempty"`                                                                                                      // BOCs of the root cells of extra libraries, one root each
+	state protoimpl.MessageState `protogen:"open.v1"`
+	Now   *uint32                `protobuf:"varint,1,opt,name=now,proto3,oneof" json:"now,omitempty"` // an explicit 0 is INVALID_REQUEST
+	// GetMethod: BLOCKLT and LTIME. Emulate: requested transaction LT (a lower
+	// bound); TON derives BLOCKLT by rounding this down to a multiple of 1,000,000.
+	Lt *uint64 `protobuf:"varint,2,opt,name=lt,proto3,oneof" json:"lt,omitempty"` // an explicit 0 is INVALID_REQUEST
+	// Input to TON's version-dependent, per-account TVM seed derivation.
+	BlockRandSeed []byte           `protobuf:"bytes,3,opt,name=block_rand_seed,json=blockRandSeed,proto3,oneof" json:"block_rand_seed,omitempty"`                                                                 // exactly 32 bytes, not all zero
+	ConfigParams  map[int32][]byte `protobuf:"bytes,4,rep,name=config_params,json=configParams,proto3" json:"config_params,omitempty" protobuf_key:"varint,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"` // the BOC of the cell of each param; an empty BOC is INVALID_REQUEST
+	Libraries     [][]byte         `protobuf:"bytes,5,rep,name=libraries,proto3" json:"libraries,omitempty"`                                                                                                      // BOCs of the root cells of extra libraries, one root each
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -657,9 +660,9 @@ func (x *ContextOverrides) GetLt() uint64 {
 	return 0
 }
 
-func (x *ContextOverrides) GetRandSeed() []byte {
+func (x *ContextOverrides) GetBlockRandSeed() []byte {
 	if x != nil {
-		return x.RandSeed
+		return x.BlockRandSeed
 	}
 	return nil
 }
@@ -1006,11 +1009,13 @@ func (*EmulateResult_ExternalNotAccepted) isEmulateResult_Outcome() {}
 
 // A transaction was created; its compute and action phases may still have failed.
 type ExecutedTransaction struct {
-	state          protoimpl.MessageState `protogen:"open.v1"`
-	Transaction    *v11.Transaction       `protobuf:"bytes,1,opt,name=transaction,proto3" json:"transaction,omitempty"`                             // with its outbound messages, which are not executed
-	TransactionBoc []byte                 `protobuf:"bytes,2,opt,name=transaction_boc,json=transactionBoc,proto3" json:"transaction_boc,omitempty"` // the same transaction
-	AccountAfter   *v1.AccountValue       `protobuf:"bytes,3,opt,name=account_after,json=accountAfter,proto3" json:"account_after,omitempty"`       // set with return_state
-	VmLog          string                 `protobuf:"bytes,4,opt,name=vm_log,json=vmLog,proto3" json:"vm_log,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// With its outbound messages, which are not executed, and the normalized
+	// hash of an inbound external message, as a block has it.
+	Transaction    *v11.Transaction `protobuf:"bytes,1,opt,name=transaction,proto3" json:"transaction,omitempty"`
+	TransactionBoc []byte           `protobuf:"bytes,2,opt,name=transaction_boc,json=transactionBoc,proto3" json:"transaction_boc,omitempty"` // the same transaction
+	AccountAfter   *v1.AccountValue `protobuf:"bytes,3,opt,name=account_after,json=accountAfter,proto3" json:"account_after,omitempty"`       // set with return_state
+	VmLog          string           `protobuf:"bytes,4,opt,name=vm_log,json=vmLog,proto3" json:"vm_log,omitempty"`
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
 }
@@ -1492,20 +1497,19 @@ const file_ton_tvm_v1_tvm_proto_rawDesc = "" +
 	"\x06vm_log\x18\x06 \x01(\bR\x05vmLog\"@\n" +
 	"\n" +
 	"GetAccount\x122\n" +
-	"\aaccount\x18\x01 \x01(\v2\x18.ton.state.v1.AccountRefR\aaccount\"\xb1\x02\n" +
+	"\aaccount\x18\x01 \x01(\v2\x18.ton.state.v1.AccountRefR\aaccount\"\xc2\x02\n" +
 	"\x10ContextOverrides\x12\x15\n" +
 	"\x03now\x18\x01 \x01(\rH\x00R\x03now\x88\x01\x01\x12\x13\n" +
-	"\x02lt\x18\x02 \x01(\x04H\x01R\x02lt\x88\x01\x01\x12 \n" +
-	"\trand_seed\x18\x03 \x01(\fH\x02R\brandSeed\x88\x01\x01\x12S\n" +
+	"\x02lt\x18\x02 \x01(\x04H\x01R\x02lt\x88\x01\x01\x12+\n" +
+	"\x0fblock_rand_seed\x18\x03 \x01(\fH\x02R\rblockRandSeed\x88\x01\x01\x12S\n" +
 	"\rconfig_params\x18\x04 \x03(\v2..ton.tvm.v1.ContextOverrides.ConfigParamsEntryR\fconfigParams\x12\x1c\n" +
 	"\tlibraries\x18\x05 \x03(\fR\tlibraries\x1a?\n" +
 	"\x11ConfigParamsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\x05R\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\fR\x05value:\x028\x01B\x06\n" +
 	"\x04_nowB\x05\n" +
-	"\x03_ltB\f\n" +
-	"\n" +
-	"_rand_seed\"\xf6\x01\n" +
+	"\x03_ltB\x12\n" +
+	"\x10_block_rand_seed\"\xf6\x01\n" +
 	"\n" +
 	"CallResult\x12-\n" +
 	"\x05error\x18\x01 \x01(\v2\x15.ton.tvm.v1.CallErrorH\x00R\x05error\x12<\n" +

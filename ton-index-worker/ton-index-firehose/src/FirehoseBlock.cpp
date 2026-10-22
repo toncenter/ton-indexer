@@ -208,8 +208,32 @@ class CellConverter {
     return std::move(account.account);
   }
 
+  td::Result<pb::Transaction> convert_transaction(const Ref<Cell>& root) {
+    // A block has the normalized hash of an inbound external message from
+    // its parsed transactions; a transaction alone computes it here.
+    block::gen::Transaction::Record tx;
+    if (tlb::unpack_cell(root, tx)) {
+      auto in_msg = tx.r1.in_msg->prefetch_ref();
+      if (in_msg.not_null() && block::gen::t_CommonMsgInfo.get_tag(vm::load_cell_slice(in_msg)) ==
+                                   block::gen::CommonMsgInfo::ext_in_msg_info) {
+        TRY_RESULT(hash_norm, ext_in_msg_get_normalized_hash(in_msg));
+        td::Bits256 hash{in_msg->get_hash().bits()};
+        if (hash_norm != hash) {
+          norm_hashes_.emplace(hash, hash_norm);
+        }
+      }
+    }
+    pb::Transaction transaction;
+    // Cell-load exceptions remain infrastructure errors for the executor.
+    fill_transaction(&transaction, root, false);
+    TRY_STATUS(std::move(error_));
+    return transaction;
+  }
+
  protected:
   td::Status error_;
+  std::map<td::Bits256, td::Bits256> norm_hashes_;
+  std::map<td::Bits256, td::Bits256> trace_ids_;
 
   void fail(td::Status error) {
     if (error_.is_ok()) {
@@ -470,6 +494,289 @@ class CellConverter {
       cells->library = hash(library);
     }
   }
+  void fill_transaction(pb::Transaction* out, const Ref<Cell>& cell, bool with_trace_id) {
+    block::gen::Transaction::Record tx;
+    if (!tlb::unpack_cell(cell, tx)) {
+      return fail_unpack("Transaction");
+    }
+    td::Bits256 hash{cell->get_hash().bits()};
+    out->set_hash(bytes(hash));
+    out->set_account_addr(bytes(tx.account_addr));
+    out->set_lt(tx.lt);
+    out->set_prev_trans_hash(bytes(tx.prev_trans_hash));
+    out->set_prev_trans_lt(tx.prev_trans_lt);
+    out->set_now(tx.now);
+    out->set_outmsg_cnt(static_cast<std::uint32_t>(tx.outmsg_cnt));
+    out->set_orig_status(account_status(tx.orig_status));
+    out->set_end_status(account_status(tx.end_status));
+    if (tx.r1.in_msg->prefetch_ulong(1) == 1) {
+      fill_message(out->mutable_in_msg(), tx.r1.in_msg->prefetch_ref());
+    }
+    if (tx.outmsg_cnt > 0) {
+      vm::Dictionary out_msgs{tx.r1.out_msgs, 15};
+      for (int i = 0; i < tx.outmsg_cnt; i++) {
+        auto msg = out_msgs.lookup_ref(td::BitArray<15>{i});
+        if (msg.is_null()) {
+          return fail_unpack("out_msgs");
+        }
+        fill_message(out->add_out_msgs(), msg);
+      }
+    }
+    fill_currencies(out->mutable_total_fees(), tx.total_fees);
+    block::gen::HASH_UPDATE::Record update;
+    if (!tlb::type_unpack_cell(tx.state_update, block::gen::t_HASH_UPDATE_Account, update)) {
+      return fail_unpack("HASH_UPDATE");
+    }
+    out->mutable_state_update()->set_old_hash(bytes(update.old_hash));
+    out->mutable_state_update()->set_new_hash(bytes(update.new_hash));
+    fill_descr(out->mutable_description(), tx.description);
+    if (with_trace_id) {
+      if (auto it = trace_ids_.find(hash); it != trace_ids_.end()) {
+        out->set_trace_id(bytes(it->second));
+      }
+    }
+  }
+
+  void fill_message(pb::Message* out, const Ref<Cell>& cell) {
+    out->set_hash(cell_hash(cell));
+    block::gen::Message::Record message;
+    if (!tlb::type_unpack_cell(cell, block::gen::t_Message_Any, message)) {
+      return fail_unpack("Message");
+    }
+    fill_msg_info(out->mutable_info(), message.info);
+
+    CellSlice init = *message.init;
+    if (init.fetch_ulong(1) == 1) {
+      // Either StateInit ^StateInit
+      auto state_init =
+          init.fetch_ulong(1) == 0 ? Ref<CellSlice>{true, init} : vm::load_cell_slice_ref(init.fetch_ref());
+      fill_state_init(out->mutable_init(), state_init, true, nullptr);
+    }
+
+    // Either X ^X
+    CellSlice body = *message.body;
+    Ref<Cell> body_cell =
+        body.fetch_ulong(1) == 1 ? body.fetch_ref() : vm::CellBuilder().append_cellslice(body).finalize();
+    fill_cell(out->mutable_body(), body_cell, true);
+    auto body_cs = vm::load_cell_slice(body_cell);
+    if (body_cs.size() >= 32) {
+      out->set_opcode(static_cast<std::uint32_t>(body_cs.prefetch_ulong(32)));
+    }
+
+    if (auto it = norm_hashes_.find(td::Bits256{cell->get_hash().bits()}); it != norm_hashes_.end()) {
+      out->set_hash_norm(bytes(it->second));
+    }
+  }
+
+  void fill_msg_info(pb::CommonMsgInfo* out, const Ref<CellSlice>& cs) {
+    using block::gen::CommonMsgInfo;
+    switch (block::gen::t_CommonMsgInfo.get_tag(*cs)) {
+      case CommonMsgInfo::int_msg_info: {
+        CommonMsgInfo::Record_int_msg_info rec;
+        if (!tlb::csr_unpack(cs, rec)) {
+          return fail_unpack("int_msg_info");
+        }
+        auto* info = out->mutable_int_msg_info();
+        info->set_ihr_disabled(rec.ihr_disabled);
+        info->set_bounce(rec.bounce);
+        info->set_bounced(rec.bounced);
+        fill_msg_addr_int(info->mutable_src(), rec.src);
+        fill_msg_addr_int(info->mutable_dest(), rec.dest);
+        fill_currencies(info->mutable_value(), rec.value);
+        info->set_extra_flags(grams(rec.extra_flags));
+        info->set_fwd_fee(grams(rec.fwd_fee));
+        info->set_created_lt(rec.created_lt);
+        info->set_created_at(rec.created_at);
+        return;
+      }
+      case CommonMsgInfo::ext_in_msg_info: {
+        CommonMsgInfo::Record_ext_in_msg_info rec;
+        if (!tlb::csr_unpack(cs, rec)) {
+          return fail_unpack("ext_in_msg_info");
+        }
+        auto* info = out->mutable_ext_in_msg_info();
+        fill_msg_addr_ext(info->mutable_src(), rec.src);
+        fill_msg_addr_int(info->mutable_dest(), rec.dest);
+        if (auto import_fee = to_uint64(block::tlb::t_Grams.as_integer(*rec.import_fee))) {
+          info->set_import_fee(*import_fee);
+        }
+        return;
+      }
+      case CommonMsgInfo::ext_out_msg_info: {
+        CommonMsgInfo::Record_ext_out_msg_info rec;
+        if (!tlb::csr_unpack(cs, rec)) {
+          return fail_unpack("ext_out_msg_info");
+        }
+        auto* info = out->mutable_ext_out_msg_info();
+        fill_msg_addr_int(info->mutable_src(), rec.src);
+        fill_msg_addr_ext(info->mutable_dest(), rec.dest);
+        info->set_created_lt(rec.created_lt);
+        info->set_created_at(rec.created_at);
+        return;
+      }
+    }
+    fail_unpack("CommonMsgInfo");
+  }
+
+  // The phases come from the indexer's parser of TransactionDescr, which follows block.tlb.
+  void fill_descr(pb::TransactionDescr* out, const Ref<Cell>& cell) {
+    auto cs = vm::load_cell_slice(cell);
+    auto descr = ParseQuery::process_transaction_descr(cs);
+    if (descr.is_error()) {
+      return fail(descr.move_as_error_prefix("TransactionDescr: "));
+    }
+    std::visit(overloaded{
+                   [&](const schema::TransactionDescr_ord& d) {
+                     auto* o = out->mutable_trans_ord();
+                     o->set_credit_first(d.credit_first);
+                     if (d.storage_ph) fill_storage_ph(o->mutable_storage_ph(), *d.storage_ph);
+                     if (d.credit_ph) fill_credit_ph(o->mutable_credit_ph(), *d.credit_ph);
+                     fill_compute_ph(o->mutable_compute_ph(), d.compute_ph);
+                     if (d.action) fill_action_ph(o->mutable_action(), *d.action);
+                     o->set_aborted(d.aborted);
+                     if (d.bounce) fill_bounce_ph(o->mutable_bounce(), *d.bounce);
+                     o->set_destroyed(d.destroyed);
+                   },
+                   [&](const schema::TransactionDescr_storage& d) {
+                     fill_storage_ph(out->mutable_trans_storage()->mutable_storage_ph(), d.storage_ph);
+                   },
+                   [&](const schema::TransactionDescr_tick_tock& d) {
+                     auto* o = out->mutable_trans_tick_tock();
+                     o->set_is_tock(d.is_tock);
+                     fill_storage_ph(o->mutable_storage_ph(), d.storage_ph);
+                     fill_compute_ph(o->mutable_compute_ph(), d.compute_ph);
+                     if (d.action) fill_action_ph(o->mutable_action(), *d.action);
+                     o->set_aborted(d.aborted);
+                     o->set_destroyed(d.destroyed);
+                   },
+                   [&](const schema::TransactionDescr_split_prepare& d) {
+                     auto* o = out->mutable_trans_split_prepare();
+                     fill_split_info(o->mutable_split_info(), d.split_info);
+                     if (d.storage_ph) fill_storage_ph(o->mutable_storage_ph(), *d.storage_ph);
+                     fill_compute_ph(o->mutable_compute_ph(), d.compute_ph);
+                     if (d.action) fill_action_ph(o->mutable_action(), *d.action);
+                     o->set_aborted(d.aborted);
+                     o->set_destroyed(d.destroyed);
+                   },
+                   [&](const schema::TransactionDescr_split_install& d) {
+                     auto* o = out->mutable_trans_split_install();
+                     fill_split_info(o->mutable_split_info(), d.split_info);
+                     block::gen::TransactionDescr::Record_trans_split_install rec;
+                     if (!tlb::unpack_cell(cell, rec)) {
+                       return fail_unpack("trans_split_install");
+                     }
+                     fill_transaction(o->mutable_prepare_transaction(), rec.prepare_transaction, false);
+                     o->set_installed(d.installed);
+                   },
+                   [&](const schema::TransactionDescr_merge_prepare& d) {
+                     auto* o = out->mutable_trans_merge_prepare();
+                     fill_split_info(o->mutable_split_info(), d.split_info);
+                     fill_storage_ph(o->mutable_storage_ph(), d.storage_ph);
+                     o->set_aborted(d.aborted);
+                   },
+                   [&](const schema::TransactionDescr_merge_install& d) {
+                     auto* o = out->mutable_trans_merge_install();
+                     fill_split_info(o->mutable_split_info(), d.split_info);
+                     block::gen::TransactionDescr::Record_trans_merge_install rec;
+                     if (!tlb::unpack_cell(cell, rec)) {
+                       return fail_unpack("trans_merge_install");
+                     }
+                     fill_transaction(o->mutable_prepare_transaction(), rec.prepare_transaction, false);
+                     if (d.storage_ph) fill_storage_ph(o->mutable_storage_ph(), *d.storage_ph);
+                     if (d.credit_ph) fill_credit_ph(o->mutable_credit_ph(), *d.credit_ph);
+                     fill_compute_ph(o->mutable_compute_ph(), d.compute_ph);
+                     if (d.action) fill_action_ph(o->mutable_action(), *d.action);
+                     o->set_aborted(d.aborted);
+                     o->set_destroyed(d.destroyed);
+                   },
+               },
+               descr.ok());
+  }
+
+  void fill_storage_ph(pb::TrStoragePhase* out, const schema::TrStoragePhase& phase) {
+    out->set_storage_fees_collected(coins(phase.storage_fees_collected));
+    if (phase.storage_fees_due) {
+      out->set_storage_fees_due(coins(*phase.storage_fees_due));
+    }
+    out->set_status_change(acc_status_change(phase.status_change));
+  }
+
+  void fill_credit_ph(pb::TrCreditPhase* out, const schema::TrCreditPhase& phase) {
+    if (phase.due_fees_collected) {
+      out->set_due_fees_collected(coins(*phase.due_fees_collected));
+    }
+    fill_currencies(out->mutable_credit(), phase.credit);
+  }
+
+  void fill_compute_ph(pb::TrComputePhase* out, const schema::TrComputePhase& phase) {
+    std::visit(overloaded{
+                   [&](const schema::TrComputePhase_skipped& skipped) {
+                     out->mutable_tr_phase_compute_skipped()->set_reason(compute_skip_reason(skipped.reason));
+                   },
+                   [&](const schema::TrComputePhase_vm& vm) {
+                     auto* o = out->mutable_tr_phase_compute_vm();
+                     o->set_success(vm.success);
+                     o->set_msg_state_used(vm.msg_state_used);
+                     o->set_account_activated(vm.account_activated);
+                     o->set_gas_fees(coins(vm.gas_fees));
+                     o->set_gas_used(vm.gas_used);
+                     o->set_gas_limit(vm.gas_limit);
+                     if (vm.gas_credit) {
+                       o->set_gas_credit(static_cast<std::uint32_t>(*vm.gas_credit));
+                     }
+                     o->set_mode(vm.mode);
+                     o->set_exit_code(vm.exit_code);
+                     if (vm.exit_arg) {
+                       o->set_exit_arg(*vm.exit_arg);
+                     }
+                     o->set_vm_steps(vm.vm_steps);
+                     o->set_vm_init_state_hash(bytes(vm.vm_init_state_hash));
+                     o->set_vm_final_state_hash(bytes(vm.vm_final_state_hash));
+                   },
+               },
+               phase);
+  }
+
+  void fill_action_ph(pb::TrActionPhase* out, const schema::TrActionPhase& phase) {
+    out->set_success(phase.success);
+    out->set_valid(phase.valid);
+    out->set_no_funds(phase.no_funds);
+    out->set_status_change(acc_status_change(phase.status_change));
+    if (phase.total_fwd_fees) {
+      out->set_total_fwd_fees(coins(*phase.total_fwd_fees));
+    }
+    if (phase.total_action_fees) {
+      out->set_total_action_fees(coins(*phase.total_action_fees));
+    }
+    out->set_result_code(phase.result_code);
+    if (phase.result_arg) {
+      out->set_result_arg(*phase.result_arg);
+    }
+    out->set_tot_actions(phase.tot_actions);
+    out->set_spec_actions(phase.spec_actions);
+    out->set_skipped_actions(phase.skipped_actions);
+    out->set_msgs_created(phase.msgs_created);
+    out->set_action_list_hash(bytes(phase.action_list_hash));
+    fill_msg_size(out->mutable_tot_msg_size(), phase.tot_msg_size);
+  }
+
+  void fill_bounce_ph(pb::TrBouncePhase* out, const schema::TrBouncePhase& phase) {
+    std::visit(overloaded{
+                   [&](const schema::TrBouncePhase_negfunds&) { out->mutable_tr_phase_bounce_negfunds(); },
+                   [&](const schema::TrBouncePhase_nofunds& nofunds) {
+                     auto* o = out->mutable_tr_phase_bounce_nofunds();
+                     fill_msg_size(o->mutable_msg_size(), nofunds.msg_size);
+                     o->set_req_fwd_fees(coins(nofunds.req_fwd_fees));
+                   },
+                   [&](const schema::TrBouncePhase_ok& ok) {
+                     auto* o = out->mutable_tr_phase_bounce_ok();
+                     fill_msg_size(o->mutable_msg_size(), ok.msg_size);
+                     o->set_msg_fees(coins(ok.msg_fees));
+                     o->set_fwd_fees(coins(ok.fwd_fees));
+                   },
+               },
+               phase);
+  }
 };
 
 class Converter : private CellConverter {
@@ -505,8 +812,6 @@ class Converter : private CellConverter {
 
   const ParsedBlock& parsed_block_;
   int global_version_{0};
-  std::map<td::Bits256, td::Bits256> trace_ids_;
-  std::map<td::Bits256, td::Bits256> norm_hashes_;
   // null when the account failed to load
   std::map<td::Bits256, std::shared_ptr<const LoadedAccount>> accounts_;
   // The accounts of the old and the new state of the block being filled, see
@@ -1511,289 +1816,7 @@ class Converter : private CellConverter {
     return account;
   }
 
-  void fill_transaction(pb::Transaction* out, const Ref<Cell>& cell, bool with_trace_id) {
-    block::gen::Transaction::Record tx;
-    if (!tlb::unpack_cell(cell, tx)) {
-      return fail_unpack("Transaction");
-    }
-    td::Bits256 hash{cell->get_hash().bits()};
-    out->set_hash(bytes(hash));
-    out->set_account_addr(bytes(tx.account_addr));
-    out->set_lt(tx.lt);
-    out->set_prev_trans_hash(bytes(tx.prev_trans_hash));
-    out->set_prev_trans_lt(tx.prev_trans_lt);
-    out->set_now(tx.now);
-    out->set_outmsg_cnt(static_cast<std::uint32_t>(tx.outmsg_cnt));
-    out->set_orig_status(account_status(tx.orig_status));
-    out->set_end_status(account_status(tx.end_status));
-    if (tx.r1.in_msg->prefetch_ulong(1) == 1) {
-      fill_message(out->mutable_in_msg(), tx.r1.in_msg->prefetch_ref());
-    }
-    if (tx.outmsg_cnt > 0) {
-      vm::Dictionary out_msgs{tx.r1.out_msgs, 15};
-      for (int i = 0; i < tx.outmsg_cnt; i++) {
-        auto msg = out_msgs.lookup_ref(td::BitArray<15>{i});
-        if (msg.is_null()) {
-          return fail_unpack("out_msgs");
-        }
-        fill_message(out->add_out_msgs(), msg);
-      }
-    }
-    fill_currencies(out->mutable_total_fees(), tx.total_fees);
-    block::gen::HASH_UPDATE::Record update;
-    if (!tlb::type_unpack_cell(tx.state_update, block::gen::t_HASH_UPDATE_Account, update)) {
-      return fail_unpack("HASH_UPDATE");
-    }
-    out->mutable_state_update()->set_old_hash(bytes(update.old_hash));
-    out->mutable_state_update()->set_new_hash(bytes(update.new_hash));
-    fill_descr(out->mutable_description(), tx.description);
-    if (with_trace_id) {
-      if (auto it = trace_ids_.find(hash); it != trace_ids_.end()) {
-        out->set_trace_id(bytes(it->second));
-      }
-    }
-  }
 
-  void fill_message(pb::Message* out, const Ref<Cell>& cell) {
-    out->set_hash(cell_hash(cell));
-    block::gen::Message::Record message;
-    if (!tlb::type_unpack_cell(cell, block::gen::t_Message_Any, message)) {
-      return fail_unpack("Message");
-    }
-    fill_msg_info(out->mutable_info(), message.info);
-
-    CellSlice init = *message.init;
-    if (init.fetch_ulong(1) == 1) {
-      // Either StateInit ^StateInit
-      auto state_init =
-          init.fetch_ulong(1) == 0 ? Ref<CellSlice>{true, init} : vm::load_cell_slice_ref(init.fetch_ref());
-      fill_state_init(out->mutable_init(), state_init, true, nullptr);
-    }
-
-    // Either X ^X
-    CellSlice body = *message.body;
-    Ref<Cell> body_cell =
-        body.fetch_ulong(1) == 1 ? body.fetch_ref() : vm::CellBuilder().append_cellslice(body).finalize();
-    fill_cell(out->mutable_body(), body_cell, true);
-    auto body_cs = vm::load_cell_slice(body_cell);
-    if (body_cs.size() >= 32) {
-      out->set_opcode(static_cast<std::uint32_t>(body_cs.prefetch_ulong(32)));
-    }
-
-    if (auto it = norm_hashes_.find(td::Bits256{cell->get_hash().bits()}); it != norm_hashes_.end()) {
-      out->set_hash_norm(bytes(it->second));
-    }
-  }
-
-  void fill_msg_info(pb::CommonMsgInfo* out, const Ref<CellSlice>& cs) {
-    using block::gen::CommonMsgInfo;
-    switch (block::gen::t_CommonMsgInfo.get_tag(*cs)) {
-      case CommonMsgInfo::int_msg_info: {
-        CommonMsgInfo::Record_int_msg_info rec;
-        if (!tlb::csr_unpack(cs, rec)) {
-          return fail_unpack("int_msg_info");
-        }
-        auto* info = out->mutable_int_msg_info();
-        info->set_ihr_disabled(rec.ihr_disabled);
-        info->set_bounce(rec.bounce);
-        info->set_bounced(rec.bounced);
-        fill_msg_addr_int(info->mutable_src(), rec.src);
-        fill_msg_addr_int(info->mutable_dest(), rec.dest);
-        fill_currencies(info->mutable_value(), rec.value);
-        info->set_extra_flags(grams(rec.extra_flags));
-        info->set_fwd_fee(grams(rec.fwd_fee));
-        info->set_created_lt(rec.created_lt);
-        info->set_created_at(rec.created_at);
-        return;
-      }
-      case CommonMsgInfo::ext_in_msg_info: {
-        CommonMsgInfo::Record_ext_in_msg_info rec;
-        if (!tlb::csr_unpack(cs, rec)) {
-          return fail_unpack("ext_in_msg_info");
-        }
-        auto* info = out->mutable_ext_in_msg_info();
-        fill_msg_addr_ext(info->mutable_src(), rec.src);
-        fill_msg_addr_int(info->mutable_dest(), rec.dest);
-        if (auto import_fee = to_uint64(block::tlb::t_Grams.as_integer(*rec.import_fee))) {
-          info->set_import_fee(*import_fee);
-        }
-        return;
-      }
-      case CommonMsgInfo::ext_out_msg_info: {
-        CommonMsgInfo::Record_ext_out_msg_info rec;
-        if (!tlb::csr_unpack(cs, rec)) {
-          return fail_unpack("ext_out_msg_info");
-        }
-        auto* info = out->mutable_ext_out_msg_info();
-        fill_msg_addr_int(info->mutable_src(), rec.src);
-        fill_msg_addr_ext(info->mutable_dest(), rec.dest);
-        info->set_created_lt(rec.created_lt);
-        info->set_created_at(rec.created_at);
-        return;
-      }
-    }
-    fail_unpack("CommonMsgInfo");
-  }
-
-  // The phases come from the indexer's parser of TransactionDescr, which follows block.tlb.
-  void fill_descr(pb::TransactionDescr* out, const Ref<Cell>& cell) {
-    auto cs = vm::load_cell_slice(cell);
-    auto descr = ParseQuery::process_transaction_descr(cs);
-    if (descr.is_error()) {
-      return fail(descr.move_as_error_prefix("TransactionDescr: "));
-    }
-    std::visit(overloaded{
-                   [&](const schema::TransactionDescr_ord& d) {
-                     auto* o = out->mutable_trans_ord();
-                     o->set_credit_first(d.credit_first);
-                     if (d.storage_ph) fill_storage_ph(o->mutable_storage_ph(), *d.storage_ph);
-                     if (d.credit_ph) fill_credit_ph(o->mutable_credit_ph(), *d.credit_ph);
-                     fill_compute_ph(o->mutable_compute_ph(), d.compute_ph);
-                     if (d.action) fill_action_ph(o->mutable_action(), *d.action);
-                     o->set_aborted(d.aborted);
-                     if (d.bounce) fill_bounce_ph(o->mutable_bounce(), *d.bounce);
-                     o->set_destroyed(d.destroyed);
-                   },
-                   [&](const schema::TransactionDescr_storage& d) {
-                     fill_storage_ph(out->mutable_trans_storage()->mutable_storage_ph(), d.storage_ph);
-                   },
-                   [&](const schema::TransactionDescr_tick_tock& d) {
-                     auto* o = out->mutable_trans_tick_tock();
-                     o->set_is_tock(d.is_tock);
-                     fill_storage_ph(o->mutable_storage_ph(), d.storage_ph);
-                     fill_compute_ph(o->mutable_compute_ph(), d.compute_ph);
-                     if (d.action) fill_action_ph(o->mutable_action(), *d.action);
-                     o->set_aborted(d.aborted);
-                     o->set_destroyed(d.destroyed);
-                   },
-                   [&](const schema::TransactionDescr_split_prepare& d) {
-                     auto* o = out->mutable_trans_split_prepare();
-                     fill_split_info(o->mutable_split_info(), d.split_info);
-                     if (d.storage_ph) fill_storage_ph(o->mutable_storage_ph(), *d.storage_ph);
-                     fill_compute_ph(o->mutable_compute_ph(), d.compute_ph);
-                     if (d.action) fill_action_ph(o->mutable_action(), *d.action);
-                     o->set_aborted(d.aborted);
-                     o->set_destroyed(d.destroyed);
-                   },
-                   [&](const schema::TransactionDescr_split_install& d) {
-                     auto* o = out->mutable_trans_split_install();
-                     fill_split_info(o->mutable_split_info(), d.split_info);
-                     block::gen::TransactionDescr::Record_trans_split_install rec;
-                     if (!tlb::unpack_cell(cell, rec)) {
-                       return fail_unpack("trans_split_install");
-                     }
-                     fill_transaction(o->mutable_prepare_transaction(), rec.prepare_transaction, false);
-                     o->set_installed(d.installed);
-                   },
-                   [&](const schema::TransactionDescr_merge_prepare& d) {
-                     auto* o = out->mutable_trans_merge_prepare();
-                     fill_split_info(o->mutable_split_info(), d.split_info);
-                     fill_storage_ph(o->mutable_storage_ph(), d.storage_ph);
-                     o->set_aborted(d.aborted);
-                   },
-                   [&](const schema::TransactionDescr_merge_install& d) {
-                     auto* o = out->mutable_trans_merge_install();
-                     fill_split_info(o->mutable_split_info(), d.split_info);
-                     block::gen::TransactionDescr::Record_trans_merge_install rec;
-                     if (!tlb::unpack_cell(cell, rec)) {
-                       return fail_unpack("trans_merge_install");
-                     }
-                     fill_transaction(o->mutable_prepare_transaction(), rec.prepare_transaction, false);
-                     if (d.storage_ph) fill_storage_ph(o->mutable_storage_ph(), *d.storage_ph);
-                     if (d.credit_ph) fill_credit_ph(o->mutable_credit_ph(), *d.credit_ph);
-                     fill_compute_ph(o->mutable_compute_ph(), d.compute_ph);
-                     if (d.action) fill_action_ph(o->mutable_action(), *d.action);
-                     o->set_aborted(d.aborted);
-                     o->set_destroyed(d.destroyed);
-                   },
-               },
-               descr.ok());
-  }
-
-  void fill_storage_ph(pb::TrStoragePhase* out, const schema::TrStoragePhase& phase) {
-    out->set_storage_fees_collected(coins(phase.storage_fees_collected));
-    if (phase.storage_fees_due) {
-      out->set_storage_fees_due(coins(*phase.storage_fees_due));
-    }
-    out->set_status_change(acc_status_change(phase.status_change));
-  }
-
-  void fill_credit_ph(pb::TrCreditPhase* out, const schema::TrCreditPhase& phase) {
-    if (phase.due_fees_collected) {
-      out->set_due_fees_collected(coins(*phase.due_fees_collected));
-    }
-    fill_currencies(out->mutable_credit(), phase.credit);
-  }
-
-  void fill_compute_ph(pb::TrComputePhase* out, const schema::TrComputePhase& phase) {
-    std::visit(overloaded{
-                   [&](const schema::TrComputePhase_skipped& skipped) {
-                     out->mutable_tr_phase_compute_skipped()->set_reason(compute_skip_reason(skipped.reason));
-                   },
-                   [&](const schema::TrComputePhase_vm& vm) {
-                     auto* o = out->mutable_tr_phase_compute_vm();
-                     o->set_success(vm.success);
-                     o->set_msg_state_used(vm.msg_state_used);
-                     o->set_account_activated(vm.account_activated);
-                     o->set_gas_fees(coins(vm.gas_fees));
-                     o->set_gas_used(vm.gas_used);
-                     o->set_gas_limit(vm.gas_limit);
-                     if (vm.gas_credit) {
-                       o->set_gas_credit(static_cast<std::uint32_t>(*vm.gas_credit));
-                     }
-                     o->set_mode(vm.mode);
-                     o->set_exit_code(vm.exit_code);
-                     if (vm.exit_arg) {
-                       o->set_exit_arg(*vm.exit_arg);
-                     }
-                     o->set_vm_steps(vm.vm_steps);
-                     o->set_vm_init_state_hash(bytes(vm.vm_init_state_hash));
-                     o->set_vm_final_state_hash(bytes(vm.vm_final_state_hash));
-                   },
-               },
-               phase);
-  }
-
-  void fill_action_ph(pb::TrActionPhase* out, const schema::TrActionPhase& phase) {
-    out->set_success(phase.success);
-    out->set_valid(phase.valid);
-    out->set_no_funds(phase.no_funds);
-    out->set_status_change(acc_status_change(phase.status_change));
-    if (phase.total_fwd_fees) {
-      out->set_total_fwd_fees(coins(*phase.total_fwd_fees));
-    }
-    if (phase.total_action_fees) {
-      out->set_total_action_fees(coins(*phase.total_action_fees));
-    }
-    out->set_result_code(phase.result_code);
-    if (phase.result_arg) {
-      out->set_result_arg(*phase.result_arg);
-    }
-    out->set_tot_actions(phase.tot_actions);
-    out->set_spec_actions(phase.spec_actions);
-    out->set_skipped_actions(phase.skipped_actions);
-    out->set_msgs_created(phase.msgs_created);
-    out->set_action_list_hash(bytes(phase.action_list_hash));
-    fill_msg_size(out->mutable_tot_msg_size(), phase.tot_msg_size);
-  }
-
-  void fill_bounce_ph(pb::TrBouncePhase* out, const schema::TrBouncePhase& phase) {
-    std::visit(overloaded{
-                   [&](const schema::TrBouncePhase_negfunds&) { out->mutable_tr_phase_bounce_negfunds(); },
-                   [&](const schema::TrBouncePhase_nofunds& nofunds) {
-                     auto* o = out->mutable_tr_phase_bounce_nofunds();
-                     fill_msg_size(o->mutable_msg_size(), nofunds.msg_size);
-                     o->set_req_fwd_fees(coins(nofunds.req_fwd_fees));
-                   },
-                   [&](const schema::TrBouncePhase_ok& ok) {
-                     auto* o = out->mutable_tr_phase_bounce_ok();
-                     fill_msg_size(o->mutable_msg_size(), ok.msg_size);
-                     o->set_msg_fees(coins(ok.msg_fees));
-                     o->set_fwd_fees(coins(ok.fwd_fees));
-                   },
-               },
-               phase);
-  }
 };
 
 td::Result<std::string> serialize_deterministic(const google::protobuf::Message& message) {
@@ -1850,6 +1873,10 @@ td::Result<FirehoseBlock> make_firehose_block(const ParsedBlock& parsed_block) {
 
 td::Result<pb::Account> account_to_proto(const Ref<Cell>& root) {
   return CellConverter().convert_account(root);
+}
+
+td::Result<pb::Transaction> transaction_to_proto(const Ref<Cell>& root) {
+  return CellConverter().convert_transaction(root);
 }
 
 void block_id_to_proto(pb::BlockIdExt* out, const ton::BlockIdExt& id) {

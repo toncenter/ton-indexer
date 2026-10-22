@@ -63,8 +63,11 @@ message GetAccount {
 // Overrides of the VM context of block N; an unset field keeps the default.
 message ContextOverrides {
   optional uint32 now = 1;  // an explicit 0 is INVALID_REQUEST
+  // GetMethod: BLOCKLT and LTIME. Emulate: requested transaction LT (a lower
+  // bound); TON derives BLOCKLT by rounding this down to a multiple of 1,000,000.
   optional uint64 lt = 2;  // an explicit 0 is INVALID_REQUEST
-  optional bytes rand_seed = 3;  // exactly 32 bytes, not all zero
+  // Input to TON's version-dependent, per-account TVM seed derivation.
+  optional bytes block_rand_seed = 3;  // exactly 32 bytes, not all zero
   map<int32, bytes> config_params = 4;  // the BOC of the cell of each param; an empty BOC is INVALID_REQUEST
   repeated bytes libraries = 5;  // BOCs of the root cells of extra libraries, one root each
 }
@@ -111,7 +114,9 @@ message EmulateResult {
 
 // A transaction was created; its compute and action phases may still have failed.
 message ExecutedTransaction {
-  sf.ton.type.v1.Transaction transaction = 1;  // with its outbound messages, which are not executed
+  // With its outbound messages, which are not executed, and the normalized
+  // hash of an inbound external message, as a block has it.
+  sf.ton.type.v1.Transaction transaction = 1;
   bytes transaction_boc = 2;  // the same transaction
   ton.state.v1.AccountValue account_after = 3;  // set with return_state
   string vm_log = 4;

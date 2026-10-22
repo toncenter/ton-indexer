@@ -106,36 +106,6 @@ td::Result<vm::StackEntry> from_proto(const pbtvm::StackEntry& entry, const std:
   return td::Status::Error(PSLICE() << where << " is empty");
 }
 
-// Whether the BOC of a cell can be within limit bytes: false only when a lower
-// bound of its size is over it, found out before every cell of a large tree
-// is read. Each distinct cell takes at least its two descriptor bytes, its
-// data and a byte per reference.
-td::Result<bool> boc_within(const Cell& root, std::size_t limit) {
-  std::unordered_set<vm::CellHash> seen;
-  std::vector<Cell> pending{root};
-  std::size_t bytes = 0;
-  while (!pending.empty()) {
-    auto cell = std::move(pending.back());
-    pending.pop_back();
-    if (!seen.insert(cell->get_hash()).second) {
-      continue;
-    }
-    auto loaded = cell->load_cell();
-    if (loaded.is_error()) {
-      return unreadable(loaded.move_as_error());
-    }
-    const auto& data = loaded.ok().data_cell;
-    bytes += 2 + (data->get_bits() + 7) / 8 + data->get_refs_cnt();
-    if (bytes > limit) {
-      return false;
-    }
-    for (unsigned i = 0; i < data->get_refs_cnt(); i++) {
-      pending.push_back(data->get_ref(i));
-    }
-  }
-  return true;
-}
-
 // The bytes an entry takes in a result are counted as it is filled: shared
 // values of TVM, such as a tuple of the same tuple twice, nested 32 times, are
 // copies here, which must not take time or memory past the limit.

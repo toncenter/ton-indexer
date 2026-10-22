@@ -45,3 +45,17 @@ modules:
       - source: sf.ton.type.v1.Block
     output:
       type: proto:probe.v1.GetMethodCheck
+
+  - name: map_emulate_check
+    kind: map
+    inputs:
+      - source: sf.ton.type.v1.Block
+    output:
+      type: proto:probe.v1.EmulateCheck
+
+  - name: map_tx_point_check
+    kind: map
+    inputs:
+      - source: sf.ton.type.v1.Block
+    output:
+      type: proto:probe.v1.TxPointCheck

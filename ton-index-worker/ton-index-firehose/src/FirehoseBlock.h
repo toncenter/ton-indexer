@@ -37,4 +37,7 @@ td::Result<std::string> firehose_payload_to_json(const std::string& payload);
 // library given by their hashes only. Loads the cells it reads.
 td::Result<sf::ton::type::v1::Account> account_to_proto(const td::Ref<vm::Cell>& root);
 
+// A standalone transaction, with messages and phases, without trace metadata.
+td::Result<sf::ton::type::v1::Transaction> transaction_to_proto(const td::Ref<vm::Cell>& root);
+
 void block_id_to_proto(sf::ton::type::v1::BlockIdExt* out, const ton::BlockIdExt& id);

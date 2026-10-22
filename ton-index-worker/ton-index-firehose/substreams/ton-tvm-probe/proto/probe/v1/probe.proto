@@ -35,3 +35,29 @@ message GetMethodCheck {
   uint32 errors = 6;  // of the calls, CallErrors, as ACCOUNT_NOT_ACTIVE
   uint32 omitted = 7;  // states without a BOC to compare on
 }
+
+// Single-transaction emulation through fireton, router and the native executor.
+message EmulateCheck {
+  uint32 mc_seqno = 1;
+  uint32 calls = 2;
+  uint32 mismatches = 3;
+  uint32 executed = 4;
+  uint32 rejected = 5;
+  uint32 outgoing_messages = 6;
+  uint32 state_checks = 7;
+  repeated string details = 8;
+}
+
+// before_tx/after_tx: boundary states, verified replay and public call context.
+message TxPointCheck {
+  uint32 mc_seqno = 1;
+  uint32 calls = 2;
+  uint32 snapshots = 3;
+  uint32 boundaries = 4;
+  uint32 intermediate = 5;
+  uint32 method_pairs = 6;
+  uint32 emulate_pairs = 7;
+  uint32 mismatches = 8;
+  uint32 replay_mismatches = 9;
+  repeated string details = 10;
+}

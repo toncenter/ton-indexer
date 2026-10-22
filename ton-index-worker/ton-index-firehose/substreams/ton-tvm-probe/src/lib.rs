@@ -13,6 +13,8 @@ mod pb {
 
 mod account_check;
 mod get_method_check;
+mod emulate_check;
+mod tx_point_check;
 
 use std::iter::once;
 
@@ -53,7 +55,7 @@ fn map_probe(block: Block) -> Result<pb::Probe, Error> {
         .add(tvm::emulate(external.clone()).ignore_chksig())
         .add(tvm::emulate(external).shard_account(vec![0xb5]))
         .add(tvm::get_method(&ELECTOR, "seqno").context(ContextOverrides {
-            rand_seed: Some(vec![0; 32]),
+            block_rand_seed: Some(vec![0; 32]),
             ..Default::default()
         }))
         .add(tvm::get_method(&Address::new(0, [0; 32]), "seqno").gas_limit(u64::MAX));

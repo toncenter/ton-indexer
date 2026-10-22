@@ -8,6 +8,7 @@ crate-type = ["cdylib"]
 
 [dependencies]
 hex = "0.4"
+sha2 = "0.10"
 prost = "0.13"
 substreams = "0.7"
 substreams-ton = { path = "../substreams-ton" }

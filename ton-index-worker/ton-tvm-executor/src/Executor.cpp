@@ -1,5 +1,6 @@
 #include "Executor.h"
 
+#include <algorithm>
 #include <map>
 #include <optional>
 #include <google/protobuf/io/coded_stream.h>
@@ -12,6 +13,7 @@
 #include "CellCache.h"
 #include "Calls.h"
 #include "FirehoseBlock.h"
+#include "Replay.h"
 
 namespace tvm_executor {
 namespace {
@@ -25,9 +27,9 @@ using Cell = td::Ref<vm::Cell>;
 constexpr std::size_t kMaxShardAccountBocSize = kMaxInputBocSize;
 
 // What a view of the masterchain state needs: the shards of accounts, and the
-// config, libraries and prev blocks of VM contexts.
+// config, libraries and prev blocks of VM contexts and transactions.
 constexpr int kViewConfig = block::ConfigInfo::needShardHashes | block::ConfigInfo::needLibraries |
-                            block::ConfigInfo::needCapabilities | block::ConfigInfo::needPrevBlocks;
+                            block::ConfigInfo::needPrevBlocks | kTransactionConfig;
 
 Answer error(Code code, std::string message) {
   return Answer{code, std::move(message), {}};
@@ -37,14 +39,20 @@ Answer error(Code code, std::string message) {
 struct Shard {
   Handle handle;
   Cell root;
-  // Of the block, read for VM contexts.
-  std::optional<td::Bits256> rand_seed;
+  // Loaded lazily for VM contexts and transaction points.
+  std::optional<ShardBlockData> data;
+  // Lazy cells from an archive BOC hold a weak reference to its database.
+  // Keep their BlockData owner alive for every replay using those cells.
+  td::Ref<ton::validator::BlockData> data_owner;
 };
 
 // The masterchain state after a block.
 struct McView {
   ton::BlockIdExt id;
-  std::unique_ptr<block::ConfigInfo> config;
+  // Shared with the emulators of the calls.
+  std::shared_ptr<block::ConfigInfo> config;
+  // Every cell of the config is read: then parsing it meets no database error.
+  bool config_loaded{false};
 };
 
 Cell account_none() {
@@ -69,10 +77,41 @@ td::Result<block::gen::ShardStateUnsplit::Record> unpack_state(const Cell& root,
 struct Lookup {
   block::gen::ShardStateUnsplit::Record state;
   // account_none made here when the state has none.
-  Cell account;
+  AccountState value;
   bool stored{false};
-  td::Bits256 last_trans_hash = td::Bits256::zero();
-  td::uint64 last_trans_lt{0};
+};
+
+// The state an AccountRef selects, and the block it belongs to.
+struct AccountPoint {
+  ton::BlockIdExt id;
+  Lookup found;
+};
+
+// The way back along the shard chain of an account, from its block at N to
+// its block at N-1, to the block of a transaction.
+struct ChainWalk {
+  ton::BlockIdExt current, boundary;
+};
+
+// The transactions of an account in a shard block of the round, and its
+// states between them as they become known: states[i] is the state before
+// transactions[i]. Kept for the batch, so that the points of one account
+// replay its block once.
+struct ReplayedAccount {
+  struct State {
+    AccountState value;
+    bool stored;
+  };
+  // Of the state after the block, which snapshots name.
+  block::gen::ShardStateUnsplit::Record header;
+  std::vector<ReplayTransaction> transactions;
+  std::vector<State> states;
+  // After the last transaction, from the database.
+  std::optional<State> after;
+  // Goes on from states.back().
+  std::unique_ptr<Replay> replay;
+  // Once a transaction does not replay: the answer for the points after it.
+  std::optional<std::string> mismatch;
 };
 
 td::Result<Lookup> lookup_account(const Cell& root, const ton::BlockIdExt& id, const pbstate::Address& address) {
@@ -81,7 +120,7 @@ td::Result<Lookup> lookup_account(const Cell& root, const ton::BlockIdExt& id, c
   vm::AugmentedDictionary accounts{vm::load_cell_slice_ref(found.state.accounts), 256, block::tlb::aug_ShardAccounts};
   auto value = accounts.lookup(account_id_bits(address), 256);
   if (value.is_null()) {
-    found.account = account_none();
+    found.value.account = account_none();
     return found;
   }
   block::gen::ShardAccount::Record shard_account;
@@ -89,71 +128,50 @@ td::Result<Lookup> lookup_account(const Cell& root, const ton::BlockIdExt& id, c
     return malformed(PSLICE() << "cannot unpack the ShardAccount of " << address.workchain() << ":"
                               << td::Bits256(account_id_bits(address)).to_hex());
   }
-  found.account = shard_account.account;
+  found.value = AccountState{shard_account.account, shard_account.last_trans_hash, shard_account.last_trans_lt};
   found.stored = true;
-  found.last_trans_hash = shard_account.last_trans_hash;
-  found.last_trans_lt = shard_account.last_trans_lt;
   return found;
-}
-
-// The BOC of the ShardAccount over a loaded account tree, none when it is
-// over the limit.
-td::Result<std::optional<std::string>> shard_account_boc(const td::Ref<vm::Cell>& tree, const td::Bits256& last_trans_hash,
-                                                         td::uint64 last_trans_lt) {
-  vm::CellBuilder cb;
-  if (!cb.store_ref_bool(tree) || !cb.store_bits_bool(last_trans_hash.cbits(), 256) ||
-      !cb.store_long_bool(static_cast<td::int64>(last_trans_lt), 64)) {
-    return malformed("cannot build a ShardAccount");
-  }
-  auto boc = vm::std_boc_serialize(cb.finalize());
-  if (boc.is_error()) {
-    return malformed(PSLICE() << "cannot serialize a ShardAccount: " << boc.error().message());
-  }
-  if (boc.ok().size() > kMaxShardAccountBocSize) {
-    return std::nullopt;
-  }
-  return boc.ok().as_slice().str();
 }
 
 // Synchronous cell operations run on a TON CPU worker, after the actor has
 // obtained the shard root and a reader. They never wait on another actor.
 // The error status carries the Code of the answer.
-td::Result<pbtvm::CallResult> read_account(const pbstate::AccountRef& ref, const ton::BlockIdExt& id, const Cell& root,
+td::Result<pbtvm::CallResult> read_account(const pbstate::AccountRef& ref, const AccountPoint& point,
                                            vm::CellDbReader& reader) {
-  TRY_RESULT(found, lookup_account(root, id, ref.address()));
+  const auto& found = point.found;
   // The account tree as the BOC has it, null when it is over the limit, which
   // is found out before every cell of a large account is loaded.
-  td::Ref<vm::Cell> tree = found.account;
+  td::Ref<vm::Cell> tree = found.value.account;
   if (found.stored) {
     // Read before the account is parsed, so that a failure to read it is
     // not taken for one to parse it.
-    auto loaded = firehose::load_cell_tree_up_to(found.account->get_hash(), reader, kMaxShardAccountBocSize);
+    auto loaded = firehose::load_cell_tree_up_to(found.value.account->get_hash(), reader, kMaxShardAccountBocSize);
     if (loaded.is_error()) {
       return unreadable(loaded.move_as_error());
     }
     tree = loaded.move_as_ok();
     if (tree.is_null()) {
-      vm::load_cell_slice_ref(found.account);
+      vm::load_cell_slice_ref(found.value.account);
     }
   }
 
   pbtvm::CallResult result;
   auto* snapshot = result.mutable_account();
   *snapshot->mutable_source() = ref;
-  block_id_to_proto(snapshot->mutable_block(), id);
+  block_id_to_proto(snapshot->mutable_block(), point.id);
   snapshot->set_gen_utime(found.state.gen_utime);
   snapshot->set_gen_lt(found.state.gen_lt);
   auto* account_value = snapshot->mutable_value();
-  auto account = account_to_proto(tree.not_null() ? tree : found.account);
+  auto account = account_to_proto(tree.not_null() ? tree : found.value.account);
   if (account.is_error()) {
     return malformed(account.error().message());
   }
   *account_value->mutable_account() = account.move_as_ok();
-  account_value->set_last_trans_hash(found.last_trans_hash.as_slice().str());
-  account_value->set_last_trans_lt(found.last_trans_lt);
+  account_value->set_last_trans_hash(found.value.last_trans_hash.as_slice().str());
+  account_value->set_last_trans_lt(found.value.last_trans_lt);
   std::optional<std::string> boc;
   if (tree.not_null()) {
-    TRY_RESULT_ASSIGN(boc, shard_account_boc(tree, found.last_trans_hash, found.last_trans_lt));
+    TRY_RESULT_ASSIGN(boc, shard_account_boc({tree, found.value.last_trans_hash, found.value.last_trans_lt}));
   }
   if (boc) {
     account_value->set_shard_account_boc(std::move(*boc));
@@ -180,12 +198,19 @@ class RequestActor final : public td::actor::Actor {
   std::shared_ptr<vm::CellDbReader> reader_;
   std::map<ton::BlockSeqno, McView> views_;
   std::map<ton::BlockIdExt, Shard> shards_;
+  // The points of this batch, by their serialized AccountRef.
+  std::map<std::string, AccountPoint> points_;
+  std::map<std::pair<ton::BlockIdExt, td::Bits256>, ReplayedAccount> replayed_;
+  // Of the call being made, reset by append().
+  std::optional<ChainWalk> walk_;
   // What is being loaded: one thing at a time.
   ton::BlockSeqno loading_seqno_{0};
   Handle loading_;
   // The account of the shard_account_boc of the call at parsed_call_.
   int parsed_call_{-1};
-  td::Result<Cell> request_account_;
+  td::Result<AccountState> request_account_;
+  int parsed_message_call_{-1};
+  td::Result<EmulationMessage> request_message_;
   Answer answer_;
   int call_index_{0};
   std::size_t response_size_{0};
@@ -204,20 +229,6 @@ class RequestActor final : public td::actor::Actor {
     if (check_cancelled()) return;
     if (request_.mc_seqno() == 0 || request_.mc_root_hash().size() != 32 || !request_.has_request()) {
       return finish(error(Code::InvalidArgument, "a block request needs mc_seqno, a 32-byte mc_root_hash and a request"));
-    }
-    for (const auto& call : request_.request().calls()) {
-      const pbstate::AccountRef* ref = nullptr;
-      if (call.has_get_account()) {
-        ref = &call.get_account().account();
-      } else if (call.has_get_method()) {
-        ref = &call.get_method().account().onchain();
-      } else {
-        return finish(error(Code::Unimplemented, "emulate is not implemented yet"));
-      }
-      auto point = ref->at().point_case();
-      if (point == pbstate::At::kBeforeTx || point == pbstate::At::kAfterTx) {
-        return finish(error(Code::Unimplemented, "before_tx and after_tx are not implemented yet"));
-      }
     }
     alarm_timestamp() = td::Timestamp::in(0.1);
     td::actor::send_closure(db_, &DbScanner::get_last_mc_seqno, reply(&RequestActor::got_head));
@@ -287,6 +298,34 @@ class RequestActor final : public td::actor::Actor {
     return nullptr;
   }
 
+  // Reads the config of a view whole before a VM context or a replay uses it;
+  // false once answered.
+  bool load_config(McView& view) {
+    if (!view.config_loaded) {
+      auto status = load_tree(view.config->get_root_cell());
+      if (status.is_error()) {
+        answer(std::move(status));
+        return false;
+      }
+      view.config_loaded = true;
+    }
+    return true;
+  }
+
+  // A historical context is pinned by the master_ref hash from its block.
+  McView* historical_view(const ton::BlockIdExt& id) {
+    if (auto it = views_.find(id.seqno()); it != views_.end()) {
+      if (it->second.id != id) {
+        finish(error(Code::Internal, "conflicting masterchain references"));
+        return nullptr;
+      }
+      return &it->second;
+    }
+    loading_seqno_ = id.seqno();
+    td::actor::send_closure(db_, &DbScanner::get_block_handle, id, reply(&RequestActor::got_view_handle));
+    return nullptr;
+  }
+
   void got_view_handle(td::Result<Handle> result) {
     if (failed(result)) return;
     loading_ = result.move_as_ok();
@@ -298,7 +337,7 @@ class RequestActor final : public td::actor::Actor {
     auto root = result.move_as_ok();
     auto config = block::ConfigInfo::extract_config(root, loading_->id(), kViewConfig);
     if (failed(config)) return;
-    views_.emplace(loading_seqno_, McView{loading_->id(), config.move_as_ok()});
+    views_.emplace(loading_seqno_, McView{loading_->id(), std::shared_ptr<block::ConfigInfo>(config.move_as_ok())});
     // Masterchain accounts are in the state of the masterchain block.
     shards_.emplace(loading_->id(), Shard{loading_, std::move(root), {}});
     loading_.reset();
@@ -341,9 +380,9 @@ class RequestActor final : public td::actor::Actor {
     yield();
   }
 
-  const td::Bits256* rand_seed(Shard& shard) {
-    if (shard.rand_seed) {
-      return &*shard.rand_seed;
+  const ShardBlockData* block_data(Shard& shard) {
+    if (shard.data) {
+      return &*shard.data;
     }
     loading_ = shard.handle;
     td::actor::send_closure(db_, &DbScanner::get_block_data, loading_, reply(&RequestActor::got_block_data));
@@ -352,12 +391,10 @@ class RequestActor final : public td::actor::Actor {
 
   void got_block_data(td::Result<td::Ref<ton::validator::BlockData>> result) {
     if (failed(result)) return;
-    block::gen::Block::Record block;
-    block::gen::BlockExtra::Record extra;
-    if (!tlb::unpack_cell(result.ok()->root_cell(), block) || !tlb::unpack_cell(block.extra, extra)) {
-      return finish(error(Code::Internal, PSTRING() << "cannot unpack the extra of block " << loading_->id().to_str()));
-    }
-    shards_.at(loading_->id()).rand_seed = extra.rand_seed;
+    auto parsed = shard_block_data(result.ok()->root_cell(), loading_->id());
+    if (parsed.is_error()) return finish(error(Code::Internal, parsed.error().message().str()));
+    shards_.at(loading_->id()).data = parsed.move_as_ok();
+    shards_.at(loading_->id()).data_owner = result.move_as_ok();
     loading_.reset();
     yield();
   }
@@ -379,7 +416,13 @@ class RequestActor final : public td::actor::Actor {
     if (call.has_get_account()) {
       return next_get_account(call.get_account().account());
     }
-    next_get_method(call.get_method());
+    if (call.has_get_method()) {
+      return next_get_method(call.get_method());
+    }
+    if (call.has_emulate()) {
+      return next_emulate(call.emulate());
+    }
+    invalid("call kind is missing");
   }
 
   ton::BlockSeqno seqno_at(const pbstate::At& at) const {
@@ -387,41 +430,245 @@ class RequestActor final : public td::actor::Actor {
   }
 
   void next_get_account(const pbstate::AccountRef& ref) {
+    if (auto* point = account_at(ref)) {
+      answer(read_account(ref, *point, *reader_));
+    }
+  }
+
+  AccountPoint* account_at(const pbstate::AccountRef& ref) {
+    const auto key = ref.SerializeAsString();
+    if (auto it = points_.find(key); it != points_.end()) {
+      return &it->second;
+    }
     const auto& address = ref.address();
     if (address.account_id().size() != 32) {
-      return invalid(PSTRING() << "account_id of " << address.account_id().size() << " bytes");
+      invalid(PSTRING() << "account_id of " << address.account_id().size() << " bytes");
+      return nullptr;
+    }
+    if (ref.at().has_before_tx() || ref.at().has_after_tx()) {
+      return transaction_point(ref, key);
     }
     auto* view = this->view(seqno_at(ref.at()));
-    if (view == nullptr) return;
+    if (view == nullptr) {
+      return nullptr;
+    }
     auto id = shard_of(*view, address.workchain(), account_id_bits(address));
-    if (id.is_error()) return invalid(id.move_as_error().message().str());
+    if (id.is_error()) {
+      invalid(id.error().message().str());
+      return nullptr;
+    }
     auto* shard = this->shard(id.ok());
-    if (shard == nullptr) return;
-    answer(read_account(ref, id.ok(), shard->root, *reader_));
+    if (shard == nullptr) {
+      return nullptr;
+    }
+    auto found = lookup_account(shard->root, id.ok(), address);
+    if (found.is_error()) {
+      answer(found.move_as_error());
+      return nullptr;
+    }
+    return &points_.emplace(key, AccountPoint{id.ok(), found.move_as_ok()}).first->second;
+  }
+
+  // before_tx and after_tx: the state between transactions of the account in
+  // the round, read at the boundaries of its block and replayed within it.
+  AccountPoint* transaction_point(const pbstate::AccountRef& ref, const std::string& key) {
+    auto lt = ref.at().has_before_tx() ? ref.at().before_tx() : ref.at().after_tx();
+    if (lt == 0) {
+      invalid("transaction LT must not be zero");
+      return nullptr;
+    }
+    const auto& addr = ref.address();
+    block::StdAddress address{addr.workchain(), td::Bits256(account_id_bits(addr))};
+    auto* id = transaction_block(address, lt);
+    if (id == nullptr) {
+      return nullptr;
+    }
+    auto* account = replayed_account(*id, address);
+    if (account == nullptr) {
+      return nullptr;
+    }
+    const auto& transactions = account->transactions;
+    auto it = std::find_if(transactions.begin(), transactions.end(), [&](const auto& tx) { return tx.lt == lt; });
+    if (it == transactions.end()) {
+      invalid("transaction is not in this account's round");
+      return nullptr;
+    }
+    auto index = static_cast<std::size_t>(it - transactions.begin()) + (ref.at().has_after_tx() ? 1 : 0);
+    auto* state = state_at(*account, index, *id, address, addr);
+    if (state == nullptr) {
+      return nullptr;
+    }
+    AccountPoint point{*id, Lookup{account->header, state->value, state->stored}};
+    return &points_.emplace(key, std::move(point)).first->second;
+  }
+
+  // The block of the round with the transaction at lt, on the shard chain of
+  // the account from N back to N-1; null while blocks load, or once answered.
+  const ton::BlockIdExt* transaction_block(const block::StdAddress& address, td::uint64 lt) {
+    if (!walk_) {
+      auto* current = view(request_.mc_seqno());
+      if (current == nullptr) {
+        return nullptr;
+      }
+      auto* previous = view(request_.mc_seqno() - 1);
+      if (previous == nullptr) {
+        return nullptr;
+      }
+      auto top = shard_of(*current, address.workchain, address.addr.cbits());
+      auto boundary = shard_of(*previous, address.workchain, address.addr.cbits());
+      if (top.is_error() || boundary.is_error()) {
+        invalid((top.is_error() ? top.error() : boundary.error()).message().str());
+        return nullptr;
+      }
+      walk_ = ChainWalk{top.move_as_ok(), boundary.move_as_ok()};
+    }
+    while (walk_->current != walk_->boundary) {
+      auto* shard = this->shard(walk_->current);
+      if (shard == nullptr) {
+        return nullptr;
+      }
+      auto* data = block_data(*shard);
+      if (data == nullptr) {
+        return nullptr;
+      }
+      if (lt >= data->start_lt && lt < data->end_lt) {
+        return &walk_->current;
+      }
+      auto predecessor = account_predecessor(*data, address);
+      if (predecessor.is_error()) {
+        answer(predecessor.move_as_error());
+        return nullptr;
+      }
+      walk_->current = predecessor.move_as_ok();
+    }
+    invalid("transaction is not in this account's round");
+    return nullptr;
+  }
+
+  // The block is loaded by transaction_block().
+  ReplayedAccount* replayed_account(const ton::BlockIdExt& id, const block::StdAddress& address) {
+    auto key = std::make_pair(id, address.addr);
+    if (auto it = replayed_.find(key); it != replayed_.end()) {
+      return &it->second;
+    }
+    const auto& shard = shards_.at(id);
+    auto transactions = account_transactions(*shard.data, address.addr);
+    if (transactions.is_error()) {
+      answer(transactions.move_as_error());
+      return nullptr;
+    }
+    if (transactions.ok().empty()) {
+      invalid("transaction is not in this account's round");
+      return nullptr;
+    }
+    auto header = unpack_state(shard.root, id);
+    if (header.is_error()) {
+      answer(header.move_as_error());
+      return nullptr;
+    }
+    ReplayedAccount account;
+    account.header = header.move_as_ok();
+    account.transactions = transactions.move_as_ok();
+    return &replayed_.emplace(key, std::move(account)).first->second;
+  }
+
+  // The state before transactions[index], or after the last one for index n;
+  // null while blocks load or the replay goes on, one transaction a turn, or
+  // once answered. A point after a transaction that does not replay is
+  // REPLAY_MISMATCH; the states at the boundaries are read anyway.
+  const ReplayedAccount::State* state_at(ReplayedAccount& account, std::size_t index, const ton::BlockIdExt& id,
+                                         const block::StdAddress& address, const pbstate::Address& addr) {
+    const auto& transactions = account.transactions;
+    if (index == transactions.size()) {
+      if (!account.after) {
+        auto found = lookup_account(shards_.at(id).root, id, addr);
+        if (found.is_error()) {
+          answer(found.move_as_error());
+          return nullptr;
+        }
+        if (!block_state_matches(found.ok().value, transactions.back().after)) {
+          return nullptr;
+        }
+        account.after = ReplayedAccount::State{found.ok().value, found.ok().stored};
+      }
+      return &*account.after;
+    }
+    const auto& data = *shards_.at(id).data;
+    if (account.states.empty()) {
+      auto predecessor = account_predecessor(data, address);
+      if (predecessor.is_error()) {
+        answer(predecessor.move_as_error());
+        return nullptr;
+      }
+      auto* before = shard(predecessor.ok());
+      if (before == nullptr) {
+        return nullptr;
+      }
+      auto found = lookup_account(before->root, predecessor.ok(), addr);
+      if (found.is_error()) {
+        answer(found.move_as_error());
+        return nullptr;
+      }
+      if (!block_state_matches(found.ok().value, transactions.front().before)) {
+        return nullptr;
+      }
+      account.states.push_back({found.ok().value, found.ok().stored});
+    }
+    if (index < account.states.size()) {
+      return &account.states[index];
+    }
+    if (account.mismatch) {
+      append(call_error(pbtvm::ERROR_CODE_REPLAY_MISMATCH, *account.mismatch));
+      return nullptr;
+    }
+    if (!account.replay) {
+      auto* historical = historical_view(data.master);
+      if (historical == nullptr || !load_config(*historical)) {
+        return nullptr;
+      }
+      auto replay = Replay::create(account.states.back().value, address, data, historical->config);
+      if (replay.is_error()) {
+        answer(replay.move_as_error());
+        return nullptr;
+      }
+      account.replay = replay.move_as_ok();
+    }
+    auto result = account.replay->advance(transactions[account.states.size() - 1]);
+    if (result.is_error()) {
+      answer(result.move_as_error());
+      return nullptr;
+    }
+    if (result.ok().empty()) {
+      account.states.push_back({account.replay->state(), false});
+    } else {
+      account.mismatch = result.move_as_ok();
+      account.replay.reset();
+    }
+    yield();
+    return nullptr;
+  }
+
+  // A state at a block boundary that is not that of the transactions of the
+  // block is a database out of order, not a mismatch of a replay: Internal.
+  bool block_state_matches(const AccountState& state, const td::Bits256& expected) {
+    if (expected == state.account->get_hash().bits()) {
+      return true;
+    }
+    answer(malformed("the account state at a block boundary differs from its transactions"));
+    return false;
   }
 
   void next_get_method(const pbtvm::GetMethod& call) {
     // The account, from the network at its point or from the call.
-    Cell account;
+    AccountState account;
     // Of an account to run, which its VM context is looked up by.
     std::optional<block::StdAddress> address;
     if (call.account().has_onchain()) {
       const auto& ref = call.account().onchain();
-      if (ref.address().account_id().size() != 32) {
-        return invalid(PSTRING() << "account_id of " << ref.address().account_id().size() << " bytes");
-      }
-      auto* view = this->view(seqno_at(ref.at()));
-      if (view == nullptr) return;
-      auto id = shard_of(*view, ref.address().workchain(), account_id_bits(ref.address()));
-      if (id.is_error()) return invalid(id.move_as_error().message().str());
-      auto* shard = this->shard(id.ok());
-      if (shard == nullptr) return;
-      auto found = lookup_account(shard->root, id.ok(), ref.address());
-      if (found.is_error()) return answer(found.move_as_error());
-      account = found.ok().account;
-      if (found.ok().stored) {
-        address = block::StdAddress{ref.address().workchain(), td::Bits256(account_id_bits(ref.address()))};
-      }
+      auto* point = account_at(ref);
+      if (!point) return;
+      account = point->found.value;
+      address = account_address(account.account);
     } else {
       if (parsed_call_ != call_index_) {
         parsed_call_ = call_index_;
@@ -429,25 +676,75 @@ class RequestActor final : public td::actor::Actor {
       }
       if (request_account_.is_error()) return invalid(request_account_.error().message().str());
       account = request_account_.ok();
-      address = account_address(account);
+      address = account_address(account.account);
     }
-    // The VM context is that of N, in the shard of the account at N, for
-    // before_block too.
-    std::optional<VmContext> context;
-    if (address) {
-      auto* view = this->view(request_.mc_seqno());
-      if (view == nullptr) return;
-      auto id = shard_of(*view, address->workchain, address->addr.cbits());
-      if (id.is_error()) return invalid(id.move_as_error().message().str());
-      auto* shard = this->shard(id.ok());
-      if (shard == nullptr) return;
-      auto* seed = rand_seed(*shard);
-      if (seed == nullptr) return;
-      auto state = unpack_state(shard->root, id.ok());
-      if (state.is_error()) return answer(state.move_as_error());
-      context = VmContext{view->config.get(), state.ok().gen_utime, state.ok().gen_lt, *seed};
+    auto context = address ? context_for(*address) : std::nullopt;
+    if (address && !context) return;
+    answer(run_get_method(call, account.account, call.account().has_shard_account_boc(), context ? &*context : nullptr));
+  }
+
+  // Public calls always execute in N, even when their account is before N.
+  std::optional<VmContext> context_for(const block::StdAddress& address) {
+    auto* view = this->view(request_.mc_seqno());
+    if (view == nullptr || !load_config(*view)) {
+      return std::nullopt;
     }
-    answer(run_get_method(call, account, call.account().has_shard_account_boc(), context ? &*context : nullptr));
+    auto id = shard_of(*view, address.workchain, address.addr.cbits());
+    if (id.is_error()) {
+      invalid(id.error().message().str());
+      return std::nullopt;
+    }
+    auto* shard = this->shard(id.ok());
+    if (shard == nullptr) {
+      return std::nullopt;
+    }
+    auto* data = block_data(*shard);
+    if (data == nullptr) {
+      return std::nullopt;
+    }
+    auto state = unpack_state(shard->root, id.ok());
+    if (state.is_error()) {
+      answer(state.move_as_error());
+      return std::nullopt;
+    }
+    if (data->rand_seed.is_zero()) {
+      answer(malformed("zero block_rand_seed in block context"));
+      return std::nullopt;
+    }
+    return VmContext{view->config, state.ok().gen_utime, state.ok().gen_lt, data->rand_seed};
+  }
+
+  void next_emulate(const pbtvm::Emulate& call) {
+    if (parsed_message_call_ != call_index_) {
+      parsed_message_call_ = call_index_;
+      request_message_ = request_message(call.message_boc());
+    }
+    if (request_message_.is_error()) return invalid(request_message_.error().message().str());
+    const auto& message = request_message_.ok();
+    AccountState account;
+    if (call.account().has_shard_account_boc()) {
+      if (parsed_call_ != call_index_) {
+        parsed_call_ = call_index_;
+        request_account_ = request_account(call.account().shard_account_boc());
+      }
+      if (request_account_.is_error()) return invalid(request_account_.error().message().str());
+      account = request_account_.ok();
+    } else {
+      if (call.has_account() && !call.account().has_onchain()) return invalid("account source is missing");
+      auto ref = call.account().onchain();
+      if (ref.has_address() && (ref.address().workchain() != message.destination.workchain ||
+          ref.address().account_id() != message.destination.addr.as_slice().str())) {
+        return invalid("account address differs from message destination");
+      }
+      ref.mutable_address()->set_workchain(message.destination.workchain);
+      ref.mutable_address()->set_account_id(message.destination.addr.as_slice().str());
+      auto* point = account_at(ref);
+      if (!point) return;
+      account = point->found.value;
+    }
+    auto context = context_for(message.destination);
+    if (!context) return;
+    answer(run_emulate(call, message, account, call.account().has_shard_account_boc(), *context));
   }
 
   // The result of a call, or the end of the request with the Code its error carries.
@@ -473,6 +770,7 @@ class RequestActor final : public td::actor::Actor {
       return finish(error(Code::ResourceExhausted, "batch response exceeds the gRPC message limit"));
     }
     *answer_.response.add_results() = std::move(result);
+    walk_.reset();
     ++call_index_;
     yield();
   }

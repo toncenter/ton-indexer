@@ -53,15 +53,35 @@ add_library(ton-tvm-executor-grpc STATIC
 target_compile_features(ton-tvm-executor-grpc PRIVATE cxx_std_17)
 target_link_libraries(ton-tvm-executor-grpc PUBLIC ton-tvm-executor-proto PRIVATE PkgConfig::GRPCPP)
 
-add_executable(ton-tvm-executor src/main.cpp src/Executor.cpp src/GetMethod.cpp src/Stack.cpp)
-target_compile_features(ton-tvm-executor PRIVATE cxx_std_20)
-target_link_libraries(ton-tvm-executor PRIVATE ton-tvm-executor-grpc ton-firehose-convert)
-target_link_options(ton-tvm-executor PUBLIC -rdynamic)
+# TON builds its own static OpenSSL; system gRPC uses the system shared one.
+# Pull the complete static libraries and hide their symbols from shared libs.
+# Otherwise EVP objects can cross versions (e.g. CHKSIG crashes in verify).
+function(executor_crypto_link target)
+  if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND OPENSSL_CRYPTO_LIBRARY MATCHES "\\.a$"
+      AND OPENSSL_SSL_LIBRARY MATCHES "\\.a$")
+    target_link_libraries(${target} PRIVATE -Wl,--whole-archive
+        ${OPENSSL_SSL_LIBRARY} ${OPENSSL_CRYPTO_LIBRARY} -Wl,--no-whole-archive)
+    target_link_options(${target} PRIVATE -Wl,--exclude-libs,libssl.a:libcrypto.a)
+  endif()
+endfunction()
 
-add_executable(test-ton-tvm-calls test/calls.cpp src/GetMethod.cpp src/Stack.cpp)
+set(EXECUTOR_CALL_SRCS src/Calls.cpp src/GetMethod.cpp src/Emulate.cpp src/Replay.cpp src/Stack.cpp)
+add_executable(ton-tvm-executor src/main.cpp src/Executor.cpp ${EXECUTOR_CALL_SRCS})
+target_compile_features(ton-tvm-executor PRIVATE cxx_std_20)
+target_link_libraries(ton-tvm-executor PRIVATE ton-tvm-executor-grpc ton-firehose-convert emulator_static)
+target_link_options(ton-tvm-executor PUBLIC -rdynamic)
+executor_crypto_link(ton-tvm-executor)
+
+add_executable(test-ton-tvm-calls test/calls.cpp ${EXECUTOR_CALL_SRCS})
 target_compile_features(test-ton-tvm-calls PRIVATE cxx_std_20)
 target_include_directories(test-ton-tvm-calls PRIVATE src)
-target_link_libraries(test-ton-tvm-calls PRIVATE ton-tvm-executor-proto ton-firehose-convert)
+target_link_libraries(test-ton-tvm-calls PRIVATE ton-tvm-executor-proto ton-firehose-convert emulator_static)
 add_test(NAME test-ton-tvm-calls COMMAND test-ton-tvm-calls)
+
+add_executable(test-ton-tvm-link test/link.cpp)
+target_include_directories(test-ton-tvm-link PRIVATE src)
+target_link_libraries(test-ton-tvm-link PRIVATE ton-tvm-executor-grpc ton_crypto_core)
+executor_crypto_link(test-ton-tvm-link)
+add_test(NAME test-ton-tvm-link COMMAND test-ton-tvm-link)
 
 install(TARGETS ton-tvm-executor RUNTIME DESTINATION bin)

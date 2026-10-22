@@ -70,7 +70,9 @@ go build ./cmd/fireton ./cmd/ton-tvm-router
 go test ./...
 ```
 
-After a change of `../proto`, `./gen.sh` generates `pb/` again.
+After a change of `../proto`, `./gen.sh` generates `pb/` again. It removes
+`pb/` first: without protoc-gen-go and protoc-gen-go-grpc on PATH, restore it
+with `git checkout -- pb/`.
 
 ## Test stand
 
@@ -78,11 +80,26 @@ After a change of `../proto`, `./gen.sh` generates `pb/` again.
 the store host, on localhost only and apart from the production units:
 binaries in `/srv/scratch/fireton-test/bin`, tier1 on 127.0.0.1:10041. The
 router has the stub backend, or the ton-tvm-executor at `EXECUTOR_ADDR`. The
-module `../substreams/ton-tvm-probe` has `map_probe`, which calls every kind
-of call on every block, for the stub, and for the executor
-`map_account_check`, which checks get_account against the block, and
-`map_get_method_check`, which checks get-methods on the network state against
-the same on its BOC.
+modules of `../substreams/ton-tvm-probe`:
+
+- `map_probe`: every kind of call on every block, for the stub;
+- `map_account_check`: get_account against the states the block has;
+- `map_get_method_check`: get-methods on the network state against the same
+  on its BOC;
+- `map_emulate_check`: emulation on fixtures (`fixtures/emulate.fif`), on one
+  block in 100: acceptance, rejection, deployment, a bounce, signatures,
+  extra libraries, returned states run on again, BLOCKLT rounding, the seed in
+  global versions 7 and 8, the normalized hash of an external message; and on
+  every block, the network state against its BOC;
+- `map_tx_point_check`: before_tx and after_tx against the boundary states of
+  the block, adjacent points, provenance, and get-methods and emulation on
+  those states against their BOCs; accounts with several transactions first,
+  so that replays run.
+
+Every output must have no `mismatches` and no `details`. The same range run
+again must come from the cache: the same bytes, and no new requests on
+`ton_tvm_router_requests_total`. What the checks gave is in
+`../../ton-tvm-executor/README.md`.
 
 ```bash
 sudo ./stand.sh start
@@ -100,6 +117,14 @@ sudo EXECUTOR_ADDR=192.0.2.10:10060 ./stand.sh start
 
 ```bash
 substreams run -e 127.0.0.1:10041 --plaintext ton-tvm-probe.spkg map_account_check -s 60000000 -t +2000 --production-mode --limit-processed-blocks 0 -o jsonl
+```
+
+```bash
+substreams run -e 127.0.0.1:10041 --plaintext ton-tvm-probe.spkg map_emulate_check -s 80042000 -t +2000 --production-mode --limit-processed-blocks 0 -o jsonl
+```
+
+```bash
+substreams run -e 127.0.0.1:10041 --plaintext ton-tvm-probe.spkg map_tx_point_check -s 80036000 -t +2000 --production-mode --limit-processed-blocks 0 -o jsonl
 ```
 
 ```bash

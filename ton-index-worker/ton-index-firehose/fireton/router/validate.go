@@ -128,17 +128,17 @@ func validateContext(ctx *pbtvm.ContextOverrides) *callError {
 	if ctx.Lt != nil && ctx.GetLt() == 0 {
 		return invalid("lt is 0")
 	}
-	if ctx.RandSeed != nil {
-		seed := ctx.GetRandSeed()
+	if ctx.BlockRandSeed != nil {
+		seed := ctx.GetBlockRandSeed()
 		if len(seed) != 32 {
-			return invalid("rand_seed of %d bytes", len(seed))
+			return invalid("block_rand_seed of %d bytes", len(seed))
 		}
 		zero := true
 		for _, b := range seed {
 			zero = zero && b == 0
 		}
 		if zero {
-			return invalid("rand_seed is zero")
+			return invalid("block_rand_seed is zero")
 		}
 	}
 	// A CallError is cached just like a successful result. Always select the

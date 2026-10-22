@@ -98,7 +98,7 @@ fn map_account_check(block: Block) -> Result<pb::AccountCheck, Error> {
 
 /// The account as get_account gives it: code, data and library by their
 /// hashes, which the block gives with their BOCs when they changed.
-fn without_bocs(mut account: Account) -> Account {
+pub(crate) fn without_bocs(mut account: Account) -> Account {
     if let Some(account::Kind::Account(existing)) = account.kind.as_mut() {
         let state = existing.storage.as_mut().and_then(|storage| storage.state.as_mut());
         if let Some(account_state::Kind::AccountActive(init)) = state.and_then(|state| state.kind.as_mut()) {

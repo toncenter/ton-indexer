@@ -1,0 +1,44 @@
+// Regenerate with TON's fift -I <ton>/crypto/fift/lib -s emulate.fif.
+// Test fixtures only: no synthetic-account builder is exposed in the SDK.
+"Asm.fif" include
+0x000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f constant dest
+0x2222222222222222222222222222222222222222222222222222222222222222 constant src
+<{ DUP 42 EQINT IF:<{ DROP NOW BLOCKLT LTIME RANDSEED }>ELSE<{
+ DUP 0 GTINT IF:<{
+  DROP c4 PUSH CTOS 32 LDU 64 LDU 64 LDU 256 LDU ENDS
+}>ELSE<{
+  DROP 2DROP 2DROP ACCEPT
+  NEWC NOW SWAP 32 STU BLOCKLT SWAP 64 STU LTIME SWAP 64 STU RANDSEED SWAP 256 STU ENDC c4 POP
+}> }> }>c constant code
+<b 0 416 u, b> constant data
+// code -> full ShardAccount: 100 TON, previous transaction 100..101.
+{ <b 1 1 u, 4 3 u, 0 8 i, dest 256 u,
+  0 6 u, 0 3 u, 0 32 u, 0 1 u,
+  101 64 u, 5 4 u, 100000000000 40 u, 0 1 u,
+  1 1 u, 6 5 u, swap ref, data ref, b>
+  <b swap ref, 0x7777777777777777777777777777777777777777777777777777777777777777 256 u, 100 64 u, b>
+} : account
+{ 0 boc+>B Bx. cr } : emit
+"account " type code account emit
+"rejected_account " type <{ 42 THROW }>c account emit
+"none " type <b <b 0 1 u, b> ref, 0 256 u, 0 64 u, b> emit
+"external " type <b 2 2 u, 0 2 u, 4 3 u, 0 8 i, dest 256 u, 0 4 u, 0 1 u, 0 1 u, b> emit
+// Bounceable internal, 1 TON; first argument is the destination.
+{ <b 6 4 u, 4 3 u, 0 8 i, src 256 u, 4 3 u, 0 8 i, swap 256 u,
+  4 4 u, 1000000000 32 u, 0 1 u, 0 4 u, 0 4 u, 0 64 u, 0 32 u,
+} : internal
+"internal " type dest internal 0 1 u, 0 1 u, b> emit
+<b 6 5 u, code ref, data ref, b> constant init
+"deploy " type init hashu internal 1 1 u, 1 1 u, init ref, 0 1 u, b> emit
+"signature_account " type <{
+  DROP 2DROP 2DROP 0 PUSHINT <b 0 512 u, b> <s PUSHSLICE 0 PUSHINT CHKSIGNU 43 THROWIFNOT ACCEPT
+}>c account emit
+"library " type code emit
+"library_ref " type <b 2 8 u, code hashu 256 u, b>spec emit
+"library_account " type <b 2 8 u, code hashu 256 u, b>spec account emit
+"elector_external " type <b 2 2 u, 0 2 u, 4 3 u, -1 8 i,
+  0x3333333333333333333333333333333333333333333333333333333333333333 256 u,
+  0 4 u, 0 1 u, 0 1 u, b> emit
+// ConfigParam 8 overrides exercise both native seed derivation versions.
+"config_v7 " type <b 0xc4 8 u, 7 32 u, 0 64 u, b> emit
+"config_v8 " type <b 0xc4 8 u, 8 32 u, 0 64 u, b> emit
