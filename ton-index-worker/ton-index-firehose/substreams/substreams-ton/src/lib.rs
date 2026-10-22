@@ -1,7 +1,8 @@
 //! TON for substreams modules.
 //!
 //! - [`types`]: the TON Firehose block, `sf.ton.type.v1`, with [`oneof`] for
-//!   its oneofs and [`block`] to read it in a handler;
+//!   its oneofs; a handler takes it as `&types::BlockLazyView<'_>` and reads it
+//!   with [`lazy`], or decodes it whole with [`block`];
 //! - [`tvm`]: the `ton_v1` extension of fireton: account states, get-methods
 //!   and the emulation of one transaction on the masterchain block the module
 //!   is processing;
@@ -30,6 +31,7 @@
 pub mod pb;
 
 mod address;
+pub mod lazy;
 mod random;
 pub mod stack;
 pub mod tvm;

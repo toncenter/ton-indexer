@@ -634,7 +634,11 @@ fn map_pools(block: Block) -> Result<Pools, Error> {
 Что войдёт в SDK:
 
 - типы protobuf на buffa под `substreams` 0.8, сгенерированные в крейт
-  (`cargo run -p pbgen`), с lazy views для блока;
+  (`cargo run -p pbgen`), с lazy views для блока: хендлер берёт
+  `&BlockLazyView` (вход по значению не декодируется на тяжёлых раундах) и
+  читает его через `substreams_ton::lazy` — блоки, блоки аккаунтов с
+  адресами, транзакции, не декодируя остального, — или целиком через
+  `substreams_ton::block()`;
 - rston из acton для BOC, ячеек, TL-B и адресов, реэкспортом
   (`substreams_ton::rston`), чтобы у модулей была его версия SDK, и
   постоянная «случайность» getrandom для его хэш-таблиц;

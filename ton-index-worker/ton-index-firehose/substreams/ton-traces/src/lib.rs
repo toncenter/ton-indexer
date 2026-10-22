@@ -14,6 +14,9 @@
 //!
 //! There is no time limit: a trace waits for its end however long it takes,
 //! and the store never holds more than `max_transactions` of it.
+//!
+//! The block is read through its lazy view: only the transactions the store
+//! keeps are decoded whole.
 
 // The handlers of substreams::handlers are exported functions that read the
 // parameters behind a pointer of the host, and keep no attribute of ours.
@@ -32,8 +35,9 @@ mod pb {
 
 use std::collections::{BTreeMap, HashMap};
 
-use buffa::Enumeration;
-use pb::ton::{Block, BlockLazyView, Transaction};
+use buffa::view::LazyMessageView;
+use buffa::{DecodeError, Enumeration};
+use pb::ton::{BlockLazyView, TransactionLazyView};
 use pb::traces::{trace::State, Node, PendingTransaction, Trace, TraceDigest, TraceDigests, Traces};
 use substreams::errors::Error;
 use substreams::pb::substreams::store_delta::Operation;
@@ -48,15 +52,19 @@ const DELETE_ORDINAL: i64 = 1 << 40;
 /// The number of transactions of every trace not ended yet.
 #[substreams::handlers::store]
 fn store_trace_size(block: &BlockLazyView<'_>, store: StoreAddInt64) {
-    let block = substreams_ton::block(block).expect("a block of the TON Firehose");
-    for (index, tx) in transactions(&block).enumerate() {
-        if let Some(trace_id) = &tx.trace_id {
+    count(block, &store).expect("a block of the TON Firehose");
+}
+
+fn count(block: &BlockLazyView<'_>, store: &StoreAddInt64) -> Result<(), DecodeError> {
+    for (index, tx) in block.transactions().enumerate() {
+        if let Some(trace_id) = tx?.trace_id {
             store.add(index as u64 + 1, hex::encode(trace_id), 1);
         }
     }
     for trace in &block.traces {
-        store.delete_prefix(DELETE_ORDINAL, &hex::encode(&trace.trace_id));
+        store.delete_prefix(DELETE_ORDINAL, &hex::encode(trace?.trace_id));
     }
+    Ok(())
 }
 
 /// The first `max_transactions` transactions of every trace, by block and
@@ -70,37 +78,48 @@ fn store_pending(
     size: StoreGetInt64,
     store: StoreSetProto<PendingTransaction>,
 ) {
-    let block = substreams_ton::block(block).expect("a block of the TON Firehose");
-    let max = max_transactions(&params);
-    let seqno = seqno(&block);
+    keep(&params, block, &size, &store).expect("a block of the TON Firehose");
+}
+
+fn keep(
+    params: &str,
+    block: &BlockLazyView<'_>,
+    size: &StoreGetInt64,
+    store: &StoreSetProto<PendingTransaction>,
+) -> Result<(), DecodeError> {
+    let max = max_transactions(params);
+    let seqno = block.seqno()?;
     // the transactions of each trace in this block, with their places in it
-    let mut by_trace: HashMap<&[u8], Vec<(usize, &Transaction)>> = HashMap::new();
-    for (index, tx) in transactions(&block).enumerate() {
-        if let Some(trace_id) = &tx.trace_id {
-            by_trace.entry(trace_id.as_slice()).or_default().push((index, tx));
+    let mut by_trace: HashMap<&[u8], Vec<(usize, TransactionLazyView)>> = HashMap::new();
+    for (index, tx) in block.transactions().enumerate() {
+        let tx = tx?;
+        if let Some(trace_id) = tx.trace_id {
+            by_trace.entry(trace_id).or_default().push((index, tx));
         }
     }
-    let mut kept: Vec<(usize, &Transaction)> = vec![];
+    let mut kept: Vec<(usize, TransactionLazyView)> = vec![];
     for (trace_id, mut txs) in by_trace {
         // how many the earlier blocks have taken
         let before = size.get_first(hex::encode(trace_id)).unwrap_or(0).max(0) as u64;
-        txs.sort_by(|(_, a), (_, b)| (a.lt, &a.hash).cmp(&(b.lt, &b.hash)));
+        txs.sort_by(|(_, a), (_, b)| (a.lt, a.hash).cmp(&(b.lt, b.hash)));
         txs.truncate(max.saturating_sub(before) as usize);
         kept.extend(txs);
     }
     kept.sort_by_key(|(index, _)| *index);
     for (index, tx) in kept {
-        let trace_id = tx.trace_id.as_deref().unwrap_or_default();
-        let key = format!("{}/{:020}/{}", hex::encode(trace_id), tx.lt, hex::encode(&tx.hash));
+        let trace_id = tx.trace_id.unwrap_or_default();
+        let key = format!("{}/{:020}/{}", hex::encode(trace_id), tx.lt, hex::encode(tx.hash));
+        let transaction = tx.to_owned_message()?;
         store.set(
             index as u64,
             key,
-            &PendingTransaction { mc_seqno: seqno, transaction: tx.clone().into(), ..Default::default() },
+            &PendingTransaction { mc_seqno: seqno, transaction: transaction.into(), ..Default::default() },
         );
     }
     for trace in &block.traces {
-        store.delete_prefix(DELETE_ORDINAL, &format!("{}/", hex::encode(&trace.trace_id)));
+        store.delete_prefix(DELETE_ORDINAL, &format!("{}/", hex::encode(trace?.trace_id)));
     }
+    Ok(())
 }
 
 /// The traces that ended in this block, with their transactions.
@@ -110,7 +129,6 @@ fn map_traces(
     pending: Deltas<DeltaProto<PendingTransaction>>,
     size: Deltas<DeltaInt64>,
 ) -> Result<Traces, Error> {
-    let block = substreams_ton::block(block)?;
     // trace_id (hex) to its kept transactions, as the deletions give them back
     let mut kept: HashMap<String, Vec<PendingTransaction>> = HashMap::new();
     for delta in pending.deltas {
@@ -126,9 +144,10 @@ fn map_traces(
         .filter(|delta| delta.operation == Operation::Delete)
         .map(|delta| (delta.key, delta.old_value))
         .collect();
-    let mut out = Traces { seqno: seqno(&block), utime: utime(&block), ..Default::default() };
+    let mut out = Traces { seqno: block.seqno()?, utime: block.gen_utime()?, ..Default::default() };
     for ended in &block.traces {
-        let trace_id = hex::encode(&ended.trace_id);
+        let ended = ended?;
+        let trace_id = hex::encode(ended.trace_id);
         let txs = kept.remove(&trace_id).unwrap_or_default();
         let state = if txs.len() as u32 == ended.transactions {
             State::Complete
@@ -139,9 +158,9 @@ fn map_traces(
             State::Truncated
         };
         out.traces.push(Trace {
-            trace_id: ended.trace_id.clone(),
-            external_hash: ended.external_hash.clone(),
-            external_hash_norm: ended.external_hash_norm.clone(),
+            trace_id: ended.trace_id.to_vec(),
+            external_hash: ended.external_hash.map(<[u8]>::to_vec),
+            external_hash_norm: ended.external_hash_norm.map(<[u8]>::to_vec),
             mc_seqno_start: ended.mc_seqno_start,
             mc_seqno_end: ended.mc_seqno_end,
             start_lt: ended.start_lt,
@@ -226,25 +245,6 @@ fn nodes(mut txs: Vec<PendingTransaction>) -> Vec<Node> {
         });
     }
     nodes
-}
-
-fn transactions(block: &Block) -> impl Iterator<Item = &Transaction> {
-    block
-        .masterchain_block
-        .as_option()
-        .into_iter()
-        .chain(block.shard_blocks.iter())
-        .filter_map(|data| data.extra.as_option())
-        .flat_map(|extra| extra.account_blocks.iter())
-        .flat_map(|account| account.transactions.iter())
-}
-
-fn seqno(block: &Block) -> u32 {
-    block.masterchain_block.as_option().and_then(|data| data.info.as_option()).map_or(0, |info| info.seq_no)
-}
-
-fn utime(block: &Block) -> u32 {
-    block.masterchain_block.as_option().and_then(|data| data.info.as_option()).map_or(0, |info| info.gen_utime)
 }
 
 /// `max_transactions=<n>`, 1000 by default.

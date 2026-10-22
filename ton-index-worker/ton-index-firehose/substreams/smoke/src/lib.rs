@@ -17,36 +17,25 @@ mod pb {
 use pb::{BlockStats, Totals};
 use substreams::errors::Error;
 use substreams::store::{StoreAdd, StoreAddInt64, StoreGet, StoreGetInt64, StoreNew};
-use substreams_ton::types::{BlockDataLazyView, BlockLazyView};
+use substreams_ton::types::BlockLazyView;
 
 #[substreams::handlers::map]
 fn map_block_stats(block: &BlockLazyView<'_>) -> Result<BlockStats, Error> {
-    let master = block.masterchain_block.get()?.ok_or_else(|| Error::msg("no masterchain block"))?;
-    let info = master.info.get()?.ok_or_else(|| Error::msg("no block info"))?;
     let mut stats = BlockStats {
-        seqno: info.seq_no,
-        gen_utime: info.gen_utime,
+        seqno: block.seqno()?,
+        gen_utime: block.gen_utime()?,
         shard_blocks: block.shard_blocks.len() as u32,
         traces: block.traces.len() as u32,
         ..Default::default()
     };
-    count(&master, &mut stats)?;
-    for data in &block.shard_blocks {
-        count(&data?, &mut stats)?;
-    }
-    Ok(stats)
-}
-
-fn count(data: &BlockDataLazyView<'_>, stats: &mut BlockStats) -> Result<(), Error> {
-    let Some(extra) = data.extra.get()? else { return Ok(()) };
-    for account in &extra.account_blocks {
-        let account = account?;
+    for account in block.account_blocks() {
+        let account = account?.view;
         stats.transactions += account.transactions.len() as u64;
         for tx in &account.transactions {
             stats.out_messages += tx?.outmsg_cnt as u64;
         }
     }
-    Ok(())
+    Ok(stats)
 }
 
 #[substreams::handlers::store]
