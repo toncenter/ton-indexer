@@ -19,7 +19,7 @@ protobuf:
 binaries:
   default:
     type: wasm/rust-v1
-    file: ./target/wasm32-unknown-unknown/release/ton_tvm_probe.wasm
+    file: ../target/wasm32-unknown-unknown/release/ton_tvm_probe.wasm
 
 modules:
   - name: map_probe

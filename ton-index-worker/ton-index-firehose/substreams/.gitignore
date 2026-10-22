@@ -1,3 +1,5 @@
 # The root .gitignore ignores everything named build*; build scripts of the
 # crates are sources.
 !build.rs
+target/
+*.spkg

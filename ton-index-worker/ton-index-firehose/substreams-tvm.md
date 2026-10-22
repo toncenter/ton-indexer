@@ -732,11 +732,12 @@ Executor держит те же значения у себя (`ton-tvm-executor/
 - rston 0.5 (crates.io) собирается под wasm32-unknown-unknown и работает в
   модуле (`map_rston_check` зонда: ShardAccount, Account, Transaction,
   адреса raw/base64, сборка сообщения), но только с собственным backend
-  `getrandom`: его тянет ahash с `runtime-rng`. Модуль задаёт
-  `getrandom_backend="custom"` в `.cargo/config.toml` и даёт постоянную
-  «случайность» — тогда и порядок хэш-таблиц детерминирован. Без этой
-  настройки — если rston подключит ahash без `runtime-rng` (upstream).
-  Нужно ли SDK оборачивать rston (типы ответов, стек, адреса) — открыто.
+  `getrandom`: его тянет ahash с `runtime-rng`. Workspace модулей задаёт
+  `getrandom_backend="custom"` в `substreams/.cargo/config.toml`, модуль
+  даёт постоянную «случайность» — тогда и порядок хэш-таблиц детерминирован.
+  Без этой настройки — если rston подключит ahash без `runtime-rng`
+  (upstream). Решено: SDK зависит от rston и берёт его `StdAddr` вместо
+  своего `Address`.
 - Значения лимитов v1.
 - Авторизация и лимиты на пользователя. Пока наружу ничего не открываем.
 - Нагрузка на основную архивную ноду, пока не подняты дополнительные

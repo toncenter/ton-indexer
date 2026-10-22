@@ -114,14 +114,14 @@ mod tests {
         let one = BigInt::from(1);
         let max: BigInt = (&one << 256usize) - &one;
         assert_eq!(encoded(max.clone()).len(), 33);
-        assert_eq!(vec![int(max.clone())].int(0).unwrap(), max);
+        assert_eq!([int(max.clone())].int(0).unwrap(), max);
         let min: BigInt = -(&one << 256usize);
-        assert_eq!(vec![int(min.clone())].int(0).unwrap(), min);
+        assert_eq!([int(min.clone())].int(0).unwrap(), min);
     }
 
     #[test]
     fn lists_and_tuples_nest() {
-        let stack = vec![list(vec![tuple(vec![int(1), int(2)]), tuple(vec![int(3), int(4)])]), null()];
+        let stack = [list(vec![tuple(vec![int(1), int(2)]), tuple(vec![int(3), int(4)])]), null()];
         let items = stack.list(0).unwrap();
         assert_eq!(items.len(), 2);
         assert_eq!(items.tuple(1).unwrap().int(0).unwrap(), BigInt::from(3));
@@ -131,7 +131,7 @@ mod tests {
 
     #[test]
     fn wrong_types_are_errors() {
-        let stack = vec![cell(vec![1]), null()];
+        let stack = [cell(vec![1]), null()];
         assert!(stack.int(0).is_err());
         assert_eq!(stack.cell(0).unwrap(), &[1]);
         assert!(stack.cell(2).is_err());

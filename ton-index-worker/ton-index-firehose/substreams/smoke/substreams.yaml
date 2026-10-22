@@ -15,7 +15,7 @@ protobuf:
 binaries:
   default:
     type: wasm/rust-v1
-    file: ./target/wasm32-unknown-unknown/release/ton_smoke.wasm
+    file: ../target/wasm32-unknown-unknown/release/ton_smoke.wasm
 
 modules:
   - name: map_block_stats

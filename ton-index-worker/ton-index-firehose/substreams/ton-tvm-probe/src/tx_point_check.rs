@@ -115,7 +115,8 @@ fn map_tx_point_check(block: Block) -> Result<pb::TxPointCheck, Error> {
         batch.add(tvm::get_account(&point.address).at(point.at()));
     }
     let invalid_address = points.first().map_or(Address::new(0, [0; 32]), |p| p.address);
-    batch.add(tvm::get_account(&invalid_address).at(At::BeforeTx(0)))
+    batch
+        .add(tvm::get_account(&invalid_address).at(At::BeforeTx(0)))
         .add(tvm::get_account(&invalid_address).at(At::AfterTx(u64::MAX)))
         .add(tvm::get_method(&invalid_address, "seqno").at(At::BeforeTx(1)))
         .add(tvm::emulate(external(&invalid_address)).at(At::AfterTx(1)));
@@ -204,7 +205,7 @@ fn map_tx_point_check(block: Block) -> Result<pb::TxPointCheck, Error> {
     }
     let results: Vec<CallResult> = batch.execute()?;
     out.calls += results.len() as u32;
-    for (label, group) in compared.into_iter().zip(results.chunks_exact(4)) {
+    for (label, group) in compared.into_iter().zip(results.as_chunks::<4>().0) {
         out.method_pairs += 1;
         out.emulate_pairs += 1;
         check(&mut out, group[0] == group[1], format!("{label}: get-method differs on BOC"));

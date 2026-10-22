@@ -1,0 +1,7 @@
+# The wasm of a module, and so its module hash, depends on the compiler:
+# updating the toolchain changes every module hash, and the caches of the
+# modules start over.
+[toolchain]
+channel = "1.99.1"
+targets = ["wasm32-unknown-unknown"]
+components = ["clippy", "rustfmt"]

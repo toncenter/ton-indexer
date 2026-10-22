@@ -7,8 +7,6 @@ fn main() {
     let mut config = prost_build::Config::new();
     // traces.v1 refers to sf.ton.type.v1.Transaction: use the generated type.
     config.extern_path(".sf.ton.type.v1", "crate::pb::ton");
-    config
-        .compile_protos(&["proto/traces/v1/traces.proto"], &["../../proto", "proto"])
-        .unwrap();
+    config.compile_protos(&["proto/traces/v1/traces.proto"], &["../../proto", "proto"]).unwrap();
     prost_build::compile_protos(&["../../proto/sf/ton/type/v1/type.proto"], &["../../proto"]).unwrap();
 }

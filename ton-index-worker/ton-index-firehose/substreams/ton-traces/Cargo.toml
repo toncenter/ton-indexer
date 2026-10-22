@@ -1,21 +1,19 @@
 [package]
 name = "ton_traces"
 version = "0.1.0"
-edition = "2021"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
 
 [lib]
 crate-type = ["cdylib"]
 
 [dependencies]
-hex = "0.4"
-prost = "0.13"
-substreams = "0.7"
+hex.workspace = true
+prost.workspace = true
+substreams.workspace = true
 
 [build-dependencies]
-prost-build = "0.13"
-protoc-bin-vendored = "3"
-
-[profile.release]
-lto = true
-opt-level = "s"
-strip = "debuginfo"
+prost-build.workspace = true
+protoc-bin-vendored.workspace = true

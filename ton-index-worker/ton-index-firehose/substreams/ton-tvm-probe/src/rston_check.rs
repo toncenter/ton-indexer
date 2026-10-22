@@ -60,7 +60,8 @@ impl Checks {
 #[substreams::handlers::map]
 fn map_rston_check(block: Block) -> Result<pb::RstonCheck, Error> {
     let mc = block.masterchain_block.as_ref().ok_or_else(|| Error::msg("no masterchain block"))?;
-    let mut checks = Checks(pb::RstonCheck { mc_seqno: mc.id.as_ref().map_or(0, |id| id.seq_no), ..Default::default() });
+    let mut checks =
+        Checks(pb::RstonCheck { mc_seqno: mc.id.as_ref().map_or(0, |id| id.seq_no), ..Default::default() });
 
     let mut addresses = Vec::new();
     let mut seen = BTreeSet::new();

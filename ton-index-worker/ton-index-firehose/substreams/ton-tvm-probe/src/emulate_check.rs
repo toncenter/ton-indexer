@@ -166,7 +166,7 @@ impl Checks {
 fn map_emulate_check(block: Block) -> Result<pb::EmulateCheck, Error> {
     let mc_seqno = block.masterchain_block.as_ref().and_then(|b| b.id.as_ref()).map_or(0, |b| b.seq_no);
     let mut checks = Checks(pb::EmulateCheck { mc_seqno, ..Default::default() });
-    let fixtures = mc_seqno % FIXTURE_EVERY == 0;
+    let fixtures = mc_seqno.is_multiple_of(FIXTURE_EVERY);
 
     let account = fixture(include_str!("../fixtures/account.boc.hex"));
     let none = fixture(include_str!("../fixtures/none.boc.hex"));
@@ -181,10 +181,7 @@ fn map_emulate_check(block: Block) -> Result<pb::EmulateCheck, Error> {
         .add("state after", tvm::get_account(&address))
         .add("emulate after", tvm::emulate(internal.clone()).context(context(8)).return_state())
         .add("state before", tvm::get_account(&address).at(At::BeforeBlock))
-        .add(
-            "emulate before",
-            tvm::emulate(internal.clone()).context(context(8)).return_state().at(At::BeforeBlock),
-        )
+        .add("emulate before", tvm::emulate(internal.clone()).context(context(8)).return_state().at(At::BeforeBlock))
         .add("elector", tvm::emulate(fixture(include_str!("../fixtures/elector_external.boc.hex"))));
     if fixtures {
         // A valid BOC that cannot be a config address must be a call error,
@@ -264,18 +261,16 @@ fn map_emulate_check(block: Block) -> Result<pb::EmulateCheck, Error> {
             checks.check(full.transaction_boc == plain.transaction_boc, "return_state changed transaction");
             checks.check(plain.account_after.is_none(), "return_state ignored");
         }
-        checks.check(
-            rejected_with(first.get("reject")) == Some(42),
-            "external rejection did not preserve exit code 42",
-        );
+        checks
+            .check(rejected_with(first.get("reject")) == Some(42), "external rejection did not preserve exit code 42");
         checks.check(
             executed(first.get("bounce")).and_then(|e| e.transaction.as_ref()).is_some_and(|t| t.outmsg_cnt == 1),
             "message to account_none did not return one bounce message",
         );
         checks.check(executed(first.get("deploy")).is_some(), "StateInit deployment produced no transaction");
-        for name in [
-            "invalid BOC", "LT overflow", "zero seed", "invalid config address emulate", "invalid config address get",
-        ] {
+        for name in
+            ["invalid BOC", "LT overflow", "zero seed", "invalid config address emulate", "invalid config address get"]
+        {
             checks.check(is_invalid(first.get(name)), name);
         }
         checks.check(rejected_with(first.get("bad signature")) == Some(43), "invalid signature was not rejected");
@@ -341,9 +336,10 @@ fn map_emulate_check(block: Block) -> Result<pb::EmulateCheck, Error> {
                 b.prev_trans_hash == a.hash
                     && b.prev_trans_lt == a.lt
                     && b.lt > a.lt
-                    && a.state_update.as_ref().zip(b.state_update.as_ref()).is_some_and(|(x, y)| {
-                        x.new_hash == y.old_hash
-                    })
+                    && a.state_update
+                        .as_ref()
+                        .zip(b.state_update.as_ref())
+                        .is_some_and(|(x, y)| x.new_hash == y.old_hash)
             }),
             "returned state lost transaction metadata",
         );

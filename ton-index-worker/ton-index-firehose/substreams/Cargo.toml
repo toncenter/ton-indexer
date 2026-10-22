@@ -1,0 +1,34 @@
+# The substreams modules of the TON Firehose and their SDK: one lock file, one
+# target directory (../target from a crate) and one release profile.
+[workspace]
+resolver = "2"
+members = ["substreams-ton", "smoke", "ton-traces", "ton-tvm-probe"]
+
+[workspace.package]
+edition = "2021"
+license = "MIT"
+repository = "https://github.com/toncenter/ton-indexer"
+
+[workspace.dependencies]
+getrandom = "0.3"
+hex = "0.4"
+num-bigint = "0.4"
+prost = "0.13"
+prost-build = "0.13"
+protoc-bin-vendored = "3"
+rston = "0.5"
+sha2 = "0.10"
+substreams = "0.7"
+substreams-ton = { path = "substreams-ton" }
+
+# Modules are wasm: small, without debug info. The module hash of substreams
+# covers the wasm, which depends on the sources, Cargo.lock and
+# rust-toolchain.toml, and also on where they are: panic messages keep the
+# absolute paths of the sources (trim-paths is not stable yet), so builds in
+# other directories differ. Build a module by itself, from its directory or
+# with -p: a build of the whole workspace unifies the features of shared
+# dependencies and gives other wasm.
+[profile.release]
+lto = true
+opt-level = "s"
+strip = "debuginfo"

@@ -56,6 +56,9 @@ impl fmt::Display for Error {
 impl std::error::Error for Error {}
 
 /// What an emulation gave.
+// Returned once per call: a box of the large variant would only add an
+// allocation.
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone, PartialEq)]
 pub enum EmulationOutcome {
     Executed(pb::ExecutedTransaction),
@@ -235,7 +238,9 @@ impl GetMethodCall {
     /// On a full TL-B ShardAccount instead of the network state.
     pub fn on_shard_account(shard_account_boc: Vec<u8>, name: &str) -> Self {
         GetMethodCall(pb::GetMethod {
-            account: Some(pb::AccountSource { source: Some(account_source::Source::ShardAccountBoc(shard_account_boc)) }),
+            account: Some(pb::AccountSource {
+                source: Some(account_source::Source::ShardAccountBoc(shard_account_boc)),
+            }),
             method: Some(get_method::Method::Name(name.to_string())),
             ..Default::default()
         })
@@ -305,7 +310,8 @@ impl EmulateCall {
 
     /// On a full TL-B ShardAccount instead of the network state.
     pub fn shard_account(mut self, shard_account_boc: Vec<u8>) -> Self {
-        self.0.account = Some(pb::AccountSource { source: Some(account_source::Source::ShardAccountBoc(shard_account_boc)) });
+        self.0.account =
+            Some(pb::AccountSource { source: Some(account_source::Source::ShardAccountBoc(shard_account_boc)) });
         self
     }
 

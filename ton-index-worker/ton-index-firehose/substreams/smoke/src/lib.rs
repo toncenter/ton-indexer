@@ -42,10 +42,5 @@ fn store_totals(stats: BlockStats, store: StoreAddInt64) {
 #[substreams::handlers::map]
 fn map_totals(stats: BlockStats, totals: StoreGetInt64) -> Result<Totals, Error> {
     let get = |key: &str| totals.get_last(key).unwrap_or(0);
-    Ok(Totals {
-        seqno: stats.seqno,
-        blocks: get("blocks"),
-        transactions: get("transactions"),
-        traces: get("traces"),
-    })
+    Ok(Totals { seqno: stats.seqno, blocks: get("blocks"), transactions: get("transactions"), traces: get("traces") })
 }

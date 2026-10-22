@@ -39,9 +39,11 @@ fn map_account_check(block: Block) -> Result<pb::AccountCheck, Error> {
     for data in blocks {
         let workchain = data.id.as_ref().and_then(|id| id.shard_id.as_ref()).map_or(0, |s| s.workchain_id);
         for account_block in data.extra.iter().flat_map(|extra| extra.account_blocks.iter()) {
-            let (Some(before), Some(after), Some(last)) =
-                (&account_block.state_before, &account_block.state_after, account_block.transactions.iter().max_by_key(|tx| tx.lt))
-            else {
+            let (Some(before), Some(after), Some(last)) = (
+                &account_block.state_before,
+                &account_block.state_after,
+                account_block.transactions.iter().max_by_key(|tx| tx.lt),
+            ) else {
                 continue;
             };
             let Ok(id) = account_block.account_addr.as_slice().try_into() else { continue };
