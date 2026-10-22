@@ -6,7 +6,8 @@ use std::iter::once;
 
 use substreams::errors::Error;
 use substreams_ton::tvm;
-use substreams_ton::types::{account, account_state, Account, Block};
+use substreams_ton::types::__buffa::oneof::{account, account_state};
+use substreams_ton::types::{Account, BlockLazyView};
 use substreams_ton::{Address, At};
 
 use crate::pb;
@@ -26,22 +27,23 @@ struct Changed<'a> {
 }
 
 #[substreams::handlers::map]
-fn map_account_check(block: Block) -> Result<pb::AccountCheck, Error> {
-    let mc = block.masterchain_block.as_ref().ok_or_else(|| Error::msg("no masterchain block"))?;
-    let mc_seqno = mc.id.as_ref().map_or(0, |id| id.seq_no);
+fn map_account_check(block: &BlockLazyView<'_>) -> Result<pb::AccountCheck, Error> {
+    let block = substreams_ton::block(block)?;
+    let mc = block.masterchain_block.as_option().ok_or_else(|| Error::msg("no masterchain block"))?;
+    let mc_seqno = mc.id.as_option().map_or(0, |id| id.seq_no);
 
     // The blocks of a shard chain follow each other by seqno, across splits
     // and merges too; the block lists them by shard first.
     let mut blocks: Vec<_> = once(mc).chain(block.shard_blocks.iter()).collect();
-    blocks.sort_by_key(|data| data.id.as_ref().map_or(0, |id| id.seq_no));
+    blocks.sort_by_key(|data| data.id.as_option().map_or(0, |id| id.seq_no));
     let mut changed: Vec<Changed> = Vec::new();
     let mut index: BTreeMap<Address, usize> = BTreeMap::new();
     for data in blocks {
-        let workchain = data.id.as_ref().and_then(|id| id.shard_id.as_ref()).map_or(0, |s| s.workchain_id);
-        for account_block in data.extra.iter().flat_map(|extra| extra.account_blocks.iter()) {
+        let workchain = data.id.as_option().and_then(|id| id.shard_id.as_option()).map_or(0, |s| s.workchain_id);
+        for account_block in data.extra.as_option().into_iter().flat_map(|extra| extra.account_blocks.iter()) {
             let (Some(before), Some(after), Some(last)) = (
-                &account_block.state_before,
-                &account_block.state_after,
+                account_block.state_before.as_option(),
+                account_block.state_after.as_option(),
                 account_block.transactions.iter().max_by_key(|tx| tx.lt),
             ) else {
                 continue;
@@ -74,15 +76,15 @@ fn map_account_check(block: Block) -> Result<pb::AccountCheck, Error> {
         let before = results.next().unwrap().account()?;
         let after = results.next().unwrap().account()?;
         let mut problems = Vec::new();
-        if before.value.as_ref().and_then(|v| v.account.clone()) != Some(without_bocs(account.before.clone())) {
+        if before.value.as_option().and_then(|v| v.account.as_option()) != Some(&without_bocs(account.before.clone())) {
             problems.push("before_block is not the state before");
         }
-        let value = after.value.unwrap_or_default();
+        let value = after.value.into_option().unwrap_or_default();
         // An account that is none after its transactions, as after a message
         // bounced from a nonexistent one, is not stored: it has no last
         // transaction to tell.
         let none_after = matches!(account.after.kind, Some(account::Kind::AccountNone(_)));
-        if value.account != Some(without_bocs(account.after.clone())) {
+        if value.account.as_option() != Some(&without_bocs(account.after.clone())) {
             problems.push("after_block is not the state after");
         }
         if !none_after && (value.last_trans_lt != account.last_lt || value.last_trans_hash != account.last_hash) {
@@ -102,9 +104,12 @@ fn map_account_check(block: Block) -> Result<pb::AccountCheck, Error> {
 /// hashes, which the block gives with their BOCs when they changed.
 pub(crate) fn without_bocs(mut account: Account) -> Account {
     if let Some(account::Kind::Account(existing)) = account.kind.as_mut() {
-        let state = existing.storage.as_mut().and_then(|storage| storage.state.as_mut());
+        let state = existing.storage.as_option_mut().and_then(|storage| storage.state.as_option_mut());
         if let Some(account_state::Kind::AccountActive(init)) = state.and_then(|state| state.kind.as_mut()) {
-            for cell in [init.code.as_mut(), init.data.as_mut(), init.library.as_mut()].into_iter().flatten() {
+            for cell in [init.code.as_option_mut(), init.data.as_option_mut(), init.library.as_option_mut()]
+                .into_iter()
+                .flatten()
+            {
                 cell.boc = None;
                 cell.boc_omitted = false;
             }

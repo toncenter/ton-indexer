@@ -7,9 +7,9 @@ use std::iter::once;
 
 use substreams::errors::Error;
 use substreams_ton::pb::ton::state::v1::AccountSnapshot;
-use substreams_ton::pb::ton::tvm::v1::{call_result::Outcome, CallResult, ContextOverrides, ErrorCode};
+use substreams_ton::pb::ton::tvm::v1::{__buffa::oneof::call_result::Outcome, CallResult, ContextOverrides, ErrorCode};
 use substreams_ton::tvm::{self, GetMethodCall};
-use substreams_ton::types::{account, AccountBlock, Block, BlockData, Transaction};
+use substreams_ton::types::{__buffa::oneof::account, AccountBlock, BlockData, BlockLazyView, Transaction};
 use substreams_ton::{Address, At};
 
 use crate::{account_check::without_bocs, pb};
@@ -83,22 +83,25 @@ impl Point<'_> {
 }
 
 #[substreams::handlers::map]
-fn map_tx_point_check(block: Block) -> Result<pb::TxPointCheck, Error> {
-    let mc = block.masterchain_block.as_ref().ok_or_else(|| Error::msg("no masterchain block"))?;
-    let mut out = pb::TxPointCheck { mc_seqno: mc.id.as_ref().map_or(0, |id| id.seq_no), ..Default::default() };
+fn map_tx_point_check(block: &BlockLazyView<'_>) -> Result<pb::TxPointCheck, Error> {
+    let block = substreams_ton::block(block)?;
+    let mc = block.masterchain_block.as_option().ok_or_else(|| Error::msg("no masterchain block"))?;
+    let mut out = pb::TxPointCheck { mc_seqno: mc.id.as_option().map_or(0, |id| id.seq_no), ..Default::default() };
     let mut candidates: Vec<_> = once(mc)
         .chain(block.shard_blocks.iter())
-        .flat_map(|data| data.extra.iter().flat_map(|extra| extra.account_blocks.iter()).map(move |a| (data, a)))
+        .flat_map(|data| {
+            data.extra.as_option().into_iter().flat_map(|extra| extra.account_blocks.iter()).map(move |a| (data, a))
+        })
         .filter(|(_, a)| !a.transactions.is_empty())
         .collect();
     // Several transactions first, tick/tock accounts among them.
     candidates.sort_by_key(|(data, a)| {
         let n = a.transactions.len();
-        (!(n > 1 && n <= MAX_TRANSACTIONS), n > MAX_TRANSACTIONS, data.id.as_ref().map_or(0, |id| id.seq_no))
+        (!(n > 1 && n <= MAX_TRANSACTIONS), n > MAX_TRANSACTIONS, data.id.as_option().map_or(0, |id| id.seq_no))
     });
     let mut points = Vec::new();
     for (data, a) in candidates.into_iter().take(MAX_ACCOUNTS) {
-        let workchain = data.id.as_ref().and_then(|id| id.shard_id.as_ref()).map_or(0, |s| s.workchain_id);
+        let workchain = data.id.as_option().and_then(|id| id.shard_id.as_option()).map_or(0, |s| s.workchain_id);
         let address = Address::new(workchain, a.account_addr.as_slice().try_into()?);
         let last = a.transactions.len() - 1;
         let mut indices = vec![0, 1.min(last), a.transactions.len() / 2, last];
@@ -123,13 +126,13 @@ fn map_tx_point_check(block: Block) -> Result<pb::TxPointCheck, Error> {
     let answers = batch.execute()?;
     out.calls += answers.len() as u32;
     for result in &answers[points.len()..] {
-        let invalid = matches!(&result.outcome, Some(Outcome::Error(e)) if e.code == ErrorCode::InvalidRequest as i32);
+        let invalid = matches!(&result.outcome, Some(Outcome::Error(e)) if e.code == ErrorCode::InvalidRequest);
         check(&mut out, invalid, format!("invalid transaction point: {:?}", result.outcome));
     }
     let mut snapshots: Vec<Option<&AccountSnapshot>> = Vec::new();
     for (point, result) in points.iter().zip(&answers) {
         let Some(Outcome::Account(snapshot)) = &result.outcome else {
-            if matches!(&result.outcome, Some(Outcome::Error(e)) if e.code == ErrorCode::ReplayMismatch as i32) {
+            if matches!(&result.outcome, Some(Outcome::Error(e)) if e.code == ErrorCode::ReplayMismatch) {
                 out.replay_mismatches += 1;
             }
             check(&mut out, false, format!("{}: {:?}", point.label(), result.outcome));
@@ -137,8 +140,9 @@ fn map_tx_point_check(block: Block) -> Result<pb::TxPointCheck, Error> {
             continue;
         };
         out.snapshots += 1;
-        let value = snapshot.value.as_ref().ok_or_else(|| Error::msg("missing AccountValue"))?;
-        let none = matches!(value.account.as_ref().and_then(|a| a.kind.as_ref()), Some(account::Kind::AccountNone(_)));
+        let value = snapshot.value.as_option().ok_or_else(|| Error::msg("missing AccountValue"))?;
+        let none =
+            matches!(value.account.as_option().and_then(|a| a.kind.as_ref()), Some(account::Kind::AccountNone(_)));
         // An account that does not exist has no last transaction to tell.
         let (lt, hash) = if none {
             (0, vec![0; 32])
@@ -149,22 +153,24 @@ fn map_tx_point_check(block: Block) -> Result<pb::TxPointCheck, Error> {
         };
         let same_last = value.last_trans_lt == lt && value.last_trans_hash == hash;
         check(&mut out, same_last, format!("{}: previous transaction", point.label()));
-        let source = snapshot.source.as_ref();
-        let info = point.block.info.as_ref().ok_or_else(|| Error::msg("missing BlockInfo"))?;
+        let source = snapshot.source.as_option();
+        let info = point.block.info.as_option().ok_or_else(|| Error::msg("missing BlockInfo"))?;
         let provenance = snapshot.block == point.block.id
             && snapshot.gen_utime == info.gen_utime
             && snapshot.gen_lt == info.end_lt
-            && source.is_some_and(|s| s.address == Some(point.address.to_pb()) && s.at == Some(point.at().into()));
+            && source.is_some_and(|s| {
+                s.address.as_option() == Some(&point.address.to_pb()) && s.at.as_option() == Some(&point.at().into())
+            });
         check(&mut out, provenance, format!("{}: snapshot provenance", point.label()));
         let last = point.index + 1 == point.account.transactions.len();
         let boundary = match (point.after, point.index) {
-            (false, 0) => point.account.state_before.as_ref(),
-            (true, _) if last => point.account.state_after.as_ref(),
+            (false, 0) => point.account.state_before.as_option(),
+            (true, _) if last => point.account.state_after.as_option(),
             _ => None,
         };
         if let Some(boundary) = boundary {
             out.boundaries += 1;
-            let same = value.account == Some(without_bocs(boundary.clone()));
+            let same = value.account.as_option() == Some(&without_bocs(boundary.clone()));
             check(&mut out, same, format!("{}: boundary state", point.label()));
         } else {
             out.intermediate += 1;
@@ -193,7 +199,7 @@ fn map_tx_point_check(block: Block) -> Result<pb::TxPointCheck, Error> {
     let mut batch = tvm::batch();
     let mut compared = Vec::new();
     for (point, snapshot) in points.iter().zip(snapshots).filter(|(p, _)| p.index == 1 && !p.after) {
-        let Some(boc) = snapshot.and_then(|s| s.value.as_ref()).and_then(|v| v.shard_account_boc.clone()) else {
+        let Some(boc) = snapshot.and_then(|s| s.value.as_option()).and_then(|v| v.shard_account_boc.clone()) else {
             continue;
         };
         batch

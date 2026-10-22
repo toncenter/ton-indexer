@@ -26,7 +26,7 @@ impl Address {
     }
 
     pub fn to_pb(&self) -> state::Address {
-        state::Address { workchain: self.workchain, account_id: self.account_id.to_vec() }
+        state::Address { workchain: self.workchain, account_id: self.account_id.to_vec(), ..Default::default() }
     }
 }
 

@@ -7,9 +7,9 @@ use std::collections::BTreeSet;
 use std::iter::once;
 
 use substreams::errors::Error;
-use substreams_ton::pb::ton::tvm::v1::call_result::Outcome;
+use substreams_ton::pb::ton::tvm::v1::__buffa::oneof::call_result::Outcome;
 use substreams_ton::tvm::{self, GetMethodCall};
-use substreams_ton::types::Block;
+use substreams_ton::types::BlockLazyView;
 use substreams_ton::{Address, At};
 
 use crate::pb;
@@ -20,15 +20,16 @@ const MAX_DETAILS: usize = 5;
 const METHODS: [&str; 3] = ["seqno", "get_public_key", "get_wallet_data"];
 
 #[substreams::handlers::map]
-fn map_get_method_check(block: Block) -> Result<pb::GetMethodCheck, Error> {
-    let mc = block.masterchain_block.as_ref().ok_or_else(|| Error::msg("no masterchain block"))?;
-    let mut out = pb::GetMethodCheck { mc_seqno: mc.id.as_ref().map_or(0, |id| id.seq_no), ..Default::default() };
+fn map_get_method_check(block: &BlockLazyView<'_>) -> Result<pb::GetMethodCheck, Error> {
+    let block = substreams_ton::block(block)?;
+    let mc = block.masterchain_block.as_option().ok_or_else(|| Error::msg("no masterchain block"))?;
+    let mut out = pb::GetMethodCheck { mc_seqno: mc.id.as_option().map_or(0, |id| id.seq_no), ..Default::default() };
 
     let mut addresses = Vec::new();
     let mut seen = BTreeSet::new();
     for data in once(mc).chain(block.shard_blocks.iter()) {
-        let workchain = data.id.as_ref().and_then(|id| id.shard_id.as_ref()).map_or(0, |s| s.workchain_id);
-        for account_block in data.extra.iter().flat_map(|extra| extra.account_blocks.iter()) {
+        let workchain = data.id.as_option().and_then(|id| id.shard_id.as_option()).map_or(0, |s| s.workchain_id);
+        for account_block in data.extra.as_option().into_iter().flat_map(|extra| extra.account_blocks.iter()) {
             let Ok(id) = account_block.account_addr.as_slice().try_into() else { continue };
             let address = Address::new(workchain, id);
             if addresses.len() < MAX_ACCOUNTS && seen.insert(address) {
@@ -55,7 +56,7 @@ fn map_get_method_check(block: Block) -> Result<pb::GetMethodCheck, Error> {
     let mut compared = Vec::new();
     for (i, group) in onchain.chunks(1 + METHODS.len()).enumerate() {
         let snapshot = group[0].clone().account()?;
-        let Some(boc) = snapshot.value.and_then(|value| value.shard_account_boc) else {
+        let Some(boc) = snapshot.value.into_option().and_then(|value| value.shard_account_boc) else {
             out.omitted += 1;
             continue;
         };

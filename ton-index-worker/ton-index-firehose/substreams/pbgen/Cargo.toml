@@ -1,0 +1,12 @@
+[package]
+name = "pbgen"
+version = "0.1.0"
+description = "Generates the protobuf code of substreams-ton: cargo run -p pbgen"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[dependencies]
+buffa-build.workspace = true
+protoc-bin-vendored.workspace = true

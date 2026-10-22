@@ -575,7 +575,7 @@ message Tuple { repeated StackEntry items = 1; }
   тоже приходит списком из одного элемента. В запросе `list` собирается
   обратно в пары, пустой `list` — это `null`. Без этого варианта список
   глубже ~45 пар не прочесть: каждая пара — уровень вложенности сообщений, а
-  prost и C++ protobuf декодируют не глубже 100. `participant_list` у elector
+  buffa, prost и C++ protobuf декодируют не глубже 100. `participant_list` у elector
   в период выборов — сотни пар; liteserver такой стек сам не сериализует
   (`cannot serialize resulting stack`).
 - `tuple` и `list` вложены друг в друга не глубже 32 уровней, в `tuple` не
@@ -633,7 +633,8 @@ fn map_pools(block: Block) -> Result<Pools, Error> {
 
 Что войдёт в SDK:
 
-- типы protobuf на prost под `substreams` 0.7;
+- типы protobuf на buffa под `substreams` 0.8, сгенерированные в крейт
+  (`cargo run -p pbgen`), с lazy views для блока;
 - построители вызовов: `Address` хранит `workchain` и `account_id` раздельно;
   `.at(...)` у эмуляции формирует `AccountRef` без адреса, получателя
   сообщения берёт сервис, так что разбирать BOC сообщения в wasm не нужно;

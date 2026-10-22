@@ -7,11 +7,8 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
+buffa.workspace = true
+buffa-types.workspace = true
 hex.workspace = true
 num-bigint.workspace = true
-prost.workspace = true
 substreams.workspace = true
-
-[build-dependencies]
-prost-build.workspace = true
-protoc-bin-vendored.workspace = true

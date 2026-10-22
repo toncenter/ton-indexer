@@ -10,9 +10,9 @@ publish = false
 crate-type = ["cdylib"]
 
 [dependencies]
+buffa.workspace = true
 hex.workspace = true
 sha2.workspace = true
-prost.workspace = true
 substreams.workspace = true
 substreams-ton.workspace = true
 rston.workspace = true
@@ -21,5 +21,5 @@ rston.workspace = true
 getrandom.workspace = true
 
 [build-dependencies]
-prost-build.workspace = true
+buffa-build.workspace = true
 protoc-bin-vendored.workspace = true

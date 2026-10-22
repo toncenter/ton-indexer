@@ -3,31 +3,35 @@
 
 use num_bigint::BigInt;
 
-use crate::pb::ton::tvm::v1::{stack_entry::Value, StackEntry, Tuple};
+use crate::pb::ton::tvm::v1::{__buffa::oneof::stack_entry::Value, StackEntry, Tuple};
 use crate::tvm::Error;
 
 /// An integer: int257, minimal two's complement big-endian.
 pub fn int(value: impl Into<BigInt>) -> StackEntry {
-    StackEntry { value: Some(Value::Integer(value.into().to_signed_bytes_be())) }
+    entry(Value::Integer(value.into().to_signed_bytes_be()))
 }
 
 /// A cell, by the BOC of one cell.
 pub fn cell(boc: Vec<u8>) -> StackEntry {
-    StackEntry { value: Some(Value::Cell(boc)) }
+    entry(Value::Cell(boc))
 }
 
 pub fn null() -> StackEntry {
-    StackEntry { value: Some(Value::Null(())) }
+    entry(Value::Null(Box::default()))
 }
 
 pub fn tuple(items: Vec<StackEntry>) -> StackEntry {
-    StackEntry { value: Some(Value::Tuple(Tuple { items })) }
+    entry(Value::Tuple(Box::new(Tuple { items, ..Default::default() })))
 }
 
 /// A lisp-style list: the service builds the pairs `[x1, [x2, … [xn, null]]]`
 /// of TVM. An empty list is null.
 pub fn list(items: Vec<StackEntry>) -> StackEntry {
-    StackEntry { value: Some(Value::List(Tuple { items })) }
+    entry(Value::List(Box::new(Tuple { items, ..Default::default() })))
+}
+
+fn entry(value: Value) -> StackEntry {
+    StackEntry { value: Some(value), ..Default::default() }
 }
 
 /// Typed access to the values of a result stack.

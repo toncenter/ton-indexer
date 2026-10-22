@@ -20,7 +20,7 @@ const (
 	// Of a serialized CallResult: over it the call is TOO_LARGE.
 	MaxCallResultSize = 8 << 20
 	// Tuples and lists within each other in a stack: within the recursion
-	// limit of protobuf decoders, 100 messages in prost and C++.
+	// limit of protobuf decoders, 100 messages in buffa, prost and C++.
 	MaxStackDepth = 32
 	// Items of a tuple, as in TVM.
 	MaxTupleSize = 255

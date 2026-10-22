@@ -5,12 +5,12 @@
 
 use sha2::{Digest, Sha256};
 use substreams::errors::Error;
+use substreams_ton::pb::ton::tvm::v1::__buffa::oneof::{call_result::Outcome, emulate_result, stack_entry};
 use substreams_ton::pb::ton::tvm::v1::{
-    call_result::Outcome, emulate_result, stack_entry, Call, CallResult, ContextOverrides, ErrorCode,
-    ExecutedTransaction, StackEntry,
+    Call, CallResult, ContextOverrides, ErrorCode, ExecutedTransaction, StackEntry,
 };
 use substreams_ton::tvm::{self, GetMethodCall};
-use substreams_ton::types::Block;
+use substreams_ton::types::BlockLazyView;
 use substreams_ton::{stack, Address, At};
 
 use crate::pb;
@@ -70,7 +70,7 @@ fn expected_seed(account_id: &[u8], version: u32) -> StackEntry {
     if integer[0] & 0x80 != 0 {
         integer.insert(0, 0);
     }
-    StackEntry { value: Some(stack_entry::Value::Integer(integer)) }
+    StackEntry { value: Some(stack_entry::Value::Integer(integer)), ..Default::default() }
 }
 
 /// What the fixture contract stores and returns: NOW, BLOCKLT, LTIME, RANDSEED.
@@ -99,7 +99,7 @@ fn rejected_with(result: &CallResult) -> Option<i32> {
 }
 
 fn is_invalid(result: &CallResult) -> bool {
-    matches!(&result.outcome, Some(Outcome::Error(e)) if e.code == ErrorCode::InvalidRequest as i32)
+    matches!(&result.outcome, Some(Outcome::Error(e)) if e.code == ErrorCode::InvalidRequest)
 }
 
 fn returns(result: &CallResult, expected: &[StackEntry]) -> bool {
@@ -154,7 +154,7 @@ impl Checks {
         for result in results {
             if let Some(tx) = executed(result) {
                 self.0.executed += 1;
-                self.0.outgoing_messages += tx.transaction.as_ref().map_or(0, |t| t.outmsg_cnt);
+                self.0.outgoing_messages += tx.transaction.as_option().map_or(0, |t| t.outmsg_cnt);
             } else if rejected_with(result).is_some() {
                 self.0.rejected += 1;
             }
@@ -163,8 +163,9 @@ impl Checks {
 }
 
 #[substreams::handlers::map]
-fn map_emulate_check(block: Block) -> Result<pb::EmulateCheck, Error> {
-    let mc_seqno = block.masterchain_block.as_ref().and_then(|b| b.id.as_ref()).map_or(0, |b| b.seq_no);
+fn map_emulate_check(block: &BlockLazyView<'_>) -> Result<pb::EmulateCheck, Error> {
+    let block = substreams_ton::block(block)?;
+    let mc_seqno = block.masterchain_block.as_option().and_then(|b| b.id.as_option()).map_or(0, |b| b.seq_no);
     let mut checks = Checks(pb::EmulateCheck { mc_seqno, ..Default::default() });
     let fixtures = mc_seqno.is_multiple_of(FIXTURE_EVERY);
 
@@ -252,19 +253,19 @@ fn map_emulate_check(block: Block) -> Result<pb::EmulateCheck, Error> {
         checks.check(executed(first.get("accept")).is_some(), "accepting contract produced no transaction");
         checks.check(
             executed(first.get("accept"))
-                .and_then(|e| e.transaction.as_ref())
-                .and_then(|t| t.in_msg.as_ref())
+                .and_then(|e| e.transaction.as_option())
+                .and_then(|t| t.in_msg.as_option())
                 .is_some_and(|m| m.hash_norm.as_ref().is_some_and(|norm| *norm != m.hash)),
             "external message has no normalized hash",
         );
         if let (Some(full), Some(plain)) = (executed(first.get("accept")), executed(first.get("accept plain"))) {
             checks.check(full.transaction_boc == plain.transaction_boc, "return_state changed transaction");
-            checks.check(plain.account_after.is_none(), "return_state ignored");
+            checks.check(plain.account_after.is_unset(), "return_state ignored");
         }
         checks
             .check(rejected_with(first.get("reject")) == Some(42), "external rejection did not preserve exit code 42");
         checks.check(
-            executed(first.get("bounce")).and_then(|e| e.transaction.as_ref()).is_some_and(|t| t.outmsg_cnt == 1),
+            executed(first.get("bounce")).and_then(|e| e.transaction.as_option()).is_some_and(|t| t.outmsg_cnt == 1),
             "message to account_none did not return one bounce message",
         );
         checks.check(executed(first.get("deploy")).is_some(), "StateInit deployment produced no transaction");
@@ -295,7 +296,7 @@ fn map_emulate_check(block: Block) -> Result<pb::EmulateCheck, Error> {
     let mut second = Named::default();
     if fixtures {
         for (emulated, read, _) in READS {
-            let after = executed(first.get(emulated)).and_then(|e| e.account_after.as_ref());
+            let after = executed(first.get(emulated)).and_then(|e| e.account_after.as_option());
             let Some(boc) = after.and_then(|a| a.shard_account_boc.clone()) else {
                 checks.check(false, "emulated state BOC is absent");
                 continue;
@@ -308,7 +309,8 @@ fn map_emulate_check(block: Block) -> Result<pb::EmulateCheck, Error> {
         }
     }
     for (state, name) in [("state after", "emulate after on BOC"), ("state before", "emulate before on BOC")] {
-        let Some(boc) = first.get(state).clone().account()?.value.and_then(|v| v.shard_account_boc) else {
+        let Some(boc) = first.get(state).clone().account()?.value.into_option().and_then(|v| v.shard_account_boc)
+        else {
             checks.check(false, "network state BOC is absent");
             continue;
         };
@@ -322,23 +324,23 @@ fn map_emulate_check(block: Block) -> Result<pb::EmulateCheck, Error> {
         if !then.names.contains(&read) {
             continue;
         }
-        let address = &executed(first.get(emulated)).unwrap().transaction.as_ref().unwrap().account_addr;
+        let address = &executed(first.get(emulated)).unwrap().transaction.as_option().unwrap().account_addr;
         checks.check(
             returns(then.get(read), &stored_context(BLOCK_LT, address, version)),
             "stored TVM context differs from overrides",
         );
     }
     if then.names.contains(&"accept on state") {
-        let first_tx = executed(first.get("accept")).and_then(|e| e.transaction.as_ref());
-        let next_tx = executed(then.get("accept on state")).and_then(|e| e.transaction.as_ref());
+        let first_tx = executed(first.get("accept")).and_then(|e| e.transaction.as_option());
+        let next_tx = executed(then.get("accept on state")).and_then(|e| e.transaction.as_option());
         checks.check(
             first_tx.zip(next_tx).is_some_and(|(a, b)| {
                 b.prev_trans_hash == a.hash
                     && b.prev_trans_lt == a.lt
                     && b.lt > a.lt
                     && a.state_update
-                        .as_ref()
-                        .zip(b.state_update.as_ref())
+                        .as_option()
+                        .zip(b.state_update.as_option())
                         .is_some_and(|(x, y)| x.new_hash == y.old_hash)
             }),
             "returned state lost transaction metadata",

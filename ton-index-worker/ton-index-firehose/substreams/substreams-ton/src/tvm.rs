@@ -8,10 +8,11 @@
 
 use std::fmt;
 
-use crate::pb::ton::state::v1 as state;
-use crate::pb::ton::tvm::v1::{
-    self as pb, account_source, call, call_result, emulate_result, get_method, ExecuteRequest, ExecuteResponse,
-};
+use buffa::{DecodeOptions, EnumValue, Enumeration, Inline, Message, MessageField};
+
+use crate::pb::ton::state::v1::{self as state, __buffa::oneof::at::Point};
+use crate::pb::ton::tvm::v1::__buffa::oneof::{account_source, call, call_result, emulate_result, get_method};
+use crate::pb::ton::tvm::v1::{self as pb, ExecuteRequest, ExecuteResponse};
 use crate::Address;
 
 /// A point of the block, see `ton.state.v1.At`.
@@ -25,21 +26,20 @@ pub enum At {
 
 impl From<At> for state::At {
     fn from(at: At) -> Self {
-        use state::at::Point;
         let point = match at {
-            At::AfterBlock => Point::AfterBlock(()),
-            At::BeforeBlock => Point::BeforeBlock(()),
+            At::AfterBlock => Point::AfterBlock(Box::default()),
+            At::BeforeBlock => Point::BeforeBlock(Box::default()),
             At::BeforeTx(lt) => Point::BeforeTx(lt),
             At::AfterTx(lt) => Point::AfterTx(lt),
         };
-        state::At { point: Some(point) }
+        state::At { point: Some(point), ..Default::default() }
     }
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Error {
     /// The call was answered with a `CallError`.
-    Call { code: pb::ErrorCode, message: String },
+    Call { code: EnumValue<pb::ErrorCode>, message: String },
     /// The answer does not follow the protocol, or is not the one asked for.
     Protocol(String),
 }
@@ -47,7 +47,10 @@ pub enum Error {
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Error::Call { code, message } => write!(f, "{}: {message}", code.as_str_name()),
+            Error::Call { code, message } => match code.as_known() {
+                Some(code) => write!(f, "{}: {message}", code.proto_name()),
+                None => write!(f, "error code {}: {message}", code.to_i32()),
+            },
             Error::Protocol(message) => write!(f, "ton_v1 protocol: {message}"),
         }
     }
@@ -68,7 +71,7 @@ pub enum EmulationOutcome {
 impl pb::CallResult {
     pub fn get_method(self) -> Result<pb::GetMethodResult, Error> {
         match self.outcome {
-            Some(call_result::Outcome::GetMethod(result)) => Ok(result),
+            Some(call_result::Outcome::GetMethod(result)) => Ok(*result),
             other => Err(unexpected(other, "get_method")),
         }
     }
@@ -79,9 +82,9 @@ impl pb::CallResult {
             other => return Err(unexpected(other, "emulate")),
         };
         match result.outcome {
-            Some(emulate_result::Outcome::Executed(executed)) => Ok(EmulationOutcome::Executed(executed)),
+            Some(emulate_result::Outcome::Executed(executed)) => Ok(EmulationOutcome::Executed(*executed)),
             Some(emulate_result::Outcome::ExternalNotAccepted(rejected)) => {
-                Ok(EmulationOutcome::ExternalNotAccepted(rejected))
+                Ok(EmulationOutcome::ExternalNotAccepted(*rejected))
             }
             None => Err(Error::Protocol("emulate result without outcome".to_string())),
         }
@@ -89,7 +92,7 @@ impl pb::CallResult {
 
     pub fn account(self) -> Result<state::AccountSnapshot, Error> {
         match self.outcome {
-            Some(call_result::Outcome::Account(snapshot)) => Ok(snapshot),
+            Some(call_result::Outcome::Account(snapshot)) => Ok(*snapshot),
             other => Err(unexpected(other, "account")),
         }
     }
@@ -97,7 +100,7 @@ impl pb::CallResult {
 
 fn unexpected(outcome: Option<call_result::Outcome>, expected: &str) -> Error {
     match outcome {
-        Some(call_result::Outcome::Error(error)) => Error::Call { code: error.code(), message: error.message },
+        Some(call_result::Outcome::Error(error)) => Error::Call { code: error.code, message: error.message },
         Some(call_result::Outcome::GetMethod(_)) => Error::Protocol(format!("get_method result, not {expected}")),
         Some(call_result::Outcome::Emulate(_)) => Error::Protocol(format!("emulate result, not {expected}")),
         Some(call_result::Outcome::Account(_)) => Error::Protocol(format!("account result, not {expected}")),
@@ -112,8 +115,13 @@ pub fn execute(calls: Vec<pb::Call>) -> Result<Vec<pb::CallResult>, Error> {
     if count == 0 {
         return Ok(Vec::new());
     }
-    let request = prost::Message::encode_to_vec(&ExecuteRequest { calls });
-    let response: ExecuteResponse = prost::Message::decode(host::execute(&request).as_slice())
+    let request = ExecuteRequest { calls, ..Default::default() }.encode_to_vec();
+    // The host bounds every result (MaxCallResultSize of ton_v1). The budget
+    // that buffa keeps against untrusted input would only refuse valid
+    // answers: a stack of many small values takes far more memory than bytes.
+    let response: ExecuteResponse = DecodeOptions::new()
+        .with_element_memory_limit(usize::MAX)
+        .decode_from_slice(&host::execute(&request))
         .map_err(|e| Error::Protocol(format!("undecodable response: {e}")))?;
     if response.results.len() != count {
         return Err(Error::Protocol(format!("{} results for {count} calls", response.results.len())));
@@ -199,13 +207,13 @@ pub fn get_accounts(addresses: &[Address]) -> Result<Vec<state::AccountSnapshot>
 pub struct GetAccountCall(pb::GetAccount);
 
 pub fn get_account(address: &Address) -> GetAccountCall {
-    GetAccountCall(pb::GetAccount { account: Some(account_ref(Some(address), None)) })
+    GetAccountCall(pb::GetAccount { account: account_ref(Some(address), None).into(), ..Default::default() })
 }
 
 impl GetAccountCall {
     pub fn at(mut self, at: At) -> Self {
-        if let Some(account) = self.0.account.as_mut() {
-            account.at = Some(at.into());
+        if let Some(account) = self.0.account.as_option_mut() {
+            account.at = MessageField::some(at.into());
         }
         self
     }
@@ -217,7 +225,7 @@ impl GetAccountCall {
 
 impl From<GetAccountCall> for pb::Call {
     fn from(call: GetAccountCall) -> Self {
-        pb::Call { kind: Some(call::Kind::GetAccount(call.0)) }
+        pb::Call { kind: Some(call::Kind::GetAccount(Box::new(call.0))), ..Default::default() }
     }
 }
 
@@ -228,7 +236,7 @@ pub struct GetMethodCall(pb::GetMethod);
 
 pub fn get_method(address: &Address, name: &str) -> GetMethodCall {
     GetMethodCall(pb::GetMethod {
-        account: Some(onchain(Some(address), None)),
+        account: onchain(Some(address), None).into(),
         method: Some(get_method::Method::Name(name.to_string())),
         ..Default::default()
     })
@@ -238,9 +246,7 @@ impl GetMethodCall {
     /// On a full TL-B ShardAccount instead of the network state.
     pub fn on_shard_account(shard_account_boc: Vec<u8>, name: &str) -> Self {
         GetMethodCall(pb::GetMethod {
-            account: Some(pb::AccountSource {
-                source: Some(account_source::Source::ShardAccountBoc(shard_account_boc)),
-            }),
+            account: given(shard_account_boc).into(),
             method: Some(get_method::Method::Name(name.to_string())),
             ..Default::default()
         })
@@ -273,7 +279,7 @@ impl GetMethodCall {
     /// `block_rand_seed` is a nonzero 32-byte block seed, from which the
     /// service derives this account's TVM seed using the config's version.
     pub fn context(mut self, context: pb::ContextOverrides) -> Self {
-        self.0.context = Some(context);
+        self.0.context = MessageField::some(context);
         self
     }
 
@@ -284,7 +290,7 @@ impl GetMethodCall {
 
 impl From<GetMethodCall> for pb::Call {
     fn from(call: GetMethodCall) -> Self {
-        pb::Call { kind: Some(call::Kind::GetMethod(call.0)) }
+        pb::Call { kind: Some(call::Kind::GetMethod(Box::new(call.0))), ..Default::default() }
     }
 }
 
@@ -301,8 +307,8 @@ impl EmulateCall {
     /// The point of the network state of the destination; the service finds the
     /// destination in the message. Panics after [`EmulateCall::shard_account`].
     pub fn at(mut self, at: At) -> Self {
-        if self.0.account.is_none() {
-            self.0.account = Some(onchain(None, None));
+        if self.0.account.is_unset() {
+            self.0.account = MessageField::some(onchain(None, None));
         }
         set_at(&mut self.0.account, at);
         self
@@ -310,8 +316,7 @@ impl EmulateCall {
 
     /// On a full TL-B ShardAccount instead of the network state.
     pub fn shard_account(mut self, shard_account_boc: Vec<u8>) -> Self {
-        self.0.account =
-            Some(pb::AccountSource { source: Some(account_source::Source::ShardAccountBoc(shard_account_boc)) });
+        self.0.account = MessageField::some(given(shard_account_boc));
         self
     }
 
@@ -330,7 +335,7 @@ impl EmulateCall {
     /// BLOCKLT and may raise the transaction LT to follow prior events.
     /// `block_rand_seed` is a nonzero 32-byte block seed, not a final TVM seed.
     pub fn context(mut self, context: pb::ContextOverrides) -> Self {
-        self.0.context = Some(context);
+        self.0.context = MessageField::some(context);
         self
     }
 
@@ -341,7 +346,7 @@ impl EmulateCall {
 
 impl From<EmulateCall> for pb::Call {
     fn from(call: EmulateCall) -> Self {
-        pb::Call { kind: Some(call::Kind::Emulate(call.0)) }
+        pb::Call { kind: Some(call::Kind::Emulate(Box::new(call.0))), ..Default::default() }
     }
 }
 
@@ -351,16 +356,27 @@ fn execute_one(call: impl Into<pb::Call>) -> Result<pb::CallResult, Error> {
 }
 
 fn account_ref(address: Option<&Address>, at: Option<At>) -> state::AccountRef {
-    state::AccountRef { address: address.map(Address::to_pb), at: at.map(Into::into) }
+    state::AccountRef {
+        address: address.map(Address::to_pb).into(),
+        at: at.map(Into::into).into(),
+        ..Default::default()
+    }
 }
 
 fn onchain(address: Option<&Address>, at: Option<At>) -> pb::AccountSource {
-    pb::AccountSource { source: Some(account_source::Source::Onchain(account_ref(address, at))) }
+    pb::AccountSource {
+        source: Some(account_source::Source::Onchain(Box::new(account_ref(address, at)))),
+        ..Default::default()
+    }
 }
 
-fn set_at(account: &mut Option<pb::AccountSource>, at: At) {
-    match account.as_mut().and_then(|account| account.source.as_mut()) {
-        Some(account_source::Source::Onchain(account)) => account.at = Some(at.into()),
+fn given(shard_account_boc: Vec<u8>) -> pb::AccountSource {
+    pb::AccountSource { source: Some(account_source::Source::ShardAccountBoc(shard_account_boc)), ..Default::default() }
+}
+
+fn set_at(account: &mut MessageField<pb::AccountSource, Inline<pb::AccountSource>>, at: At) {
+    match account.as_option_mut().and_then(|account| account.source.as_mut()) {
+        Some(account_source::Source::Onchain(account)) => account.at = MessageField::some(at.into()),
         _ => panic!("At applies to network states only, not to a given ShardAccount"),
     }
 }
@@ -374,21 +390,23 @@ mod tests {
         let call: pb::Call = emulate(vec![1]).at(At::BeforeTx(7)).into();
         let Some(call::Kind::Emulate(emulate)) = call.kind else { panic!() };
         let Some(account_source::Source::Onchain(account)) = emulate.account.unwrap().source else { panic!() };
-        assert_eq!(account.address, None);
-        assert_eq!(account.at, Some(At::BeforeTx(7).into()));
+        assert!(account.address.is_unset());
+        assert_eq!(account.at.as_option(), Some(&At::BeforeTx(7).into()));
     }
 
     #[test]
     fn errors_of_calls_are_kept() {
         let result = pb::CallResult {
-            outcome: Some(call_result::Outcome::Error(pb::CallError {
-                code: pb::ErrorCode::AccountNotActive as i32,
+            outcome: Some(call_result::Outcome::Error(Box::new(pb::CallError {
+                code: pb::ErrorCode::AccountNotActive.into(),
                 message: "none".to_string(),
-            })),
+                ..Default::default()
+            }))),
+            ..Default::default()
         };
         assert_eq!(
             result.get_method(),
-            Err(Error::Call { code: pb::ErrorCode::AccountNotActive, message: "none".to_string() })
+            Err(Error::Call { code: pb::ErrorCode::AccountNotActive.into(), message: "none".to_string() })
         );
     }
 

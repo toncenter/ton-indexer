@@ -452,8 +452,9 @@ firecore tools firehose-client --plaintext --proto-paths /etc/firecore/proto -o 
 
 Smoke-модуль `ton-index-worker/ton-index-firehose/substreams/smoke` считает
 shard blocks, транзакции и traces каждого блока и держит итоги в store, так что
-его запуск проходит через оба tier. Модули на prost держать на
-`substreams = "0.7"`: 0.8 перешёл на другую protobuf-библиотеку.
+его запуск проходит через оба tier. Модули — на `substreams = "0.8"` и buffa,
+типы TON берут из SDK `substreams-ton`; все они в одном cargo workspace
+(`ton-index-worker/ton-index-firehose/substreams`).
 
 ```bash
 rustup target add wasm32-unknown-unknown

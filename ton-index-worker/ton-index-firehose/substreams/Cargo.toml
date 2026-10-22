@@ -2,7 +2,7 @@
 # target directory (../target from a crate) and one release profile.
 [workspace]
 resolver = "2"
-members = ["substreams-ton", "smoke", "ton-traces", "ton-tvm-probe"]
+members = ["substreams-ton", "pbgen", "smoke", "ton-traces", "ton-tvm-probe"]
 
 [workspace.package]
 edition = "2021"
@@ -10,15 +10,16 @@ license = "MIT"
 repository = "https://github.com/toncenter/ton-indexer"
 
 [workspace.dependencies]
+buffa = "0.9"
+buffa-build = "0.9"
+buffa-types = "0.9"
 getrandom = "0.3"
 hex = "0.4"
 num-bigint = "0.4"
-prost = "0.13"
-prost-build = "0.13"
 protoc-bin-vendored = "3"
 rston = "0.5"
 sha2 = "0.10"
-substreams = "0.7"
+substreams = "0.8"
 substreams-ton = { path = "substreams-ton" }
 
 # Modules are wasm: small, without debug info. The module hash of substreams

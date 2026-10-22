@@ -10,5 +10,10 @@ publish = false
 crate-type = ["cdylib"]
 
 [dependencies]
-prost.workspace = true
+buffa.workspace = true
 substreams.workspace = true
+substreams-ton.workspace = true
+
+[build-dependencies]
+buffa-build.workspace = true
+protoc-bin-vendored.workspace = true

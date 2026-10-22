@@ -15,9 +15,10 @@ use rston::models::{
 };
 use rston::prelude::*;
 use substreams::errors::Error;
-use substreams_ton::pb::ton::tvm::v1::{call_result::Outcome, emulate_result};
+use substreams_ton::pb::ton::tvm::v1::__buffa::oneof::{call_result::Outcome, emulate_result};
 use substreams_ton::tvm;
-use substreams_ton::types::{account, account_state, msg_address_int, Block};
+use substreams_ton::types::__buffa::oneof::{account, account_state, msg_address_int};
+use substreams_ton::types::{account::Existing, BlockLazyView};
 use substreams_ton::Address;
 
 use crate::pb;
@@ -58,16 +59,17 @@ impl Checks {
 }
 
 #[substreams::handlers::map]
-fn map_rston_check(block: Block) -> Result<pb::RstonCheck, Error> {
-    let mc = block.masterchain_block.as_ref().ok_or_else(|| Error::msg("no masterchain block"))?;
+fn map_rston_check(block: &BlockLazyView<'_>) -> Result<pb::RstonCheck, Error> {
+    let block = substreams_ton::block(block)?;
+    let mc = block.masterchain_block.as_option().ok_or_else(|| Error::msg("no masterchain block"))?;
     let mut checks =
-        Checks(pb::RstonCheck { mc_seqno: mc.id.as_ref().map_or(0, |id| id.seq_no), ..Default::default() });
+        Checks(pb::RstonCheck { mc_seqno: mc.id.as_option().map_or(0, |id| id.seq_no), ..Default::default() });
 
     let mut addresses = Vec::new();
     let mut seen = BTreeSet::new();
     for data in once(mc).chain(block.shard_blocks.iter()) {
-        let workchain = data.id.as_ref().and_then(|id| id.shard_id.as_ref()).map_or(0, |s| s.workchain_id);
-        for account_block in data.extra.iter().flat_map(|extra| extra.account_blocks.iter()) {
+        let workchain = data.id.as_option().and_then(|id| id.shard_id.as_option()).map_or(0, |s| s.workchain_id);
+        for account_block in data.extra.as_option().into_iter().flat_map(|extra| extra.account_blocks.iter()) {
             let Ok(id) = account_block.account_addr.as_slice().try_into() else { continue };
             let address = Address::new(workchain, id);
             if addresses.len() < MAX_ACCOUNTS && seen.insert(address) {
@@ -88,7 +90,7 @@ fn map_rston_check(block: Block) -> Result<pb::RstonCheck, Error> {
     for ((address, message), pair) in addresses.iter().zip(&messages).zip(results.chunks(2)) {
         let label = address.to_string();
         let snapshot = pair[0].clone().account()?;
-        let value = snapshot.value.unwrap_or_default();
+        let value = snapshot.value.into_option().unwrap_or_default();
         if let Some(boc) = &value.shard_account_boc {
             checks.0.accounts += 1;
             check_shard_account(&mut checks, &label, address, boc, &value);
@@ -127,7 +129,7 @@ fn check_shard_account(
         Ok(account) => account,
         Err(e) => return checks.check(false, format!("{label}: Account does not parse: {e}")),
     };
-    match (&account, value.account.as_ref().and_then(|a| a.kind.as_ref())) {
+    match (&account, value.account.as_option().and_then(|a| a.kind.as_ref())) {
         (None, Some(account::Kind::AccountNone(_))) => {}
         (Some(account), Some(account::Kind::Account(existing))) => {
             check_account(checks, label, address, account, existing)
@@ -136,11 +138,11 @@ fn check_shard_account(
     }
 }
 
-fn check_account(checks: &mut Checks, label: &str, address: &Address, account: &Account, existing: &account::Existing) {
+fn check_account(checks: &mut Checks, label: &str, address: &Address, account: &Account, existing: &Existing) {
     let IntAddr::Std(std) = &account.address else {
         return checks.check(false, format!("{label}: not a standard address"));
     };
-    let proto_address = match existing.addr.as_ref().and_then(|a| a.kind.as_ref()) {
+    let proto_address = match existing.addr.as_option().and_then(|a| a.kind.as_ref()) {
         Some(msg_address_int::Kind::AddrStd(std)) => Some((std.workchain_id, std.address.clone())),
         _ => None,
     };
@@ -163,15 +165,15 @@ fn check_account(checks: &mut Checks, label: &str, address: &Address, account: &
             format!("{label}: base64 {text} does not parse back"),
         );
     }
-    let storage = existing.storage.as_ref();
+    let storage = existing.storage.as_option();
     checks.check(
         storage.is_some_and(|s| {
             s.last_trans_lt == account.last_trans_lt
-                && s.balance.as_ref().map_or(0, |b| b.grams) as u128 == account.balance.tokens.into_inner()
+                && s.balance.as_option().map_or(0, |b| b.grams) as u128 == account.balance.tokens.into_inner()
         }),
         format!("{label}: storage"),
     );
-    let proto_state = storage.and_then(|s| s.state.as_ref()).and_then(|s| s.kind.as_ref());
+    let proto_state = storage.and_then(|s| s.state.as_option()).and_then(|s| s.kind.as_ref());
     let same_state = match (&account.state, proto_state) {
         (AccountState::Uninit, Some(account_state::Kind::AccountUninit(_))) => true,
         (AccountState::Frozen(hash), Some(account_state::Kind::AccountFrozen(frozen))) => {
@@ -179,7 +181,7 @@ fn check_account(checks: &mut Checks, label: &str, address: &Address, account: &
         }
         (AccountState::Active(init), Some(account_state::Kind::AccountActive(proto))) => {
             let code = init.code.as_ref().map(|c| c.repr_hash().as_slice().to_vec());
-            code == proto.code.as_ref().map(|c| c.hash.clone())
+            code == proto.code.as_option().map(|c| c.hash.clone())
         }
         _ => false,
     };
@@ -201,7 +203,7 @@ fn check_transaction(
         Ok(tx) => tx,
         Err(e) => return checks.check(false, format!("{label}: Transaction does not parse: {e}")),
     };
-    let Some(proto) = executed.transaction.as_ref() else {
+    let Some(proto) = executed.transaction.as_option() else {
         return checks.check(false, format!("{label}: no transaction"));
     };
     checks.check(cell.repr_hash().as_slice() == proto.hash.as_slice(), format!("{label}: transaction hash"));
@@ -211,7 +213,7 @@ fn check_transaction(
             && tx.prev_trans_lt == proto.prev_trans_lt
             && tx.now == proto.now
             && tx.out_msg_count.into_inner() as u32 == proto.outmsg_cnt
-            && tx.total_fees.tokens.into_inner() == proto.total_fees.as_ref().map_or(0, |f| f.grams) as u128,
+            && tx.total_fees.tokens.into_inner() == proto.total_fees.as_option().map_or(0, |f| f.grams) as u128,
         format!("{label}: transaction fields"),
     );
     checks.check(
