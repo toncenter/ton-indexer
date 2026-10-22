@@ -2,17 +2,26 @@
 //! get-method returns is at index 0.
 
 use num_bigint::BigInt;
+use rston::boc::Boc;
+use rston::cell::Cell;
 
-use crate::pb::ton::tvm::v1::{__buffa::oneof::stack_entry::Value, StackEntry, Tuple};
+use crate::pb::ton::tvm::v1::{StackEntry, Tuple};
 use crate::tvm::Error;
+
+/// A value of a stack: the `value` of a [`StackEntry`].
+pub use crate::pb::ton::tvm::v1::__buffa::oneof::stack_entry::Value;
 
 /// An integer: int257, minimal two's complement big-endian.
 pub fn int(value: impl Into<BigInt>) -> StackEntry {
     entry(Value::Integer(value.into().to_signed_bytes_be()))
 }
 
+pub fn cell(cell: &Cell) -> StackEntry {
+    cell_boc(Boc::encode(cell))
+}
+
 /// A cell, by the BOC of one cell.
-pub fn cell(boc: Vec<u8>) -> StackEntry {
+pub fn cell_boc(boc: Vec<u8>) -> StackEntry {
     entry(Value::Cell(boc))
 }
 
@@ -46,8 +55,12 @@ pub trait StackExt {
         }
     }
 
+    fn cell(&self, index: usize) -> Result<Cell, Error> {
+        Boc::decode(self.cell_boc(index)?).map_err(Error::Boc)
+    }
+
     /// The BOC of the cell at index.
-    fn cell(&self, index: usize) -> Result<&[u8], Error> {
+    fn cell_boc(&self, index: usize) -> Result<&[u8], Error> {
         match self.value(index)? {
             Value::Cell(boc) => Ok(boc),
             other => Err(type_error(index, "cell", other)),
@@ -135,9 +148,23 @@ mod tests {
 
     #[test]
     fn wrong_types_are_errors() {
-        let stack = [cell(vec![1]), null()];
+        let stack = [cell_boc(vec![1]), null()];
         assert!(stack.int(0).is_err());
-        assert_eq!(stack.cell(0).unwrap(), &[1]);
+        assert_eq!(stack.cell_boc(0).unwrap(), &[1]);
+        assert!(matches!(stack.cell(0), Err(Error::Boc(_))));
+        assert!(stack.cell(1).is_err());
         assert!(stack.cell(2).is_err());
+    }
+
+    #[test]
+    fn cells_round_trip() {
+        let mut builder = rston::cell::CellBuilder::new();
+        builder.store_u32(0xdead_beef).unwrap();
+        let cell = builder.build().unwrap();
+        assert_eq!(stack_of(cell.clone()).cell(0).unwrap().repr_hash(), cell.repr_hash());
+    }
+
+    fn stack_of(cell: Cell) -> [StackEntry; 1] {
+        [super::cell(&cell)]
     }
 }

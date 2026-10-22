@@ -5,10 +5,10 @@ use std::collections::BTreeMap;
 use std::iter::once;
 
 use substreams::errors::Error;
+use substreams_ton::oneof::{account, account_state};
 use substreams_ton::tvm;
-use substreams_ton::types::__buffa::oneof::{account, account_state};
 use substreams_ton::types::{Account, BlockLazyView};
-use substreams_ton::{Address, At};
+use substreams_ton::{At, StdAddr};
 
 use crate::pb;
 
@@ -19,7 +19,7 @@ const MAX_DETAILS: usize = 5;
 /// An account through the round: its state before its first transaction in
 /// the round, after its last one, and that last transaction.
 struct Changed<'a> {
-    address: Address,
+    address: StdAddr,
     before: &'a Account,
     after: &'a Account,
     last_lt: u64,
@@ -37,7 +37,7 @@ fn map_account_check(block: &BlockLazyView<'_>) -> Result<pb::AccountCheck, Erro
     let mut blocks: Vec<_> = once(mc).chain(block.shard_blocks.iter()).collect();
     blocks.sort_by_key(|data| data.id.as_option().map_or(0, |id| id.seq_no));
     let mut changed: Vec<Changed> = Vec::new();
-    let mut index: BTreeMap<Address, usize> = BTreeMap::new();
+    let mut index: BTreeMap<StdAddr, usize> = BTreeMap::new();
     for data in blocks {
         let workchain = data.id.as_option().and_then(|id| id.shard_id.as_option()).map_or(0, |s| s.workchain_id);
         for account_block in data.extra.as_option().into_iter().flat_map(|extra| extra.account_blocks.iter()) {
@@ -48,8 +48,7 @@ fn map_account_check(block: &BlockLazyView<'_>) -> Result<pb::AccountCheck, Erro
             ) else {
                 continue;
             };
-            let Ok(id) = account_block.account_addr.as_slice().try_into() else { continue };
-            let address = Address::new(workchain, id);
+            let Some(address) = crate::address(workchain, &account_block.account_addr) else { continue };
             match index.get(&address) {
                 Some(&i) => {
                     changed[i].after = after;
@@ -57,7 +56,7 @@ fn map_account_check(block: &BlockLazyView<'_>) -> Result<pb::AccountCheck, Erro
                     changed[i].last_hash = &last.hash;
                 }
                 None if changed.len() < MAX_ACCOUNTS => {
-                    index.insert(address, changed.len());
+                    index.insert(address.clone(), changed.len());
                     changed.push(Changed { address, before, after, last_lt: last.lt, last_hash: &last.hash });
                 }
                 None => {}

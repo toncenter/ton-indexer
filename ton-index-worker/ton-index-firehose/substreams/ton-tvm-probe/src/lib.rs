@@ -28,13 +28,15 @@ use std::iter::once;
 
 use buffa::Enumeration;
 use substreams::errors::Error;
-use substreams_ton::pb::ton::tvm::v1::{__buffa::oneof::call_result::Outcome, CallResult, ContextOverrides};
+use substreams_ton::oneof::account;
+use substreams_ton::pb::ton::tvm::v1::{CallResult, ContextOverrides};
+use substreams_ton::rston::cell::HashBytes;
 use substreams_ton::stack::StackExt;
-use substreams_ton::tvm::{self, EmulationOutcome, GetMethodCall};
-use substreams_ton::types::{__buffa::oneof::account, BlockLazyView};
-use substreams_ton::{Address, At};
+use substreams_ton::tvm::{self, EmulationOutcome, GetMethodCall, Outcome};
+use substreams_ton::types::BlockLazyView;
+use substreams_ton::{At, StdAddr};
 
-const ELECTOR: Address = Address::new(-1, [0x33; 32]);
+const ELECTOR: StdAddr = StdAddr::new(-1, HashBytes([0x33; 32]));
 
 /// An external message to the elector with an empty body.
 const EXTERNAL_TO_ELECTOR: &str =
@@ -52,7 +54,7 @@ fn map_probe(block: &BlockLazyView<'_>) -> Result<pb::Probe, Error> {
         .find_map(|data| {
             let workchain = data.id.as_option()?.shard_id.as_option()?.workchain_id;
             let account = data.extra.as_option()?.account_blocks.first()?;
-            Some(Address::new(workchain, account.account_addr.as_slice().try_into().ok()?))
+            address(workchain, &account.account_addr)
         })
         .unwrap_or(ELECTOR);
     let external = hex::decode(EXTERNAL_TO_ELECTOR)?;
@@ -69,7 +71,7 @@ fn map_probe(block: &BlockLazyView<'_>) -> Result<pb::Probe, Error> {
             tvm::get_method(&ELECTOR, "seqno")
                 .context(ContextOverrides { block_rand_seed: Some(vec![0; 32]), ..Default::default() }),
         )
-        .add(tvm::get_method(&Address::new(0, [0; 32]), "seqno").gas_limit(u64::MAX));
+        .add(tvm::get_method(&StdAddr::new(0, HashBytes([0; 32])), "seqno").gas_limit(u64::MAX));
     let results = batch.execute()?;
 
     let clock_matches = match &results[0].outcome {
@@ -126,11 +128,8 @@ fn describe(result: CallResult) -> String {
     }
 }
 
-// rston (its ahash) asks for randomness, which a module has none of and
-// must not depend on: a constant keeps hash map seeds, and their order, the
-// same on every run (.cargo/config.toml selects this backend).
-#[no_mangle]
-unsafe extern "Rust" fn __getrandom_v03_custom(dest: *mut u8, len: usize) -> Result<(), getrandom::Error> {
-    core::ptr::write_bytes(dest, 0x5a, len);
-    Ok(())
+/// The address of an account of a block: the workchain of its shard and its
+/// account_addr.
+pub(crate) fn address(workchain: i32, account_addr: &[u8]) -> Option<StdAddr> {
+    Some(StdAddr::new(workchain.try_into().ok()?, HashBytes(account_addr.try_into().ok()?)))
 }

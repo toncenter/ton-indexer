@@ -816,9 +816,6 @@ dependencies = [
  "num-traits",
  "pbkdf2",
  "rston-proc",
- "scc",
- "serde",
- "serde_json",
  "sha2",
  "smallvec",
  "thiserror 2.0.21",
@@ -871,21 +868,6 @@ name = "rustversion"
 version = "1.0.23"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cf54715a573b99ac80df0bc206da022bcd442c974952c7b9720069370852e21f"
-
-[[package]]
-name = "scc"
-version = "2.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "46e6f046b7fef48e2660c57ed794263155d713de679057f2d0c169bfc6e756cc"
-dependencies = [
- "sdd",
-]
-
-[[package]]
-name = "sdd"
-version = "3.0.10"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "490dcfcbfef26be6800d11870ff2df8774fa6e86d047e3e8c8a76b25655e41ca"
 
 [[package]]
 name = "semver"
@@ -1047,8 +1029,10 @@ version = "0.1.0"
 dependencies = [
  "buffa",
  "buffa-types",
+ "getrandom 0.3.4",
  "hex",
  "num-bigint",
+ "rston",
  "substreams",
 ]
 
@@ -1219,10 +1203,8 @@ version = "0.1.0"
 dependencies = [
  "buffa",
  "buffa-build",
- "getrandom 0.3.4",
  "hex",
  "protoc-bin-vendored",
- "rston",
  "sha2",
  "substreams",
  "substreams-ton",

@@ -635,15 +635,19 @@ fn map_pools(block: Block) -> Result<Pools, Error> {
 
 - типы protobuf на buffa под `substreams` 0.8, сгенерированные в крейт
   (`cargo run -p pbgen`), с lazy views для блока;
-- построители вызовов: `Address` хранит `workchain` и `account_id` раздельно;
+- rston из acton для BOC, ячеек, TL-B и адресов, реэкспортом
+  (`substreams_ton::rston`), чтобы у модулей была его версия SDK, и
+  постоянная «случайность» getrandom для его хэш-таблиц;
+- построители вызовов на адресах `StdAddr` rston: вызов на адрес с anycast
+  SDK сам отвечает `INVALID_REQUEST` на его месте, без хоста;
   `.at(...)` у эмуляции формирует `AccountRef` без адреса, получателя
   сообщения берёт сервис, так что разбирать BOC сообщения в wasm не нужно;
   при переданном готовом BOC этот метод неприменим;
 - одна пачка — один вызов хоста: на запросы к роутеру её делит расширение;
 - преобразование `CallResult` в `Result` и обеих веток `EmulateResult` в
-  `EmulationOutcome`, без потери кода отказа принять сообщение;
-- помощники для стека: целые через num-bigint, адреса, ячейки. Для BOC хочется
-  взять rston из acton (см. открытые вопросы).
+  `EmulationOutcome`, без потери кода отказа принять сообщение; BOC ответов —
+  в типы rston (`parse_shard_account`, `parse_transaction`);
+- помощники для стека: целые через num-bigint, ячейки как `Cell` rston.
 
 ## Ошибки и детерминизм
 

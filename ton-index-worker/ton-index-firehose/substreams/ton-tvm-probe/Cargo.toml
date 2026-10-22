@@ -15,10 +15,6 @@ hex.workspace = true
 sha2.workspace = true
 substreams.workspace = true
 substreams-ton.workspace = true
-rston.workspace = true
-# rston needs randomness for its hash maps (ahash), which wasm32 has not:
-# src/lib.rs gives a constant one, with the cfg of ../.cargo/config.toml.
-getrandom.workspace = true
 
 [build-dependencies]
 buffa-build.workspace = true

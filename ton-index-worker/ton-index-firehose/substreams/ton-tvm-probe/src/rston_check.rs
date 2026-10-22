@@ -1,5 +1,6 @@
 //! rston, the TON library of acton, in a module: the BOCs ton_v1 gives are
-//! parsed by it and compared with the protobuf conversion of the executor.
+//! parsed by it, through the accessors of the SDK, and compared with the
+//! protobuf conversion of the executor.
 //! For the accounts that changed in the round: the ShardAccount of
 //! get_account (address, balance, last transaction, state, code hash), the
 //! address in its base64 forms and back, and an internal message rston makes,
@@ -9,17 +10,17 @@
 use std::collections::BTreeSet;
 use std::iter::once;
 
-use rston::models::{
-    Account, AccountState, CurrencyCollection, IntAddr, IntMsgInfo, Message, MsgInfo, ShardAccount, StdAddr,
-    StdAddrFormat, Transaction,
-};
-use rston::prelude::*;
 use substreams::errors::Error;
-use substreams_ton::pb::ton::tvm::v1::__buffa::oneof::{call_result::Outcome, emulate_result};
-use substreams_ton::tvm;
-use substreams_ton::types::__buffa::oneof::{account, account_state, msg_address_int};
+use substreams_ton::oneof::{account, account_state, msg_address_int};
+use substreams_ton::pb::ton::state::v1::AccountValue;
+use substreams_ton::pb::ton::tvm::v1::{__buffa::oneof::emulate_result, ExecutedTransaction};
+use substreams_ton::rston::models::{
+    Account, AccountState, CurrencyCollection, IntAddr, IntMsgInfo, Message, MsgInfo, StdAddrFormat,
+};
+use substreams_ton::rston::prelude::*;
+use substreams_ton::tvm::{self, Outcome};
 use substreams_ton::types::{account::Existing, BlockLazyView};
-use substreams_ton::Address;
+use substreams_ton::StdAddr;
 
 use crate::pb;
 
@@ -29,12 +30,12 @@ const MAX_DETAILS: usize = 8;
 const SOURCE: [u8; 32] = [0x22; 32];
 
 /// A bounceable internal message of 1 TON with no body, made by rston.
-fn internal(address: &Address) -> Result<Cell, Error> {
+fn internal(address: &StdAddr) -> Result<Cell, Error> {
     let message = Message {
         info: MsgInfo::Int(IntMsgInfo {
             bounce: true,
             src: IntAddr::Std(StdAddr::new(0, HashBytes(SOURCE))),
-            dst: IntAddr::Std(StdAddr::new(address.workchain as i8, HashBytes(address.account_id))),
+            dst: IntAddr::Std(address.clone()),
             value: CurrencyCollection::new(1_000_000_000),
             ..Default::default()
         }),
@@ -70,9 +71,8 @@ fn map_rston_check(block: &BlockLazyView<'_>) -> Result<pb::RstonCheck, Error> {
     for data in once(mc).chain(block.shard_blocks.iter()) {
         let workchain = data.id.as_option().and_then(|id| id.shard_id.as_option()).map_or(0, |s| s.workchain_id);
         for account_block in data.extra.as_option().into_iter().flat_map(|extra| extra.account_blocks.iter()) {
-            let Ok(id) = account_block.account_addr.as_slice().try_into() else { continue };
-            let address = Address::new(workchain, id);
-            if addresses.len() < MAX_ACCOUNTS && seen.insert(address) {
+            let Some(address) = crate::address(workchain, &account_block.account_addr) else { continue };
+            if addresses.len() < MAX_ACCOUNTS && seen.insert(address.clone()) {
                 addresses.push(address);
             }
         }
@@ -83,7 +83,7 @@ fn map_rston_check(block: &BlockLazyView<'_>) -> Result<pb::RstonCheck, Error> {
     for address in &addresses {
         let message = internal(address)?;
         batch.get_account(address);
-        batch.add(tvm::emulate(Boc::encode(&message)).return_state());
+        batch.add(tvm::emulate_message(&message).return_state());
         messages.push(message);
     }
     let results = batch.execute()?;
@@ -91,9 +91,9 @@ fn map_rston_check(block: &BlockLazyView<'_>) -> Result<pb::RstonCheck, Error> {
         let label = address.to_string();
         let snapshot = pair[0].clone().account()?;
         let value = snapshot.value.into_option().unwrap_or_default();
-        if let Some(boc) = &value.shard_account_boc {
+        if value.shard_account_boc.is_some() {
             checks.0.accounts += 1;
-            check_shard_account(&mut checks, &label, address, boc, &value);
+            check_shard_account(&mut checks, &label, address, &value);
         }
         if let Some(Outcome::Emulate(emulate)) = &pair[1].outcome {
             if let Some(emulate_result::Outcome::Executed(executed)) = &emulate.outcome {
@@ -105,20 +105,11 @@ fn map_rston_check(block: &BlockLazyView<'_>) -> Result<pb::RstonCheck, Error> {
     Ok(checks.0)
 }
 
-fn check_shard_account(
-    checks: &mut Checks,
-    label: &str,
-    address: &Address,
-    boc: &[u8],
-    value: &substreams_ton::pb::ton::state::v1::AccountValue,
-) {
-    let cell = match Boc::decode(boc) {
-        Ok(cell) => cell,
-        Err(e) => return checks.check(false, format!("{label}: ShardAccount BOC: {e}")),
-    };
-    let shard_account = match cell.parse::<ShardAccount>() {
-        Ok(shard_account) => shard_account,
-        Err(e) => return checks.check(false, format!("{label}: ShardAccount does not parse: {e}")),
+fn check_shard_account(checks: &mut Checks, label: &str, address: &StdAddr, value: &AccountValue) {
+    let shard_account = match value.parse_shard_account() {
+        Ok(Some(shard_account)) => shard_account,
+        Ok(None) => return checks.check(false, format!("{label}: ShardAccount omitted")),
+        Err(e) => return checks.check(false, format!("{label}: ShardAccount: {e}")),
     };
     checks.check(
         shard_account.last_trans_lt == value.last_trans_lt
@@ -138,7 +129,7 @@ fn check_shard_account(
     }
 }
 
-fn check_account(checks: &mut Checks, label: &str, address: &Address, account: &Account, existing: &Existing) {
+fn check_account(checks: &mut Checks, label: &str, address: &StdAddr, account: &Account, existing: &Existing) {
     let IntAddr::Std(std) = &account.address else {
         return checks.check(false, format!("{label}: not a standard address"));
     };
@@ -147,16 +138,15 @@ fn check_account(checks: &mut Checks, label: &str, address: &Address, account: &
         _ => None,
     };
     checks.check(
-        proto_address == Some((std.workchain as i32, std.address.as_slice().to_vec()))
-            && std.workchain as i32 == address.workchain
-            && std.address.as_slice() == address.account_id,
+        proto_address == Some((std.workchain as i32, std.address.as_slice().to_vec())) && std == address,
         format!("{label}: address"),
     );
+    // The raw form, and both base64 forms with the flags they were made with,
+    // parsed back by rston.
     checks.check(
-        std.to_string().eq_ignore_ascii_case(&address.to_string()),
-        format!("{label}: raw form {std} vs {address}"),
+        std.to_string().parse::<StdAddr>().is_ok_and(|back| &back == std),
+        format!("{label}: raw form {std} does not parse back"),
     );
-    // Both base64 forms, parsed back by rston with the flags they were made with.
     for bounceable in [true, false] {
         let text = std.display_base64_url(bounceable).to_string();
         let back = StdAddr::from_str_ext(&text, StdAddrFormat::any());
@@ -191,24 +181,20 @@ fn check_account(checks: &mut Checks, label: &str, address: &Address, account: &
 fn check_transaction(
     checks: &mut Checks,
     label: &str,
-    address: &Address,
+    address: &StdAddr,
     message: &Cell,
-    executed: &substreams_ton::pb::ton::tvm::v1::ExecutedTransaction,
+    executed: &ExecutedTransaction,
 ) {
-    let cell = match Boc::decode(&executed.transaction_boc) {
-        Ok(cell) => cell,
-        Err(e) => return checks.check(false, format!("{label}: transaction BOC: {e}")),
-    };
-    let tx = match cell.parse::<Transaction>() {
-        Ok(tx) => tx,
-        Err(e) => return checks.check(false, format!("{label}: Transaction does not parse: {e}")),
+    let (cell, tx) = match (executed.transaction_cell(), executed.parse_transaction()) {
+        (Ok(cell), Ok(tx)) => (cell, tx),
+        (Err(e), _) | (_, Err(e)) => return checks.check(false, format!("{label}: transaction: {e}")),
     };
     let Some(proto) = executed.transaction.as_option() else {
         return checks.check(false, format!("{label}: no transaction"));
     };
     checks.check(cell.repr_hash().as_slice() == proto.hash.as_slice(), format!("{label}: transaction hash"));
     checks.check(
-        tx.account.as_slice() == address.account_id
+        tx.account == address.address
             && tx.lt == proto.lt
             && tx.prev_trans_lt == proto.prev_trans_lt
             && tx.now == proto.now

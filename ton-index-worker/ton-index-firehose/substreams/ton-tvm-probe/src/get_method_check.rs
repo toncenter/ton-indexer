@@ -7,10 +7,9 @@ use std::collections::BTreeSet;
 use std::iter::once;
 
 use substreams::errors::Error;
-use substreams_ton::pb::ton::tvm::v1::__buffa::oneof::call_result::Outcome;
-use substreams_ton::tvm::{self, GetMethodCall};
+use substreams_ton::tvm::{self, GetMethodCall, Outcome};
 use substreams_ton::types::BlockLazyView;
-use substreams_ton::{Address, At};
+use substreams_ton::At;
 
 use crate::pb;
 
@@ -30,9 +29,8 @@ fn map_get_method_check(block: &BlockLazyView<'_>) -> Result<pb::GetMethodCheck,
     for data in once(mc).chain(block.shard_blocks.iter()) {
         let workchain = data.id.as_option().and_then(|id| id.shard_id.as_option()).map_or(0, |s| s.workchain_id);
         for account_block in data.extra.as_option().into_iter().flat_map(|extra| extra.account_blocks.iter()) {
-            let Ok(id) = account_block.account_addr.as_slice().try_into() else { continue };
-            let address = Address::new(workchain, id);
-            if addresses.len() < MAX_ACCOUNTS && seen.insert(address) {
+            let Some(address) = crate::address(workchain, &account_block.account_addr) else { continue };
+            if addresses.len() < MAX_ACCOUNTS && seen.insert(address.clone()) {
                 addresses.push(address);
             }
         }

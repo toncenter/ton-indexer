@@ -1,11 +1,23 @@
 //! TON for substreams modules.
 //!
-//! - [`types`]: the TON Firehose block, `sf.ton.type.v1`, and [`block`] to
-//!   read it in a handler;
+//! - [`types`]: the TON Firehose block, `sf.ton.type.v1`, with [`oneof`] for
+//!   its oneofs and [`block`] to read it in a handler;
 //! - [`tvm`]: the `ton_v1` extension of fireton: account states, get-methods
 //!   and the emulation of one transaction on the masterchain block the module
 //!   is processing;
-//! - [`stack`]: TVM stack values for get-methods.
+//! - [`stack`]: TVM stack values for get-methods;
+//! - [`rston`]: the TON library of acton, in the version of the SDK, for BOCs,
+//!   cells, TL-B and addresses: an address is its [`StdAddr`].
+//!
+//! rston hashes with ahash, whose seeds come from getrandom, which has no
+//! source of randomness on wasm32-unknown-unknown. The SDK gives it a
+//! constant one, and a module selects it in its `.cargo/config.toml` (the
+//! workspace of this repository has it):
+//!
+//! ```toml
+//! [target.wasm32-unknown-unknown]
+//! rustflags = ['--cfg', 'getrandom_backend="custom"']
+//! ```
 //!
 //! The semantics, the rules of requests and the limits are in
 //! `ton-index-firehose/substreams-tvm.md`.
@@ -18,11 +30,16 @@
 pub mod pb;
 
 mod address;
+mod random;
 pub mod stack;
 pub mod tvm;
 
-pub use address::Address;
 pub use pb::sf::ton::r#type::v1 as types;
+/// The oneofs of [`types`], by message: `oneof::account::Kind` is the kind of
+/// an `Account`.
+pub use pb::sf::ton::r#type::v1::__buffa::oneof;
+pub use rston;
+pub use rston::models::StdAddr;
 pub use tvm::{At, Error};
 
 /// The block of a handler, decoded whole from its lazy view.

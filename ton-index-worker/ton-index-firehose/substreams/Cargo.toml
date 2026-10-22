@@ -17,7 +17,8 @@ getrandom = "0.3"
 hex = "0.4"
 num-bigint = "0.4"
 protoc-bin-vendored = "3"
-rston = "0.5"
+# Crates take the features they use: the SDK takes models and base64.
+rston = { version = "0.5", default-features = false }
 sha2 = "0.10"
 substreams = "0.8"
 substreams-ton = { path = "substreams-ton" }

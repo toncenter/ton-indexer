@@ -6,11 +6,13 @@
 use std::iter::once;
 
 use substreams::errors::Error;
+use substreams_ton::oneof::account;
 use substreams_ton::pb::ton::state::v1::AccountSnapshot;
-use substreams_ton::pb::ton::tvm::v1::{__buffa::oneof::call_result::Outcome, CallResult, ContextOverrides, ErrorCode};
-use substreams_ton::tvm::{self, GetMethodCall};
-use substreams_ton::types::{__buffa::oneof::account, AccountBlock, BlockData, BlockLazyView, Transaction};
-use substreams_ton::{Address, At};
+use substreams_ton::pb::ton::tvm::v1::{CallResult, ContextOverrides, ErrorCode};
+use substreams_ton::rston::cell::HashBytes;
+use substreams_ton::tvm::{self, GetMethodCall, Outcome};
+use substreams_ton::types::{AccountBlock, BlockData, BlockLazyView, Transaction};
+use substreams_ton::{At, StdAddr};
 
 use crate::{account_check::without_bocs, pb};
 
@@ -32,7 +34,7 @@ fn check(out: &mut pb::TxPointCheck, ok: bool, message: impl Into<String>) {
 /// The BOC of an external-in message to the address, of one cell with no
 /// StateInit and an empty body. The fixture of emulate_check has a fixed
 /// destination; this one is made for each account.
-fn external(address: &Address) -> Vec<u8> {
+fn external(address: &StdAddr) -> Vec<u8> {
     // ext_in_msg_info$10, src addr_none$00, dest addr_std$10 with no anycast,
     // import_fee 0, no init, an inline body: 277 bits, then the completion
     // tag of a cell whose data is not a whole number of bytes.
@@ -48,7 +50,7 @@ fn external(address: &Address) -> Vec<u8> {
     put(0b00, 2);
     put(0b100, 3);
     put(address.workchain as u8 as u64, 8);
-    for byte in address.account_id {
+    for byte in address.address.0 {
         put(byte as u64, 8);
     }
     put(0, 4 + 1 + 1);
@@ -61,7 +63,7 @@ fn external(address: &Address) -> Vec<u8> {
 }
 
 struct Point<'a> {
-    address: Address,
+    address: StdAddr,
     block: &'a BlockData,
     account: &'a AccountBlock,
     tx: &'a Transaction,
@@ -102,13 +104,14 @@ fn map_tx_point_check(block: &BlockLazyView<'_>) -> Result<pb::TxPointCheck, Err
     let mut points = Vec::new();
     for (data, a) in candidates.into_iter().take(MAX_ACCOUNTS) {
         let workchain = data.id.as_option().and_then(|id| id.shard_id.as_option()).map_or(0, |s| s.workchain_id);
-        let address = Address::new(workchain, a.account_addr.as_slice().try_into()?);
+        let address = crate::address(workchain, &a.account_addr).ok_or_else(|| Error::msg("no account address"))?;
         let last = a.transactions.len() - 1;
         let mut indices = vec![0, 1.min(last), a.transactions.len() / 2, last];
         indices.sort_unstable();
         indices.dedup();
         for index in indices {
             for after in [false, true] {
+                let address = address.clone();
                 points.push(Point { address, block: data, account: a, tx: &a.transactions[index], index, after });
             }
         }
@@ -117,7 +120,7 @@ fn map_tx_point_check(block: &BlockLazyView<'_>) -> Result<pb::TxPointCheck, Err
     for point in &points {
         batch.add(tvm::get_account(&point.address).at(point.at()));
     }
-    let invalid_address = points.first().map_or(Address::new(0, [0; 32]), |p| p.address);
+    let invalid_address = points.first().map_or(StdAddr::new(0, HashBytes([0; 32])), |p| p.address.clone());
     batch
         .add(tvm::get_account(&invalid_address).at(At::BeforeTx(0)))
         .add(tvm::get_account(&invalid_address).at(At::AfterTx(u64::MAX)))
@@ -159,7 +162,8 @@ fn map_tx_point_check(block: &BlockLazyView<'_>) -> Result<pb::TxPointCheck, Err
             && snapshot.gen_utime == info.gen_utime
             && snapshot.gen_lt == info.end_lt
             && source.is_some_and(|s| {
-                s.address.as_option() == Some(&point.address.to_pb()) && s.at.as_option() == Some(&point.at().into())
+                s.address.as_option().and_then(|a| StdAddr::try_from(a).ok()).as_ref() == Some(&point.address)
+                    && s.at.as_option() == Some(&point.at().into())
             });
         check(&mut out, provenance, format!("{}: snapshot provenance", point.label()));
         let last = point.index + 1 == point.account.transactions.len();

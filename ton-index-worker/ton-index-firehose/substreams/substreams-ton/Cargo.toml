@@ -9,6 +9,9 @@ repository.workspace = true
 [dependencies]
 buffa.workspace = true
 buffa-types.workspace = true
+# The backend of src/random.rs, for the hash maps of rston.
+getrandom.workspace = true
 hex.workspace = true
 num-bigint.workspace = true
+rston = { workspace = true, features = ["models", "base64"] }
 substreams.workspace = true

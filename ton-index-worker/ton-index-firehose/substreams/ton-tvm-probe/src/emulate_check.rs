@@ -5,13 +5,13 @@
 
 use sha2::{Digest, Sha256};
 use substreams::errors::Error;
-use substreams_ton::pb::ton::tvm::v1::__buffa::oneof::{call_result::Outcome, emulate_result, stack_entry};
-use substreams_ton::pb::ton::tvm::v1::{
-    Call, CallResult, ContextOverrides, ErrorCode, ExecutedTransaction, StackEntry,
-};
-use substreams_ton::tvm::{self, GetMethodCall};
+use substreams_ton::pb::ton::tvm::v1::__buffa::oneof::emulate_result;
+use substreams_ton::pb::ton::tvm::v1::{CallResult, ContextOverrides, ErrorCode, ExecutedTransaction, StackEntry};
+use substreams_ton::rston::cell::HashBytes;
+use substreams_ton::stack::{self, Value};
+use substreams_ton::tvm::{self, Call, GetMethodCall, Outcome};
 use substreams_ton::types::BlockLazyView;
-use substreams_ton::{stack, Address, At};
+use substreams_ton::{At, StdAddr};
 
 use crate::pb;
 
@@ -70,7 +70,7 @@ fn expected_seed(account_id: &[u8], version: u32) -> StackEntry {
     if integer[0] & 0x80 != 0 {
         integer.insert(0, 0);
     }
-    StackEntry { value: Some(stack_entry::Value::Integer(integer)), ..Default::default() }
+    StackEntry { value: Some(Value::Integer(integer)), ..Default::default() }
 }
 
 /// What the fixture contract stores and returns: NOW, BLOCKLT, LTIME, RANDSEED.
@@ -177,7 +177,7 @@ fn map_emulate_check(block: &BlockLazyView<'_>) -> Result<pb::EmulateCheck, Erro
     let mut batch = Named::default();
     // The network state of an address, after the block and before it, in the
     // same public context of N; a missing account source is the destination.
-    let address = Address::new(0, FIXTURE_ACCOUNT);
+    let address = StdAddr::new(0, HashBytes(FIXTURE_ACCOUNT));
     batch
         .add("state after", tvm::get_account(&address))
         .add("emulate after", tvm::emulate(internal.clone()).context(context(8)).return_state())
