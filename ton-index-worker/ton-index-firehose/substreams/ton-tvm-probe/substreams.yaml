@@ -59,3 +59,11 @@ modules:
       - source: sf.ton.type.v1.Block
     output:
       type: proto:probe.v1.TxPointCheck
+
+  # rston, the TON library of acton, against the conversion of the executor.
+  - name: map_rston_check
+    kind: map
+    inputs:
+      - source: sf.ton.type.v1.Block
+    output:
+      type: proto:probe.v1.RstonCheck

@@ -78,7 +78,8 @@ with `git checkout -- pb/`.
 
 `stand.sh` runs the router, tier1 and tier2 of fireton as transient units on
 the store host, on localhost only and apart from the production units:
-binaries in `/srv/scratch/fireton-test/bin`, tier1 on 127.0.0.1:10041. The
+binaries in `/srv/scratch/fireton-test/bin`, tier1 on 127.0.0.1:10041, or
+on `TIER1_ADDR`, such as a private address to reach it from the VPN. The
 router has the stub backend, or the ton-tvm-executor at `EXECUTOR_ADDR`. The
 modules of `../substreams/ton-tvm-probe`:
 
@@ -94,7 +95,11 @@ modules of `../substreams/ton-tvm-probe`:
 - `map_tx_point_check`: before_tx and after_tx against the boundary states of
   the block, adjacent points, provenance, and get-methods and emulation on
   those states against their BOCs; accounts with several transactions first,
-  so that replays run.
+  so that replays run;
+- `map_rston_check`: rston, the TON library of acton, against the conversion
+  of the executor on the accounts that changed: ShardAccount, Account,
+  addresses raw and base64, and a transaction emulated from a message that
+  rston builds.
 
 Every output must have no `mismatches` and no `details`. The same range run
 again must come from the cache: the same bytes, and no new requests on

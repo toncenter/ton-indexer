@@ -61,3 +61,13 @@ message TxPointCheck {
   uint32 replay_mismatches = 9;
   repeated string details = 10;
 }
+
+// rston against the protobuf conversion of the executor, on the accounts that
+// changed in the round: their ShardAccount and an emulated transaction.
+message RstonCheck {
+  uint32 mc_seqno = 1;
+  uint32 accounts = 2;  // ShardAccounts parsed
+  uint32 transactions = 3;  // emulated transactions parsed
+  uint32 mismatches = 4;
+  repeated string details = 5;
+}

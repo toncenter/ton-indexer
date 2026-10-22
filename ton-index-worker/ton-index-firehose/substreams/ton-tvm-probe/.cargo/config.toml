@@ -1,0 +1,4 @@
+# getrandom has no source of randomness on wasm32-unknown-unknown: the module
+# gives it one (__getrandom_v03_custom in src/lib.rs).
+[target.wasm32-unknown-unknown]
+rustflags = ['--cfg', 'getrandom_backend="custom"']

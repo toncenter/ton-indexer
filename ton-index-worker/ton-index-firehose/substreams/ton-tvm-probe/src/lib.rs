@@ -13,6 +13,7 @@ mod pb {
 
 mod account_check;
 mod get_method_check;
+mod rston_check;
 mod emulate_check;
 mod tx_point_check;
 
@@ -108,4 +109,13 @@ fn describe(result: CallResult) -> String {
         },
         None => "no outcome".to_string(),
     }
+}
+
+// rston (its ahash) asks for randomness, which a module has none of and
+// must not depend on: a constant keeps hash map seeds, and their order, the
+// same on every run (.cargo/config.toml selects this backend).
+#[no_mangle]
+unsafe extern "Rust" fn __getrandom_v03_custom(dest: *mut u8, len: usize) -> Result<(), getrandom::Error> {
+    core::ptr::write_bytes(dest, 0x5a, len);
+    Ok(())
 }

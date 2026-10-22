@@ -12,6 +12,10 @@ sha2 = "0.10"
 prost = "0.13"
 substreams = "0.7"
 substreams-ton = { path = "../substreams-ton" }
+rston = "0.5"
+# rston needs randomness for its hash maps (ahash), which wasm32 has not:
+# src/lib.rs gives a constant one, with the cfg of .cargo/config.toml.
+getrandom = "0.3"
 
 [build-dependencies]
 prost-build = "0.13"
