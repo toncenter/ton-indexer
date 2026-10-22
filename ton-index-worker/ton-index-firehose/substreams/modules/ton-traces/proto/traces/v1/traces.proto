@@ -65,22 +65,3 @@ message PendingTransaction {
   uint32 mc_seqno = 1;
   sf.ton.type.v1.Transaction transaction = 2;
 }
-
-// What map_traces gives, without the transactions: for checks.
-message TraceDigests {
-  uint32 seqno = 1;
-  repeated TraceDigest traces = 2;
-}
-
-message TraceDigest {
-  string trace_id = 1;
-  string state = 2;
-  uint32 mc_seqno_start = 3;
-  uint32 mc_seqno_end = 4;
-  uint64 start_lt = 5;
-  uint64 end_lt = 6;
-  uint32 transactions_total = 7;
-  repeated string transactions = 8;  // hex hashes, by lt
-  repeated int32 parents = 9;         // -1 when unset
-  repeated uint32 depths = 10;
-}

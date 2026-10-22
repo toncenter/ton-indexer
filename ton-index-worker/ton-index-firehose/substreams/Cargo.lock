@@ -593,6 +593,7 @@ version = "0.1.0"
 dependencies = [
  "buffa-build",
  "protoc-bin-vendored",
+ "tempfile",
 ]
 
 [[package]]

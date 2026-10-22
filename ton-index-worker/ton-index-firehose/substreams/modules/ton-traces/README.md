@@ -11,7 +11,6 @@
 | `store_trace_size` | store (add) | число транзакций каждого незакончившегося трейса |
 | `store_pending` | store (set) | первые `max_transactions` транзакций каждого трейса под ключом `<trace_id>/<lt>/<hash>`, пока он не закончился |
 | `map_traces` | map | трейсы, закончившиеся в блоке, с транзакциями |
-| `map_trace_digests` | map | то же без транзакций: id, хэши, родители, глубины — для проверок |
 
 Как это работает. В каждом блоке TON Firehose у транзакции есть `trace_id`,
 а `Block.traces` перечисляет трейсы, закончившиеся в этом блоке, с полными
@@ -117,14 +116,8 @@ cargo build --target wasm32-unknown-unknown --release
 substreams pack substreams.yaml -o ton-traces.spkg
 ```
 
-Трейсы, закончившиеся в 300 блоках, коротко (с пакетом из `substreams-dev.yaml`
-выше, иначе — прогрев всей истории):
-
-```bash
-substreams run ton-traces.spkg map_trace_digests -s 100053000 -t +300 --production-mode --limit-processed-blocks 0 -o jsonl
-```
-
-Целиком, с транзакциями (тяжелее):
+Трейсы с транзакциями (с пакетом из `substreams-dev.yaml` выше, иначе —
+прогрев всей истории):
 
 ```bash
 substreams run ton-traces.spkg map_traces -s 100053000 -t +10 --production-mode --limit-processed-blocks 0 -o jsonl
@@ -135,10 +128,10 @@ substreams run ton-traces.spkg map_traces -s 100053000 -t +10 --production-mode 
 Проверки — на копиях манифеста с `initialBlock` 100 050 000 и 3 290 000 (код
 тот же), плюс пакет как есть на блоках 1–1000.
 
-- **Параллельный счёт = последовательному.** `map_trace_digests` в
-  production-mode (stores посчитаны сегментами по 1000 блоков на tier2) и
-  прогон подряд от `initialBlock` дали одинаковые 2302 трейса в блоках
-  100 053 000–100 053 299.
+- **Параллельный счёт = последовательному.** В production-mode (stores
+  посчитаны сегментами по 1000 блоков на tier2) и при прогоне подряд от
+  `initialBlock` совпали id, хэши транзакций, родители и глубины всех 2302
+  трейсов в блоках 100 053 000–100 053 299.
 - **Совпадение с прежним прототипом.** На всех 3300 блоках
   100 050 000–100 053 299 — те же 27 156 трейсов, транзакции и родители, все
   `COMPLETE`. Прототип на этих блоках сверялся с `/api/v3/traces`: 160 трейсов
@@ -169,5 +162,3 @@ substreams run ton-traces.spkg map_traces -s 100053000 -t +10 --production-mode 
 - Трейсы, которые TraceAssembler так и не закрыл, остаются в stores навсегда
   (до 1000 транзакций каждый). Сколько их за всю историю, станет видно после
   прогрева, по размеру снапшота `store_pending`.
-- Транзакции целиком — это трафик клиента; `map_trace_digests` — лёгкий
-  вариант, можно сделать промежуточный.

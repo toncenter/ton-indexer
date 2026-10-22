@@ -59,3 +59,7 @@ The C++ code is generated at build time. The Go code is checked in
 (`fireton/pb`, `fireton/gen.sh`), and so is the code of the SDK
 (`substreams/substreams-ton/src/pb`, `cargo run -p pbgen`); modules generate
 the code of their own outputs at build time.
+
+`pbgen` generates into a temporary directory before replacing the SDK
+bindings, so a compilation error leaves the checked-in files intact. CI
+regenerates them and checks that they match the committed files.

@@ -409,8 +409,8 @@ class RoundActor final : public td::actor::Actor {
 class Coordinator final : public td::actor::Actor {
  public:
   Coordinator(td::actor::ActorId<DbScanner> db, std::vector<td::uint32> seqnos, std::size_t parallel,
-              std::string out)
-      : db_(db), seqnos_(std::move(seqnos)), parallel_(parallel), out_(out, std::ios::app) {
+              std::ofstream out)
+      : db_(db), seqnos_(std::move(seqnos)), parallel_(parallel), out_(std::move(out)) {
   }
 
  private:
@@ -449,6 +449,10 @@ class Coordinator final : public td::actor::Actor {
     mismatches_ += static_cast<long long>(report.mismatches.size());
     out_ << report.json() << "\n";
     out_.flush();
+    if (!out_) {
+      LOG(ERROR) << "cannot write replay report for round " << report.seqno;
+      std::_Exit(1);
+    }
     if (timer_.elapsed() - last_log_ > 30 || done_ == seqnos_.size()) {
       last_log_ = timer_.elapsed();
       std::cerr << done_ << "/" << seqnos_.size() << " rounds, " << transactions_ << " transactions, " << replayed_
@@ -689,6 +693,7 @@ int main(int argc, char* argv[]) {
     std::_Exit(2);
   }
   std::vector<td::uint32> seqnos;
+  std::ofstream output;
   if (version_probes == 0 && shard_probes == 0) {
     if (!seqnos_file.empty()) {
       std::ifstream file(seqnos_file);
@@ -705,6 +710,11 @@ int main(int argc, char* argv[]) {
       std::_Exit(2);
     }
     seqnos = parsed.move_as_ok();
+    output.open(out, std::ios::app);
+    if (!output) {
+      LOG(ERROR) << "cannot open replay output: " << out;
+      std::_Exit(1);
+    }
   }
   td::mkpath(working_dir + "/").ensure();
   vm::init_vm(false).ensure();
@@ -722,7 +732,7 @@ int main(int argc, char* argv[]) {
           "search", db_scanner.get(), what, version_probes > 0 ? version_probes : shard_probes, search_from, search_to);
     } else {
       coordinator = td::actor::create_actor<tvm_executor::Coordinator>("replay", db_scanner.get(),
-                                                                        std::move(seqnos), parallel, out);
+                                                                        std::move(seqnos), parallel, std::move(output));
     }
   });
   scheduler.run();

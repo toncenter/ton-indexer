@@ -4,7 +4,6 @@
 //! the block, so they must answer alike. Needs ton-tvm-executor.
 
 use std::collections::BTreeSet;
-use std::iter::once;
 
 use substreams::errors::Error;
 use substreams_ton::tvm::{self, GetMethodCall, Outcome};
@@ -20,18 +19,17 @@ const METHODS: [&str; 3] = ["seqno", "get_public_key", "get_wallet_data"];
 
 #[substreams::handlers::map]
 fn map_get_method_check(block: &BlockLazyView<'_>) -> Result<pb::GetMethodCheck, Error> {
-    let block = substreams_ton::block(block)?;
-    let mc = block.masterchain_block.as_option().ok_or_else(|| Error::msg("no masterchain block"))?;
-    let mut out = pb::GetMethodCheck { mc_seqno: mc.id.as_option().map_or(0, |id| id.seq_no), ..Default::default() };
+    let mc = block.masterchain()?.ok_or_else(|| Error::msg("no masterchain block"))?;
+    let mut out = pb::GetMethodCheck { mc_seqno: mc.id.get()?.map_or(0, |id| id.seq_no), ..Default::default() };
 
     let mut addresses = Vec::new();
     let mut seen = BTreeSet::new();
-    for data in once(mc).chain(block.shard_blocks.iter()) {
-        let workchain = data.id.as_option().and_then(|id| id.shard_id.as_option()).map_or(0, |s| s.workchain_id);
-        for account_block in data.extra.as_option().into_iter().flat_map(|extra| extra.account_blocks.iter()) {
-            let Some(address) = crate::address(workchain, &account_block.account_addr) else { continue };
-            if addresses.len() < MAX_ACCOUNTS && seen.insert(address.clone()) {
-                addresses.push(address);
+    for account_block in block.account_blocks() {
+        let Some(address) = account_block?.address() else { continue };
+        if seen.insert(address.clone()) {
+            addresses.push(address);
+            if addresses.len() == MAX_ACCOUNTS {
+                break;
             }
         }
     }

@@ -55,13 +55,5 @@ modules:
     output:
       type: proto:traces.v1.Traces
 
-  - name: map_trace_digests
-    kind: map
-    initialBlock: 1
-    inputs:
-      - map: map_traces
-    output:
-      type: proto:traces.v1.TraceDigests
-
 params:
   store_pending: "max_transactions=1000"

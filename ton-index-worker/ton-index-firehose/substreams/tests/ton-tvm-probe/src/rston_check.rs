@@ -8,7 +8,6 @@
 //! messages, fees, the inbound message itself).
 
 use std::collections::BTreeSet;
-use std::iter::once;
 
 use substreams::errors::Error;
 use substreams_ton::oneof::{account, account_state, msg_address_int};
@@ -61,19 +60,17 @@ impl Checks {
 
 #[substreams::handlers::map]
 fn map_rston_check(block: &BlockLazyView<'_>) -> Result<pb::RstonCheck, Error> {
-    let block = substreams_ton::block(block)?;
-    let mc = block.masterchain_block.as_option().ok_or_else(|| Error::msg("no masterchain block"))?;
-    let mut checks =
-        Checks(pb::RstonCheck { mc_seqno: mc.id.as_option().map_or(0, |id| id.seq_no), ..Default::default() });
+    let mc = block.masterchain()?.ok_or_else(|| Error::msg("no masterchain block"))?;
+    let mut checks = Checks(pb::RstonCheck { mc_seqno: mc.id.get()?.map_or(0, |id| id.seq_no), ..Default::default() });
 
     let mut addresses = Vec::new();
     let mut seen = BTreeSet::new();
-    for data in once(mc).chain(block.shard_blocks.iter()) {
-        let workchain = data.id.as_option().and_then(|id| id.shard_id.as_option()).map_or(0, |s| s.workchain_id);
-        for account_block in data.extra.as_option().into_iter().flat_map(|extra| extra.account_blocks.iter()) {
-            let Some(address) = crate::address(workchain, &account_block.account_addr) else { continue };
-            if addresses.len() < MAX_ACCOUNTS && seen.insert(address.clone()) {
-                addresses.push(address);
+    for account_block in block.account_blocks() {
+        let Some(address) = account_block?.address() else { continue };
+        if seen.insert(address.clone()) {
+            addresses.push(address);
+            if addresses.len() == MAX_ACCOUNTS {
+                break;
             }
         }
     }
@@ -95,14 +92,22 @@ fn map_rston_check(block: &BlockLazyView<'_>) -> Result<pb::RstonCheck, Error> {
             checks.0.accounts += 1;
             check_shard_account(&mut checks, &label, address, &value);
         }
-        if let Some(Outcome::Emulate(emulate)) = &pair[1].outcome {
-            if let Some(emulate_result::Outcome::Executed(executed)) = &emulate.outcome {
-                checks.0.transactions += 1;
-                check_transaction(&mut checks, &label, address, message, executed);
-            }
-        }
+        check_emulation(&mut checks, &label, address, message, pair[1].outcome.as_ref());
     }
     Ok(checks.0)
+}
+
+fn check_emulation(checks: &mut Checks, label: &str, address: &StdAddr, message: &Cell, outcome: Option<&Outcome>) {
+    match outcome {
+        Some(Outcome::Emulate(emulate)) => match &emulate.outcome {
+            Some(emulate_result::Outcome::Executed(executed)) => {
+                checks.0.transactions += 1;
+                check_transaction(checks, label, address, message, executed);
+            }
+            other => checks.check(false, format!("{label}: internal message was not executed: {other:?}")),
+        },
+        other => checks.check(false, format!("{label}: expected emulation result: {other:?}")),
+    }
 }
 
 fn check_shard_account(checks: &mut Checks, label: &str, address: &StdAddr, value: &AccountValue) {
@@ -209,4 +214,38 @@ fn check_transaction(
     // A BOC rston encodes again is the same tree.
     let again = Boc::decode(Boc::encode(&cell));
     checks.check(again.is_ok_and(|c| c.repr_hash() == cell.repr_hash()), format!("{label}: BOC round trip"));
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use substreams_ton::pb::ton::tvm::v1::{CallError, EmulateResult, ErrorCode};
+
+    #[test]
+    fn unsuccessful_internal_emulation_is_a_mismatch() {
+        let address = StdAddr::new(0, HashBytes([7; 32]));
+        let message = internal(&address).unwrap();
+        let outcomes = [
+            None,
+            Some(Outcome::Error(Box::new(CallError {
+                code: ErrorCode::InvalidRequest.into(),
+                message: "rejected message".into(),
+                ..Default::default()
+            }))),
+            Some(Outcome::Account(Box::default())),
+            Some(Outcome::Emulate(Box::default())),
+            Some(Outcome::Emulate(Box::new(EmulateResult {
+                outcome: Some(emulate_result::Outcome::ExternalNotAccepted(Box::default())),
+                ..Default::default()
+            }))),
+        ];
+        for outcome in outcomes {
+            let mut checks = Checks(pb::RstonCheck::default());
+            check_emulation(&mut checks, "test account", &address, &message, outcome.as_ref());
+            assert_eq!(checks.0.mismatches, 1);
+            assert_eq!(checks.0.transactions, 0);
+            assert_eq!(checks.0.details.len(), 1);
+            assert!(checks.0.details[0].starts_with("test account:"));
+        }
+    }
 }

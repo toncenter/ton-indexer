@@ -95,6 +95,7 @@ td::Result<std::unique_ptr<Replay>> Replay::create(const AccountState& state, co
 }
 
 td::Result<std::string> Replay::advance(const ReplayTransaction& transaction) {
+  emulated_ = {};
   auto mismatch = [&](td::Slice reason) -> std::string {
     return PSTRING() << "replay lt " << transaction.lt << ": " << reason;
   };
@@ -124,7 +125,6 @@ td::Result<std::string> Replay::advance(const ReplayTransaction& transaction) {
   }
   // The config is checked by create(): an error is of this transaction. The
   // account is moved into the emulator; after a mismatch the replay is over.
-  emulated_ = {};
   auto result = emulator_.emulate_transaction(std::move(account_), tx.r1.in_msg->prefetch_ref(), now_, tx.lt, type);
   if (result.is_error()) {
     return mismatch(result.error().message());

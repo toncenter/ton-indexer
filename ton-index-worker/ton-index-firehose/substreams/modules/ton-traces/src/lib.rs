@@ -36,9 +36,9 @@ mod pb {
 use std::collections::{BTreeMap, HashMap};
 
 use buffa::view::LazyMessageView;
-use buffa::{DecodeError, Enumeration};
+use buffa::DecodeError;
 use pb::ton::{BlockLazyView, TransactionLazyView};
-use pb::traces::{trace::State, Node, PendingTransaction, Trace, TraceDigest, TraceDigests, Traces};
+use pb::traces::{trace::State, Node, PendingTransaction, Trace, Traces};
 use substreams::errors::Error;
 use substreams::pb::substreams::store_delta::Operation;
 use substreams::store::{
@@ -175,36 +175,6 @@ fn map_traces(
         });
     }
     Ok(out)
-}
-
-/// map_traces without the transactions: ids and the shape of each trace.
-#[substreams::handlers::map]
-fn map_trace_digests(traces: Traces) -> Result<TraceDigests, Error> {
-    Ok(TraceDigests {
-        seqno: traces.seqno,
-        traces: traces
-            .traces
-            .iter()
-            .map(|trace| TraceDigest {
-                trace_id: hex::encode(&trace.trace_id),
-                state: trace.state.as_known().map_or("?", |s| s.proto_name()).to_string(),
-                mc_seqno_start: trace.mc_seqno_start,
-                mc_seqno_end: trace.mc_seqno_end,
-                start_lt: trace.start_lt,
-                end_lt: trace.end_lt,
-                transactions_total: trace.transactions_total,
-                transactions: trace
-                    .transactions
-                    .iter()
-                    .map(|n| n.transaction.as_option().map_or(String::new(), |t| hex::encode(&t.hash)))
-                    .collect(),
-                parents: trace.transactions.iter().map(|n| n.parent.map_or(-1, |p| p as i32)).collect(),
-                depths: trace.transactions.iter().map(|n| n.depth).collect(),
-                ..Default::default()
-            })
-            .collect(),
-        ..Default::default()
-    })
 }
 
 /// The transactions by lt, linked into their tree.

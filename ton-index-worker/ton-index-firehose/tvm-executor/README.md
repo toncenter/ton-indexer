@@ -148,6 +148,10 @@ by bisection between probes. A run writes a line of JSON per round, which
 of mismatches; `reference` makes a reference of a run, and `compare` tells
 the rounds where another run differs from it.
 
+The output file is opened before database initialization. A failure to open,
+write or flush it terminates replay with a nonzero exit code; a missing
+report must not look like a successful run.
+
 ```bash
 ./replay-report.py summary run.jsonl --sample sample.json
 ```
@@ -223,7 +227,9 @@ zerostate in the archive's seqno index.
 
 ## Build
 
-It needs grpc++ and its protoc plugin, and is skipped where they are missing:
+The server needs grpc++ and its protoc plugin, and is skipped where they are
+missing. `ton-tvm-replay` and `test-ton-tvm-calls` only need protobuf and TON
+and remain available without gRPC:
 
 ```bash
 sudo apt-get install libgrpc++-dev protobuf-compiler-grpc libprotobuf-dev protobuf-compiler

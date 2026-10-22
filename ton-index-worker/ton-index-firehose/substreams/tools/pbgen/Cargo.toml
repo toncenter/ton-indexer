@@ -10,3 +10,4 @@ publish = false
 [dependencies]
 buffa-build.workspace = true
 protoc-bin-vendored.workspace = true
+tempfile = "3"
