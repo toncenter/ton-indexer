@@ -1,0 +1,20 @@
+[package]
+name = "jetton_transfers"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+buffa.workspace = true
+hex.workspace = true
+substreams.workspace = true
+substreams-ton.workspace = true
+
+[build-dependencies]
+buffa-build.workspace = true
+protoc-bin-vendored.workspace = true

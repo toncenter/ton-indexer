@@ -3,9 +3,10 @@
 
 use num_bigint::BigInt;
 use rston::boc::Boc;
-use rston::cell::Cell;
+use rston::cell::{Cell, CellBuilder, CellSliceParts, CellSliceRange, Load};
+use rston::models::{AnyAddr, StdAddr};
 
-use crate::pb::ton::tvm::v1::{StackEntry, Tuple};
+use crate::pb::ton::tvm::v1::{Slice, StackEntry, Tuple};
 use crate::tvm::Error;
 
 /// A value of a stack: the `value` of a [`StackEntry`].
@@ -23,6 +24,21 @@ pub fn cell(cell: &Cell) -> StackEntry {
 /// A cell, by the BOC of one cell.
 pub fn cell_boc(boc: Vec<u8>) -> StackEntry {
     entry(Value::Cell(boc))
+}
+
+/// A slice of a whole cell.
+pub fn slice(cell: &Cell) -> StackEntry {
+    entry(Value::Slice(Box::new(Slice {
+        cell_boc: Boc::encode(cell),
+        end_bit: cell.bit_len().into(),
+        end_ref: cell.reference_count().into(),
+        ..Default::default()
+    })))
+}
+
+/// An address as get-methods take it: a slice of addr_std.
+pub fn address(address: &StdAddr) -> StackEntry {
+    slice(&CellBuilder::build_from(address).expect("an address fits in a cell"))
 }
 
 pub fn null() -> StackEntry {
@@ -64,6 +80,42 @@ pub trait StackExt {
         match self.value(index)? {
             Value::Cell(boc) => Ok(boc),
             other => Err(type_error(index, "cell", other)),
+        }
+    }
+
+    /// The slice at index: its cell and the range of it, which `range.apply(&cell)`
+    /// makes a rston slice of.
+    fn slice(&self, index: usize) -> Result<CellSliceParts, Error> {
+        let slice = match self.value(index)? {
+            Value::Slice(slice) => slice,
+            other => return Err(type_error(index, "slice", other)),
+        };
+        let cell = Boc::decode(&slice.cell_boc).map_err(Error::Boc)?;
+        let out_of_cell = || Error::Protocol(format!("stack value {index} is a slice out of its cell"));
+        let bits = |n: u32| u16::try_from(n).map_err(|_| out_of_cell());
+        let refs = |n: u32| u8::try_from(n).map_err(|_| out_of_cell());
+        let (start_bit, start_ref) = (bits(slice.start_bit)?, refs(slice.start_ref)?);
+        let (end_bit, end_ref) = (bits(slice.end_bit)?, refs(slice.end_ref)?);
+        let mut range = CellSliceRange::full(&cell);
+        range.skip_first(start_bit, start_ref).map_err(|_| out_of_cell())?;
+        range
+            .only_first(
+                end_bit.checked_sub(start_bit).ok_or_else(out_of_cell)?,
+                end_ref.checked_sub(start_ref).ok_or_else(out_of_cell)?,
+            )
+            .map_err(|_| out_of_cell())?;
+        Ok((range, cell))
+    }
+
+    /// The address in the slice at index, as get-methods give one: none for
+    /// addr_none; an address that is not addr_std is `InvalidData`.
+    fn address(&self, index: usize) -> Result<Option<StdAddr>, Error> {
+        let (range, cell) = self.slice(index)?;
+        let mut slice = range.apply(&cell).map_err(Error::Tlb)?;
+        match AnyAddr::load_from(&mut slice).map_err(Error::Tlb)? {
+            AnyAddr::None => Ok(None),
+            AnyAddr::Std(address) => Ok(Some(address)),
+            _ => Err(Error::Tlb(rston::error::Error::InvalidData)),
         }
     }
 
@@ -166,5 +218,26 @@ mod tests {
 
     fn stack_of(cell: Cell) -> [StackEntry; 1] {
         [super::cell(&cell)]
+    }
+
+    #[test]
+    fn addresses_round_trip_through_slices() {
+        use rston::cell::{CellFamily, HashBytes, Store};
+        let wallet = StdAddr::new(0, HashBytes([0x5a; 32]));
+        assert_eq!([address(&wallet)].address(0).unwrap(), Some(wallet.clone()));
+
+        // A slice that starts inside its cell, as a get-method may return one.
+        let mut builder = CellBuilder::new();
+        builder.store_u8(0xff).unwrap();
+        wallet.store_into(&mut builder, rston::cell::Cell::empty_context()).unwrap();
+        let cell = builder.build().unwrap();
+        let inner =
+            Slice { cell_boc: Boc::encode(&cell), start_bit: 8, end_bit: cell.bit_len().into(), ..Default::default() };
+        assert_eq!([entry(Value::Slice(Box::new(inner)))].address(0).unwrap(), Some(wallet));
+
+        let mut none = CellBuilder::new();
+        none.store_zeros(2).unwrap();
+        assert_eq!([slice(&none.build().unwrap())].address(0).unwrap(), None);
+        assert!([int(1)].address(0).is_err());
     }
 }

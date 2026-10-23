@@ -1,0 +1,31 @@
+specVersion: v0.1.0
+package:
+  name: ton_jetton_transfers
+  version: v0.1.0
+  doc: |
+    TON jetton transfers: every transfer message a jetton wallet received,
+    the wallet verified at its master, as the index detects them.
+
+network: ton
+
+protobuf:
+  files:
+    - sf/ton/type/v1/type.proto
+    - jettons/v1/jetton_transfers.proto
+  importPaths:
+    - ../../../proto
+    - ./proto
+
+binaries:
+  default:
+    type: wasm/rust-v1
+    file: ../../target/wasm32-unknown-unknown/release/jetton_transfers.wasm
+
+modules:
+  - name: map_jetton_transfers
+    kind: map
+    initialBlock: 1
+    inputs:
+      - source: sf.ton.type.v1.Block
+    output:
+      type: proto:jettons.v1.JettonTransfers

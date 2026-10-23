@@ -7,7 +7,7 @@
 # - tools/pbgen: generates the protobuf code of the SDK.
 [workspace]
 resolver = "2"
-members = ["substreams-ton", "modules/ton-traces", "tests/smoke", "tests/ton-tvm-probe", "tools/pbgen"]
+members = ["substreams-ton", "modules/jetton-transfers", "modules/ton-traces", "tests/smoke", "tests/ton-tvm-probe", "tools/pbgen"]
 
 [workspace.package]
 edition = "2021"

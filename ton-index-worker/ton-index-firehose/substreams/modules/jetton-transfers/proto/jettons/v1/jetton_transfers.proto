@@ -1,0 +1,34 @@
+syntax = "proto3";
+
+package jettons.v1;
+
+// The jetton transfers of a masterchain round: the transfer messages
+// (transfer#0f8a7ea5) that jetton wallets received, a wallet being one whose
+// master derives it for its owner.
+message JettonTransfers {
+  uint32 mc_seqno = 1;
+  repeated JettonTransfer transfers = 2;
+}
+
+// As JettonTransfer of the index (tondb-scanner/src/IndexData.h). Addresses
+// are raw, 0:HEX; amounts are decimal; payloads are BOCs, whose encoding is
+// not the index's: compare their root hashes.
+message JettonTransfer {
+  optional bytes trace_id = 1;
+  bytes transaction_hash = 2;
+  uint64 transaction_lt = 3;
+  uint32 transaction_now = 4;
+  bool transaction_aborted = 5;
+  uint64 query_id = 6;
+  string amount = 7;
+  string source = 8;  // the sender of the message: the owner
+  string destination = 9;  // the owner it is sent to
+  string jetton_wallet = 10;
+  string jetton_master = 11;
+  string response_destination = 12;  // addr_none as the index writes it
+  optional bytes custom_payload = 13;  // BOC
+  string forward_ton_amount = 14;
+  // BOC: the referenced payload, or the payload stored in the body made a
+  // cell of its own; unset for an empty one.
+  optional bytes forward_payload = 15;
+}

@@ -9,13 +9,20 @@
 #   sudo ./stand.sh start [stub-lag]   # e.g. 8s: blocks are reached 8 s after their gen_utime
 #   sudo EXECUTOR_ADDR=192.0.2.10:10060 ./stand.sh start
 #   sudo EXECUTOR_ADDR=192.0.2.10:10060 TIER1_ADDR=192.0.2.20:10041 ./stand.sh start
+#   sudo TIER1_SUBREQUESTS=90 STAND_MEMORY_MAX=160G STAND_CPU_WEIGHT=30 ./stand.sh start
 #   sudo ./stand.sh restart-router [stub-lag]
 #   sudo ./stand.sh stop
 #   sudo ./stand.sh status
 #
 # Binaries in $root/bin (fireton, ton-tvm-router), state in $root.
 # tier1: TIER1_ADDR (127.0.0.1:10041), tier2: 10042, router: 10040; metrics on
-# 9141, 9142, 9140.
+# 9141, 9142, 9140. TIER1_SUBREQUESTS (4) is how many segments of a request
+# tier2 runs at once, within the workers of tier1's session pool (100 by
+# default, as many as TIER1_SUBREQUESTS above it); STAND_MEMORY_MAX (32G)
+# bounds each process, and
+# STAND_CPU_WEIGHT (100, as the production units) below 100 yields the CPU to
+# them. STAND_WASM_RUNTIME sets SUBSTREAMS_WASM_RUNTIME (wasmtime, or wazero),
+# STAND_GOGC sets GOGC of the processes.
 set -euo pipefail
 
 root=/srv/scratch/fireton-test
@@ -36,7 +43,9 @@ run() {
   shift
   systemd-run --unit="$unit" --collect -p User=firecore -p Group=firecore \
     -p EnvironmentFile=/etc/firecore/garage.env -p WorkingDirectory=$root \
-    -p MemoryMax=32G -p LimitNOFILE=1048576 "$@"
+    -p MemoryMax="${STAND_MEMORY_MAX:-32G}" -p CPUWeight="${STAND_CPU_WEIGHT:-100}" -p LimitNOFILE=1048576 \
+    ${STAND_WASM_RUNTIME:+-p Environment=SUBSTREAMS_WASM_RUNTIME=$STAND_WASM_RUNTIME} \
+    ${STAND_GOGC:+-p Environment=GOGC=$STAND_GOGC} "$@"
 }
 
 start_router() {
@@ -44,6 +53,11 @@ start_router() {
     --listen-addr=127.0.0.1:10040 --metrics-addr=127.0.0.1:9140 --stub-lag="${1:-0s}" \
     ${EXECUTOR_ADDR:+--executor-addr=$EXECUTOR_ADDR}
 }
+
+subrequests=${TIER1_SUBREQUESTS:-4}
+workers=$((subrequests > 100 ? subrequests : 100))
+sessions="local://?max_sessions_per_user=3&max_sessions=30&max_workers=$workers"
+sessions+="&max_workers_per_user=$workers&max_workers_per_session=$workers"
 
 case "${1:-}" in
   start)
@@ -58,6 +72,7 @@ case "${1:-}" in
       --substreams-tier1-block-type=sf.ton.type.v1.Block \
       --substreams-tier1-grpc-listen-addr="${TIER1_ADDR:-127.0.0.1:10041}" \
       --substreams-tier1-subrequests-endpoint=127.0.0.1:10042 \
+      --substreams-tier1-max-subrequests="$subrequests" --common-session-plugin="$sessions" \
       --substreams-ton-router-addr=127.0.0.1:10040 \
       --metrics-listen-addr=127.0.0.1:9141 --pprof-listen-addr=127.0.0.1:6071 \
       --log-level-switcher-listen-addr=127.0.0.1:1071
