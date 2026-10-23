@@ -58,8 +58,9 @@ reader-node работает рядом с синхронизированной 
 **Инструменты.** На хосте runner нужны `python3`, `rclone` и `zstd`; скрипты
 бэкфила лежат в `ton-index-worker/ton-index-firehose/ops/backfill`.
 
-**Версии.** firecore `v1.20.1`; он собран с substreams `v1.23.0`, CLI
-substreams должен быть той же версии.
+**Версии.** firecore `v1.20.1` (собран с substreams `v1.23.0`) — для
+reader-node, merger, relayer и firehose; substreams работают в fireton на
+firehose-core `v1.21.1`.
 
 ## 2. Собрать ton-index-firehose
 
@@ -300,41 +301,17 @@ firecore tools check merged-blocks "s3://<STORE_HOST>:3900/firehose/merged-block
 их content на диапазоне. Предупреждение о 99 blocks в bundle `0000000000`
 ожидаемо.
 
-## 9. Запустить live reader-node
+## 9. Запустить live
 
 Reader-node стартует с блока, следующего за историей. Пока шла подготовка,
 сеть уходит вперёд, поэтому перед стартом догнать историю runner'ом до
 `X 099 999`, близкого к голове сети (bounded-прогон сам дождётся последнего
-блока), и стартовать reader-node с `X 100 000`.
+блока), и стартовать reader-node с `X 100 000`: `--from` в
+`services.firehose_reader.node_args` и `--reader-node-start-block-num` в
+`services.firehose_reader.additional_args`. Весь live-стек разворачивает
+плейбук из раздела 10.
 
-Reader-node разворачивается плейбуком `deploy-firehose.yaml` из корня
-репозитория. Он собирает tool на хосте `builder`, скачивает firecore с
-проверкой sha256 и ставит сервис `{{ stack_name }}__firehose_reader` на
-хосты группы `{{ stack_name }}__firehose_reader`. Сервис работает от root.
-
-Переменные (`ansible/config.yaml`):
-
-| Переменная | Значение |
-| --- | --- |
-| `firecore_version`, `firecore_sha256` | релиз firecore и sha256 `firehose-core_linux_x86_64.tar.gz` из `checksums.txt` релиза |
-| `firehose_store` | `s3://<STORE_HOST>:3900/firehose` |
-| `firehose_s3_access_key_id`, `firehose_s3_secret_access_key` | ключ firecore; пишется в env file с правами `0600` |
-| `services.firehose_reader.node_args` | аргументы tool: `--from <X 100 000>`, `--prewarm 3000`, потоки |
-| `services.firehose_reader.additional_args` | флаги reader-node, в том числе `--reader-node-start-block-num <X 100 000>` |
-
-В inventory для каждого хоста задать `firehose_reader_private_ip` — приватный
-адрес хоста. На нём слушают поток blocks для relayer (`:10010`) и метрики
-(`:9102`), остальные порты reader-node — только localhost.
-
-```bash
-ansible-playbook -i <INVENTORY> deploy-firehose.yaml \
-  -e @ansible/config.yaml [-e @<SECRETS>]
-```
-
-С `--tags deploy` плейбук только передеплоит сервис из уже собранного
-`artifacts/ton-index-firehose`.
-
-Особенности:
+Особенности reader-node:
 
 - `--from` действует только при первом старте. Дальше tool продолжает с
   cursor в `<working-dir>/firehose_cursor`, который отстаёт от выданных blocks
@@ -352,54 +329,93 @@ ansible-playbook -i <INVENTORY> deploy-firehose.yaml \
 - После старта reader-node догоняет сеть за минуты: на этих эпохах tool выдаёт
   1–2 тысячи blocks в секунду, дальше отставание от сети — 1–2 секунды.
 
-## 10. Запустить firecore на store host
+## 10. Развернуть стек плейбуком
 
-firecore ставится из release с проверкой sha256:
+`deploy-substreams.yaml` из корня репозитория собирает на хосте `builder`
+ton-index-firehose и ton-tvm-executor (C++), fireton и ton-tvm-router (Go),
+скачивает firecore с проверкой sha256 и ставит сервисы на хосты их групп.
+Store не разворачивается: он должен работать и содержать историю (разделы
+3–8). Префикс сервисов и групп inventory — `stack_name`, он задаётся в
+командной строке:
 
 ```bash
-V=v1.20.1
-curl -sSfLO https://github.com/streamingfast/firehose-core/releases/download/$V/firehose-core_linux_x86_64.tar.gz
-curl -sSfLO https://github.com/streamingfast/firehose-core/releases/download/$V/checksums.txt
-grep " firehose-core_linux_x86_64.tar.gz$" checksums.txt | sha256sum -c -
-sudo install -d /opt/firehose-core/$V
-sudo tar -C /opt/firehose-core/$V -xzf firehose-core_linux_x86_64.tar.gz
-sudo ln -sfn /opt/firehose-core/$V/firecore /usr/local/bin/firecore
-
-sudo useradd --system --home-dir /srv/scratch/firecore --shell /usr/sbin/nologin firecore
-sudo install -d -o firecore -g firecore -m 0750 /srv/scratch/firecore
-sudo install -d -m 0755 /etc/firecore
-sudo install -o root -g firecore -m 0640 <FIRECORE_KEY_FILE> /etc/firecore/garage.env
+ansible-playbook -i <INVENTORY> deploy-substreams.yaml \
+  -e @ansible/config.yaml [-e @<SECRETS>] -e stack_name=mainnet
 ```
 
-Units лежат в `ton-index-worker/ton-index-firehose/ops/deploy`, по одному на
-процесс:
+Группы (здесь и дальше с префиксом `mainnet__`; пример — в
+`ansible/inventory.yaml`):
 
-| Unit | Компоненты | gRPC | Метрики |
+| Группа | Сервисы | Хосты |
+| --- | --- | --- |
+| `mainnet__firehose_reader` | `mainnet__firehose_reader`: firecore reader-node с ton-index-firehose, от root | синхронизированная архивная нода |
+| `mainnet__tvm_executor` | `mainnet__tvm_executor`: ответы на вызовы ton_v1, от владельца DB | архивная нода со стейтами всей истории |
+| `mainnet__firehose_merger` | `mainnet__firehose_merger` | ровно один хост |
+| `mainnet__firehose_relayer` | `mainnet__firehose_relayer` | |
+| `mainnet__firehose` | `mainnet__firehose` | |
+| `mainnet__substreams` | `mainnet__substreams_tier1` и `mainnet__substreams_tier2` (fireton), `mainnet__tvm_router` | |
+
+Один хост может входить в несколько групп. Для каждого хоста задать
+`firehose_private_ip` — приватный адрес, к которому подключаются другие
+компоненты и Prometheus; остальные порты слушают localhost. Первым делом
+плейбук проверяет inventory: merger не больше одного, firehose и substreams
+нужен relayer, relayer — reader-node, substreams — executor. Relayer читает
+все reader-nodes, firehose и substreams берут live blocks у первого relayer,
+ton-tvm-router ходит в первый executor.
+
+| Сервис | gRPC | Метрики | Только localhost |
 | --- | --- | --- | --- |
-| `firecore-merger` | merger | `127.0.0.1:10012` | `<STORE_PRIVATE_IP>:9103` |
-| `firecore-relayer` | relayer | `127.0.0.1:10014` | `<STORE_PRIVATE_IP>:9104` |
-| `firecore-firehose` | firehose | `127.0.0.1:10015` | `<STORE_PRIVATE_IP>:9102` |
-| `firecore-substreams` | substreams tier1 и tier2 | `127.0.0.1:10016`, `127.0.0.1:10017` | `<STORE_PRIVATE_IP>:9105` |
+| reader-node | `<IP>:10010`, для relayer | `<IP>:9102` | manager API `10011` |
+| merger | `127.0.0.1:10012` | `<IP>:9103` | healthz `10013` |
+| relayer | `<IP>:10014`, для firehose и substreams | `<IP>:9104` | healthz `10018` |
+| firehose | `<IP>:10015`, для клиентов | `<IP>:9107` | |
+| substreams tier1 | `<IP>:10016`, для клиентов | `<IP>:9105` | |
+| substreams tier2 | `127.0.0.1:10017`, для tier1 | `<IP>:9106` | |
+| ton-tvm-router | `127.0.0.1:10040`, для tier1 и tier2 | `<IP>:9140` | |
+| ton-tvm-executor | `<IP>:10060`, для роутера | — | |
 
-Метрики слушают приватный адрес хоста, остальные порты — localhost. В units
-заменить адрес метрик на приватный адрес store host, а в
-`firecore-relayer.service` указать в `--relayer-source` адрес reader-node.
-Затем:
+gRPC firehose и tier1 — без TLS и авторизации, поэтому `firehose_private_ip`
+должен быть доступен только из приватной сети.
 
-```bash
-sudo install -m 0644 firecore-merger.service firecore-relayer.service \
-  firecore-firehose.service firecore-substreams.service /etc/systemd/system/
-sudo install -d -o firecore -g firecore /srv/scratch/firecore/merger /srv/scratch/firecore/relayer \
-  /srv/scratch/firecore/firehose /srv/scratch/firecore/substreams /srv/scratch/firecore/substreams-states
-sudo systemctl daemon-reload
-sudo systemctl enable --now firecore-merger firecore-relayer
-sudo systemctl enable --now firecore-firehose firecore-substreams
-```
+Переменные (`ansible/config.yaml`):
 
-Firehose и substreams берут историю из merged-blocks, live blocks — из
-relayer (`--common-live-blocks-addr=127.0.0.1:10014`), а промежуток между ними
-— из one-blocks. Кэш состояний substreams лежит в
-`/srv/scratch/firecore/substreams-states`.
+| Переменная | Значение |
+| --- | --- |
+| `firecore_version`, `firecore_sha256` | релиз firecore для reader-node, merger, relayer и firehose и sha256 `firehose-core_linux_x86_64.tar.gz` из `checksums.txt` релиза |
+| `fireton_go_toolchain` | Go для сборки fireton (`go.mod` требует 1.27): Go 1.24.7, общий с другими плейбуками, скачивает его сам |
+| `firehose_store`, `firehose_store_params` | `s3://<STORE_HOST>:3900/firehose` и параметры URL, `region=garage&insecure=true` |
+| `firehose_s3_access_key_id`, `firehose_s3_secret_access_key` | ключ firecore; пишется в env files с правами `0600` |
+| `firehose_user` | системный пользователь merger, relayer, firehose, substreams и роутера; плейбук его создаёт |
+| `firehose_data_path` | data dirs этих сервисов и кэш substreams, по умолчанию `/srv/scratch/<firehose_user>`: нужен большой диск |
+| `substreams_state_store` | кэш выходов модулей, общий для tier1 и tier2: каталог (`<firehose_data_path>/substreams-states`) или URL store |
+| `tvm_executor_packages` | разделяемые библиотеки executor (gRPC) для Ubuntu 24.04 |
+| `services.firehose_reader.node_args` | аргументы tool: `--from <X 100 000>`, `--prewarm 3000`, потоки |
+| `services.<сервис>` | `additional_args` — флаги сервиса, `memory_max`, `directories`; у executor — `service_user` |
+
+С `--tags deploy` плейбук только передеплоит сервисы из уже собранных
+`artifacts/`; `--tags firehose_reader`, `tvm_executor` или `firecore`
+передеплоит одну часть (`firecore` — merger, relayer, firehose и substreams;
+хосты — через `--limit`). Каждый прогон перезапускает сервисы, по одному на
+хост. glibc на `builder` должен быть не новее, чем на целевых хостах.
+
+Особенности:
+
+- fireton — firehose-core v1.21.1 с расширением ton_v1; reader-node, merger,
+  relayer и firehose остаются на release firecore v1.20.1. Такая связка
+  проверена на стенде.
+- tier1 и tier2 — отдельные процессы на одном хосте. Tier1 передаёт tier2
+  адрес роутера с каждым запросом, поэтому роутер слушает localhost на каждом
+  хосте substreams. `--substreams-tier1-max-subrequests=16` — сколько
+  сегментов одного запроса tier2 считает одновременно (по умолчанию 4).
+- `SUBSTREAMS_WASM_RUNTIME=wazero`: выходы побайтно те же, что у wasmtime, а
+  на лёгких blocks tier2 в несколько раз быстрее — wasmtime на каждом вызове
+  модуля упирается в глобальный лок рантайма Go.
+- На модулях с get-методами узкое место — executor: `--threads 8
+  --celldb-cache-size 1024` дают около 100 раундов в секунду на 97M, 32 потока
+  и кэш 16 GiB — около 280.
+
+Firehose и substreams берут историю из merged-blocks, live blocks — из relayer
+(`--common-live-blocks-addr`), а промежуток между ними — из one-blocks.
 
 Merger при старте листает merged-blocks (на миллионе bundles около 30 секунд)
 и пишет, с какого блока продолжает:
@@ -429,7 +445,7 @@ files, побайтно совпадает (после распаковки zstd
 
 ## 12. Проверить firehose и substreams
 
-Особенности флагов в units:
+Особенности флагов в `ansible/config.yaml`:
 
 - Без `--config-file=` firecore ищет `./firehose.yaml` и не стартует.
 - `--advertise-*`, `--ignore-advertise-validation` и
@@ -444,10 +460,10 @@ files, побайтно совпадает (после распаковки zstd
 Проверка firehose — несколько исторических и live blocks:
 
 ```bash
-firecore tools firehose-client --plaintext --proto-paths /etc/firecore/proto -o jsonl \
-  127.0.0.1:10015 40000000:40000002
-firecore tools firehose-client --plaintext --proto-paths /etc/firecore/proto -o jsonl \
-  127.0.0.1:10015 -- -2
+firecore tools firehose-client --plaintext --proto-paths <REPO>/ton-index-worker/ton-index-firehose/proto -o jsonl \
+  <FIREHOSE_IP>:10015 40000000:40000002
+firecore tools firehose-client --plaintext --proto-paths <REPO>/ton-index-worker/ton-index-firehose/proto -o jsonl \
+  <FIREHOSE_IP>:10015 -- -2
 ```
 
 Smoke-модуль `ton-index-worker/ton-index-firehose/substreams/tests/smoke` считает
@@ -462,11 +478,11 @@ cd ton-index-worker/ton-index-firehose/substreams/tests/smoke
 cargo build --target wasm32-unknown-unknown --release
 substreams pack substreams.yaml -o ton-smoke.spkg
 
-substreams run -e 127.0.0.1:10016 --plaintext ton-smoke.spkg map_block_stats \
+substreams run -e <SUBSTREAMS_IP>:10016 --plaintext ton-smoke.spkg map_block_stats \
   -s 40000000 -t +3 -o jsonl
-substreams run -e 127.0.0.1:10016 --plaintext ton-smoke.spkg map_totals \
+substreams run -e <SUBSTREAMS_IP>:10016 --plaintext ton-smoke.spkg map_totals \
   -s 200000 -t +1 --production-mode --limit-processed-blocks 0 -o jsonl
-substreams run -e 127.0.0.1:10016 --plaintext ton-smoke.spkg map_block_stats \
+substreams run -e <SUBSTREAMS_IP>:10016 --plaintext ton-smoke.spkg map_block_stats \
   -s -5 -o jsonl
 ```
 
@@ -487,14 +503,16 @@ blocks на подготовку stores.
     static_configs:
       - targets: ['<ARCHIVE_NODE_HOST>:9102']
         labels: {network: mainnet, component: reader-node}
-      - targets: ['<STORE_HOST>:9103']
+      - targets: ['<MERGER_HOST>:9103']
         labels: {network: mainnet, component: merger}
-      - targets: ['<STORE_HOST>:9104']
+      - targets: ['<RELAYER_HOST>:9104']
         labels: {network: mainnet, component: relayer}
-      - targets: ['<STORE_HOST>:9102']
+      - targets: ['<FIREHOSE_HOST>:9107']
         labels: {network: mainnet, component: firehose}
-      - targets: ['<STORE_HOST>:9105']
+      - targets: ['<SUBSTREAMS_HOST>:9105', '<SUBSTREAMS_HOST>:9106']
         labels: {network: mainnet, component: substreams}
+      - targets: ['<SUBSTREAMS_HOST>:9140']
+        labels: {network: mainnet, component: tvm-router}
 ```
 
 Дашборд для Grafana — `monitoring/grafana/firehose.json`: импортировать через

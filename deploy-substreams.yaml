@@ -1,0 +1,470 @@
+# The TON Firehose and substreams with the ton_v1 extension, as the stack
+# stack_name (-e stack_name=mainnet): its services and inventory groups are
+# named {{ stack_name }}__<name>. The store (S3, such as Garage) must be up and
+# hold the history in merged-blocks (ton-index-worker/ton-index-firehose/ops/backfill).
+#
+# Each component runs on the hosts of its group:
+#
+#   firehose_reader   firecore reader-node with ton-index-firehose, on a synced archive node
+#   tvm_executor      ton-tvm-executor, on an archive node: the backend of the ton_v1 calls
+#   firehose_merger   firecore merger, on one host
+#   firehose_relayer  firecore relayer
+#   firehose          firecore firehose
+#   substreams        fireton substreams tier1 and tier2, with ton-tvm-router
+#
+# Every host of these groups has firehose_private_ip, the address that the
+# other components and Prometheus connect to; the rest listens on localhost.
+# Config in ansible/config.yaml: firehose_*, substreams_*, tvm_executor_* and
+# services.{firehose_reader, tvm_executor, firehose_merger, firehose_relayer,
+# firehose, tvm_router, substreams_tier1, substreams_tier2}.
+
+- name: Check the inventory
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tags: [always]
+  vars:
+    readers: "{{ groups[stack_name ~ '__firehose_reader'] | default([]) }}"
+    executors: "{{ groups[stack_name ~ '__tvm_executor'] | default([]) }}"
+    mergers: "{{ groups[stack_name ~ '__firehose_merger'] | default([]) }}"
+    relayers: "{{ groups[stack_name ~ '__firehose_relayer'] | default([]) }}"
+    firehoses: "{{ groups[stack_name ~ '__firehose'] | default([]) }}"
+    substreams: "{{ groups[stack_name ~ '__substreams'] | default([]) }}"
+  tasks:
+    - name: Check the groups
+      ansible.builtin.assert:
+        that:
+          - mergers | length <= 1
+          - relayers | length > 0 or (firehoses + substreams) | length == 0
+          - readers | length > 0 or relayers | length == 0
+          - executors | length > 0 or substreams | length == 0
+        fail_msg: >-
+          {{ stack_name }}__firehose_merger has one host at most; firehose and
+          substreams need a relayer, the relayer a reader, substreams a tvm_executor
+
+    - name: Check firehose_private_ip
+      ansible.builtin.assert:
+        that: hostvars[item].firehose_private_ip is defined
+        fail_msg: "{{ item }} has no firehose_private_ip"
+        quiet: true
+      loop: "{{ (readers + executors + mergers + relayers + firehoses + substreams) | unique }}"
+
+- name: Prepare to build
+  hosts: builder
+  tasks:
+    - name: Install requirements
+      become: true
+      ansible.builtin.apt:
+        update_cache: true
+        cache_valid_time: 3600
+        name:
+          - build-essential
+          - cmake
+          - clang
+          - ninja-build
+          - openssl
+          - libssl-dev
+          - zlib1g-dev
+          - gperf
+          - wget
+          - git
+          - curl
+          - liblz4-dev
+          - pkg-config
+          - libsecp256k1-dev
+          - libsodium-dev
+          - libhiredis-dev
+          - python3-dev
+          - libpq-dev
+          - automake
+          - libjemalloc-dev
+          - autoconf
+          - libtool
+          - libmicrohttpd-dev
+          - libcurl4-openssl-dev
+          - libprotobuf-dev
+          - protobuf-compiler
+          - libgrpc++-dev
+          - protobuf-compiler-grpc
+          - libzstd-dev
+          - ccache
+          - rsync
+        state: present
+
+    - name: Ensure shared caches exist
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        mode: "0775"
+      loop:
+        - "{{ ansible_env.HOME }}/.cache/ccache"
+        - "{{ ansible_env.HOME }}/.cache/go-build"
+        - "{{ ansible_env.HOME }}/.cache/gomod"
+
+    # The Go of the other playbooks: fireton needs a newer one, which it
+    # downloads as a toolchain (fireton_go_toolchain).
+    - name: Ensure golang is installed
+      ansible.builtin.include_role:
+        name: geerlingguy.go
+        apply:
+          become: true
+      vars:
+        go_version: "1.24.7"
+        go_checksum: "da18191ddb7db8a9339816f3e2b54bdded8047cdc2a5d67059478f8d1595c43f"
+
+- name: Build ton-index-firehose, ton-tvm-executor, fireton and ton-tvm-router
+  hosts: builder
+  vars:
+    # the version fireton reports; dev outside a git checkout
+    fireton_version: "{{ lookup('ansible.builtin.pipe', 'git -C ' ~ playbook_dir ~ ' describe --always --dirty 2>/dev/null || echo dev') }}"
+  tasks:
+    - name: Create temp workspace
+      ansible.builtin.tempfile:
+        state: directory
+        suffix: ton-indexer
+      register: builddir
+
+    - block:
+        - name: Copy project to builder from . to "{{ builddir.path }}" with rsync
+          ansible.builtin.synchronize:
+            src: "./"
+            dest: "{{ builddir.path }}"
+            rsync_opts:
+              - "--exclude=.git"
+              - "--exclude=artifacts"
+              - "--exclude=/build"
+              - "--exclude=/ton-index-worker/ton-index-firehose/substreams/target"
+            recursive: yes
+            delete: no
+
+        # Only the C++ worker project: the root one needs Go. GSL and BLAS are
+        # optional for rldp2, which the reader does not use; without them the
+        # binaries need no BLAS libraries on the node host.
+        - name: Build ton-index-firehose and ton-tvm-executor
+          ansible.builtin.shell: |
+            set -e
+            cmake -DCMAKE_BUILD_TYPE=Release \
+                  -S ton-index-worker -B "{{ builddir.path }}/build" \
+                  -G Ninja \
+                  -DTON_USE_JEMALLOC=ON \
+                  -DCMAKE_DISABLE_FIND_PACKAGE_GSL=ON \
+                  -DCMAKE_DISABLE_FIND_PACKAGE_BLAS=ON \
+                  -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+                  -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+            cmake --build "{{ builddir.path }}/build" \
+                  --parallel {{ ansible_facts.processor_vcpus | default(2) }} \
+                  --target ton-index-firehose ton-tvm-executor
+          args:
+            chdir: "{{ builddir.path }}"
+          environment:
+            # ton does not build with gcc; the Dockerfile uses clang too
+            CC: clang
+            CXX: clang++
+            CCACHE_DIR: "{{ ansible_env.HOME }}/.cache/ccache"
+            CCACHE_BASEDIR: "{{ builddir.path }}"
+            CCACHE_SLOPPINESS: "file_macro"
+
+        # wasmtime of substreams needs cgo
+        - name: Build fireton and ton-tvm-router
+          ansible.builtin.command:
+            argv:
+              - go
+              - build
+              - -trimpath
+              - -ldflags=-X main.version={{ fireton_version }}
+              - -o
+              - "{{ builddir.path }}/go-bin/"
+              - ./cmd/fireton
+              - ./cmd/ton-tvm-router
+            chdir: "{{ builddir.path }}/ton-index-worker/ton-index-firehose/fireton"
+          environment:
+            PATH: "/usr/local/go/bin:{{ ansible_env.PATH }}"
+            GOTOOLCHAIN: "{{ fireton_go_toolchain }}"
+            CGO_ENABLED: "1"
+            GOCACHE: "{{ ansible_env.HOME }}/.cache/go-build"
+            GOMODCACHE: "{{ ansible_env.HOME }}/.cache/gomod"
+            GOFLAGS: "-modcacherw"
+
+        - name: Collect built binaries
+          ansible.builtin.fetch:
+            src: "{{ builddir.path }}/{{ item }}"
+            dest: "artifacts/"
+            flat: true
+          loop:
+            - "build/ton-index-firehose/reader/ton-index-firehose"
+            - "build/ton-index-firehose/tvm-executor/ton-tvm-executor"
+            - "go-bin/fireton"
+            - "go-bin/ton-tvm-router"
+      always:
+        - name: Cleanup workspace
+          ansible.builtin.file:
+            path: "{{ builddir.path }}"
+            state: absent
+
+# firecore reader-node runs ton-index-firehose on the node db and writes
+# one-block files to the store; the relayer takes its live blocks.
+- name: Deploy firehose reader-node service
+  hosts: "{{ stack_name }}__firehose_reader"
+  become: true
+  tags: [deploy, firehose_reader]
+  vars:
+    service_name: "{{ stack_name }}__firehose_reader"
+    service: "{{ services.firehose_reader }}"
+    firecore_dir: "{{ deploy_path }}/firecore-{{ firecore_version }}"
+
+  tasks:
+    - name: Install requirements
+      ansible.builtin.apt:
+        name:
+          - libjemalloc2
+          - curl
+          - zstd
+        state: present
+
+    - name: Ensure directories
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        mode: "0755"
+      loop: "{{ [deploy_path, firecore_dir] + service.directories }}"
+
+    - name: Download firecore
+      ansible.builtin.get_url:
+        url: "https://github.com/streamingfast/firehose-core/releases/download/{{ firecore_version }}/firehose-core_linux_x86_64.tar.gz"
+        dest: "{{ firecore_dir }}/firehose-core_linux_x86_64.tar.gz"
+        checksum: "sha256:{{ firecore_sha256 }}"
+        mode: "0644"
+
+    - name: Unpack firecore
+      ansible.builtin.unarchive:
+        src: "{{ firecore_dir }}/firehose-core_linux_x86_64.tar.gz"
+        dest: "{{ firecore_dir }}"
+        remote_src: true
+        include: [firecore]
+
+    - name: Copy ton-index-firehose binary
+      ansible.builtin.copy:
+        src: "artifacts/ton-index-firehose"
+        dest: "{{ deploy_path }}/{{ service_name }}"
+        mode: "0755"
+        owner: root
+        group: root
+
+    - name: Write store credentials
+      ansible.builtin.copy:
+        dest: "{{ service.environment_file }}"
+        content: |
+          AWS_ACCESS_KEY_ID={{ firehose_s3_access_key_id }}
+          AWS_SECRET_ACCESS_KEY={{ firehose_s3_secret_access_key }}
+        mode: "0600"
+        owner: root
+        group: root
+      no_log: true
+
+    - name: Create systemd service from template
+      ansible.builtin.template:
+        src: "ansible/systemd.service.j2"
+        dest: "{{ systemd_service_path }}/{{ service_name }}.service"
+        mode: "0644"
+        owner: root
+        group: root
+        force: true
+      vars:
+        start_cmd: >-
+          {{ firecore_dir }}/firecore start reader-node --config-file=
+          --reader-node-path={{ deploy_path }}/{{ service_name }}
+          "--reader-node-arguments={{ service.node_args }}"
+          {{ service.additional_args }}
+
+    - name: Restart and enable service
+      ansible.builtin.systemd:
+        name: "{{ service_name }}"
+        state: restarted
+        enabled: true
+        daemon_reload: true
+        force: true
+      throttle: 1
+
+# ton-tvm-executor answers the ton_v1 calls of substreams modules from the
+# node db, as its owner; ton-tvm-router on the substreams hosts calls it.
+- name: Deploy ton-tvm-executor service
+  hosts: "{{ stack_name }}__tvm_executor"
+  become: true
+  tags: [deploy, tvm_executor]
+  vars:
+    service_name: "{{ stack_name }}__tvm_executor"
+    service: "{{ services.tvm_executor }}"
+
+  tasks:
+    - name: Install requirements
+      ansible.builtin.apt:
+        name: "{{ tvm_executor_packages }}"
+        state: present
+
+    - name: Ensure binary directory
+      ansible.builtin.file:
+        path: "{{ deploy_path }}"
+        state: directory
+        mode: "0755"
+
+    - name: Ensure working directories
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        mode: "0750"
+        owner: "{{ service.service_user }}"
+        group: "{{ service.service_group }}"
+      loop: "{{ service.directories }}"
+
+    - name: Copy ton-tvm-executor binary
+      ansible.builtin.copy:
+        src: "artifacts/ton-tvm-executor"
+        dest: "{{ deploy_path }}/{{ service_name }}"
+        mode: "0755"
+        owner: root
+        group: root
+
+    - name: Create systemd service from template
+      ansible.builtin.template:
+        src: "ansible/systemd.service.j2"
+        dest: "{{ systemd_service_path }}/{{ service_name }}.service"
+        mode: "0644"
+        owner: root
+        group: root
+        force: true
+      vars:
+        start_cmd: "{{ deploy_path }}/{{ service_name }} {{ service.additional_args }}"
+
+    - name: Restart and enable service
+      ansible.builtin.systemd:
+        name: "{{ service_name }}"
+        state: restarted
+        enabled: true
+        daemon_reload: true
+        force: true
+      throttle: 1
+
+# merger, relayer and firehose are firecore apps; substreams tier1 and tier2
+# are fireton, firecore with the ton_v1 extension, and call ton-tvm-router on
+# their host. All run as firehose_user, each on the hosts of its group.
+- name: Deploy merger, relayer, firehose and substreams services
+  hosts: "{{ stack_name }}__firehose_merger:{{ stack_name }}__firehose_relayer:{{ stack_name }}__firehose:{{ stack_name }}__substreams"
+  become: true
+  tags: [deploy, firecore]
+  vars:
+    firecore_dir: "{{ deploy_path }}/firecore-{{ firecore_version }}"
+    fireton: "{{ deploy_path }}/{{ stack_name }}__fireton"
+    env_file: "{{ deploy_path }}/{{ stack_name }}__firehose.env"
+    # in the order they start: the group of the hosts that run a service
+    # (without the prefix), its command and whether it reads the store
+    all_services:
+      - {name: firehose_merger, group: firehose_merger, cmd: "{{ firecore_dir }}/firecore start merger", store: true}
+      - {name: firehose_relayer, group: firehose_relayer, cmd: "{{ firecore_dir }}/firecore start relayer", store: true}
+      - {name: firehose, group: firehose, cmd: "{{ firecore_dir }}/firecore start firehose", store: true}
+      - {name: tvm_router, group: substreams, cmd: "{{ deploy_path }}/{{ stack_name }}__tvm_router", store: false}
+      - {name: substreams_tier2, group: substreams, cmd: "{{ fireton }} start substreams-tier2", store: true}
+      - {name: substreams_tier1, group: substreams, cmd: "{{ fireton }} start substreams-tier1", store: true}
+    host_groups: "{{ group_names | select('match', stack_name ~ '__') | map('regex_replace', '^' ~ stack_name ~ '__', '') | list }}"
+    host_services: "{{ all_services | selectattr('group', 'in', host_groups) | list }}"
+
+  tasks:
+    - name: Ensure service group
+      ansible.builtin.group:
+        name: "{{ firehose_user }}"
+        system: true
+
+    - name: Ensure service user
+      ansible.builtin.user:
+        name: "{{ firehose_user }}"
+        group: "{{ firehose_user }}"
+        system: true
+        shell: /usr/sbin/nologin
+        create_home: false
+
+    - name: Ensure binary directories
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        mode: "0755"
+      loop: ["{{ deploy_path }}", "{{ firecore_dir }}"]
+
+    - name: Ensure data directories
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        mode: "0750"
+        owner: "{{ firehose_user }}"
+        group: "{{ firehose_user }}"
+      loop: >-
+        {{ host_services | map(attribute='name') | map('extract', services)
+           | map(attribute='directories', default=[]) | flatten | reject('search', '://') | unique }}
+
+    - name: Download firecore
+      ansible.builtin.get_url:
+        url: "https://github.com/streamingfast/firehose-core/releases/download/{{ firecore_version }}/firehose-core_linux_x86_64.tar.gz"
+        dest: "{{ firecore_dir }}/firehose-core_linux_x86_64.tar.gz"
+        checksum: "sha256:{{ firecore_sha256 }}"
+        mode: "0644"
+
+    - name: Unpack firecore
+      ansible.builtin.unarchive:
+        src: "{{ firecore_dir }}/firehose-core_linux_x86_64.tar.gz"
+        dest: "{{ firecore_dir }}"
+        remote_src: true
+        include: [firecore]
+
+    - name: Copy fireton and ton-tvm-router binaries
+      ansible.builtin.copy:
+        src: "{{ item.src }}"
+        dest: "{{ item.dest }}"
+        mode: "0755"
+        owner: root
+        group: root
+      loop:
+        - src: "artifacts/fireton"
+          dest: "{{ fireton }}"
+        - src: "artifacts/ton-tvm-router"
+          dest: "{{ deploy_path }}/{{ stack_name }}__tvm_router"
+      when: "'substreams' in host_groups"
+
+    - name: Write store credentials
+      ansible.builtin.copy:
+        dest: "{{ env_file }}"
+        content: |
+          AWS_ACCESS_KEY_ID={{ firehose_s3_access_key_id }}
+          AWS_SECRET_ACCESS_KEY={{ firehose_s3_secret_access_key }}
+        mode: "0600"
+        owner: root
+        group: root
+      no_log: true
+
+    - name: Create systemd services from template
+      ansible.builtin.template:
+        src: "ansible/systemd.service.j2"
+        dest: "{{ systemd_service_path }}/{{ service_name }}.service"
+        mode: "0644"
+        owner: root
+        group: root
+        force: true
+      vars:
+        service_name: "{{ stack_name }}__{{ item.name }}"
+        service: >-
+          {{ {'service_user': firehose_user, 'service_group': firehose_user}
+             | combine({'environment_file': env_file} if item.store else {})
+             | combine(services[item.name]) }}
+        start_cmd: "{{ item.cmd }} {{ service.additional_args }}"
+      loop: "{{ host_services }}"
+      loop_control:
+        label: "{{ item.name }}"
+
+    - name: Restart and enable services
+      ansible.builtin.systemd:
+        name: "{{ stack_name }}__{{ item.name }}"
+        state: restarted
+        enabled: true
+        daemon_reload: true
+        force: true
+      throttle: 1
+      loop: "{{ host_services }}"
+      loop_control:
+        label: "{{ item.name }}"

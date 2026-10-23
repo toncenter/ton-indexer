@@ -27,10 +27,28 @@ all:
       hosts:
         pendings-01:
           host_addr: 1.2.3.4:9876 # public ip of this machine with port to be used for ton-trace-emulator
-    ton_index__firehose_reader:
+    # deploy-substreams.yaml with -e stack_name=mainnet. firehose_private_ip of a host is the
+    # address other components and Prometheus connect to; one host may be in several groups
+    mainnet__firehose_reader:
       hosts:
         archive-01:
-          firehose_reader_private_ip: 10.0.0.1 # the relayer and Prometheus connect to it
+          firehose_private_ip: 10.0.0.1
+    mainnet__tvm_executor:
+      hosts:
+        archive-01:
+    mainnet__firehose_merger:
+      hosts:
+        store-01:
+          firehose_private_ip: 10.0.0.2
+    mainnet__firehose_relayer:
+      hosts:
+        store-01:
+    mainnet__firehose:
+      hosts:
+        store-01:
+    mainnet__substreams:
+      hosts:
+        store-01:
     ton_index__index_classifier:
       hosts:
         classifier-01:

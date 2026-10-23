@@ -19,18 +19,17 @@ node database ──► reader ──► firecore: merger, relayer, firehose
 | `tvm-executor/` | `ton-tvm-executor`, the backend that answers ton_v1 calls from a node database; `ton-tvm-replay` and the reference replay of history; the checks against a liteserver | C++, CMake of `ton-index-worker` |
 | `fireton/` | `fireton`, firecore with the ton_v1 extension; `ton-tvm-router`; the test stand (`stand.sh`) | Go |
 | `substreams/` | The Rust workspace: the SDK `substreams-ton`, `modules/` to run, `tests/` that check the stack on the stand, `tools/pbgen` | Rust, cargo |
-| `ops/deploy/` | The systemd units of firecore on the store host | |
 | `ops/backfill/` | The conversion of history in chunks to the store | Python |
 | `docs/substreams-tvm.md` | The design of ton_v1: semantics, rules of requests, limits, determinism | |
 
 The operation of the stack is in `docs/runbooks/procedures/firehose.md` at the
-root of the repository.
+root of the repository; `deploy-substreams.yaml` there builds the C++ and Go
+binaries and deploys the live stack, each part on the hosts of its group.
 
 ## Building
 
-C++, from the root of the repository (`deploy-firehose.yaml` builds the
-reader the same way); the binaries are in `build/ton-index-firehose/reader`
-and `build/ton-index-firehose/tvm-executor`:
+C++, from the root of the repository; the binaries are in
+`build/ton-index-firehose/reader` and `build/ton-index-firehose/tvm-executor`:
 
 ```bash
 cmake -S ton-index-worker -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
