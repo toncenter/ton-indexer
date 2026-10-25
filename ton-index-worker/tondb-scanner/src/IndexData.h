@@ -272,6 +272,10 @@ struct Block {
   std::string rand_seed;
   std::string created_by;
 
+  // Native block dictionary aggregates, in nanotons (before fee burning).
+  td::RefInt256 transaction_fees;
+  td::RefInt256 import_fees;
+
   std::vector<Transaction> transactions;
   std::vector<BlockReference> prev_blocks;
 };

@@ -1,4 +1,4 @@
-# Gramstat: total supply
+# Gramstat: total supply and block fees
 
 Both `ton-index-clickhouse` and `ton-index-postgres` support `--gramstat`.
 The shared `collect_gramstat` switch enables the Gramstat stage in the existing
@@ -96,14 +96,65 @@ snapshots are not summed across time. Current or incompletely indexed intervals
 are provisional; missing intervals remain absent. Materialized aggregates can
 be added and backfilled later without changing the indexer.
 
+## Block fees (always collected)
+
+Fees are native block aggregates, stored in the ordinary `blocks` table by both
+indexers, independently of `--gramstat`. The parser reads the roots of the
+already-loaded block dictionaries; no extra states or RPC calls are needed.
+
+| Column | ClickHouse type | PostgreSQL type | Meaning (nanoTON) |
+| --- | --- | --- | --- |
+| `transaction_fees` | `Nullable(Decimal(38,0))` | `numeric(38,0)` nullable | `ShardAccountBlocks` transaction-fee aggregate |
+| `import_fees` | `Nullable(Decimal(38,0))` | `numeric(38,0)` nullable | `InMsgDescr` collected delivery/transit fees |
+
+Gross network fees before burning are `transaction_fees + import_fees`.
+`import_fees` is not the value of imported messages or `ValueFlow.fees_imported`
+(fees transferred from shards to MC). Sum each MC/shard block once, by its own
+`gen_utime`; the including MC's time may fall in a different hour or day.
+
+ClickHouse adds the columns idempotently at startup. PostgreSQL requires
+`ton-index-postgres-migrate --pg "$PG"` (schema **1.3.2**). Existing rows retain
+`NULL` until replayed; newly parsed empty blocks have real zeros. To fill an
+already-indexed range, use `--from N --to M --force`; for PostgreSQL also use
+`--no-leader --pg-no-copy` for an independent bounded replay. PostgreSQL upserts
+the two fee columns on conflicts; ClickHouse replaces replayed block rows.
+
+Daily ClickHouse fees, with deduplication and incomplete rows made explicit:
+
+```sql
+SELECT
+    toStartOfInterval(toDateTime(gen_utime, 'UTC'), INTERVAL 1 DAY, 'UTC') AS bucket,
+    countIf(transaction_fees IS NULL OR import_fees IS NULL) AS missing_fee_blocks,
+    if(missing_fee_blocks = 0, sum(transaction_fees + import_fees), NULL) AS total_fees
+FROM blocks FINAL
+WHERE gen_utime >= 1788220800 AND gen_utime < 1790812800
+GROUP BY bucket ORDER BY bucket;
+```
+
+PostgreSQL equivalent:
+
+```sql
+SELECT
+    date_trunc('day', to_timestamp(gen_utime), 'UTC') AS bucket,
+    count(*) FILTER (WHERE transaction_fees IS NULL OR import_fees IS NULL) AS missing_fee_blocks,
+    CASE WHEN count(*) FILTER (WHERE transaction_fees IS NULL OR import_fees IS NULL) = 0
+         THEN sum(transaction_fees + import_fees) END AS total_fees
+FROM blocks
+WHERE gen_utime >= 1788220800 AND gen_utime < 1790812800
+GROUP BY bucket ORDER BY bucket;
+```
+
+Use `1 HOUR` / `'hour'` for hourly points. These checks detect missing fees on
+existing rows; full period coverage still requires all source blocks to be indexed.
+
 ## Checks
 
 ```sh
-cmake --build build --target ton-index-clickhouse ton-index-postgres test-gramstat test-gramstat-postgres -j 4
+cmake --build build --target ton-index-clickhouse ton-index-postgres ton-index-postgres-migrate test-gramstat test-gramstat-postgres -j 4
 ctest --test-dir build -R '^gramstat_' --output-on-failure
 ```
 
 Tests cover exact monetary conversion, missing inputs, duplicate replays,
-backfill selection and chart queries. With the respective database tools
+backfill selection, block-fee decoding/upserts and chart queries. With the respective database tools
 installed, they use isolated `clickhouse local` storage and a temporary
 Unix-socket-only PostgreSQL cluster to verify commit/rollback behavior.

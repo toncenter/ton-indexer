@@ -4,6 +4,8 @@
 
 #include "TotalSupply.h"
 #include "TotalSupplyStorage.h"
+#include "DataParser.h"
+#include "crypto/block/block.h"
 #include "clickhouse/columns/date.h"
 #include "clickhouse/columns/decimal.h"
 #include "td/actor/TestScheduler.h"
@@ -83,6 +85,37 @@ void check_incomplete_input() {
     CHECK(!called);
 }
 
+void check_block_fees() {
+    block::gen::BlockExtra::Record extra;
+    schema::Block result;
+    extra.account_blocks = vm::AugmentedDictionary(256, block::tlb::aug_ShardAccountBlocks).get_wrapped_dict_root();
+    extra.in_msg_descr = vm::AugmentedDictionary(256, block::tlb::aug_InMsgDescrDefault).get_wrapped_dict_root();
+    ParseQuery::parse_block_fees(extra, result).ensure();
+    CHECK(result.transaction_fees->sgn() == 0 && result.import_fees->sgn() == 0);
+
+    // Root-augmentation fixtures: a single zero-key leaf with an exact amount
+    // larger than UInt64. The parser only reads the stored aggregate, not leaves.
+    auto wrap_aggregate = [](td::Ref<vm::Cell> aggregate) {
+        vm::CellBuilder leaf, root;
+        leaf.store_long(6, 3).store_long(256, 9);  // hml_same$11, v=0, n=256
+        leaf.append_cellslice(vm::load_cell_slice(aggregate));
+        root.store_long(1, 1).store_ref(leaf.finalize());
+        root.append_cellslice(vm::load_cell_slice(aggregate));
+        return root.finalize();
+    };
+    auto amount = td::dec_string_to_int256(std::string("100000000000000000001"));
+    vm::CellBuilder transactions, imports;
+    CHECK(block::CurrencyCollection(amount).store(transactions));
+    CHECK(block::tlb::t_Grams.store_integer_ref(imports, td::make_refint(23)));
+    CHECK(block::CurrencyCollection(999).store(imports));  // imported value is NOT a fee
+    extra.account_blocks = wrap_aggregate(transactions.finalize());
+    extra.in_msg_descr = wrap_aggregate(imports.finalize());
+    ParseQuery::parse_block_fees(extra, result).ensure();
+    CHECK(td::cmp(result.transaction_fees, amount) == 0 && td::cmp(result.import_fees, 23) == 0);
+    extra.in_msg_descr = vm::CellBuilder().finalize();
+    CHECK(ParseQuery::parse_block_fees(extra, result).is_error());
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -102,5 +135,6 @@ int main(int argc, char** argv) {
     CHECK(argc == 1);
     check_amounts_and_columns();
     check_incomplete_input();
+    check_block_fees();
     std::cout << "Total supply adapter and exact ClickHouse columns: OK\n";
 }

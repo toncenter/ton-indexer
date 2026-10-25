@@ -43,6 +43,7 @@ private:
   td::Result<schema::AccountState> parse_none_account(td::Ref<vm::Cell> account_root, block::StdAddress address, uint32_t gen_utime, td::Bits256 last_trans_hash, uint64_t last_trans_lt);
 
 public: // Pure TLB-to-schema parsers reusable outside the actor pipeline.
+  static td::Status parse_block_fees(const block::gen::BlockExtra::Record& extra, schema::Block& result);
   // `global_version` is the only piece of ParseQuery state these need: it selects
   // extra_flags vs legacy ihr_fee in int_msg_info.
   static td::Result<schema::Message> parse_message(td::Ref<vm::Cell> msg_cell, int global_version);

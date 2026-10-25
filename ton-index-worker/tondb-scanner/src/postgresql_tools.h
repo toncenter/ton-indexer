@@ -344,3 +344,11 @@ public:
       txn_.exec0(get_str());
     }
 };
+
+inline void configure_block_fee_upsert(PopulateTableStream& stream) {
+    // Replays fill the aggregates without rewriting the block's other fields.
+    stream.setConflictDoUpdate({"workchain", "shard", "seqno", "mc_block_seqno"},
+                               {"transaction_fees", "import_fees"},
+                               "blocks.transaction_fees IS DISTINCT FROM EXCLUDED.transaction_fees OR "
+                               "blocks.import_fees IS DISTINCT FROM EXCLUDED.import_fees");
+}

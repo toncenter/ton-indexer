@@ -3,6 +3,7 @@
 
 #include "td/utils/StringBuilder.h"
 #include "clickhouse/client.h"
+#include "clickhouse/columns/decimal.h"
 #include "clickhouse/columns/nullable.h"
 #include "clickhouse/columns/numeric.h"
 #include "clickhouse/types/types.h"
@@ -92,9 +93,15 @@ void InsertManagerClickhouse::start_up() {
                     << "created_by FixedString(44), "
                     << "prev_blocks Array(Tuple(Int32, Int64, Int32)), "
                     << "shards Array(Tuple(Int32, Int64, Int32)), "
-                    << "transaction_count Int32"
+                    << "transaction_count Int32, "
+                    << "transaction_fees Nullable(Decimal(38, 0)), "
+                    << "import_fees Nullable(Decimal(38, 0))"
                     << ") ENGINE ReplacingMergeTree PRIMARY KEY(workchain, shard, seqno) ORDER BY (workchain, shard, seqno);\n";
             client.Execute(builder.as_cslice().str());
+            // Existing rows remain NULL until explicitly replayed with --force.
+            client.Execute("ALTER TABLE blocks "
+                           "ADD COLUMN IF NOT EXISTS transaction_fees Nullable(Decimal(38, 0)), "
+                           "ADD COLUMN IF NOT EXISTS import_fees Nullable(Decimal(38, 0))");
             LOG(INFO) << "Table blocks created";
         }
         {
@@ -650,6 +657,9 @@ void InsertBatchClickhouse::insert_blocks(clickhouse::Client &client){
         std::make_shared<ColumnInt32>(),
     }));
     auto transaction_count_col = std::make_shared<ColumnInt32>();
+    auto transaction_fees_col = std::make_shared<ColumnDecimal>(38, 0);
+    auto import_fees_col = std::make_shared<ColumnDecimal>(38, 0);
+    auto fee_nulls = std::make_shared<ColumnUInt8>();
 
     for(const auto& task_ : insert_tasks_) {
         for(const auto& blk_ :task_.parsed_block_->blocks_) {
@@ -712,6 +722,9 @@ void InsertBatchClickhouse::insert_blocks(clickhouse::Client &client){
                 shards_col->AppendAsColumn(std::make_shared<ColumnTuple>(std::vector<ColumnRef>{loc_workchain, loc_shard, loc_seqno}));
             }
             transaction_count_col->Append(blk_.transactions.size());
+            transaction_fees_col->Append(blk_.transaction_fees->to_dec_string());
+            import_fees_col->Append(blk_.import_fees->to_dec_string());
+            fee_nulls->Append(0);
         }
     }
     block.AppendColumn("workchain", workchain_col);
@@ -744,6 +757,8 @@ void InsertBatchClickhouse::insert_blocks(clickhouse::Client &client){
     block.AppendColumn("prev_blocks", prev_blocks_col);
     block.AppendColumn("shards", shards_col);
     block.AppendColumn("transaction_count", transaction_count_col);
+    block.AppendColumn("transaction_fees", std::make_shared<ColumnNullable>(transaction_fees_col, fee_nulls));
+    block.AppendColumn("import_fees", std::make_shared<ColumnNullable>(import_fees_col, fee_nulls));
 
     client.Insert("blocks", block);
 }

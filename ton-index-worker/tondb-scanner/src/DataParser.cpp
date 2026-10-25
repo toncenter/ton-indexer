@@ -40,6 +40,7 @@ td::Status ParseQuery::parse_impl() {
 
     // block details
     auto schema_block = parse_block(block_ds.block_data->root_cell(), block_ds.block_data->block_id(), blk, info, extra, mc_block);
+    TRY_STATUS(parse_block_fees(extra, schema_block));
     if (!mc_block) {
         mc_block = schema_block;
     }
@@ -79,6 +80,35 @@ td::Status ParseQuery::parse_impl() {
 
   result->mc_block_ = mc_block_;
   result->cell_db_reader_ = cell_db_reader_;
+  return td::Status::OK();
+}
+
+td::Status ParseQuery::parse_block_fees(const block::gen::BlockExtra::Record& extra, schema::Block& result) {
+  if (extra.account_blocks.is_null() || extra.in_msg_descr.is_null()) {
+    return td::Status::Error("Missing block fee dictionaries");
+  }
+  try {
+    vm::AugmentedDictionary accounts{vm::load_cell_slice_ref(extra.account_blocks), 256,
+                                     block::tlb::aug_ShardAccountBlocks};
+    block::CurrencyCollection transaction_fees;
+    if (!transaction_fees.validate_unpack(accounts.get_root_extra())) {
+      return td::Status::Error("Failed to unpack transaction fees from ShardAccountBlocks");
+    }
+    vm::AugmentedDictionary messages{vm::load_cell_slice_ref(extra.in_msg_descr), 256,
+                                     block::tlb::aug_InMsgDescrDefault};
+    block::gen::ImportFees::Record import_data;
+    if (!tlb::csr_unpack(messages.get_root_extra(), import_data)) {
+      return td::Status::Error("Failed to unpack import fees from InMsgDescr");
+    }
+    auto import_fees = block::tlb::t_Grams.as_integer_skip(import_data.fees_collected.write());
+    if (import_fees.is_null()) {
+      return td::Status::Error("Invalid block import fees");
+    }
+    result.transaction_fees = std::move(transaction_fees.grams);
+    result.import_fees = std::move(import_fees);
+  } catch (const vm::VmError& error) {
+    return td::Status::Error(PSLICE() << "Failed to parse block fees: " << error.get_msg());
+  }
   return td::Status::OK();
 }
 

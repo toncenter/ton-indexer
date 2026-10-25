@@ -1,6 +1,7 @@
 #include <iostream>
 
 #include "TotalSupplyPostgres.h"
+#include "postgresql_tools.h"
 
 namespace {
 
@@ -29,7 +30,9 @@ int main(int argc, char** argv) {
         pqxx::work txn(connection);
         gramstat::postgres::ensure_schema(txn);
         gramstat::postgres::ensure_schema(txn);
-        txn.exec0("CREATE TABLE blocks (workchain int, seqno bigint, PRIMARY KEY (workchain, seqno))");
+        txn.exec0("CREATE TABLE blocks (workchain int, seqno bigint, shard bigint DEFAULT 0, "
+                  "mc_block_seqno bigint DEFAULT 0, transaction_fees numeric(38,0), import_fees numeric(38,0), "
+                  "PRIMARY KEY (workchain, shard, seqno, mc_block_seqno))");
         txn.commit();
     }
     std::vector<InsertTaskStruct> tasks;
@@ -134,5 +137,23 @@ FROM (
     }
     CHECK(rejected && count(observer, "blocks") == 5);
     CHECK(count(observer, "gramstat.total_supply") == 4);
+    {
+        pqxx::work txn(connection);
+        CHECK(txn.query_value<long long>("SELECT count(*) FROM blocks WHERE transaction_fees IS NULL") == 5);
+        std::initializer_list<std::string_view> columns = {
+            "workchain", "shard", "seqno", "mc_block_seqno", "transaction_fees", "import_fees"};
+        for (int retry = 0; retry < 2; ++retry) {
+            PopulateTableStream stream(txn, "blocks", columns, 1000);
+            configure_block_fee_upsert(stream);
+            stream.insert_row(std::make_tuple(-1, 0, 100, 0,
+                td::dec_string_to_int256(std::string("100000000000000000001")), td::make_refint(23)));
+            stream.finish();
+        }
+        CHECK(txn.query_value<std::string>("SELECT (transaction_fees + import_fees)::text "
+                                           "FROM blocks WHERE seqno = 100") == "100000000000000000024");
+        CHECK(txn.query_value<long long>("SELECT count(*) FROM blocks WHERE transaction_fees IS NULL") == 4);
+        CHECK(txn.query_value<long long>("SELECT count(*) FROM blocks") == 5);
+        txn.commit();
+    }
     std::cout << "PostgreSQL Gramstat exact amounts, atomic writes, retries, backfill and charts: OK\n";
 }
