@@ -47,7 +47,7 @@ clickhouse::Block total_supply_block(const std::vector<schema::TotalSupply>& sna
     return block;
 }
 
-std::string completed_seqnos_query(bool with_supply, std::int32_t from_seqno, std::int32_t to_seqno) {
+std::string completed_seqnos_query(bool collect_gramstat, std::int32_t from_seqno, std::int32_t to_seqno) {
     auto range = [from_seqno, to_seqno](const char* column) {
         std::string sql;
         if (from_seqno > 0) {
@@ -59,7 +59,7 @@ std::string completed_seqnos_query(bool with_supply, std::int32_t from_seqno, st
         return sql;
     };
     std::string sql = "SELECT DISTINCT seqno FROM blocks WHERE workchain = -1" + range("seqno");
-    if (with_supply) {
+    if (collect_gramstat) {
         sql += " AND toUInt32(seqno) IN (SELECT mc_seqno FROM gramstat.total_supply WHERE 1" +
                range("mc_seqno") + ")";
     }

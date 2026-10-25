@@ -50,7 +50,7 @@ private:
   std::int32_t read_from_seqno_{0};
   std::int32_t to_seqno_{0};
   bool force_index_{false};
-  bool collect_total_supply_{false};
+  bool collect_gramstat_{false};
   std::uint32_t prewarm_count_{50};
   bool is_in_sync_{false};
   std::uint32_t last_indexed_block_utime_{0};
@@ -86,11 +86,11 @@ public:
       td::actor::ActorId<ParseManager> parse_manager, std::string working_dir, std::int32_t from_seqno = 0, std::int32_t to_seqno = 0, bool force_index = false,
       std::uint32_t max_active_tasks = 32, QueueState max_queue = QueueState{30000, 30000, 500000, 500000}, std::int32_t stats_timeout = 10,
       std::shared_ptr<td::Destructor> watcher = nullptr, std::uint32_t prewarm_count = 50, std::string db_event_fifo_path = {},
-      bool collect_total_supply = false)
+      bool collect_gramstat = false)
     : db_scanner_(db_scanner), insert_manager_(insert_manager), parse_manager_(parse_manager), working_dir_(std::move(working_dir)),
       from_seqno_(from_seqno), to_seqno_(to_seqno), force_index_(force_index), max_active_tasks_(max_active_tasks),
       prewarm_count_(prewarm_count), max_queue_(std::move(max_queue)), stats_timeout_(stats_timeout), watcher_(watcher),
-      db_event_fifo_path_(std::move(db_event_fifo_path)), collect_total_supply_(collect_total_supply) {};
+      db_event_fifo_path_(std::move(db_event_fifo_path)), collect_gramstat_(collect_gramstat) {};
 
   void start_up() override;
   void alarm() override;

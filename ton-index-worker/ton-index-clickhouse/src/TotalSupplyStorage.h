@@ -25,6 +25,6 @@ clickhouse::Block total_supply_block(const std::vector<schema::TotalSupply>& sna
 // Both normal resume and bounded replay must repair a missing supply row even
 // when the block insert succeeded before a crash. IN avoids duplicate fan-out
 // while ReplacingMergeTree rows are still awaiting background merges.
-std::string completed_seqnos_query(bool with_supply, std::int32_t from_seqno, std::int32_t to_seqno);
+std::string completed_seqnos_query(bool collect_gramstat, std::int32_t from_seqno, std::int32_t to_seqno);
 
 }  // namespace gramstat

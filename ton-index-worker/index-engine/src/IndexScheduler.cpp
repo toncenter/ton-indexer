@@ -543,8 +543,8 @@ void IndexScheduler::seqno_actions_processed(std::uint32_t mc_seqno, ParsedBlock
         return;
     }
 
-    if (collect_total_supply_) {
-        start_seqno_otel_stage(mc_seqno, "total_supply");
+    if (collect_gramstat_) {
+        start_seqno_otel_stage(mc_seqno, "gramstat");
         auto P = td::PromiseCreator::lambda(
             [SelfId = actor_id(this), mc_seqno, parsed_block](td::Result<schema::TotalSupply> R) mutable {
                 td::actor::send_closure(SelfId, &IndexScheduler::seqno_supply_processed,
@@ -572,7 +572,7 @@ void IndexScheduler::seqno_supply_processed(std::uint32_t mc_seqno, ParsedBlockP
     if (result.is_error()) {
         auto error = result.move_as_error();
         LOG(ERROR) << "Failed to calculate total supply for seqno " << mc_seqno << ": " << error;
-        handle_seqno_failure(mc_seqno, "index_clickhouse.total_supply_error", std::move(error), false);
+        handle_seqno_failure(mc_seqno, "indexer.gramstat_error", std::move(error), false);
         return;
     }
     parsed_block->total_supply_ = result.move_as_ok();

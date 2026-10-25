@@ -82,7 +82,7 @@ jobs:
     - name: Install system libraries
       run: |
         sudo apt-get update
-        sudo apt-get install -y build-essential clang-20 ccache git cmake ninja-build zlib1g-dev libcurl4-openssl-dev libsecp256k1-dev libmicrohttpd-dev libsodium-dev liblz4-dev libjemalloc-dev libhiredis-dev
+        sudo apt-get install -y build-essential clang-20 ccache git cmake ninja-build zlib1g-dev libcurl4-openssl-dev libsecp256k1-dev libmicrohttpd-dev libsodium-dev liblz4-dev libjemalloc-dev libhiredis-dev postgresql
 
     - name: Restore ccache
       id: ccache
@@ -113,7 +113,7 @@ jobs:
           -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
 
     - name: Build C++ libraries
-      run: touch suppression_mappings.txt && cmake --build ${{github.workspace}}/build --config ${{env.BUILD_TYPE}} --target ton-index-postgres ton-index-postgres-migrate ton-index-clickhouse test-gramstat ton-trace-emulator ton-trace-task-emulator ton-index-go ton-streaming-go ton-mch-engine --parallel $(nproc)
+      run: touch suppression_mappings.txt && cmake --build ${{github.workspace}}/build --config ${{env.BUILD_TYPE}} --target ton-index-postgres ton-index-postgres-migrate ton-index-clickhouse test-gramstat test-gramstat-postgres ton-trace-emulator ton-trace-task-emulator ton-index-go ton-streaming-go ton-mch-engine --parallel $(nproc)
 
     - name: Test Gramstat
       run: ctest --test-dir ${{github.workspace}}/build -R '^gramstat_' --output-on-failure
