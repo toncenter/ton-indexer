@@ -282,6 +282,25 @@ GROUP BY bucket ORDER BY bucket;
 Use `1 HOUR` / `'hour'` for hourly points. These checks detect missing aggregates on
 existing rows; full period coverage still requires all source blocks to be indexed.
 
+## Transactions per day
+
+Already available without `--gramstat`: sum each MC/shard block's transaction
+count by its own UTC time, including failed and system transactions.
+ClickHouse, three months of complete calendar days:
+
+```sql
+SELECT toDate(toDateTime(gen_utime, 'UTC'), 'UTC') AS day,
+       sum(transaction_count) AS transactions,
+       count() AS blocks
+FROM mainnet_d.blocks FINAL
+WHERE gen_utime >= toUnixTimestamp(toDateTime('2026-07-25 00:00:00', 'UTC'))
+  AND gen_utime <  toUnixTimestamp(toDateTime('2026-10-25 00:00:00', 'UTC'))
+GROUP BY day ORDER BY day
+SETTINGS max_threads = 4, use_query_cache = 0, use_query_condition_cache = 0;
+```
+
+The query took **2.93 s server / 3.23 s client**.
+
 ## Checks
 
 ```sh
