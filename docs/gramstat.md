@@ -1,4 +1,4 @@
-# Gramstat: total supply and block fees
+# Gramstat: total supply and block flows
 
 Both `ton-index-clickhouse` and `ton-index-postgres` support `--gramstat`.
 The shared `collect_gramstat` switch enables the Gramstat stage in the existing
@@ -96,36 +96,50 @@ snapshots are not summed across time. Current or incompletely indexed intervals
 are provisional; missing intervals remain absent. Materialized aggregates can
 be added and backfilled later without changing the indexer.
 
-## Block fees (always collected)
+## Block fees and issuance (always collected)
 
-Fees are native block aggregates, stored in the ordinary `blocks` table by both
-indexers, independently of `--gramstat`. The parser reads the roots of the
-already-loaded block dictionaries; no extra states or RPC calls are needed.
+Fees, issuance and burning are native block aggregates, stored in the ordinary
+`blocks` table by both indexers, independently of `--gramstat`. The parser reads
+the dictionary roots and `ValueFlow` of the already-loaded block.
 
 | Column | ClickHouse type | PostgreSQL type | Meaning (nanoTON) |
 | --- | --- | --- | --- |
 | `transaction_fees` | `Nullable(Decimal(38,0))` | `numeric(38,0)` nullable | `ShardAccountBlocks` transaction-fee aggregate |
 | `import_fees` | `Nullable(Decimal(38,0))` | `numeric(38,0)` nullable | `InMsgDescr` collected delivery/transit fees |
+| `created` | `Nullable(Decimal(38,0))` | `numeric(38,0)` nullable | `ValueFlow.created.grams`: Toncoin block rewards |
+| `burned` | `Nullable(Decimal(38,0))` | `numeric(38,0)` nullable | `ValueFlow.burned.grams`: protocol burning |
 
 Gross network fees before burning are `transaction_fees + import_fees`.
 `import_fees` is not the value of imported messages or `ValueFlow.fees_imported`
 (fees transferred from shards to MC). Sum each MC/shard block once, by its own
 `gen_utime`; the including MC's time may fall in a different hour or day.
 
+**Toncoins minted per day** is `SUM(created)`; **Toncoins burned per day** is
+`SUM(burned)`. The protocol's `ValueFlow.minted` field is used for extra currencies,
+not Toncoin block rewards. `burned` already includes fee burning and incoming
+Toncoin burned at the configured masterchain blackhole address. The legacy
+`ValueFlow` constructor has no `burned` field and means zero burning; the native
+TON decoder handles both constructors.
+
 ClickHouse adds the columns idempotently at startup. PostgreSQL requires
-`ton-index-postgres-migrate --pg "$PG"` (schema **1.3.2**). Existing rows retain
-`NULL` until replayed; newly parsed empty blocks have real zeros. To fill an
+`ton-index-postgres-migrate --pg "$PG"` (schema **1.3.2**, all four columns in one
+migration). If the earlier fees-only 1.3.2 was already applied locally, add
+`--rerun-last-migration`. Existing rows retain `NULL` until replayed; parsed
+values include real zeros where appropriate. To fill an
 already-indexed range, use `--from N --to M --force`; for PostgreSQL also use
 `--no-leader --pg-no-copy` for an independent bounded replay. PostgreSQL upserts
-the two fee columns on conflicts; ClickHouse replaces replayed block rows.
+the four aggregate columns on conflicts; ClickHouse replaces replayed block rows.
 
-Daily ClickHouse fees, with deduplication and incomplete rows made explicit:
+Daily ClickHouse fees, minted and burned amounts (nanoTON), with deduplication.
+Each metric remains `NULL` until its fields are filled on all rows in the bucket:
 
 ```sql
 SELECT
     toStartOfInterval(toDateTime(gen_utime, 'UTC'), INTERVAL 1 DAY, 'UTC') AS bucket,
-    countIf(transaction_fees IS NULL OR import_fees IS NULL) AS missing_fee_blocks,
-    if(missing_fee_blocks = 0, sum(transaction_fees + import_fees), NULL) AS total_fees
+    countIf(transaction_fees IS NULL OR import_fees IS NULL OR created IS NULL OR burned IS NULL) AS missing_blocks,
+    if(count(transaction_fees + import_fees) = count(), sum(transaction_fees + import_fees), NULL) AS total_fees,
+    if(count(created) = count(), sum(created), NULL) AS minted_nanoton,
+    if(count(burned) = count(), sum(burned), NULL) AS burned_nanoton
 FROM blocks FINAL
 WHERE gen_utime >= 1788220800 AND gen_utime < 1790812800
 GROUP BY bucket ORDER BY bucket;
@@ -136,15 +150,16 @@ PostgreSQL equivalent:
 ```sql
 SELECT
     date_trunc('day', to_timestamp(gen_utime), 'UTC') AS bucket,
-    count(*) FILTER (WHERE transaction_fees IS NULL OR import_fees IS NULL) AS missing_fee_blocks,
-    CASE WHEN count(*) FILTER (WHERE transaction_fees IS NULL OR import_fees IS NULL) = 0
-         THEN sum(transaction_fees + import_fees) END AS total_fees
+    count(*) FILTER (WHERE transaction_fees IS NULL OR import_fees IS NULL OR created IS NULL OR burned IS NULL) AS missing_blocks,
+    CASE WHEN count(transaction_fees + import_fees) = count(*) THEN sum(transaction_fees + import_fees) END AS total_fees,
+    CASE WHEN count(created) = count(*) THEN sum(created) END AS minted_nanoton,
+    CASE WHEN count(burned) = count(*) THEN sum(burned) END AS burned_nanoton
 FROM blocks
 WHERE gen_utime >= 1788220800 AND gen_utime < 1790812800
 GROUP BY bucket ORDER BY bucket;
 ```
 
-Use `1 HOUR` / `'hour'` for hourly points. These checks detect missing fees on
+Use `1 HOUR` / `'hour'` for hourly points. These checks detect missing aggregates on
 existing rows; full period coverage still requires all source blocks to be indexed.
 
 ## Checks
@@ -155,6 +170,6 @@ ctest --test-dir build -R '^gramstat_' --output-on-failure
 ```
 
 Tests cover exact monetary conversion, missing inputs, duplicate replays,
-backfill selection, block-fee decoding/upserts and chart queries. With the respective database tools
-installed, they use isolated `clickhouse local` storage and a temporary
+backfill selection, block-fee/ValueFlow decoding, upserts and chart queries. With
+the respective database tools installed, they use isolated `clickhouse local` storage and a temporary
 Unix-socket-only PostgreSQL cluster to verify commit/rollback behavior.

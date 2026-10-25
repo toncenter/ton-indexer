@@ -1610,7 +1610,9 @@ void run_1_3_2_migrations(const std::string& connection_string, bool dry_run) {
   const auto query = std::string(
       "ALTER TABLE blocks "
       "ADD COLUMN IF NOT EXISTS transaction_fees numeric(38, 0), "
-      "ADD COLUMN IF NOT EXISTS import_fees numeric(38, 0);\n") + set_version_query({1, 3, 2});
+      "ADD COLUMN IF NOT EXISTS import_fees numeric(38, 0), "
+      "ADD COLUMN IF NOT EXISTS created numeric(38, 0), "
+      "ADD COLUMN IF NOT EXISTS burned numeric(38, 0);\n") + set_version_query({1, 3, 2});
   if (dry_run) {
     std::cout << query << std::endl;
     return;

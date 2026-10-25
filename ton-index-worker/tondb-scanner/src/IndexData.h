@@ -275,6 +275,9 @@ struct Block {
   // Native block dictionary aggregates, in nanotons (before fee burning).
   td::RefInt256 transaction_fees;
   td::RefInt256 import_fees;
+  // ValueFlow Toncoin issuance and protocol burning, in nanotons.
+  td::RefInt256 created;
+  td::RefInt256 burned;
 
   std::vector<Transaction> transactions;
   std::vector<BlockReference> prev_blocks;

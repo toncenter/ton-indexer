@@ -44,6 +44,7 @@ private:
 
 public: // Pure TLB-to-schema parsers reusable outside the actor pipeline.
   static td::Status parse_block_fees(const block::gen::BlockExtra::Record& extra, schema::Block& result);
+  static td::Status parse_block_value_flow(td::Ref<vm::Cell> value_flow, schema::Block& result);
   // `global_version` is the only piece of ParseQuery state these need: it selects
   // extra_flags vs legacy ihr_fee in int_msg_info.
   static td::Result<schema::Message> parse_message(td::Ref<vm::Cell> msg_cell, int global_version);

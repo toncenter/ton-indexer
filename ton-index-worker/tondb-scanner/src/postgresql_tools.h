@@ -345,10 +345,12 @@ public:
     }
 };
 
-inline void configure_block_fee_upsert(PopulateTableStream& stream) {
+inline void configure_block_aggregates_upsert(PopulateTableStream& stream) {
     // Replays fill the aggregates without rewriting the block's other fields.
     stream.setConflictDoUpdate({"workchain", "shard", "seqno", "mc_block_seqno"},
-                               {"transaction_fees", "import_fees"},
+                               {"transaction_fees", "import_fees", "created", "burned"},
                                "blocks.transaction_fees IS DISTINCT FROM EXCLUDED.transaction_fees OR "
-                               "blocks.import_fees IS DISTINCT FROM EXCLUDED.import_fees");
+                               "blocks.import_fees IS DISTINCT FROM EXCLUDED.import_fees OR "
+                               "blocks.created IS DISTINCT FROM EXCLUDED.created OR "
+                               "blocks.burned IS DISTINCT FROM EXCLUDED.burned");
 }

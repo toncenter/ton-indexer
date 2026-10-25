@@ -41,6 +41,7 @@ td::Status ParseQuery::parse_impl() {
     // block details
     auto schema_block = parse_block(block_ds.block_data->root_cell(), block_ds.block_data->block_id(), blk, info, extra, mc_block);
     TRY_STATUS(parse_block_fees(extra, schema_block));
+    TRY_STATUS(parse_block_value_flow(blk.value_flow, schema_block));
     if (!mc_block) {
         mc_block = schema_block;
     }
@@ -108,6 +109,25 @@ td::Status ParseQuery::parse_block_fees(const block::gen::BlockExtra::Record& ex
     result.import_fees = std::move(import_fees);
   } catch (const vm::VmError& error) {
     return td::Status::Error(PSLICE() << "Failed to parse block fees: " << error.get_msg());
+  }
+  return td::Status::OK();
+}
+
+td::Status ParseQuery::parse_block_value_flow(td::Ref<vm::Cell> value_flow, schema::Block& result) {
+  if (value_flow.is_null()) {
+    return td::Status::Error("Missing block ValueFlow");
+  }
+  try {
+    block::ValueFlow flow;
+    if (!flow.unpack(vm::load_cell_slice_ref(value_flow))) {
+      return td::Status::Error("Failed to unpack block ValueFlow");
+    }
+    // Toncoin block rewards are `created`; `minted` is for extra currencies.
+    // The native decoder supplies burned=0 for the legacy ValueFlow constructor.
+    result.created = std::move(flow.created.grams);
+    result.burned = std::move(flow.burned.grams);
+  } catch (const vm::VmError& error) {
+    return td::Status::Error(PSLICE() << "Failed to parse block ValueFlow: " << error.get_msg());
   }
   return td::Status::OK();
 }

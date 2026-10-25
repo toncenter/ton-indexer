@@ -116,6 +116,22 @@ void check_block_fees() {
     CHECK(ParseQuery::parse_block_fees(extra, result).is_error());
 }
 
+void check_block_value_flow() {
+    block::ValueFlow flow{block::ValueFlow::SetZero{}};
+    flow.created = block::CurrencyCollection(td::dec_string_to_int256(std::string("100000000000000000001")));
+    schema::Block result;
+    // store() uses the legacy constructor when burned=0, v2 otherwise.
+    for (int burned : {0, 23}) {
+        flow.burned = block::CurrencyCollection(burned);
+        vm::CellBuilder value_flow;
+        CHECK(flow.store(value_flow));
+        ParseQuery::parse_block_value_flow(value_flow.finalize(), result).ensure();
+        CHECK(td::cmp(result.created, flow.created.grams) == 0);
+        CHECK(td::cmp(result.burned, burned) == 0);
+    }
+    CHECK(ParseQuery::parse_block_value_flow(vm::CellBuilder().finalize(), result).is_error());
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -136,5 +152,6 @@ int main(int argc, char** argv) {
     check_amounts_and_columns();
     check_incomplete_input();
     check_block_fees();
+    check_block_value_flow();
     std::cout << "Total supply adapter and exact ClickHouse columns: OK\n";
 }

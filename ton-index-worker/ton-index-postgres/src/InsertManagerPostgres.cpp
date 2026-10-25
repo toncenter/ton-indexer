@@ -3337,11 +3337,11 @@ void InsertBatchPostgres::insert_blocks(pqxx::work &txn, bool with_copy) {
     "global_id", "version", "after_merge", "before_split", "after_split", "want_merge", "want_split", "key_block",
     "vert_seqno_incr", "flags", "gen_utime", "start_lt", "end_lt", "validator_list_hash_short", "gen_catchain_seqno",
     "min_ref_mc_seqno", "prev_key_block_seqno", "vert_seqno", "master_ref_seqno", "rand_seed", "created_by", "tx_count", "prev_blocks",
-    "transaction_fees", "import_fees"
+    "transaction_fees", "import_fees", "created", "burned"
   };
   PopulateTableStream stream(txn, "blocks", columns, 1000, with_copy);
   if (!with_copy) {
-    configure_block_fee_upsert(stream);
+    configure_block_aggregates_upsert(stream);
   }
 
   // Prepare data
@@ -3378,7 +3378,9 @@ void InsertBatchPostgres::insert_blocks(pqxx::work &txn, bool with_copy) {
         block.transactions.size(),
         block.prev_blocks,
         block.transaction_fees,
-        block.import_fees
+        block.import_fees,
+        block.created,
+        block.burned
       );
       stream.insert_row(std::move(tuple));
     }
