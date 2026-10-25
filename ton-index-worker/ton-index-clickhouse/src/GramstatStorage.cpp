@@ -1,4 +1,4 @@
-#include "TotalSupplyStorage.h"
+#include "GramstatStorage.h"
 
 #include <stdexcept>
 
@@ -47,6 +47,29 @@ clickhouse::Block total_supply_block(const std::vector<schema::TotalSupply>& sna
     return block;
 }
 
+clickhouse::Block account_deltas_block(const std::vector<schema::AccountDeltas>& deltas) {
+    using namespace clickhouse;
+    auto seqno = std::make_shared<ColumnUInt32>();
+    auto time = std::make_shared<ColumnDateTime>("UTC");
+    auto uninit = std::make_shared<ColumnInt64>();
+    auto active = std::make_shared<ColumnInt64>();
+    auto frozen = std::make_shared<ColumnInt64>();
+    for (const auto& delta : deltas) {
+        seqno->Append(delta.mc_seqno);
+        time->AppendRaw(delta.gen_utime);
+        uninit->Append(delta.delta_uninit);
+        active->Append(delta.delta_active);
+        frozen->Append(delta.delta_frozen);
+    }
+    Block block;
+    block.AppendColumn("mc_seqno", seqno);
+    block.AppendColumn("gen_utime", time);
+    block.AppendColumn("delta_uninit", uninit);
+    block.AppendColumn("delta_active", active);
+    block.AppendColumn("delta_frozen", frozen);
+    return block;
+}
+
 std::string completed_seqnos_query(bool collect_gramstat, std::int32_t from_seqno, std::int32_t to_seqno) {
     auto range = [from_seqno, to_seqno](const char* column) {
         std::string sql;
@@ -61,6 +84,8 @@ std::string completed_seqnos_query(bool collect_gramstat, std::int32_t from_seqn
     std::string sql = "SELECT DISTINCT seqno FROM blocks WHERE workchain = -1" + range("seqno");
     if (collect_gramstat) {
         sql += " AND toUInt32(seqno) IN (SELECT mc_seqno FROM gramstat.total_supply WHERE 1" +
+               range("mc_seqno") + ")";
+        sql += " AND toUInt32(seqno) IN (SELECT mc_seqno FROM gramstat.account_deltas WHERE 1" +
                range("mc_seqno") + ")";
     }
     return sql;

@@ -1,5 +1,5 @@
 #include "InsertManagerClickhouse.h"
-#include "TotalSupplyStorage.h"
+#include "GramstatStorage.h"
 
 #include "td/utils/StringBuilder.h"
 #include "clickhouse/client.h"
@@ -36,6 +36,7 @@ private:
     void insert_shard_state(clickhouse::Client& client);
     void insert_blocks(clickhouse::Client& client);
     void insert_total_supply(clickhouse::Client& client);
+    void insert_account_deltas(clickhouse::Client& client);
 };
 
 void InsertManagerClickhouse::start_up() {
@@ -60,6 +61,7 @@ void InsertManagerClickhouse::start_up() {
         if (collect_gramstat_) {
             client.Execute(gramstat::CREATE_DATABASE);
             client.Execute(gramstat::CREATE_TOTAL_SUPPLY);
+            client.Execute(gramstat::CREATE_ACCOUNT_DELTAS);
         }
         {
             td::StringBuilder builder;
@@ -552,6 +554,7 @@ void InsertBatchClickhouse::start_up() {
         insert_blocks(client);
         if (collect_gramstat_) {
             insert_total_supply(client);
+            insert_account_deltas(client);
         }
         
         // all done
@@ -582,6 +585,23 @@ void InsertBatchClickhouse::insert_total_supply(clickhouse::Client& client) {
     }
     if (!snapshots.empty()) {
         client.Insert("gramstat.total_supply", gramstat::total_supply_block(snapshots));
+    }
+}
+
+void InsertBatchClickhouse::insert_account_deltas(clickhouse::Client& client) {
+    std::vector<schema::AccountDeltas> deltas;
+    deltas.reserve(insert_tasks_.size());
+    for (const auto& task : insert_tasks_) {
+        const auto& delta = task.parsed_block_->account_deltas_;
+        const auto& supply = task.parsed_block_->total_supply_;
+        if (!delta || delta->mc_seqno != task.mc_seqno_ || !supply ||
+            supply->mc_seqno != delta->mc_seqno || supply->gen_utime != delta->gen_utime) {
+            throw std::runtime_error("Missing or mismatched account deltas in ClickHouse batch");
+        }
+        deltas.push_back(*delta);
+    }
+    if (!deltas.empty()) {
+        client.Insert("gramstat.account_deltas", gramstat::account_deltas_block(deltas));
     }
 }
 

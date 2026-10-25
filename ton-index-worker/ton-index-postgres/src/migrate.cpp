@@ -5,6 +5,7 @@
 #include "td/utils/logging.h"
 #include "pqxx/pqxx"
 #include "version.h"
+#include "GramstatSchema.h"
 
 bool migration_needed(std::optional<Version> current_version, Version migration_version) {
   return current_version.has_value() && *current_version < migration_version;
@@ -1612,7 +1613,8 @@ void run_1_3_2_migrations(const std::string& connection_string, bool dry_run) {
       "ADD COLUMN IF NOT EXISTS transaction_fees numeric(38, 0), "
       "ADD COLUMN IF NOT EXISTS import_fees numeric(38, 0), "
       "ADD COLUMN IF NOT EXISTS created numeric(38, 0), "
-      "ADD COLUMN IF NOT EXISTS burned numeric(38, 0);\n") + set_version_query({1, 3, 2});
+      "ADD COLUMN IF NOT EXISTS burned numeric(38, 0);\n") +
+      gramstat::postgres::SCHEMA_SQL + set_version_query({1, 3, 2});
   if (dry_run) {
     std::cout << query << std::endl;
     return;
@@ -1620,6 +1622,7 @@ void run_1_3_2_migrations(const std::string& connection_string, bool dry_run) {
   try {
     pqxx::connection c(connection_string);
     pqxx::work txn(c);
+    txn.exec("SELECT pg_advisory_xact_lock(hashtext('gramstat.schema'))");
     txn.exec(query).no_rows();
     txn.commit();
   } catch (const std::exception& e) {

@@ -1,4 +1,5 @@
-#include "TotalSupplyPostgres.h"
+#include "GramstatPostgres.h"
+#include "GramstatSchema.h"
 
 #include "postgresql_tools.h"
 
@@ -7,20 +8,7 @@ namespace gramstat::postgres {
 void ensure_schema(pqxx::work& txn) {
     // Serialize first-time DDL when leader and standby start together.
     txn.exec("SELECT pg_advisory_xact_lock(hashtext('gramstat.schema'))");
-    txn.exec0(R"SQL(
-CREATE SCHEMA IF NOT EXISTS gramstat;
-CREATE TABLE IF NOT EXISTS gramstat.total_supply (
-    mc_seqno bigint PRIMARY KEY,
-    gen_utime bigint NOT NULL,
-    total numeric(38, 0) NOT NULL,
-    accounts numeric(38, 0) NOT NULL,
-    dispatch_queue numeric(38, 0) NOT NULL,
-    unprocessed_messages numeric(38, 0) NOT NULL,
-    unrecovered_validator_fees numeric(38, 0) NOT NULL
-);
-CREATE INDEX IF NOT EXISTS total_supply_gen_utime_idx
-    ON gramstat.total_supply (gen_utime, mc_seqno);
-)SQL");
+    txn.exec0(SCHEMA_SQL);
 }
 
 void insert_total_supply(pqxx::work& txn, const std::vector<InsertTaskStruct>& tasks) {
@@ -39,6 +27,26 @@ void insert_total_supply(pqxx::work& txn, const std::vector<InsertTaskStruct>& t
         stream.insert_row(std::make_tuple(snapshot->mc_seqno, snapshot->gen_utime, snapshot->total,
             snapshot->accounts, snapshot->dispatch_queue, snapshot->unprocessed_messages,
             snapshot->unrecovered_validator_fees));
+    }
+    stream.finish();
+}
+
+void insert_account_deltas(pqxx::work& txn, const std::vector<InsertTaskStruct>& tasks) {
+    std::initializer_list<std::string_view> columns = {
+        "mc_seqno", "gen_utime", "delta_uninit", "delta_active", "delta_frozen"};
+    PopulateTableStream stream(txn, "gramstat.account_deltas", columns, 1000);
+    // Recompute replaces the per-MC values; it must never add them again.
+    stream.setConflictDoUpdate({"mc_seqno"},
+        {"gen_utime", "delta_uninit", "delta_active", "delta_frozen"}, "");
+    for (const auto& task : tasks) {
+        const auto& delta = task.parsed_block_->account_deltas_;
+        const auto& supply = task.parsed_block_->total_supply_;
+        if (!delta || delta->mc_seqno != task.mc_seqno_ || !supply ||
+            supply->mc_seqno != delta->mc_seqno || supply->gen_utime != delta->gen_utime) {
+            throw std::runtime_error("Missing or mismatched account deltas in PostgreSQL batch");
+        }
+        stream.insert_row(std::make_tuple(delta->mc_seqno, delta->gen_utime,
+            delta->delta_uninit, delta->delta_active, delta->delta_frozen));
     }
     stream.finish();
 }

@@ -3,7 +3,8 @@
 #include <stdexcept>
 
 #include "TotalSupply.h"
-#include "TotalSupplyStorage.h"
+#include "AccountDeltas.h"
+#include "GramstatStorage.h"
 #include "DataParser.h"
 #include "crypto/block/block.h"
 #include "clickhouse/columns/date.h"
@@ -132,12 +133,76 @@ void check_block_value_flow() {
     CHECK(ParseQuery::parse_block_value_flow(vm::CellBuilder().finalize(), result).is_error());
 }
 
+void check_account_deltas() {
+    using S = schema::AccountStatus;
+    ParsedBlock parsed;
+    for (int wc : {-1, 0, 1}) {
+        schema::Block block{};
+        block.workchain = wc;
+        block.seqno = wc == -1 ? 100 : 20;
+        block.gen_utime = wc == -1 ? 1788307200 : 1788307199;
+        block.mc_block_workchain = -1;
+        block.mc_block_seqno = 100;
+        parsed.blocks_.push_back(block);
+    }
+    auto add = [&](std::size_t index, S before, S after) {
+        schema::Transaction tx{};
+        tx.mc_seqno = 100;
+        tx.account = block::StdAddress(parsed.blocks_[index].workchain, td::Bits256::zero());
+        tx.orig_status = before;
+        tx.end_status = after;
+        parsed.blocks_[index].transactions.push_back(tx);
+    };
+    auto zero = gramstat::calculate_account_deltas(100, parsed).move_as_ok();
+    CHECK(zero.delta_uninit == 0 && zero.delta_active == 0 && zero.delta_frozen == 0);
+    add(0, S::nonexist, S::active);
+    add(1, S::nonexist, S::uninit);
+    add(1, S::uninit, S::active);
+    add(1, S::active, S::frozen);
+    add(1, S::frozen, S::nonexist);  // same account born and removed within this MC
+    add(2, S::uninit, S::active);
+    add(2, S::active, S::frozen);
+    auto delta = gramstat::calculate_account_deltas(100, parsed).move_as_ok();
+    CHECK(delta.mc_seqno == 100 && delta.gen_utime == 1788307200);
+    CHECK(delta.delta_uninit == -1 && delta.delta_active == 1 && delta.delta_frozen == 1);
+    // Sum all sixteen transitions; self-transitions and opposite pairs cancel.
+    for (auto before : {S::nonexist, S::uninit, S::active, S::frozen}) {
+        for (auto after : {S::nonexist, S::uninit, S::active, S::frozen}) {
+            add(0, before, after);
+        }
+    }
+    auto same = gramstat::calculate_account_deltas(100, parsed).move_as_ok();
+    CHECK(same.delta_uninit == -1 && same.delta_active == 1 && same.delta_frozen == 1);
+    auto columns = gramstat::account_deltas_block({delta, zero});
+    CHECK(columns.GetRowCount() == 2 && columns.GetColumnCount() == 5);
+    CHECK(columns[0]->As<clickhouse::ColumnUInt32>()->At(0) == 100);
+    CHECK(columns[1]->As<clickhouse::ColumnDateTime>()->RawAt(0) == 1788307200);
+    CHECK(columns[2]->As<clickhouse::ColumnInt64>()->At(0) == -1);
+    CHECK(columns[3]->As<clickhouse::ColumnInt64>()->At(0) == 1);
+    CHECK(columns[4]->As<clickhouse::ColumnInt64>()->At(1) == 0);
+
+    CHECK(gramstat::calculate_account_deltas(101, parsed).is_error());
+    CHECK(gramstat::calculate_account_deltas(100, {}).is_error());
+    parsed.blocks_.push_back(parsed.blocks_.front());
+    CHECK(gramstat::calculate_account_deltas(100, parsed).is_error());
+    parsed.blocks_.pop_back();
+    parsed.blocks_.back().mc_block_seqno.reset();
+    CHECK(gramstat::calculate_account_deltas(100, parsed).is_error());
+    parsed.blocks_.back().mc_block_seqno = 100;
+    parsed.blocks_.back().transactions.back().mc_seqno = 99;
+    CHECK(gramstat::calculate_account_deltas(100, parsed).is_error());
+    parsed.blocks_.back().transactions.back().mc_seqno = 100;
+    parsed.blocks_.back().transactions.back().end_status = static_cast<S>(99);
+    CHECK(gramstat::calculate_account_deltas(100, parsed).is_error());
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
     td::Time::allow_freezes();
     if (argc == 2 && std::string(argv[1]) == "--schema") {
-        std::cout << gramstat::CREATE_DATABASE << ";\n" << gramstat::CREATE_TOTAL_SUPPLY << ";\n";
+        std::cout << gramstat::CREATE_DATABASE << ";\n" << gramstat::CREATE_TOTAL_SUPPLY << ";\n"
+                  << gramstat::CREATE_ACCOUNT_DELTAS << ";\n";
         return 0;
     }
     if (argc == 2 && std::string(argv[1]) == "--completed-query") {
@@ -153,5 +218,6 @@ int main(int argc, char** argv) {
     check_incomplete_input();
     check_block_fees();
     check_block_value_flow();
-    std::cout << "Total supply adapter and exact ClickHouse columns: OK\n";
+    check_account_deltas();
+    std::cout << "Gramstat supply, account deltas and exact ClickHouse columns: OK\n";
 }

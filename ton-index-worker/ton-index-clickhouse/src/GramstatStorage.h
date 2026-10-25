@@ -22,7 +22,21 @@ ORDER BY (gen_utime, mc_seqno)
 
 clickhouse::Block total_supply_block(const std::vector<schema::TotalSupply>& snapshots);
 
-// Both normal resume and bounded replay must repair a missing supply row even
+inline constexpr const char* CREATE_ACCOUNT_DELTAS = R"SQL(
+CREATE TABLE IF NOT EXISTS gramstat.account_deltas (
+    mc_seqno UInt32,
+    gen_utime DateTime('UTC'),
+    delta_uninit Int64,
+    delta_active Int64,
+    delta_frozen Int64
+) ENGINE = ReplacingMergeTree
+PARTITION BY toYYYYMM(gen_utime)
+ORDER BY (gen_utime, mc_seqno)
+)SQL";
+
+clickhouse::Block account_deltas_block(const std::vector<schema::AccountDeltas>& deltas);
+
+// Both normal resume and bounded replay must repair missing Gramstat rows even
 // when the block insert succeeded before a crash. IN avoids duplicate fan-out
 // while ReplacingMergeTree rows are still awaiting background merges.
 std::string completed_seqnos_query(bool collect_gramstat, std::int32_t from_seqno, std::int32_t to_seqno);

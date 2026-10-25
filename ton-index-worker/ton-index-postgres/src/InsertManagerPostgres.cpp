@@ -2,7 +2,7 @@
 #include "td/utils/crypto.h"
 #include "td/utils/misc.h"
 #include "InsertManagerPostgres.h"
-#include "TotalSupplyPostgres.h"
+#include "GramstatPostgres.h"
 #include "convert-utils.h"
 #include "Statistics.h"
 #include "version.h"
@@ -3129,6 +3129,7 @@ void InsertBatchPostgres::commit_prepared_batch() {
   insert_blocks(txn, with_copy_);
   if (collect_gramstat_) {
     gramstat::postgres::insert_total_supply(txn, insert_tasks_);
+    gramstat::postgres::insert_account_deltas(txn, insert_tasks_);
   }
   insert_shard_state(txn, with_copy_);
   insert_transactions(txn, with_copy_);
@@ -4514,7 +4515,7 @@ void InsertManagerPostgres::start_up() {
       pqxx::work txn(c);
       gramstat::postgres::ensure_schema(txn);
       txn.commit();
-      LOG(INFO) << "Gramstat enabled: writing gramstat.total_supply";
+      LOG(INFO) << "Gramstat enabled: writing gramstat.total_supply and gramstat.account_deltas";
     } catch (const std::exception& e) {
       LOG(ERROR) << "Error preparing Gramstat schema: " << e.what();
       std::_Exit(2);

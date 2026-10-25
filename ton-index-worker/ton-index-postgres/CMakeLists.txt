@@ -7,7 +7,7 @@ add_executable(ton-index-postgres
     src/KvrocksClient.cpp
     src/KvrocksProgress.cpp
     src/PartitionManagerPostgres.cpp
-    src/TotalSupplyPostgres.cpp
+    src/GramstatPostgres.cpp
 )
 
 target_include_directories(ton-index-postgres
@@ -38,9 +38,10 @@ target_link_options(ton-index-postgres-migrate PUBLIC -rdynamic)
 
 install(TARGETS ton-index-postgres-migrate RUNTIME DESTINATION bin)
 
-add_executable(test-gramstat-postgres EXCLUDE_FROM_ALL test/total_supply.cpp src/TotalSupplyPostgres.cpp)
+add_executable(test-gramstat-postgres EXCLUDE_FROM_ALL test/total_supply.cpp src/GramstatPostgres.cpp)
 target_include_directories(test-gramstat-postgres PRIVATE src)
 target_link_libraries(test-gramstat-postgres PRIVATE tondb-scanner pqxx)
+add_dependencies(test-gramstat-postgres ton-index-postgres-migrate)
 
 find_package(Python3 COMPONENTS Interpreter QUIET)
 find_program(GRAMSTAT_PG_CONFIG pg_config)
@@ -53,6 +54,7 @@ find_program(GRAMSTAT_PG_CTL pg_ctl HINTS ${GRAMSTAT_PG_BINDIR})
 if (Python3_Interpreter_FOUND AND GRAMSTAT_INITDB AND GRAMSTAT_PG_CTL)
     add_test(NAME gramstat_postgres COMMAND ${Python3_EXECUTABLE}
         ${CMAKE_CURRENT_SOURCE_DIR}/test/total_supply_pg.py
-        $<TARGET_FILE:test-gramstat-postgres> ${GRAMSTAT_INITDB} ${GRAMSTAT_PG_CTL})
+        $<TARGET_FILE:test-gramstat-postgres> ${GRAMSTAT_INITDB} ${GRAMSTAT_PG_CTL}
+        $<TARGET_FILE:ton-index-postgres-migrate>)
     set_tests_properties(gramstat_postgres PROPERTIES SKIP_RETURN_CODE 77)
 endif()

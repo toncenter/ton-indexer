@@ -86,7 +86,7 @@ int main(int argc, char *argv[]) {
   p.add_option('\0', "pg", "PostgreSQL connection string", [&](td::Slice value) { 
     credential.conn_str = value.str();
   });
-  p.add_option('\0', "gramstat", "Collect Gramstat metrics (total supply) in the gramstat schema", [&]() {
+  p.add_option('\0', "gramstat", "Collect Gramstat metrics (total supply, account deltas) in the gramstat schema", [&]() {
     gramstat = true;
   });
   p.add_option('\0', "pg-no-copy", "Use INSERT ... ON CONFLICT instead of COPY for PostgreSQL historical table writes", [&]() {

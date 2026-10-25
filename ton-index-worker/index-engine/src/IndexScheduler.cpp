@@ -1,6 +1,7 @@
 #include "IndexScheduler.h"
 #include "BlockInterfacesDetector.h"
 #include "TotalSupply.h"
+#include "AccountDeltas.h"
 #include "Statistics.h"
 #include "common/delay.h"
 #include "td/utils/StringBuilder.h"
@@ -545,6 +546,14 @@ void IndexScheduler::seqno_actions_processed(std::uint32_t mc_seqno, ParsedBlock
 
     if (collect_gramstat_) {
         start_seqno_otel_stage(mc_seqno, "gramstat");
+        auto deltas = gramstat::calculate_account_deltas(mc_seqno, *parsed_block);
+        if (deltas.is_error()) {
+            auto error = deltas.move_as_error();
+            LOG(ERROR) << "Failed to calculate account deltas for seqno " << mc_seqno << ": " << error;
+            handle_seqno_failure(mc_seqno, "indexer.gramstat_error", std::move(error), false);
+            return;
+        }
+        parsed_block->account_deltas_ = deltas.move_as_ok();
         auto P = td::PromiseCreator::lambda(
             [SelfId = actor_id(this), mc_seqno, parsed_block](td::Result<schema::TotalSupply> R) mutable {
                 td::actor::send_closure(SelfId, &IndexScheduler::seqno_supply_processed,

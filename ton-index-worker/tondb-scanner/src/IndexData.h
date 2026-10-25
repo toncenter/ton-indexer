@@ -829,6 +829,15 @@ struct TotalSupply {
   td::RefInt256 unrecovered_validator_fees;
 };
 
+// Net account-status changes in the MC and its newly included shard blocks.
+struct AccountDeltas {
+  std::uint32_t mc_seqno;
+  std::uint32_t gen_utime;
+  std::int64_t delta_uninit = 0;
+  std::int64_t delta_active = 0;
+  std::int64_t delta_frozen = 0;
+};
+
 using BlockchainEvent = std::variant<JettonTransfer,
                                      JettonBurn,
                                      NFTTransfer,
@@ -877,6 +886,7 @@ struct ParsedBlock {
   std::shared_ptr<vm::CellDbReader> cell_db_reader_;  // for loading previous states
 
   std::optional<schema::TotalSupply> total_supply_;
+  std::optional<schema::AccountDeltas> account_deltas_;
 
   std::vector<schema::Block> blocks_;
   std::vector<schema::AccountState> account_states_;
