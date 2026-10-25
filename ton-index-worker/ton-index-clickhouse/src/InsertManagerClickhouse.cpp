@@ -1,4 +1,5 @@
 #include "InsertManagerClickhouse.h"
+#include "TotalSupplyStorage.h"
 
 #include "td/utils/StringBuilder.h"
 #include "clickhouse/client.h"
@@ -9,19 +10,22 @@
 #include "convert-utils.h"
 
 #include <algorithm>
+#include <stdexcept>
 
 
 class InsertBatchClickhouse: public td::actor::Actor {
 public:
     InsertBatchClickhouse(clickhouse::ClientOptions client_options, std::vector<InsertTaskStruct> insert_tasks,
-                          td::Promise<InsertManagerInterface::InsertResult> promise)
-      : client_options_(std::move(client_options)), insert_tasks_(std::move(insert_tasks)), promise_(std::move(promise)) {}
+                          td::Promise<InsertManagerInterface::InsertResult> promise, bool collect_total_supply)
+      : client_options_(std::move(client_options)), insert_tasks_(std::move(insert_tasks)), promise_(std::move(promise)),
+        collect_total_supply_(collect_total_supply) {}
 
     void start_up() override;
 private:
     clickhouse::ClientOptions client_options_;
     std::vector<InsertTaskStruct> insert_tasks_;
     td::Promise<InsertManagerInterface::InsertResult> promise_;
+    bool collect_total_supply_;
 
     void insert_jettons(clickhouse::Client& client);
     void insert_nfts(clickhouse::Client& client);
@@ -30,6 +34,7 @@ private:
     void insert_account_states(clickhouse::Client& client);
     void insert_shard_state(clickhouse::Client& client);
     void insert_blocks(clickhouse::Client& client);
+    void insert_total_supply(clickhouse::Client& client);
 };
 
 void InsertManagerClickhouse::start_up() {
@@ -51,6 +56,10 @@ void InsertManagerClickhouse::start_up() {
         }
         auto options = credential_.get_clickhouse_options();
         clickhouse::Client client(options);
+        if (collect_total_supply_) {
+            client.Execute(gramstat::CREATE_DATABASE);
+            client.Execute(gramstat::CREATE_TOTAL_SUPPLY);
+        }
         {
             td::StringBuilder builder;
             builder << "CREATE TABLE IF NOT EXISTS blocks ("
@@ -398,7 +407,8 @@ void InsertManagerClickhouse::start_up() {
 
 void InsertManagerClickhouse::create_insert_actor(std::vector<InsertTaskStruct> insert_tasks,
                                                   td::Promise<InsertManagerInterface::InsertResult> promise) {
-    td::actor::create_actor<InsertBatchClickhouse>("insert_batch_clickhouse", credential_.get_clickhouse_options(), std::move(insert_tasks), std::move(promise)).release();
+    td::actor::create_actor<InsertBatchClickhouse>("insert_batch_clickhouse", credential_.get_clickhouse_options(),
+                                                std::move(insert_tasks), std::move(promise), collect_total_supply_).release();
 }
 
 void InsertManagerClickhouse::get_existing_seqnos(td::Promise<std::vector<std::uint32_t>> promise, std::int32_t from_seqno, std::int32_t to_seqno)
@@ -409,15 +419,8 @@ void InsertManagerClickhouse::get_existing_seqnos(td::Promise<std::vector<std::u
         clickhouse::Client client(options);
         
         std::vector<std::uint32_t> result;
-        td::StringBuilder sb;
-        sb << "select seqno from blocks where workchain = -1";
-        if (from_seqno > 0) {
-        sb << " and seqno >= " << from_seqno;
-        }
-        if (to_seqno > 0) {
-        sb << " and seqno <= " << to_seqno;
-        }
-        client.Select(sb.as_cslice().str(), [&result](const clickhouse::Block& block) {
+        client.Select(gramstat::completed_seqnos_query(collect_total_supply_, from_seqno, to_seqno),
+                      [&result](const clickhouse::Block& block) {
             for (size_t i = 0; i < block.GetRowCount(); ++i) {
                 result.push_back(block[0]->As<clickhouse::ColumnInt32>()->At(i));
             }
@@ -442,15 +445,8 @@ void InsertManagerClickhouse::get_resume_seqno(td::Promise<InsertManagerInterfac
         clickhouse::Client client(options);
 
         std::vector<std::uint32_t> existing_seqnos;
-        td::StringBuilder sb;
-        sb << "select seqno from blocks where workchain = -1";
-        if (from_seqno > 0) {
-            sb << " and seqno >= " << from_seqno;
-        }
-        if (to_seqno > 0) {
-            sb << " and seqno <= " << to_seqno;
-        }
-        client.Select(sb.as_cslice().str(), [&existing_seqnos](const clickhouse::Block& block) {
+        client.Select(gramstat::completed_seqnos_query(collect_total_supply_, from_seqno, to_seqno),
+                      [&existing_seqnos](const clickhouse::Block& block) {
             for (size_t i = 0; i < block.GetRowCount(); ++i) {
                 existing_seqnos.push_back(block[0]->As<clickhouse::ColumnInt32>()->At(i));
             }
@@ -543,6 +539,9 @@ void InsertBatchClickhouse::start_up() {
         insert_nfts(client);
         insert_jettons(client);
         insert_blocks(client);
+        if (collect_total_supply_) {
+            insert_total_supply(client);
+        }
         
         // all done
         InsertManagerInterface::InsertResult result;
@@ -558,6 +557,21 @@ void InsertBatchClickhouse::start_up() {
         promise_.set_error(td::Status::Error(ErrorCode::DB_ERROR, PSLICE() << "Error inserting batch to Clickhouse: " << e.what()));
     }
     stop();
+}
+
+void InsertBatchClickhouse::insert_total_supply(clickhouse::Client& client) {
+    std::vector<schema::TotalSupply> snapshots;
+    snapshots.reserve(insert_tasks_.size());
+    for (const auto& task : insert_tasks_) {
+        const auto& supply = task.parsed_block_->total_supply_;
+        if (!supply || supply->mc_seqno != task.mc_seqno_) {
+            throw std::runtime_error("Missing or mismatched total supply snapshot in insert batch");
+        }
+        snapshots.push_back(*supply);
+    }
+    if (!snapshots.empty()) {
+        client.Insert("gramstat.total_supply", gramstat::total_supply_block(snapshots));
+    }
 }
 
 void InsertBatchClickhouse::insert_shard_state(clickhouse::Client &client) {

@@ -811,6 +811,17 @@ struct MasterchainBlockDataState {
   std::shared_ptr<block::ConfigInfo> config_;
 };
 
+// One masterchain post-state snapshot. All monetary amounts are exact nanotons.
+struct TotalSupply {
+  std::uint32_t mc_seqno;
+  std::uint32_t gen_utime;
+  td::RefInt256 total;
+  td::RefInt256 accounts;
+  td::RefInt256 dispatch_queue;
+  td::RefInt256 unprocessed_messages;
+  td::RefInt256 unrecovered_validator_fees;
+};
+
 using BlockchainEvent = std::variant<JettonTransfer,
                                      JettonBurn,
                                      NFTTransfer,
@@ -857,6 +868,8 @@ struct hash<block::StdAddress> {
 struct ParsedBlock {
   schema::MasterchainBlockDataState mc_block_;
   std::shared_ptr<vm::CellDbReader> cell_db_reader_;  // for loading previous states
+
+  std::optional<schema::TotalSupply> total_supply_;
 
   std::vector<schema::Block> blocks_;
   std::vector<schema::AccountState> account_states_;

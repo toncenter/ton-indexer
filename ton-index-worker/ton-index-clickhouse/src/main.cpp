@@ -37,6 +37,7 @@ int main(int argc, char *argv[]) {
   bool force_index = false;
   InsertManagerClickhouse::Credential credential;
   bool testnet = false;
+  bool gramstat = false;
 
   std::uint32_t max_active_tasks = 7;
   std::uint32_t max_insert_actors = 12;
@@ -63,6 +64,9 @@ int main(int argc, char *argv[]) {
   });
   p.add_option('\0', "ch", "Clickhouse connection string",  [&](td::Slice value) {
     credential.set_conn_str(value.str());
+  });
+  p.add_option('\0', "gramstat", "Calculate total supply per MC and write gramstat.total_supply", [&] {
+    gramstat = true;
   });
   p.add_checked_option('f', "from", "Masterchain seqno to start indexing from", [&](td::Slice fname) { 
     int v;
@@ -263,7 +267,7 @@ int main(int argc, char *argv[]) {
   });
 
   td::actor::Scheduler scheduler({td::actor::Scheduler::NodeInfo{threads, io_workers}});
-  scheduler.run_in_context([&] { insert_manager_ = td::actor::create_actor<InsertManagerClickhouse>("insertmanager", credential); });
+  scheduler.run_in_context([&] { insert_manager_ = td::actor::create_actor<InsertManagerClickhouse>("insertmanager", credential, gramstat); });
   scheduler.run_in_context([&] { parse_manager_ = td::actor::create_actor<ParseManager>("parsemanager"); });
   scheduler.run_in_context([&] {
     db_scanner_ = td::actor::create_actor<DbScanner>("scanner", db_root, dbs_secondary,
@@ -272,7 +276,8 @@ int main(int argc, char *argv[]) {
   });
 
   scheduler.run_in_context([&, watcher = std::move(watcher)] { index_scheduler_ = td::actor::create_actor<IndexScheduler>("indexscheduler", db_scanner_.get(), 
-    insert_manager_.get(), parse_manager_.get(), working_dir, from_seqno, to_seqno, force_index, max_active_tasks, max_queue, stats_timeout, watcher);
+    insert_manager_.get(), parse_manager_.get(), working_dir, from_seqno, to_seqno, force_index, max_active_tasks, max_queue,
+    stats_timeout, watcher, 50, std::string{}, gramstat);
   });
   scheduler.run_in_context([&] { 
     td::actor::send_closure(insert_manager_, &InsertManagerClickhouse::set_parallel_inserts_actors, max_insert_actors);
