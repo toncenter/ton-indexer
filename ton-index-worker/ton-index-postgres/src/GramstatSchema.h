@@ -25,6 +25,22 @@ CREATE TABLE IF NOT EXISTS gramstat.account_deltas (
 );
 CREATE INDEX IF NOT EXISTS account_deltas_gen_utime_idx
     ON gramstat.account_deltas (gen_utime, mc_seqno);
+CREATE TABLE IF NOT EXISTS gramstat.deployments (
+    mc_seqno bigint NOT NULL,
+    gen_utime bigint NOT NULL,
+    account tonaddr NOT NULL,
+    lt bigint NOT NULL,
+    tx_hash tonhash NOT NULL,
+    init_code_hash tonhash,
+    out_msgs_count integer NOT NULL,
+    PRIMARY KEY (account, lt, tx_hash)
+);
+CREATE INDEX IF NOT EXISTS deployments_code_account_lt_idx
+    ON gramstat.deployments (init_code_hash, account, lt);
+CREATE INDEX IF NOT EXISTS deployments_gen_utime_idx
+    ON gramstat.deployments (gen_utime);
+CREATE INDEX IF NOT EXISTS deployments_mc_seqno_idx
+    ON gramstat.deployments (mc_seqno);
 )SQL";
 
 }  // namespace gramstat::postgres

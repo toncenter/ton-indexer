@@ -36,6 +36,7 @@ private:
     void insert_shard_state(clickhouse::Client& client);
     void insert_blocks(clickhouse::Client& client);
     void insert_total_supply(clickhouse::Client& client);
+    void insert_deployments(clickhouse::Client& client);
     void insert_account_deltas(clickhouse::Client& client);
 };
 
@@ -62,6 +63,7 @@ void InsertManagerClickhouse::start_up() {
             client.Execute(gramstat::CREATE_DATABASE);
             client.Execute(gramstat::CREATE_TOTAL_SUPPLY);
             client.Execute(gramstat::CREATE_ACCOUNT_DELTAS);
+            client.Execute(gramstat::CREATE_DEPLOYMENTS);
         }
         {
             td::StringBuilder builder;
@@ -554,6 +556,8 @@ void InsertBatchClickhouse::start_up() {
         insert_blocks(client);
         if (collect_gramstat_) {
             insert_total_supply(client);
+            // Deltas are the completion marker even for MCs with zero deployments.
+            insert_deployments(client);
             insert_account_deltas(client);
         }
         
@@ -585,6 +589,25 @@ void InsertBatchClickhouse::insert_total_supply(clickhouse::Client& client) {
     }
     if (!snapshots.empty()) {
         client.Insert("gramstat.total_supply", gramstat::total_supply_block(snapshots));
+    }
+}
+
+void InsertBatchClickhouse::insert_deployments(clickhouse::Client& client) {
+    std::vector<schema::Deployment> deployments;
+    for (const auto& task : insert_tasks_) {
+        const auto& events = task.parsed_block_->deployments_;
+        if (!events) {
+            throw std::runtime_error("Missing deployments in ClickHouse batch");
+        }
+        for (const auto& event : *events) {
+            if (event.mc_seqno != task.mc_seqno_) {
+                throw std::runtime_error("Mismatched deployment in ClickHouse batch");
+            }
+            deployments.push_back(event);
+        }
+    }
+    if (!deployments.empty()) {
+        client.Insert("gramstat.deployments", gramstat::deployments_block(deployments));
     }
 }
 

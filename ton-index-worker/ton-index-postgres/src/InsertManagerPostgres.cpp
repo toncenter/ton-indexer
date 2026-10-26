@@ -3129,6 +3129,7 @@ void InsertBatchPostgres::commit_prepared_batch() {
   insert_blocks(txn, with_copy_);
   if (collect_gramstat_) {
     gramstat::postgres::insert_total_supply(txn, insert_tasks_);
+    gramstat::postgres::insert_deployments(txn, insert_tasks_);
     gramstat::postgres::insert_account_deltas(txn, insert_tasks_);
   }
   insert_shard_state(txn, with_copy_);
@@ -4515,7 +4516,7 @@ void InsertManagerPostgres::start_up() {
       pqxx::work txn(c);
       gramstat::postgres::ensure_schema(txn);
       txn.commit();
-      LOG(INFO) << "Gramstat enabled: writing gramstat.total_supply and gramstat.account_deltas";
+      LOG(INFO) << "Gramstat enabled: writing total_supply, deployments and account_deltas";
     } catch (const std::exception& e) {
       LOG(ERROR) << "Error preparing Gramstat schema: " << e.what();
       std::_Exit(2);

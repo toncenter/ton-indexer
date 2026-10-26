@@ -65,7 +65,7 @@ int main(int argc, char *argv[]) {
   p.add_option('\0', "ch", "Clickhouse connection string",  [&](td::Slice value) {
     credential.set_conn_str(value.str());
   });
-  p.add_option('\0', "gramstat", "Collect Gramstat metrics (total supply, account deltas) in the gramstat database", [&] {
+  p.add_option('\0', "gramstat", "Collect Gramstat metrics (total supply, account deltas, deployments) in the gramstat database", [&] {
     gramstat = true;
   });
   p.add_checked_option('f', "from", "Masterchain seqno to start indexing from", [&](td::Slice fname) { 

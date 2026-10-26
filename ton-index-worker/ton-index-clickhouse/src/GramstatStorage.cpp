@@ -5,6 +5,9 @@
 #include "clickhouse/columns/date.h"
 #include "clickhouse/columns/decimal.h"
 #include "clickhouse/columns/numeric.h"
+#include "clickhouse/columns/nullable.h"
+#include "clickhouse/columns/string.h"
+#include "convert-utils.h"
 
 namespace gramstat {
 
@@ -67,6 +70,36 @@ clickhouse::Block account_deltas_block(const std::vector<schema::AccountDeltas>&
     block.AppendColumn("delta_uninit", uninit);
     block.AppendColumn("delta_active", active);
     block.AppendColumn("delta_frozen", frozen);
+    return block;
+}
+
+clickhouse::Block deployments_block(const std::vector<schema::Deployment>& deployments) {
+    using namespace clickhouse;
+    auto seqno = std::make_shared<ColumnUInt32>();
+    auto time = std::make_shared<ColumnDateTime>("UTC");
+    auto account = std::make_shared<ColumnString>();
+    auto lt = std::make_shared<ColumnUInt64>();
+    auto hash = std::make_shared<ColumnFixedString>(44);
+    auto code = std::make_shared<ColumnNullableT<ColumnFixedString>>(44);
+    auto out_count = std::make_shared<ColumnUInt32>();
+    for (const auto& event : deployments) {
+        seqno->Append(event.mc_seqno);
+        time->AppendRaw(event.gen_utime);
+        account->Append(convert::to_raw_address(event.account));
+        lt->Append(event.lt);
+        hash->Append(td::base64_encode(event.tx_hash.as_slice()));
+        code->Append(event.init_code_hash
+            ? std::optional<std::string>(td::base64_encode(event.init_code_hash->as_slice())) : std::nullopt);
+        out_count->Append(event.out_msgs_count);
+    }
+    Block block;
+    block.AppendColumn("mc_seqno", seqno);
+    block.AppendColumn("gen_utime", time);
+    block.AppendColumn("account", account);
+    block.AppendColumn("lt", lt);
+    block.AppendColumn("tx_hash", hash);
+    block.AppendColumn("init_code_hash", code);
+    block.AppendColumn("out_msgs_count", out_count);
     return block;
 }
 

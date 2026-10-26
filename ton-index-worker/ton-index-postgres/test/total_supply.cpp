@@ -13,6 +13,7 @@ InsertTaskStruct task(std::uint32_t seqno, std::uint32_t time, const char* total
     result.parsed_block_->total_supply_ = schema::TotalSupply{
         seqno, time, amount, amount - 101, td::make_refint(23), td::make_refint(31), td::make_refint(47)};
     result.parsed_block_->account_deltas_ = schema::AccountDeltas{seqno, time, -1, 2, 0};
+    result.parsed_block_->deployments_.emplace();
     return result;
 }
 
@@ -29,6 +30,8 @@ int main(int argc, char** argv) {
     pqxx::connection observer(argv[1]);
     {
         pqxx::work txn(connection);
+        // The ordinary migrations create these domains before Gramstat's 1.3.2 DDL.
+        txn.exec0("CREATE DOMAIN tonaddr AS varchar; CREATE DOMAIN tonhash AS char(44);");
         gramstat::postgres::ensure_schema(txn);
         gramstat::postgres::ensure_schema(txn);
         txn.exec0("CREATE TABLE blocks (workchain int, seqno bigint, shard bigint DEFAULT 0, "
@@ -41,35 +44,59 @@ int main(int argc, char** argv) {
     tasks.push_back(task(101, 1788224399, "100000000000000000102"));
     tasks.push_back(task(100, 1788224399, "100000000000000000101"));
     tasks.push_back(task(103, 1788228000, "100000000000000000104"));
+    const auto address = block::StdAddress(0, td::Bits256::zero());
+    const auto hash = td::Bits256::zero();
+    tasks[0].parsed_block_->deployments_->push_back({101, 1788220799, address, 9007199254740993ULL, hash, hash, 0});
+    tasks[0].parsed_block_->deployments_->push_back({101, 1788220800, address, 9007199254740994ULL, hash, std::nullopt, 2});
 
     // Both writes are invisible to other connections and roll back together.
     {
         pqxx::work txn(connection);
         txn.exec0("INSERT INTO blocks VALUES (-1, 100), (-1, 101), (-1, 103)");
         gramstat::postgres::insert_total_supply(txn, tasks);
+        gramstat::postgres::insert_deployments(txn, tasks);
         gramstat::postgres::insert_account_deltas(txn, tasks);
         CHECK(count(observer, "blocks") == 0);
         CHECK(count(observer, "gramstat.total_supply") == 0);
         CHECK(count(observer, "gramstat.account_deltas") == 0);
+        CHECK(count(observer, "gramstat.deployments") == 0);
     }
     CHECK(count(observer, "blocks") == 0);
     CHECK(count(observer, "gramstat.total_supply") == 0);
     CHECK(count(observer, "gramstat.account_deltas") == 0);
+    CHECK(count(observer, "gramstat.deployments") == 0);
     {
         pqxx::work txn(connection);
         txn.exec0("INSERT INTO blocks VALUES (-1, 100), (-1, 101), (-1, 103)");
         gramstat::postgres::insert_total_supply(txn, tasks);
+        gramstat::postgres::insert_deployments(txn, tasks);
         gramstat::postgres::insert_account_deltas(txn, tasks);
         txn.commit();
     }
     {
         pqxx::work txn(connection);
         gramstat::postgres::insert_total_supply(txn, tasks);  // retry/prewarm
+        gramstat::postgres::insert_deployments(txn, tasks);
         gramstat::postgres::insert_account_deltas(txn, tasks);
         txn.commit();
     }
     CHECK(count(observer, "gramstat.total_supply") == 3);
     CHECK(count(observer, "gramstat.account_deltas") == 3);
+    CHECK(count(observer, "gramstat.deployments") == 2);
+    {
+        pqxx::work txn(connection);
+        auto rows = txn.exec("SELECT lt, gen_utime, init_code_hash::text, out_msgs_count "
+                             "FROM gramstat.deployments ORDER BY lt");
+        CHECK(rows[0][0].as<long long>() == 9007199254740993LL);
+        CHECK(rows[0][1].as<int>() == 1788220799);
+        CHECK(rows[0][2].as<std::string>() == td::base64_encode(hash.as_slice()));
+        CHECK(rows[1][2].is_null() && rows[1][3].as<int>() == 2);
+        tasks[0].parsed_block_->deployments_->front().out_msgs_count = 3;
+        gramstat::postgres::insert_deployments(txn, tasks);
+        CHECK(txn.query_value<int>("SELECT out_msgs_count FROM gramstat.deployments WHERE lt=9007199254740993") == 3);
+        CHECK(txn.query_value<int>("SELECT count(*) FROM gramstat.deployments") == 2);
+        txn.commit();
+    }
 
     // Legacy block without metrics: bounded backfill / standby must not skip it.
     const auto completed = std::string("SELECT count(*) FROM blocks WHERE workchain = -1") +
@@ -87,6 +114,8 @@ int main(int argc, char** argv) {
         pqxx::work txn(connection);
         gramstat::postgres::insert_total_supply(txn, repair);
         CHECK(txn.query_value<long long>(completed) == 3);  // supply alone is insufficient
+        gramstat::postgres::insert_deployments(txn, repair);  // calculated zero events
+        CHECK(txn.query_value<long long>(completed) == 3);
         gramstat::postgres::insert_account_deltas(txn, repair);
         CHECK(txn.query_value<long long>(completed) == 4);
         txn.commit();
@@ -193,6 +222,34 @@ FROM (
         CHECK(rejected && count(observer, "blocks") == 5);
         CHECK(count(observer, "gramstat.total_supply") == 4);
         CHECK(count(observer, "gramstat.account_deltas") == 4);
+    }
+    // Missing results, wrong MC ownership and a DB error all roll back deployments
+    // with the rest of the batch, never leaving the completion marker behind.
+    for (int failure = 0; failure < 3; ++failure) {
+        bad.clear();
+        bad.push_back(task(106, 1788307201, "100000000000000000106"));
+        if (failure == 0) {
+            bad[0].parsed_block_->deployments_.reset();
+        } else {
+            bad[0].parsed_block_->deployments_->push_back({106, 1788307201, address, 20, hash, hash, 0});
+            bad[0].parsed_block_->deployments_->push_back({failure == 1 ? 99U : 106U, 1788307201,
+                address, 21, hash, hash, failure == 2 ? UINT32_MAX : 0});
+        }
+        rejected = false;
+        try {
+            pqxx::work txn(connection);
+            txn.exec0("INSERT INTO blocks VALUES (-1, 106)");
+            gramstat::postgres::insert_total_supply(txn, bad);
+            gramstat::postgres::insert_deployments(txn, bad);
+            gramstat::postgres::insert_account_deltas(txn, bad);
+            txn.commit();
+        } catch (const std::exception&) {
+            rejected = true;
+        }
+        CHECK(rejected && count(observer, "blocks") == 5);
+        CHECK(count(observer, "gramstat.total_supply") == 4);
+        CHECK(count(observer, "gramstat.account_deltas") == 4);
+        CHECK(count(observer, "gramstat.deployments") == 2);
     }
     // A complete small prefix for the documented chart SQL (run by the runner).
     std::vector<InsertTaskStruct> history;

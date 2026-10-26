@@ -31,6 +31,28 @@ void insert_total_supply(pqxx::work& txn, const std::vector<InsertTaskStruct>& t
     stream.finish();
 }
 
+void insert_deployments(pqxx::work& txn, const std::vector<InsertTaskStruct>& tasks) {
+    std::initializer_list<std::string_view> columns = {
+        "mc_seqno", "gen_utime", "account", "lt", "tx_hash", "init_code_hash", "out_msgs_count"};
+    PopulateTableStream stream(txn, "gramstat.deployments", columns, 1000);
+    stream.setConflictDoUpdate({"account", "lt", "tx_hash"},
+        {"mc_seqno", "gen_utime", "init_code_hash", "out_msgs_count"}, "");
+    for (const auto& task : tasks) {
+        const auto& events = task.parsed_block_->deployments_;
+        if (!events) {
+            throw std::runtime_error("Missing deployments in PostgreSQL batch");
+        }
+        for (const auto& event : *events) {
+            if (event.mc_seqno != task.mc_seqno_) {
+                throw std::runtime_error("Mismatched deployment in PostgreSQL batch");
+            }
+            stream.insert_row(std::make_tuple(event.mc_seqno, event.gen_utime, event.account,
+                event.lt, event.tx_hash, event.init_code_hash, event.out_msgs_count));
+        }
+    }
+    stream.finish();
+}
+
 void insert_account_deltas(pqxx::work& txn, const std::vector<InsertTaskStruct>& tasks) {
     std::initializer_list<std::string_view> columns = {
         "mc_seqno", "gen_utime", "delta_uninit", "delta_active", "delta_frozen"};

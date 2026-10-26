@@ -5,6 +5,7 @@ add_library(index-engine-core
         src/BlockInterfacesDetector.cpp
         src/TotalSupply.cpp
         src/AccountDeltas.cpp
+        src/Deployments.cpp
         # The read-only API is in the full validator target, whereas this
         # indexer links validator-disk. Build the upstream calculator TU only.
         ../external/ton/validator/global-balance-calculator.cpp

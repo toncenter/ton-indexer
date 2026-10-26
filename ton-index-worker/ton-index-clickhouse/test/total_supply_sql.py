@@ -4,6 +4,7 @@ Usage: python3 total_supply_sql.py /path/to/test-gramstat /path/to/clickhouse
 Only creates databases in a fresh clickhouse-local temporary directory.
 """
 
+import base64
 import subprocess
 from pathlib import Path
 import sys
@@ -21,6 +22,14 @@ def main():
     legacy = exported("--legacy-query")
     docs = (Path(__file__).resolve().parents[3] / "docs/gramstat.md").read_text()
     accounts = docs.split("<!-- accounts-clickhouse -->", 1)[1].split("```sql\n", 1)[1].split("```", 1)[0]
+    deployments = docs.split("<!-- deployments-clickhouse -->", 1)[1].split("```sql\n", 1)[1].split("```", 1)[0]
+    activity = docs.split("<!-- active-wallets-clickhouse -->", 1)[1].split("```sql\n", 1)[1].split("```", 1)[0]
+    code1, code2, other = [base64.b64encode(bytes([i]) * 32).decode() for i in range(3)]
+
+    def wallet_points(query):
+        return (query.replace("{wallet_hashes:Array(String)}", f"['{code1}', '{code2}']")
+                .replace("{from:UInt32}", "1788220800").replace("{to:UInt32}", "1788393600")
+                .replace("{lt_from:UInt64}", "0").replace("{lt_to:UInt64}", "100"))
 
     def account_points(end_mc=5, from_day="2026-09-01"):
         return (accounts.replace("{end_mc:UInt32}", str(end_mc))
@@ -105,6 +114,68 @@ INSERT INTO gramstat.account_deltas VALUES
     sql += "OPTIMIZE TABLE gramstat.account_deltas FINAL;\n"
     sql += account_points()
 
+    # A crash after deployments, before deltas: replayed events remain one row,
+    # and zero-event MCs also become complete only after their delta is inserted.
+    deployment_completed = completed.replace("100", "200").replace("105", "201")
+    sql += f"""
+INSERT INTO blocks VALUES (-1, -9223372036854775808, 200), (-1, -9223372036854775808, 201);
+INSERT INTO gramstat.total_supply VALUES
+    (200, '2026-09-01 00:00:00', 101, 0, 23, 31, 47),
+    (201, '2026-09-01 00:00:01', 101, 0, 23, 31, 47);
+INSERT INTO gramstat.deployments VALUES (200, '2026-09-01 00:00:00', '0:A', 1, '{code1}', '{code2}', 0);
+SELECT groupArray(seqno) FROM ({deployment_completed} ORDER BY seqno);
+INSERT INTO gramstat.deployments VALUES (200, '2026-09-01 00:00:00', '0:A', 1, '{code1}', '{code2}', 0);
+INSERT INTO gramstat.account_deltas VALUES
+    (200, '2026-09-01 00:00:00', 0, 0, 0), (201, '2026-09-01 00:00:01', 0, 0, 0);
+SELECT groupArray(seqno) FROM ({deployment_completed} ORDER BY seqno);
+SELECT count() FROM gramstat.deployments FINAL;
+TRUNCATE TABLE gramstat.deployments;
+"""
+    addresses = ["0:" + f"{i:064X}" for i in range(1, 6)]
+    a, b, c, d, e = addresses
+    master = "-1:" + f"{2:064X}"
+    # Earlier wallet, earlier non-wallet, reactivation, zero outgoing, NULL code,
+    # two wallet hashes, different workchains, and the exclusive period boundary.
+    events = [
+        (1, "2026-08-31 23:59:59", a, 10, code1, 0),
+        (1, "2026-08-31 23:59:59", b, 11, other, 0),
+        (2, "2026-09-01 00:00:00", b, 20, code2, 0),
+        (2, "2026-09-01 00:00:00", d, 25, None, 0),
+        (3, "2026-09-01 12:00:00", a, 30, code2, 2),
+        (3, "2026-09-01 12:00:00", master, 31, code1, 0),
+        (4, "2026-09-02 00:00:00", b, 40, code1, 0),
+        (4, "2026-09-02 00:00:00", c, 45, code1, 0),
+        (5, "2026-09-03 00:00:00", e, 60, code1, 0),
+    ]
+    values = ",\n".join(
+        f"({mc}, '{stamp}', '{addr}', {lt}, '{code1}', " +
+        (f"'{code}'" if code else "NULL") + f", {out_count})"
+        for mc, stamp, addr, lt, code, out_count in events)
+    sql += "INSERT INTO gramstat.deployments VALUES " + values + ";\n"
+    sql += "INSERT INTO gramstat.deployments VALUES " + values + ";\n"  # duplicate retry
+    sql += f"INSERT INTO gramstat.deployments VALUES (3, '2026-09-01 12:00:00', '{a}', 30, '{code1}', '{code2}', 3);\n"
+    sql += "SELECT count(), countIf(isNull(init_code_hash)), sum(out_msgs_count) FROM gramstat.deployments FINAL;\n"
+    sql += wallet_points(deployments)
+    sql += "OPTIMIZE TABLE gramstat.deployments FINAL;\n"
+    sql += wallet_points(deployments)
+    sql += """
+CREATE TABLE messages (tx_account String, tx_lt UInt64, tx_now UInt32,
+    direction String, source Nullable(String), bounced Nullable(Bool))
+ENGINE = Memory;
+"""
+    sends = [(a, 29, 1788220801, 0), (a, 29, 1788220801, 0),
+             (b, 19, 1788220800, 0), (b, 20, 1788220801, 0),
+             (c, 27, 1788220802, 0), (master, 31, 1788264000, None),
+             (b, 49, 1788307201, 0), (c, 45, 1788307200, None),
+             (d, 50, 1788307201, 0), (a, 50, 1788307201, 1)]
+    sql += "INSERT INTO messages VALUES " + ",\n".join(
+        f"('{addr}', {lt}, {stamp}, 'out', '{addr}', " +
+        ("NULL" if bounced is None else str(bounced)) + ")"
+        for addr, lt, stamp, bounced in sends) + ";\n"
+    sql += wallet_points(activity)
+    sql += wallet_points(activity.split("SELECT day, count() AS active_wallets", 1)[0] +
+                         "SELECT uniqExact(account) FROM active;\n")
+
     with tempfile.TemporaryDirectory(prefix="gramstat-sql-") as path:
         result = subprocess.run(
             [clickhouse, "local", "--path", path, "--multiquery", "--output-format", "TSVRaw", "--query", sql],
@@ -129,6 +200,10 @@ INSERT INTO gramstat.account_deltas VALUES
         "2026-09-01\t8\t22\t2\t32",
         "2026-09-02\t9\t22\t1\t32",
     ]
+    expected += ["[]", "[200,201]", "1", "9\t1\t3",
+                 "2026-09-01\t2", "2026-09-02\t1",
+                 "2026-09-01\t2", "2026-09-02\t1",
+                 "2026-09-01\t3", "2026-09-02\t2", "4"]
     actual = result.stdout.strip().splitlines()
     assert actual == expected, (actual, expected, result.stderr)
     print("ClickHouse schema, exact amounts, hourly/daily points, replay and resume: OK")

@@ -1,10 +1,11 @@
-# Gramstat: total supply, accounts and block flows
+# Gramstat: total supply, accounts, deployments and block flows
 
 Both `ton-index-clickhouse` and `ton-index-postgres` support `--gramstat`.
 The shared `collect_gramstat` switch enables the Gramstat stage in the existing
 `IndexScheduler` pipeline. It collects total supply in `gramstat.total_supply`
 and account-status changes in `gramstat.account_deltas`, one row per indexed
-masterchain block in each table.
+masterchain block in each table. `gramstat.deployments` stores individual
+successful deployment events for all contract types.
 
 ## Calculation
 
@@ -52,7 +53,7 @@ transaction as blocks, including when account-state writes go to Kvrocks.
 
 Add `--gramstat` to the normal indexer command with its `--ch` or `--pg`
 connection. ClickHouse creates the optional Gramstat database and tables when
-the flag is enabled. PostgreSQL migration **1.3.2** creates both Gramstat tables;
+the flag is enabled. PostgreSQL migration **1.3.2** creates the Gramstat tables;
 startup with the flag also ensures they exist using the same DDL. The configured
 role needs the corresponding permissions. Configure the flag consistently on
 PostgreSQL leader and standby workers.
@@ -66,6 +67,16 @@ pre-existing history needs an explicit bounded backfill. Standbys require all
 three rows before acknowledging a leader's batch. For independent PostgreSQL
 backfill use `--no-leader --pg-no-copy`. Missing metrics are repaired without
 `--force`; use `--force` to recompute already-present account deltas.
+
+**Deployments:** ClickHouse writes deployments synchronously **before account
+deltas**, making deltas the completion marker even for MCs with zero deployments.
+PostgreSQL commits all metrics together. There is no separate progress table.
+History with deltas written by a pre-deployments binary requires an explicit
+`--gramstat --from N --to M --force` backfill; missing deployments cannot be
+detected from the absence of events. Upgrade all writers before relying on this
+ordering. Retrying the same events is idempotent; if a future change removes
+previously selected events, rebuild the affected data rather than relying on
+upsert/`ReplacingMergeTree` to delete stale rows.
 
 ## Hourly and daily charts
 
@@ -215,6 +226,126 @@ ORDER BY day;
 These queries scan compact per-MC deltas instead of transaction history. A daily
 cache can later reduce prefix-scan cost; rebuilding it must use deduplicated MC
 rows as above. No running global counter is required in the indexer.
+
+## Deployments and wallet charts
+
+`index-engine/src/Deployments.cpp` collects transactions with
+`orig_status IN ('nonexist', 'uninit')`, `end_status = 'active'`, and `aborted = false`.
+Internal and external incoming messages both qualify. Repeated deployments are
+separate events; unfreezes (`frozen -> active`) are excluded. The indexer does not
+look up prior activations or filter wallet types.
+
+| Column | ClickHouse | PostgreSQL | Meaning |
+| --- | --- | --- | --- |
+| `mc_seqno` | `UInt32` | `bigint` | Including MC |
+| `gen_utime` | `DateTime('UTC')` | `bigint` | **Transaction** time (`tx.now`), not MC time |
+| `account` | `String` | `tonaddr` | Raw address including workchain |
+| `lt` | `UInt64` | `bigint` | Transaction LT |
+| `tx_hash` | `FixedString(44)` | `tonhash` | Transaction hash, base64 |
+| `init_code_hash` | `Nullable(FixedString(44))` | nullable `tonhash` | Code-cell hash from incoming StateInit, base64 |
+| `out_msgs_count` | `UInt32` | `integer` | All actually emitted messages, including bounced |
+
+StateInit is already available in `tx.in_msg`; collection needs no additional
+CellDB/Kvrocks reads or emulation and handles intermediate transactions in a block.
+It classifies the **deployment code**, not the post-code after possible `SETCODE`.
+NULL code means a valid StateInit without a code reference. Missing/malformed
+StateInit or an unsupported success descriptor fails the Gramstat stage instead
+of silently dropping an event.
+
+ClickHouse: monthly `ReplacingMergeTree`, `ORDER BY (account, lt, tx_hash)`;
+canonical transaction time keeps retries in the same partition. Use `FINAL`
+before counting raw events. PostgreSQL: PK `(account, lt, tx_hash)`, batched upsert,
+indexes on `(init_code_hash, account, lt)`, `gen_utime`, and `mc_seqno`.
+
+### First wallet activations per day
+
+Pass the chosen wallet code-hash registry as `wallet_hashes` (base64 strings).
+Select the first **qualifying wallet** deployment per address by LT, then apply
+the display interval `[from, to)` (Unix seconds). Earlier non-wallet deployments
+do not disqualify the address. Repeat wallet deployments do not create new first
+activations; outgoing messages are not required. These queries need complete
+deployment history before `to`, not just the displayed period. They do not
+themselves verify coverage. Grouping by day returns days with qualifying events.
+
+ClickHouse:
+
+<!-- deployments-clickhouse -->
+```sql
+WITH first_wallet AS (
+    SELECT account, argMin(gen_utime, tuple(lt, tx_hash)) AS first_time
+    FROM gramstat.deployments FINAL
+    WHERE gen_utime < toDateTime({to:UInt32}, 'UTC')
+      AND init_code_hash IN {wallet_hashes:Array(String)}
+    GROUP BY account
+)
+SELECT toDate(first_time, 'UTC') AS day, count() AS activations
+FROM first_wallet
+WHERE first_time >= toDateTime({from:UInt32}, 'UTC')
+GROUP BY day ORDER BY day;
+```
+
+PostgreSQL (`$1 = wallet_hashes`, `$2 = from`, `$3 = to`):
+
+<!-- deployments-postgres -->
+```sql
+WITH first_wallet AS (
+    SELECT DISTINCT ON (account) account, gen_utime
+    FROM gramstat.deployments
+    WHERE gen_utime < $3 AND init_code_hash = ANY($1::tonhash[])
+    ORDER BY account, lt, tx_hash
+)
+SELECT (to_timestamp(gen_utime) AT TIME ZONE 'UTC')::date AS day,
+       count(*) AS activations
+FROM first_wallet
+WHERE gen_utime >= $2
+GROUP BY day ORDER BY day;
+```
+
+### Active wallets: daily / rolling 30 days
+
+An address qualifies once it has a wallet deployment at or before the sending
+transaction's LT. It stays eligible after destruction/redeployment or `SETCODE`;
+this is activity of **addresses previously deployed as wallets**, not a claim
+about execution-time code. Historical sends from destroyed wallets remain counted.
+Use actual non-bounced outgoing messages (also external-out); the incoming message
+type is unrestricted. `deployments.out_msgs_count` covers only the deployment
+transaction and is not a substitute for subsequent messages.
+
+ClickHouse (`lt_from`/`lt_to` must cover all sending transactions in `[from, to)`;
+derive conservative bounds from the indexed blocks):
+
+<!-- active-wallets-clickhouse -->
+```sql
+WITH first_wallet AS (
+    SELECT account, min(lt) AS first_lt
+    FROM gramstat.deployments FINAL
+    WHERE gen_utime < toDateTime({to:UInt32}, 'UTC')
+      AND init_code_hash IN {wallet_hashes:Array(String)}
+    GROUP BY account
+), sends AS (
+    SELECT tx_account AS account, toDate(toDateTime(tx_now, 'UTC'), 'UTC') AS day,
+           max(tx_lt) AS last_send_lt
+    FROM messages
+    WHERE tx_lt >= {lt_from:UInt64} AND tx_lt < {lt_to:UInt64}
+      AND tx_now >= {from:UInt32} AND tx_now < {to:UInt32}
+      AND direction = 'out' AND source = tx_account
+      AND (bounced = false OR isNull(bounced))
+    GROUP BY account, day
+), active AS (
+    SELECT s.account, s.day
+    FROM sends AS s INNER JOIN first_wallet AS w ON s.account = w.account
+    WHERE s.last_send_lt >= w.first_lt
+)
+SELECT day, count() AS active_wallets
+FROM active GROUP BY day ORDER BY day;
+```
+
+`max(tx_lt)` makes identical message retries harmless without `messages FINAL`
+and reduces the JOIN to one row per address/day. For MAU, select 30 UTC days ending
+at `to` and replace the final SELECT with
+`SELECT uniqExact(account) AS active_wallets_30d FROM active`.
+Do not sum DAU. This lifetime JOIN needs a separate performance measurement;
+first-deployment and daily-activity materializations can be added later.
 
 ## Block fees and issuance (always collected)
 

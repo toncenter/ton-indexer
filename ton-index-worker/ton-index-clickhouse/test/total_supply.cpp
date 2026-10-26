@@ -4,11 +4,14 @@
 
 #include "TotalSupply.h"
 #include "AccountDeltas.h"
+#include "Deployments.h"
 #include "GramstatStorage.h"
 #include "DataParser.h"
 #include "crypto/block/block.h"
 #include "clickhouse/columns/date.h"
 #include "clickhouse/columns/decimal.h"
+#include "clickhouse/columns/nullable.h"
+#include "clickhouse/columns/string.h"
 #include "td/actor/TestScheduler.h"
 
 namespace {
@@ -196,13 +199,127 @@ void check_account_deltas() {
     CHECK(gramstat::calculate_account_deltas(100, parsed).is_error());
 }
 
+void check_deployments() {
+    using S = schema::AccountStatus;
+    ParsedBlock parsed;
+    for (int wc : {-1, 0}) {
+        schema::Block block{};
+        block.workchain = wc;
+        block.seqno = wc == -1 ? 100 : 20;
+        block.gen_utime = wc == -1 ? 1788307200 : 1788307199;
+        block.mc_block_workchain = -1;
+        block.mc_block_seqno = 100;
+        parsed.blocks_.push_back(block);
+    }
+    CHECK(gramstat::collect_deployments(100, parsed).move_as_ok().empty());
+    auto code = vm::CellBuilder().store_long(42, 8).finalize();
+    auto other_code = vm::CellBuilder().store_long(43, 8).finalize();
+    auto init = vm::CellBuilder().store_long(0, 2).store_long(1, 1).store_ref(code)
+        .store_long(0, 2).finalize();  // no prefix/special/data/library
+
+    // Both inline/reference StateInit, external/internal messages go through the
+    // production message parser before collecting deployments.
+    auto message = [&](bool external, bool by_ref) {
+        vm::CellBuilder b;
+        auto address = [&]() { b.store_long(4, 3).store_long(0, 8).store_zeroes(256); };
+        if (external) {
+            b.store_long(2, 2).store_long(0, 2);  // ext_in, addr_none
+            address();
+            b.store_long(0, 4);  // import_fee
+        } else {
+            b.store_long(4, 4);  // internal, ihr_disabled, not bounce/bounced
+            address();
+            address();
+            b.store_zeroes(5 + 4 + 4 + 64 + 32);  // zero currency/fees/creation time
+        }
+        b.store_long(1, 1).store_long(by_ref, 1);
+        if (by_ref) {
+            b.store_ref(init);
+        } else {
+            b.append_cellslice(vm::load_cell_slice(init));
+        }
+        b.store_long(0, 1);  // empty inline body
+        return ParseQuery::parse_message(b.finalize(), 0).move_as_ok();
+    };
+    auto add = [&](std::size_t block, S before, S after, bool aborted, bool external, bool by_ref) {
+        schema::Transaction tx{};
+        tx.account = block::StdAddress(parsed.blocks_[block].workchain, td::Bits256::zero());
+        tx.lt = 9007199254740993ULL + parsed.blocks_[block].transactions.size();
+        tx.now = parsed.blocks_[block].gen_utime;
+        tx.mc_seqno = 100;
+        tx.hash = vm::CellBuilder().store_long(tx.lt, 64).finalize()->get_hash().bits();
+        tx.orig_status = before;
+        tx.end_status = after;
+        schema::TransactionDescr_ord descr{};
+        descr.aborted = aborted;
+        tx.description = descr;
+        tx.in_msg = message(external, by_ref);
+        parsed.blocks_[block].transactions.push_back(std::move(tx));
+    };
+    add(0, S::uninit, S::active, false, true, true);
+    add(1, S::nonexist, S::active, false, false, false);
+    // Every actual outgoing message counts, including a bounced message.
+    parsed.blocks_[1].transactions.back().out_msgs.resize(2);
+    parsed.blocks_[1].transactions.back().out_msgs.back().bounced = true;
+    add(1, S::active, S::nonexist, false, false, true);
+    add(1, S::uninit, S::active, false, true, false);  // same-address redeploy
+    add(1, S::uninit, S::active, true, false, true);  // aborted
+    add(1, S::frozen, S::active, false, false, true);  // unfreeze
+    add(1, S::active, S::active, false, true, true);
+    add(1, S::uninit, S::active, false, true, true);
+    parsed.blocks_[1].transactions.back().in_msg->init_state = vm::CellBuilder().store_long(0, 5).finalize();
+
+    // A different final code (e.g. SETCODE) must not affect deployment classification.
+    schema::AccountState post{};
+    post.hash = td::Bits256::zero();
+    post.code_hash = other_code->get_hash().bits();
+    parsed.account_states_.push_back(post);
+    auto events = gramstat::collect_deployments(100, parsed).move_as_ok();
+    CHECK(events.size() == 4);
+    CHECK(events[0].mc_seqno == 100 && events[0].account.workchain == -1);
+    CHECK(events[0].gen_utime == 1788307200 && events[0].out_msgs_count == 0);
+    CHECK(events[1].gen_utime == 1788307199 && events[1].out_msgs_count == 2);
+    CHECK(events[1].lt == 9007199254740993ULL && events[2].lt == 9007199254740995ULL);
+    for (int i = 0; i < 3; ++i) {
+        CHECK(events[i].init_code_hash == code->get_hash().bits());
+    }
+    CHECK(!events[3].init_code_hash);
+    auto columns = gramstat::deployments_block(events);
+    CHECK(columns.GetRowCount() == 4 && columns.GetColumnCount() == 7);
+    CHECK(columns[1]->As<clickhouse::ColumnDateTime>()->RawAt(1) == 1788307199);
+    CHECK(columns[2]->As<clickhouse::ColumnString>()->At(0) == "-1:" + std::string(64, '0'));
+    CHECK(columns[3]->As<clickhouse::ColumnUInt64>()->At(1) == 9007199254740993ULL);
+    CHECK(columns[4]->As<clickhouse::ColumnFixedString>()->At(1) == td::base64_encode(events[1].tx_hash.as_slice()));
+    CHECK(columns[5]->As<clickhouse::ColumnNullable>()->IsNull(3));
+    CHECK(!columns[5]->As<clickhouse::ColumnNullable>()->IsNull(1));
+    CHECK(columns[6]->As<clickhouse::ColumnUInt32>()->At(1) == 2);
+
+    CHECK(gramstat::collect_deployments(100, {}).is_error());
+    CHECK(gramstat::collect_deployments(101, parsed).is_error());
+    auto& last = parsed.blocks_[1].transactions.back();
+    last.in_msg->init_state = vm::CellBuilder().finalize();
+    CHECK(gramstat::collect_deployments(100, parsed).is_error());
+    last.in_msg->init_state = vm::CellBuilder().append_cellslice(vm::load_cell_slice(init)).store_long(0, 1).finalize();
+    CHECK(gramstat::collect_deployments(100, parsed).is_error());
+    last.in_msg.reset();
+    CHECK(gramstat::collect_deployments(100, parsed).is_error());
+    last.in_msg = schema::Message{};
+    CHECK(gramstat::collect_deployments(100, parsed).is_error());
+    last.in_msg->init_state = init;
+    last.description = schema::TransactionDescr_split_install{};
+    CHECK(gramstat::collect_deployments(100, parsed).is_error());
+    last.description = schema::TransactionDescr_ord{};
+    last.mc_seqno = 99;
+    CHECK(gramstat::collect_deployments(100, parsed).is_error());
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
     td::Time::allow_freezes();
     if (argc == 2 && std::string(argv[1]) == "--schema") {
         std::cout << gramstat::CREATE_DATABASE << ";\n" << gramstat::CREATE_TOTAL_SUPPLY << ";\n"
-                  << gramstat::CREATE_ACCOUNT_DELTAS << ";\n";
+                  << gramstat::CREATE_ACCOUNT_DELTAS << ";\n" << gramstat::CREATE_DEPLOYMENTS << ";\n";
         return 0;
     }
     if (argc == 2 && std::string(argv[1]) == "--completed-query") {
@@ -219,5 +336,6 @@ int main(int argc, char** argv) {
     check_block_fees();
     check_block_value_flow();
     check_account_deltas();
-    std::cout << "Gramstat supply, account deltas and exact ClickHouse columns: OK\n";
+    check_deployments();
+    std::cout << "Gramstat supply, account deltas, deployments and exact ClickHouse columns: OK\n";
 }

@@ -2,6 +2,7 @@
 #include "BlockInterfacesDetector.h"
 #include "TotalSupply.h"
 #include "AccountDeltas.h"
+#include "Deployments.h"
 #include "Statistics.h"
 #include "common/delay.h"
 #include "td/utils/StringBuilder.h"
@@ -554,6 +555,14 @@ void IndexScheduler::seqno_actions_processed(std::uint32_t mc_seqno, ParsedBlock
             return;
         }
         parsed_block->account_deltas_ = deltas.move_as_ok();
+        auto deployments = gramstat::collect_deployments(mc_seqno, *parsed_block);
+        if (deployments.is_error()) {
+            auto error = deployments.move_as_error();
+            LOG(ERROR) << "Failed to collect deployments for seqno " << mc_seqno << ": " << error;
+            handle_seqno_failure(mc_seqno, "indexer.gramstat_error", std::move(error), false);
+            return;
+        }
+        parsed_block->deployments_ = deployments.move_as_ok();
         auto P = td::PromiseCreator::lambda(
             [SelfId = actor_id(this), mc_seqno, parsed_block](td::Result<schema::TotalSupply> R) mutable {
                 td::actor::send_closure(SelfId, &IndexScheduler::seqno_supply_processed,

@@ -293,6 +293,17 @@ struct MasterchainBlockShard {
   uint32_t seqno;
 };
 
+// Successful deployment event; classification uses the incoming StateInit code.
+struct Deployment {
+  std::uint32_t mc_seqno;
+  std::uint32_t gen_utime;
+  block::StdAddress account;
+  std::uint64_t lt;
+  td::Bits256 tx_hash;
+  std::optional<td::Bits256> init_code_hash;
+  std::uint32_t out_msgs_count;
+};
+
 struct AccountState {
   td::Bits256 hash;           // Note: hash is not unique in case account_status is "nonexist"
   block::StdAddress account;
@@ -887,6 +898,8 @@ struct ParsedBlock {
 
   std::optional<schema::TotalSupply> total_supply_;
   std::optional<schema::AccountDeltas> account_deltas_;
+  // nullopt = not calculated; an empty vector = successfully calculated zero events.
+  std::optional<std::vector<schema::Deployment>> deployments_;
 
   std::vector<schema::Block> blocks_;
   std::vector<schema::AccountState> account_states_;
