@@ -9,7 +9,7 @@
 
 namespace mch {
 
-// The three canonical pTON master addresses (raw "wc:HEX" upper). Both Stonfi v2
+// The canonical pTON master addresses (raw "wc:HEX" upper). Both Stonfi v2
 // and Tonco treat a jetton wallet on one of these masters as a native TON asset.
 const std::vector<std::string> &pton_masters();
 bool is_pton_master(const std::string &s);

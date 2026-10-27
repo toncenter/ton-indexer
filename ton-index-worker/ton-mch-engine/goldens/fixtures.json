@@ -1154,6 +1154,16 @@
    "name": "DNS purchase 5 (change_dns parent)",
    "slug": "dns-purchase-5",
    "note": "same shape, second live trace"
+  },
+  "LsNI3MaR7DUlTWA1sr1O9-xE2cC73ICAx9rKCPIBmMg=": {
+   "group": "tonco",
+   "name": "Tonco v2 swap TON -> USDT",
+   "slug": "tonco-v2-swap-ton-to-usdt"
+  },
+  "6yApnZMI3QtIQhJ6gYKrA8Yi9XJ9qCp51ttDJAtWtw8=": {
+   "group": "tonco",
+   "name": "Tonco v2 swap USDT -> TON via wGRAM",
+   "slug": "tonco-v2-swap-usdt-to-ton-via-wgram"
   }
  }
 }

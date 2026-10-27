@@ -475,3 +475,48 @@ cases:
             asset: 0:B113A994B5024A16719F69139328EB759596C38A25F59028B146FECDC3621DFE
           min_out_amount: 492157992
           peer_swaps: []
+
+  Tonco v2 swap TON -> USDT:
+    trace-id: LsNI3MaR7DUlTWA1sr1O9-xE2cC73ICAx9rKCPIBmMg=
+    expected-actions:
+      - type: jetton_swap
+        values:
+          success: true
+          asset: null
+          asset2: 0:B113A994B5024A16719F69139328EB759596C38A25F59028B146FECDC3621DFE
+          jetton_swap_data:
+            dex: tonco
+            sender: 0:DDF712C0AE830B403F71255E16AE60D67B7B49341DDBCE0B9EB27F0370B46DEE
+            dex_incoming_transfer:
+              asset: null
+              amount: 100000000
+              destination: 0:13D2708EDB4BC2EA0CE9C9425B588EC42E746F0000775472776758D742CC3A28
+              destination_jetton_wallet: 0:BB0FCD168F1319666BDD089C56851F97EBDA7E59EB05B11B67F9FBBE86AFCC41
+            dex_outgoing_transfer:
+              asset: 0:B113A994B5024A16719F69139328EB759596C38A25F59028B146FECDC3621DFE
+              amount: 121703
+              source_jetton_wallet: 0:E35FCD93A2CC0860829D866F247DAF24E14133693F45D09D10E521BE1BF8C2DA
+              destination: 0:DDF712C0AE830B403F71255E16AE60D67B7B49341DDBCE0B9EB27F0370B46DEE
+            peer_swaps: []
+
+  Tonco v2 swap USDT -> TON via wGRAM:
+    trace-id: 6yApnZMI3QtIQhJ6gYKrA8Yi9XJ9qCp51ttDJAtWtw8=
+    expected-actions:
+      - type: jetton_swap
+        values:
+          success: true
+          asset: 0:B113A994B5024A16719F69139328EB759596C38A25F59028B146FECDC3621DFE
+          asset2: null
+          jetton_swap_data:
+            dex: tonco
+            sender: 0:638E626EB24B9AE5975395A349832E6F9D2EB4E6A0AFCA513AF6B80239187B5C
+            dex_incoming_transfer:
+              asset: 0:B113A994B5024A16719F69139328EB759596C38A25F59028B146FECDC3621DFE
+              amount: 249994060
+              destination_jetton_wallet: 0:E35FCD93A2CC0860829D866F247DAF24E14133693F45D09D10E521BE1BF8C2DA
+            dex_outgoing_transfer:
+              asset: null
+              amount: 204497525235
+              source: 0:13D2708EDB4BC2EA0CE9C9425B588EC42E746F0000775472776758D742CC3A28
+              destination: 0:638E626EB24B9AE5975395A349832E6F9D2EB4E6A0AFCA513AF6B80239187B5C
+            peer_swaps: []
