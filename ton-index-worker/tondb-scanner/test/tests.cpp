@@ -15,7 +15,25 @@
 #include "convert-utils.h"
 #include "ActionDetector.h"
 #include "IndexData.h"
+#include "smc-interfaces/execute-smc.h"
+#include "smc-fixture.h"
 
+
+TEST(TonDbScanner, get_method_uses_snapshot_time) {
+    vm::init_op_cp0();
+    // DROP the method id; NOW. The timestamp comes from the MC snapshot,
+    // independently of the date/time at which this historical block is replayed.
+    auto code = vm::CellBuilder().store_long(0x30f823, 24).finalize();
+    auto data = vm::CellBuilder().finalize();
+    auto address = block::StdAddress(0, td::Bits256::zero());
+    for (auto now : {1600000000U, 1700000000U, 1600000000U}) {
+        auto config = test_smc_config(now);
+        auto result = execute_smc_method<1>(address, code, data, config, "snapshot_time", {},
+                                            {vm::StackEntry::Type::t_int}).move_as_ok();
+        ASSERT_EQ(result[0].as_int()->to_long(), now);
+    }
+    ASSERT_TRUE(execute_smc_method(address, code, data, nullptr, "snapshot_time", {}).is_error());
+}
 
 TEST(convert, to_raw_address) {
     auto address = vm::std_boc_deserialize(td::base64_decode(td::Slice("te6ccgEBAQEAJAAAQ4ARhy+Ifz/haSyza6FGBWNSde+ZjHy+uBieS1O4PxaPVnA=")).move_as_ok()).move_as_ok();
@@ -329,7 +347,10 @@ TEST(db_event_listener, delivers_events_and_survives_fifo_recreation) {
 
 int main(int argc, char **argv) {
   td::set_default_failure_signal_handler().ensure();
-    auto &runner = td::TestsRunner::get_default();
+  auto &runner = td::TestsRunner::get_default();
+  for (int i = 1; i < argc; ++i) {
+    runner.add_substr_filter(argv[i]);
+  }
   runner.run_all();
   return 0;
 }

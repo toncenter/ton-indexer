@@ -1,3 +1,5 @@
+#pragma once
+
 #include "smc-envelope/SmartContract.h"
 
 td::Result<std::vector<vm::StackEntry>> execute_smc_method(const block::StdAddress& address, 
