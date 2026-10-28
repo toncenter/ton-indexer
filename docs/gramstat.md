@@ -370,27 +370,41 @@ the PostgreSQL table and daily materialized view; an already-applied 1.3.2 needs
 | `balance` | Exact nonnegative raw jetton amount; PG `numeric(78,0)`, CH canonical decimal string |
 | `nonzero` | Generated/materialized nullable boolean: `existing AND balance > 0` |
 
-There is one final observation per touched address per MC, before writer-batch
+There is at most one final observation per eligible address per MC, before writer-batch
 deduplication of current states. CH uses monthly `ReplacingMergeTree ORDER BY
 (account, mc_seqno)`; use `FINAL` before window calculations. PG upserts the same
 historical key. Owner/master metadata comes from current `jetton_wallets` when
 needed; this table has no owner/master fields or additional indexes/projections.
 
 `existing=true` requires successful `get_wallet_data` and master round-trip
-verification. `false` includes nonactive accounts, absent code, a proven missing
-getter, and a master returning a different wallet address. Getter execution,
-return-shape, library/state lookup failures and unsupported-dispatcher failures
-produce `NULL`, never zero balance or a false disappearance. An exported getter
-throwing exit code 11 is still unknown, not a missing getter. Failed final-state
-loads cannot fall back to an earlier active state. Getters use the MC configuration
-time, not wall time. No previous-state lookup or extra get-method execution is
-needed by history collection.
+verification. Other active observations require `get_wallet_data` (method ID 97026)
+in the **current** code's method dictionary: a master returning another address
+produces false; getter/return-shape/master-lookup failures produce NULL. An exported
+getter throwing exit code 11 is still unknown. Ordinary active contracts do not
+produce false/NULL rows merely because the jetton detector rejected them.
 
-False and unknown observations also cover addresses that have never been verified
-as jetton wallets: a stateless collector cannot know their previous classification.
-Unknown addresses are treated conservatively in the global counts. Balances remain
-NULL for both false and unknown observations; generated `nonzero` is respectively
-false or NULL. Mintless unclaimed rights do not substitute for a positive balance.
+Terminal observations require a boundary transition: the first transaction of the
+address in the MC starts active and the last ends frozen, uninit or nonexist.
+Only then the collector loads `first.account_state_hash_before` from CellDB and
+reads its Account/StateInit headers and code. If that code exports `get_wallet_data`,
+it records `existing=false`. The previous state's hash/address/status are checked;
+neither its data dictionary nor intermediate transaction states are read. An
+ordinary account leaving active is filtered out. Already-inactive accounts and
+deploy+destroy within one MC produce no terminal observation. Active-to-active
+code changes are not tracked and never trigger a previous-state read.
+
+Method inspection resolves code-library references against the MC libraries and
+caches results within that MC. An unsupported dispatcher or unavailable library
+does not establish eligibility: unclassified addresses are skipped, not declared
+absent. Successfully verified wallets do not require a standard method dispatcher.
+Failed boundary-state loads or missing final active states fail collection for
+retry, rather than manufacturing an observation for an unclassified address.
+Getters use MC configuration time; the filter adds no get calls or emulation.
+
+Balances remain NULL for both false and unknown observations; generated `nonzero`
+is respectively false or NULL. Unknown eligible addresses are treated conservatively
+in the global counts. Mintless unclaimed rights do not substitute for a positive
+balance.
 
 An observation with `existing=NULL` starts a gap until the next definite observation.
 For example, balance 50 at MC 100, NULL at MC 110, and 70 at MC 120 means a gap on
@@ -423,6 +437,8 @@ coverage. Old `blocks` rows are not proof that the new table was populated;
 historical filling requires explicit `--from N --to M --force` replay. No separate
 progress table or marker column is added. PG commits history with blocks; CH writes
 history before blocks. Refresh after the relevant replay/ingestion has completed.
+If history was populated by the older unfiltered collector, rebuild that affected
+history before replay: upsert/`ReplacingMergeTree` cannot remove now-excluded rows.
 
 PostgreSQL creates the MV `WITH NO DATA`; populate it once, then schedule refreshes
 externally (for example daily):

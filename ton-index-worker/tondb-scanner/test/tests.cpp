@@ -17,6 +17,7 @@
 #include "IndexData.h"
 #include "smc-interfaces/execute-smc.h"
 #include "smc-fixture.h"
+#include "parse_contract_methods.h"
 
 
 TEST(TonDbScanner, get_method_uses_snapshot_time) {
@@ -56,6 +57,30 @@ TEST(TonDbScanner, jetton_missing_getter_is_not_a_failed_getter) {
         test_method_dispatcher(97026, vm::CellBuilder().store_long(0x71, 8).finalize()), data, {}, config);
     ASSERT_TRUE(invalid.is_error());
     ASSERT_TRUE(invalid.error().code() != JettonWalletDetectorR::NOT_JETTON_WALLET);
+}
+
+TEST(TonDbScanner, contract_methods_resolve_libraries) {
+    vm::init_op_cp0();
+    auto throw11 = vm::CellBuilder().store_long(0xf20b, 16).finalize();
+    auto wallet = test_method_dispatcher(97026, throw11);
+    auto ordinary = test_method_dispatcher(42, throw11);
+    auto config = test_smc_config(1700000000, {wallet, ordinary});
+    auto wallet_ref = test_library_reference(wallet);
+    auto ordinary_ref = test_library_reference(ordinary);
+    auto methods = parse_contract_methods(wallet_ref, config.get()).move_as_ok();
+    ASSERT_EQ(methods.size(), 1u);
+    ASSERT_EQ(methods[0], 97026ULL);
+    ASSERT_TRUE(parse_contract_methods(wallet_ref).is_error());
+    auto missing_config = test_smc_config(1700000000);
+    ASSERT_TRUE(parse_contract_methods(wallet_ref, missing_config.get()).is_error());
+    auto address = block::StdAddress(0, td::Bits256::zero());
+    auto data = vm::CellBuilder().finalize();
+    auto missing = JettonWalletDetectorR::detect(address, ordinary_ref, data, {}, config);
+    ASSERT_TRUE(missing.is_error());
+    ASSERT_EQ(missing.error().code(), JettonWalletDetectorR::NOT_JETTON_WALLET);
+    auto failed = JettonWalletDetectorR::detect(address, wallet_ref, data, {}, config);
+    ASSERT_TRUE(failed.is_error());
+    ASSERT_EQ(failed.error().code(), SMC_METHOD_NOT_FOUND);
 }
 
 TEST(convert, to_raw_address) {

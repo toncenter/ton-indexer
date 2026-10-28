@@ -12,6 +12,7 @@
 #include "JettonWalletStatesStorage.h"
 #include "../../tondb-scanner/test/smc-fixture.h"
 #include "vm/cp0.h"
+#include "vm/db/DynamicBagOfCellsDb.h"
 #include "crypto/block/block.h"
 #include "clickhouse/columns/date.h"
 #include "clickhouse/columns/decimal.h"
@@ -388,6 +389,31 @@ void check_jetton_detection_status() {
     }
 }
 
+class HistoryCellReader final : public vm::CellDbReader {
+public:
+    std::unordered_map<std::string, td::Ref<vm::Cell>> cells;
+    std::vector<std::string> reads;
+
+    void add(const td::Ref<vm::Cell>& cell) {
+        cells[cell->get_hash().as_slice().str()] = cell;
+    }
+    td::Result<td::Ref<vm::DataCell>> load_cell(td::Slice hash) override {
+        reads.push_back(hash.str());
+        auto found = cells.find(hash.str());
+        if (found == cells.end()) {
+            return td::Status::Error("Unexpected history cell read");
+        }
+        TRY_RESULT(cell, found->second->load_cell());
+        return cell.data_cell;
+    }
+    td::Result<std::vector<td::Ref<vm::DataCell>>> load_bulk(td::Span<td::Slice>) override {
+        return td::Status::Error("Unexpected history bulk read");
+    }
+    td::Ref<vm::Cell> create_unloaded_cell(const td::Ref<vm::Cell>& cell, int) override {
+        return cell;
+    }
+};
+
 void check_jetton_history() {
     ParsedBlock parsed;
     schema::Block mc{};
@@ -411,6 +437,7 @@ void check_jetton_history() {
         tx.account = address;
         tx.mc_seqno = 10;
         tx.lt = lt;
+        tx.orig_status = schema::AccountStatus::active;
         tx.end_status = schema::AccountStatus::active;
         tx.account_state_hash_after = td::Bits256::zero();
         shard.transactions.push_back(tx);
@@ -421,9 +448,19 @@ void check_jetton_history() {
     state.hash = td::Bits256::zero();
     state.last_trans_lt = 200;
     state.account_status = "active";
-    state.code = state.data = vm::CellBuilder().finalize();
-    state.code_hash = state.data_hash = state.code->get_hash().bits();
+    auto throw11 = vm::CellBuilder().store_long(0xf20b, 16).finalize();
+    state.code = test_method_dispatcher(97026, throw11);
+    state.data = vm::CellBuilder().finalize();
+    state.code_hash = state.code->get_hash().bits();
+    state.data_hash = state.data->get_hash().bits();
     parsed.account_states_.push_back(state);
+    auto reader = std::make_shared<HistoryCellReader>();
+    parsed.cell_db_reader_ = reader;
+    auto before = test_active_account(address, state.code);
+    reader->add(before);
+    // The input blocks are deliberately out of order. Only the first tx's
+    // before-hash is present in the reader; the last tx's before-state is absent.
+    parsed.blocks_[2].transactions[0].account_state_hash_before = before->get_hash().bits();
     schema::JettonWalletDataV2 wallet{};
     wallet.address = address;
     wallet.last_transaction_lt = 200;
@@ -442,7 +479,7 @@ void check_jetton_history() {
 
     // A failed final-state load must not silently carry forward the older state.
     parsed.account_states_.back().last_trans_lt = 100;
-    CHECK(!jetton_history::collect_states(10, parsed).move_as_ok()[0].existing.has_value());
+    CHECK(jetton_history::collect_states(10, parsed).is_error());
     parsed.account_states_.back().last_trans_lt = 200;
     parsed.jetton_wallet_detection_[address].reset();
     auto unknown = jetton_history::collect_states(10, parsed).move_as_ok()[0];
@@ -450,10 +487,13 @@ void check_jetton_history() {
     parsed.jetton_wallet_detection_[address] = false;
     CHECK(jetton_history::collect_states(10, parsed).move_as_ok()[0].existing == false);
     parsed.jetton_wallet_detection_[address] = true;
+    CHECK(reader->reads.empty());
     for (auto status : {schema::AccountStatus::nonexist, schema::AccountStatus::frozen, schema::AccountStatus::uninit}) {
+        reader->reads.clear();
         parsed.blocks_[1].transactions[0].end_status = status;
         auto terminal = jetton_history::collect_states(10, parsed).move_as_ok()[0];
         CHECK(terminal.existing == false && terminal.balance.is_null());
+        CHECK(reader->reads == std::vector<std::string>{before->get_hash().as_slice().str()});
         auto serialized = jetton_history::states_block({terminal, unknown});
         CHECK(!serialized[4]->As<clickhouse::ColumnNullable>()->IsNull(0));
         CHECK(serialized[4]->As<clickhouse::ColumnNullable>()->IsNull(1));
@@ -462,10 +502,81 @@ void check_jetton_history() {
     }
     // Redeployment becomes active again; stale interface data still cannot match.
     parsed.blocks_[1].transactions[0].end_status = schema::AccountStatus::active;
+    reader->reads.clear();
     std::get<schema::JettonWalletDataV2>(parsed.account_interfaces_[address][0]).last_transaction_lt = 100;
     CHECK(!jetton_history::collect_states(10, parsed).move_as_ok()[0].existing.has_value());
     std::get<schema::JettonWalletDataV2>(parsed.account_interfaces_[address][0]).last_transaction_lt = 200;
     CHECK(jetton_history::collect_states(10, parsed).move_as_ok()[0].existing == true);
+    CHECK(reader->reads.empty());
+
+    // An ordinary active account emits neither false nor unknown observations.
+    auto ordinary_code = test_method_dispatcher(42, throw11);
+    parsed.account_states_.back().code = ordinary_code;
+    parsed.account_states_.back().code_hash = ordinary_code->get_hash().bits();
+    parsed.jetton_wallet_detection_[address] = false;
+    CHECK(jetton_history::collect_states(10, parsed).move_as_ok().empty());
+    parsed.jetton_wallet_detection_[address].reset();
+    CHECK(jetton_history::collect_states(10, parsed).move_as_ok().empty());
+    // Even a potential SETCODE is not a reason to read before-state while active.
+    schema::TransactionDescr_ord setcode{};
+    setcode.action.emplace();
+    setcode.action->spec_actions = 1;
+    parsed.blocks_[1].transactions[0].description = setcode;
+    CHECK(jetton_history::collect_states(10, parsed).move_as_ok().empty());
+    CHECK(reader->reads.empty());
+
+    parsed.account_states_.back().code = throw11;  // unsupported method dispatcher
+    parsed.account_states_.back().code_hash = throw11->get_hash().bits();
+    CHECK(jetton_history::collect_states(10, parsed).move_as_ok().empty());
+    CHECK(reader->reads.empty());
+
+    auto ordinary_before = test_active_account(address, ordinary_code);
+    reader->add(ordinary_before);
+    parsed.blocks_[2].transactions[0].account_state_hash_before = ordinary_before->get_hash().bits();
+    for (auto status : {schema::AccountStatus::nonexist, schema::AccountStatus::frozen, schema::AccountStatus::uninit}) {
+        reader->reads.clear();
+        parsed.blocks_[1].transactions[0].end_status = status;
+        CHECK(jetton_history::collect_states(10, parsed).move_as_ok().empty());
+        CHECK(reader->reads == std::vector<std::string>{ordinary_before->get_hash().as_slice().str()});
+    }
+    // Already nonactive accounts, and deploy+destroy inside this MC, need no read.
+    reader->reads.clear();
+    for (auto status : {schema::AccountStatus::nonexist, schema::AccountStatus::frozen, schema::AccountStatus::uninit}) {
+        parsed.blocks_[2].transactions[0].orig_status = status;
+        CHECK(jetton_history::collect_states(10, parsed).move_as_ok().empty());
+    }
+    CHECK(reader->reads.empty());
+
+    // A missing/corrupt boundary state is a load error, not a generic tombstone.
+    parsed.blocks_[2].transactions[0].orig_status = schema::AccountStatus::active;
+    reader->cells.clear();
+    CHECK(jetton_history::collect_states(10, parsed).is_error());
+    auto malformed = vm::CellBuilder().finalize();
+    reader->add(malformed);
+    parsed.blocks_[2].transactions[0].account_state_hash_before = malformed->get_hash().bits();
+    CHECK(jetton_history::collect_states(10, parsed).is_error());
+
+    // Library-backed wallet code is checked from the same MC configuration.
+    auto library_code = test_library_reference(state.code);
+    auto library_before = test_active_account(address, library_code);
+    reader->add(library_before);
+    parsed.blocks_[2].transactions[0].account_state_hash_before = library_before->get_hash().bits();
+    parsed.mc_block_.config_ = test_smc_config(1788307200, {state.code});
+    CHECK(jetton_history::collect_states(10, parsed).move_as_ok()[0].existing == false);
+    parsed.blocks_[1].transactions[0].end_status = schema::AccountStatus::active;
+    parsed.account_states_.back().code = library_code;
+    parsed.account_states_.back().code_hash = library_code->get_hash().bits();
+    reader->reads.clear();
+    auto library_unknown = jetton_history::collect_states(10, parsed).move_as_ok();
+    CHECK(library_unknown.size() == 1 && !library_unknown[0].existing.has_value());
+    CHECK(reader->reads.empty());
+    // Unresolved code cannot prove eligibility. It is not a negative observation.
+    parsed.mc_block_.config_ = test_smc_config(1788307200);
+    CHECK(jetton_history::collect_states(10, parsed).move_as_ok().empty());
+    CHECK(reader->reads.empty());
+    parsed.blocks_[1].transactions[0].end_status = schema::AccountStatus::frozen;
+    CHECK(jetton_history::collect_states(10, parsed).move_as_ok().empty());
+    CHECK(reader->reads == std::vector<std::string>{library_before->get_hash().as_slice().str()});
 }
 
 }  // namespace

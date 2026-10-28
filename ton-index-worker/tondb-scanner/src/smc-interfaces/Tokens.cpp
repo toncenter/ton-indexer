@@ -66,9 +66,9 @@ td::Result<JettonWalletDetectorR::Result> JettonWalletDetectorR::detect(
   if (stack_r.is_error()) {
     auto error = stack_r.move_as_error();
     if (error.code() == SMC_METHOD_NOT_FOUND) {
-      auto methods = parse_contract_methods(code_cell);
-      // A declared getter may itself throw 11. Unsupported dispatchers/library
-      // references cannot prove absence either: retain an unknown observation.
+      auto methods = parse_contract_methods(code_cell, config.get());
+      // A declared getter may itself throw 11. Unsupported dispatchers/unresolved
+      // libraries cannot prove absence either: retain an unknown detection.
       if (methods.is_ok() && std::find(methods.ok().begin(), methods.ok().end(), 97026ULL) == methods.ok().end()) {
         return td::Status::Error(NOT_JETTON_WALLET, "get_wallet_data is not exported");
       }

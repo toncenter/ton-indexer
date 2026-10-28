@@ -40,7 +40,7 @@ void BlockInterfaceProcessor::start_up() {
     }
     auto code_hash = account_state.code_hash.value();
     if (contract_methods_.find(code_hash) == contract_methods_.end()) {
-      auto methods_result = parse_contract_methods(account_state.code);
+      auto methods_result = parse_contract_methods(account_state.code, block_->mc_block_.config_.get());
       if (methods_result.is_ok()) {
         for (auto method_id : methods_result.move_as_ok()) {
           contract_methods_.emplace(code_hash, method_id);
