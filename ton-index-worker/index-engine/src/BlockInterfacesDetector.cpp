@@ -47,23 +47,26 @@ void BlockInterfaceProcessor::start_up() {
         }
       }
     }
-    td::actor::create_actor<FullDetector>("InterfacesDetector", account_state.account, account_state.code, account_state.data, shard_states, block_->mc_block_.config_, 
-                td::PromiseCreator::lambda([SelfId = actor_id(this), account_state, promise = ig.get_promise()](td::Result<std::vector<typename FullDetector::DetectedInterface>> interfaces) mutable {
+    auto jetton_detection = std::make_shared<std::optional<bool>>();
+    td::actor::create_actor<FullDetector>("InterfacesDetector", account_state.account, account_state.code, account_state.data, shard_states, block_->mc_block_.config_,
+                td::PromiseCreator::lambda([SelfId = actor_id(this), account_state, jetton_detection, promise = ig.get_promise()](td::Result<std::vector<typename FullDetector::DetectedInterface>> interfaces) mutable {
                     if (interfaces.is_error()) {
                         promise.set_error(interfaces.move_as_error());
                         return;
                     }
                     auto detected_interfaces = interfaces.move_as_ok();
                     td::actor::send_closure(SelfId, &BlockInterfaceProcessor::process_address_interfaces, account_state.account, std::move(detected_interfaces), 
-                                            account_state.code_hash.value(), account_state.data_hash.value(), account_state.last_trans_lt, account_state.timestamp, std::move(promise));
-            })).release();
+                                            account_state.code_hash.value(), account_state.data_hash.value(), account_state.last_trans_lt,
+                                            account_state.timestamp, *jetton_detection, std::move(promise));
+            }), jetton_detection).release();
   }
 }
 void BlockInterfaceProcessor::process_address_interfaces(
     block::StdAddress address,
     std::vector<FullDetector::DetectedInterface> interfaces,
     td::Bits256 code_hash, td::Bits256 data_hash, uint64_t last_trans_lt,
-    uint32_t last_trans_now, td::Promise<td::Unit> promise) {
+    uint32_t last_trans_now, std::optional<bool> jetton_detection, td::Promise<td::Unit> promise) {
+  block_->jetton_wallet_detection_[address] = jetton_detection;
   for (auto &interface : interfaces) {
     std::visit(
         [&](auto &&arg) {

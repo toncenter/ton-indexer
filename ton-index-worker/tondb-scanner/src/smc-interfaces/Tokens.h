@@ -7,6 +7,8 @@ using AllShardStates = std::vector<td::Ref<vm::Cell>>;
 
 class JettonWalletDetectorR: public td::actor::Actor {
 public:
+  // A proven non-match, as opposed to an unavailable/invalid getter result.
+  static constexpr int NOT_JETTON_WALLET = 11001;
   struct Result {
     td::RefInt256 balance;
     block::StdAddress address;

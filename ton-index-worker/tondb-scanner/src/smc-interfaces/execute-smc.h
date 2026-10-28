@@ -2,6 +2,10 @@
 
 #include "smc-envelope/SmartContract.h"
 
+// Distinct from an arbitrary VM/lookup failure. A detector must still check
+// whether this was an exported method explicitly throwing exit code 11.
+inline constexpr int SMC_METHOD_NOT_FOUND = 10011;
+
 td::Result<std::vector<vm::StackEntry>> execute_smc_method(const block::StdAddress& address, 
                                         td::Ref<vm::Cell> code, td::Ref<vm::Cell> data, 
                                         std::shared_ptr<block::ConfigInfo> config, const std::string& method_id, 

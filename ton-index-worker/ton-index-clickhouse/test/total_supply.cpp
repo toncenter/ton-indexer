@@ -8,6 +8,8 @@
 #include "GramstatStorage.h"
 #include "DataParser.h"
 #include "BlockInterfacesDetector.h"
+#include "../../tondb-scanner/test/smc-fixture.h"
+#include "vm/cp0.h"
 #include "crypto/block/block.h"
 #include "clickhouse/columns/date.h"
 #include "clickhouse/columns/decimal.h"
@@ -350,6 +352,40 @@ void check_final_interface_state() {
     }
 }
 
+void check_jetton_detection_status() {
+    vm::init_op_cp0();
+    for (bool declared : {false, true}) {
+        auto parsed = std::make_shared<ParsedBlock>();
+        parsed->mc_block_.config_ = test_smc_config(1700000000);
+        schema::AccountState state{};
+        state.account = block::StdAddress(0, td::Bits256::zero());
+        state.last_trans_lt = 100;
+        state.account_status = "active";
+        state.code = test_method_dispatcher(declared ? 97026 : 42,
+            vm::CellBuilder().store_long(0xf20b, 16).finalize());
+        state.data = vm::CellBuilder().finalize();
+        state.code_hash = state.code->get_hash().bits();
+        state.data_hash = state.data->get_hash().bits();
+        parsed->account_states_.push_back(state);
+        bool finished = false;
+        td::actor::TestScheduler scheduler;
+        scheduler.run([&]() -> td::actor::Task<> {
+            td::actor::create_actor<BlockInterfaceProcessor>("jetton_status", parsed,
+                td::PromiseCreator::lambda([&](td::Result<ParsedBlockPtr> result) {
+                    auto block = result.move_as_ok();
+                    CHECK(block->jetton_wallet_detection_.at(state.account) ==
+                        (declared ? std::nullopt : std::optional<bool>(false)));
+                    CHECK(block->get_accounts_v2<schema::JettonWalletDataV2>().empty());
+                    finished = true;
+                })).release();
+            while (!finished) {
+                co_await scheduler.wait_sync_work();
+            }
+            co_return td::Unit{};
+        });
+    }
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -375,5 +411,6 @@ int main(int argc, char** argv) {
     check_account_deltas();
     check_deployments();
     check_final_interface_state();
+    check_jetton_detection_status();
     std::cout << "Gramstat supply, account deltas, deployments and exact ClickHouse columns: OK\n";
 }

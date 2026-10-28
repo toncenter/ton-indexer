@@ -21,3 +21,11 @@ inline std::shared_ptr<block::ConfigInfo> test_smc_config(std::uint32_t now) {
     ton::BlockIdExt id{ton::masterchainId, ton::shardIdAll, 0, td::Bits256::zero(), td::Bits256::zero()};
     return block::ConfigInfo::extract_config(root, id, 0).move_as_ok();
 }
+
+inline td::Ref<vm::Cell> test_method_dispatcher(unsigned method, td::Ref<vm::Cell> body) {
+    vm::Dictionary methods{19};
+    CHECK(methods.set(td::BitArray<19>(method), vm::load_cell_slice_ref(body)));
+    // SETCP0; 19 DICTPUSHCONST; DICTIGETJMPZ; 11 THROW.
+    return vm::CellBuilder().store_long(0xff00, 16).store_long(0xf4a413, 24)
+        .store_ref(methods.get_root_cell()).store_long(0xf4bc, 16).store_long(0xf20b, 16).finalize();
+}

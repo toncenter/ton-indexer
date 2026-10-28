@@ -10,6 +10,8 @@
 #include "FetchAccountFromShard.h"
 #include "parse_token_data.h"
 #include "safe-parse.h"
+#include "parse_contract_methods.h"
+#include <algorithm>
 #include "smc-interfaces/execute-smc.h"
 #include "tokens-tlb.h"
 #include "common/checksum.h"
@@ -45,7 +47,7 @@ td::Status verify_jetton_wallet_with_master(td::Ref<vm::Cell> master_code, td::R
 
   TRY_RESULT(wallet_address, convert::to_std_address(stack[0].as_slice()));
   if (!(jetton_wallet_data.address == wallet_address)) {
-    return td::Status::Error("Jetton Master returned wrong address");
+    return td::Status::Error(JettonWalletDetectorR::NOT_JETTON_WALLET, "Jetton Master returned wrong address");
   }
   return td::Status::OK();
 }
@@ -59,11 +61,27 @@ td::Result<JettonWalletDetectorR::Result> JettonWalletDetectorR::detect(
     return td::Status::Error("Code or data null");
   }
 
-  TRY_RESULT(stack, execute_smc_method<4>(address, code_cell, data_cell, config, "get_wallet_data", {},
-    {vm::StackEntry::Type::t_int, vm::StackEntry::Type::t_slice, vm::StackEntry::Type::t_slice, vm::StackEntry::Type::t_cell}));
+  auto stack_r = execute_smc_method<4>(address, code_cell, data_cell, config, "get_wallet_data", {},
+    {vm::StackEntry::Type::t_int, vm::StackEntry::Type::t_slice, vm::StackEntry::Type::t_slice, vm::StackEntry::Type::t_cell});
+  if (stack_r.is_error()) {
+    auto error = stack_r.move_as_error();
+    if (error.code() == SMC_METHOD_NOT_FOUND) {
+      auto methods = parse_contract_methods(code_cell);
+      // A declared getter may itself throw 11. Unsupported dispatchers/library
+      // references cannot prove absence either: retain an unknown observation.
+      if (methods.is_ok() && std::find(methods.ok().begin(), methods.ok().end(), 97026ULL) == methods.ok().end()) {
+        return td::Status::Error(NOT_JETTON_WALLET, "get_wallet_data is not exported");
+      }
+    }
+    return error;
+  }
+  auto stack = stack_r.move_as_ok();
   Result data;
   data.address = address;
   data.balance = stack[0].as_int();
+  if (data.balance.is_null() || !data.balance->is_valid() || data.balance->sgn() < 0) {
+    return td::Status::Error("Invalid jetton wallet balance");
+  }
   TRY_RESULT_ASSIGN(data.owner, convert::to_std_address(stack[1].as_slice()));
   TRY_RESULT_ASSIGN(data.jetton, convert::to_std_address(stack[2].as_slice()));
 

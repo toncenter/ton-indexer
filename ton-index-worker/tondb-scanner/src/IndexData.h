@@ -913,6 +913,9 @@ struct ParsedBlock {
   std::vector<schema::ValidatorComplaint> validator_complaints_;
 
   std::unordered_map<block::StdAddress, std::vector<schema::BlockchainInterfaceV2>> account_interfaces_;
+  // Final-state jetton probe: true = verified, false = proven non-match,
+  // nullopt = failed/indeterminate. Absence from this map means not probed.
+  std::unordered_map<block::StdAddress, std::optional<bool>> jetton_wallet_detection_;
 
   template <class T>
   std::vector<T> get_events() {

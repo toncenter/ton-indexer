@@ -35,6 +35,29 @@ TEST(TonDbScanner, get_method_uses_snapshot_time) {
     ASSERT_TRUE(execute_smc_method(address, code, data, nullptr, "snapshot_time", {}).is_error());
 }
 
+TEST(TonDbScanner, jetton_missing_getter_is_not_a_failed_getter) {
+    vm::init_op_cp0();
+    auto config = test_smc_config(1700000000);
+    auto address = block::StdAddress(0, td::Bits256::zero());
+    auto data = vm::CellBuilder().finalize();
+    auto throw11 = vm::CellBuilder().store_long(0xf20b, 16).finalize();
+    auto missing = JettonWalletDetectorR::detect(address, test_method_dispatcher(42, throw11), data, {}, config);
+    ASSERT_TRUE(missing.is_error());
+    ASSERT_EQ(missing.error().code(), JettonWalletDetectorR::NOT_JETTON_WALLET);
+    // Identical exit code, but this time it was thrown INSIDE get_wallet_data.
+    auto failed = JettonWalletDetectorR::detect(address, test_method_dispatcher(97026, throw11), data, {}, config);
+    ASSERT_TRUE(failed.is_error());
+    ASSERT_EQ(failed.error().code(), SMC_METHOD_NOT_FOUND);
+    // An unknown dispatcher or an invalid return shape is not proof of absence.
+    auto unsupported = JettonWalletDetectorR::detect(address, throw11, data, {}, config);
+    ASSERT_TRUE(unsupported.is_error());
+    ASSERT_TRUE(unsupported.error().code() != JettonWalletDetectorR::NOT_JETTON_WALLET);
+    auto invalid = JettonWalletDetectorR::detect(address,
+        test_method_dispatcher(97026, vm::CellBuilder().store_long(0x71, 8).finalize()), data, {}, config);
+    ASSERT_TRUE(invalid.is_error());
+    ASSERT_TRUE(invalid.error().code() != JettonWalletDetectorR::NOT_JETTON_WALLET);
+}
+
 TEST(convert, to_raw_address) {
     auto address = vm::std_boc_deserialize(td::base64_decode(td::Slice("te6ccgEBAQEAJAAAQ4ARhy+Ifz/haSyza6FGBWNSde+ZjHy+uBieS1O4PxaPVnA=")).move_as_ok()).move_as_ok();
     auto raw_address_serialized = convert::to_raw_address(vm::load_cell_slice_ref(address));
