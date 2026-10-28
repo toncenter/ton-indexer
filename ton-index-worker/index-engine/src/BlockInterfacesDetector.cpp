@@ -8,27 +8,10 @@ void BlockInterfaceProcessor::start_up() {
   std::unordered_map<block::StdAddress, schema::AccountState>
       account_states_to_detect;
   for (const auto &account_state : block_->account_states_) {
-    if (!account_state.code_hash || !account_state.data_hash) {
-      continue;
-    }
     auto existing = account_states_to_detect.find(account_state.account);
     if (existing == account_states_to_detect.end() ||
         account_state.last_trans_lt > existing->second.last_trans_lt) {
       account_states_to_detect[account_state.account] = account_state;
-      interfaces_[account_state.account] = {};
-
-      // check if need to parse contract methods
-      if (account_state.code.not_null()) {
-        auto code_hash = account_state.code_hash.value();
-        if (contract_methods_.find(code_hash) == contract_methods_.end()) {
-          auto methods_result = parse_contract_methods(account_state.code);
-          if (methods_result.is_ok()) {
-            for (auto method_id : methods_result.move_as_ok()) {
-              contract_methods_.emplace(code_hash, method_id);
-            }
-          }
-        }
-      }
     }
   }
 
@@ -48,8 +31,21 @@ void BlockInterfaceProcessor::start_up() {
   ig.add_promise(std::move(P));
 
   for (const auto &[_, account_state] : account_states_to_detect) {
-    if (account_state.code.is_null()) {
+    // Select the final state BEFORE filtering: a later destruction/freeze must
+    // supersede an earlier active state from another shard block in this MC.
+    interfaces_[account_state.account] = {};
+    if (!account_state.code_hash || !account_state.data_hash ||
+        account_state.code.is_null() || account_state.data.is_null()) {
       continue;
+    }
+    auto code_hash = account_state.code_hash.value();
+    if (contract_methods_.find(code_hash) == contract_methods_.end()) {
+      auto methods_result = parse_contract_methods(account_state.code);
+      if (methods_result.is_ok()) {
+        for (auto method_id : methods_result.move_as_ok()) {
+          contract_methods_.emplace(code_hash, method_id);
+        }
+      }
     }
     td::actor::create_actor<FullDetector>("InterfacesDetector", account_state.account, account_state.code, account_state.data, shard_states, block_->mc_block_.config_, 
                 td::PromiseCreator::lambda([SelfId = actor_id(this), account_state, promise = ig.get_promise()](td::Result<std::vector<typename FullDetector::DetectedInterface>> interfaces) mutable {

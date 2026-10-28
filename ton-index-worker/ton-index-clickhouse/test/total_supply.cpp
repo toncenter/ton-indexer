@@ -7,6 +7,7 @@
 #include "Deployments.h"
 #include "GramstatStorage.h"
 #include "DataParser.h"
+#include "BlockInterfacesDetector.h"
 #include "crypto/block/block.h"
 #include "clickhouse/columns/date.h"
 #include "clickhouse/columns/decimal.h"
@@ -313,6 +314,42 @@ void check_deployments() {
     CHECK(gramstat::collect_deployments(100, parsed).is_error());
 }
 
+void check_final_interface_state() {
+    // Only block-end states are available. A later terminal state must prevent
+    // running getters on the older active state, regardless of input ordering.
+    for (const auto* status : {"nonexist", "frozen", "uninit", "active"}) {
+        for (bool reversed : {false, true}) {
+            auto parsed = std::make_shared<ParsedBlock>();
+            schema::AccountState active{};
+            active.account = block::StdAddress(0, td::Bits256::zero());
+            active.last_trans_lt = 100;
+            active.account_status = "active";
+            active.code = active.data = vm::CellBuilder().finalize();
+            active.code_hash = active.data_hash = active.code->get_hash().bits();
+            schema::AccountState final{};
+            final.account = active.account;
+            final.account_status = status;
+            final.last_trans_lt = 200;
+            parsed->account_states_ = reversed ? std::vector{final, active} : std::vector{active, final};
+            bool finished = false;
+            td::actor::TestScheduler scheduler;
+            scheduler.run([&]() -> td::actor::Task<> {
+                td::actor::create_actor<BlockInterfaceProcessor>("final_state", parsed,
+                    td::PromiseCreator::lambda([&](td::Result<ParsedBlockPtr> result) {
+                        auto block = result.move_as_ok();
+                        CHECK(block->account_interfaces_.at(active.account).empty());
+                        CHECK(block->contract_methods_.empty());
+                        finished = true;
+                    })).release();
+                while (!finished) {
+                    co_await scheduler.wait_sync_work();
+                }
+                co_return td::Unit{};
+            });
+        }
+    }
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -337,5 +374,6 @@ int main(int argc, char** argv) {
     check_block_value_flow();
     check_account_deltas();
     check_deployments();
+    check_final_interface_state();
     std::cout << "Gramstat supply, account deltas, deployments and exact ClickHouse columns: OK\n";
 }
