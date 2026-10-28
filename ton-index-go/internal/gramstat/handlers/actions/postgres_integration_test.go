@@ -44,19 +44,21 @@ func TestPostgresDailyAggregation(t *testing.T) {
 	}
 	defer fixture.Close(context.Background())
 	_, err = fixture.Exec(ctx, `CREATE TABLE blocks(workchain integer, seqno integer, gen_utime bigint);
-CREATE TABLE actions(trace_mc_seqno_end integer, start_utime bigint, source text, type text, success boolean, parent_action_id text);
+CREATE TABLE actions(trace_mc_seqno_end integer, start_utime bigint, source text, destination text, type text, success boolean, parent_action_id text);
 INSERT INTO blocks VALUES (-1,99,1792540799), (-1,100,1792544400), (-1,101,1792630800), (-1,102,1792717200);
 INSERT INTO actions VALUES
-  (100,1792540800,'alice','jetton_transfer',true,NULL),
-  (100,1792540801,'alice','jetton_transfer',true,'swap'),
-  (102,1792540802,'bob','jetton_transfer',true,'late_trace'),
-  (100,1792540803,NULL,'jetton_transfer',true,NULL),
-  (100,1792540804,'failed','jetton_transfer',false,NULL),
-  (101,1792627200,'alice','jetton_transfer',true,NULL),
-  (101,1792627201,'alice','nft_transfer',true,NULL),
-  (101,1792627202,NULL,'nft_transfer',true,NULL),
-  (99,1792540799,'old','jetton_transfer',true,NULL),
-  (102,1792713600,'future','jetton_transfer',true,NULL);`)
+  (100,1792540800,'alice','carol','jetton_transfer',true,NULL),
+  (100,1792540801,'alice','carol','jetton_transfer',true,'swap'),
+  (102,1792540802,'bob','dave','jetton_transfer',true,'late_trace'),
+  (100,1792540803,NULL,NULL,'jetton_transfer',true,NULL),
+  (100,1792540804,'failed','failed_receiver','jetton_transfer',false,NULL),
+  (101,1792627200,'alice','carol','jetton_transfer',true,NULL),
+  (101,1792627201,'alice','collector','nft_transfer',true,NULL),
+  (101,1792627202,NULL,'another_collector','nft_transfer',true,NULL),
+  (101,1792627203,'alice',NULL,'nft_transfer',true,'sale'),
+  (101,1792627204,'failed','failed_receiver','nft_transfer',false,NULL),
+  (99,1792540799,'old','old_receiver','jetton_transfer',true,NULL),
+  (102,1792713600,'future','future_receiver','jetton_transfer',true,NULL);`)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -72,7 +74,11 @@ INSERT INTO actions VALUES
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(s.Days) != 2 || s.SourceMC != 102 || s.Days[0].JettonSenders != 2 || s.Days[0].JettonTransfers != 4 || s.Days[1].NFTTransfers != 2 {
+	if len(s.Days) != 2 || s.SourceMC != 102 ||
+		s.Days[0].JettonSenders != 2 || s.Days[0].JettonReceivers != 2 || s.Days[0].JettonTransfers != 4 ||
+		s.Days[0].NFTSenders != 0 || s.Days[0].NFTReceivers != 0 || s.Days[0].NFTTransfers != 0 ||
+		s.Days[1].JettonSenders != 1 || s.Days[1].JettonReceivers != 1 || s.Days[1].JettonTransfers != 1 ||
+		s.Days[1].NFTSenders != 1 || s.Days[1].NFTReceivers != 2 || s.Days[1].NFTTransfers != 3 {
 		t.Fatalf("incorrect distinct/null/nested/late-trace aggregation: %+v", s)
 	}
 	lagged, err := source.Collect(ctx, from, from.Add(72*time.Hour))

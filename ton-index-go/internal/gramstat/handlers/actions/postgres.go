@@ -9,12 +9,15 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// One index-bounded scan supplies all three metrics. Do not exclude child
+// One index-bounded scan supplies all six metrics. Do not exclude child
 // actions: transfers inside swaps and other composite actions also participate.
 const dailySQL = `SELECT
     (to_timestamp(start_utime) AT TIME ZONE 'UTC')::date AS day,
     count(DISTINCT source) FILTER (WHERE type = 'jetton_transfer') AS jetton_senders,
+    count(DISTINCT destination) FILTER (WHERE type = 'jetton_transfer') AS jetton_receivers,
     count(*) FILTER (WHERE type = 'jetton_transfer') AS jetton_transfers,
+    count(DISTINCT source) FILTER (WHERE type = 'nft_transfer') AS nft_senders,
+    count(DISTINCT destination) FILTER (WHERE type = 'nft_transfer') AS nft_receivers,
     count(*) FILTER (WHERE type = 'nft_transfer') AS nft_transfers
 FROM public.actions
 WHERE trace_mc_seqno_end >= $1 AND trace_mc_seqno_end <= $2
@@ -88,14 +91,15 @@ WHERE workchain = -1 AND seqno = $1 LIMIT 1`, upper).Scan(&sourceTime); err != n
 	defer rows.Close()
 	for rows.Next() {
 		var d DayCounts
-		var senders, transfers, nfts int64
-		if err = rows.Scan(&d.Day, &senders, &transfers, &nfts); err != nil {
+		var senders, receivers, transfers, nftSenders, nftReceivers, nfts int64
+		if err = rows.Scan(&d.Day, &senders, &receivers, &transfers, &nftSenders, &nftReceivers, &nfts); err != nil {
 			return snapshot, err
 		}
-		if senders < 0 || transfers < 0 || nfts < 0 {
+		if senders < 0 || receivers < 0 || transfers < 0 || nftSenders < 0 || nftReceivers < 0 || nfts < 0 {
 			return snapshot, fmt.Errorf("negative count")
 		}
-		d.JettonSenders, d.JettonTransfers, d.NFTTransfers = uint64(senders), uint64(transfers), uint64(nfts)
+		d.JettonSenders, d.JettonReceivers, d.JettonTransfers = uint64(senders), uint64(receivers), uint64(transfers)
+		d.NFTSenders, d.NFTReceivers, d.NFTTransfers = uint64(nftSenders), uint64(nftReceivers), uint64(nfts)
 		snapshot.Days = append(snapshot.Days, d)
 	}
 	if err = rows.Err(); err != nil {

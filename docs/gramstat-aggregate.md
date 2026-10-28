@@ -33,15 +33,22 @@ have a five-minute timeout and run in a read-only, repeatable-read transaction.
 | Metric | Definition |
 | --- | --- |
 | `jetton_senders` | Distinct non-null owner `source` addresses in successful `jetton_transfer` actions |
+| `jetton_receivers` | Distinct non-null owner `destination` addresses in successful `jetton_transfer` actions |
 | `jetton_transfers` | Successful `jetton_transfer` action rows, including rows with an unknown source |
+| `nft_senders` | Distinct non-null previous-owner `source` addresses in successful `nft_transfer` actions |
+| `nft_receivers` | Distinct non-null new-owner `destination` addresses in successful `nft_transfer` actions |
 | `nft_transfers` | Successful `nft_transfer` action rows |
 
 The UTC day is derived from `start_utime`. Child actions are included, so a
 transfer nested inside a swap participates. These are classified actions, not a
-count of identified people; contract and bot addresses also count as senders.
+count of identified people; contract and bot addresses also count as senders and
+receivers. Addresses are deduplicated per day across all assets of each type;
+unknown endpoints are excluded from distinct counts but their successful
+transfers still count.
 Historical availability of child actions depends on the classifier's coverage.
 
-One query computes all three metrics. Before aggregation, the handler finds the
+One query computes all six metrics. Additional distinct counts share the same
+scan, with additional aggregation CPU/memory. Before aggregation, the handler finds the
 MC immediately before the interval using `blocks.gen_utime`. It restricts actions
 by the existing **`trace_mc_seqno_end` index**, retaining the exact timestamp filter.
 The upper MC bound is the latest action MC in the same database snapshot, **not**

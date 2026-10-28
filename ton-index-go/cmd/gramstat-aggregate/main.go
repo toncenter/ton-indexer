@@ -41,7 +41,7 @@ func run(log *slog.Logger) error {
 		return nil
 	}
 	if *list {
-		fmt.Println("actions: jetton_senders, jetton_transfers, nft_transfers")
+		fmt.Println("actions: " + strings.Join(actions.Metrics, ", "))
 		return nil
 	}
 	if *timeout <= 0 {

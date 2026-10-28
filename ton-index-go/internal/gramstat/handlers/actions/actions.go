@@ -10,11 +10,15 @@ import (
 	"github.com/toncenter/ton-indexer/ton-index-go/internal/gramstat"
 )
 
-var Metrics = []string{"jetton_senders", "jetton_transfers", "nft_transfers"}
+var Metrics = []string{
+	"jetton_senders", "jetton_receivers", "jetton_transfers",
+	"nft_senders", "nft_receivers", "nft_transfers",
+}
 
 type DayCounts struct {
-	Day                                          time.Time
-	JettonSenders, JettonTransfers, NFTTransfers uint64
+	Day                                             time.Time
+	JettonSenders, JettonReceivers, JettonTransfers uint64
+	NFTSenders, NFTReceivers, NFTTransfers          uint64
 }
 
 type Snapshot struct {
@@ -90,7 +94,9 @@ func dailyRows(from, to time.Time, snapshot Snapshot) ([]gramstat.DailyMetric, e
 	byDay := make(map[string]DayCounts, len(snapshot.Days))
 	for _, d := range snapshot.Days {
 		key := d.Day.Format(time.DateOnly)
-		if _, exists := byDay[key]; exists || d.Day.Before(from) || !d.Day.Before(snapshot.Through) || !d.Day.Equal(gramstat.Day(d.Day)) || d.JettonSenders > d.JettonTransfers {
+		if _, exists := byDay[key]; exists || d.Day.Before(from) || !d.Day.Before(snapshot.Through) || !d.Day.Equal(gramstat.Day(d.Day)) ||
+			d.JettonSenders > d.JettonTransfers || d.JettonReceivers > d.JettonTransfers ||
+			d.NFTSenders > d.NFTTransfers || d.NFTReceivers > d.NFTTransfers {
 			return nil, fmt.Errorf("invalid daily counts for %s", key)
 		}
 		byDay[key] = d
@@ -98,7 +104,7 @@ func dailyRows(from, to time.Time, snapshot Snapshot) ([]gramstat.DailyMetric, e
 	var rows []gramstat.DailyMetric
 	for day := from; day.Before(snapshot.Through); day = day.AddDate(0, 0, 1) {
 		d := byDay[day.Format(time.DateOnly)]
-		values := []uint64{d.JettonSenders, d.JettonTransfers, d.NFTTransfers}
+		values := []uint64{d.JettonSenders, d.JettonReceivers, d.JettonTransfers, d.NFTSenders, d.NFTReceivers, d.NFTTransfers}
 		through := day.AddDate(0, 0, 1)
 		partial := uint8(0)
 		if through.After(snapshot.Through) {
