@@ -25,6 +25,7 @@ def main():
     docs = (Path(__file__).resolve().parents[3] / "docs/gramstat.md").read_text()
     accounts = docs.split("<!-- accounts-postgres -->", 1)[1].split("```sql\n", 1)[1].split("```", 1)[0]
     deployments = docs.split("<!-- deployments-postgres -->", 1)[1].split("```sql\n", 1)[1].split("```", 1)[0]
+    jetton_daily = docs.split("<!-- jetton-daily-postgres -->", 1)[1].split("```sql\n", 1)[1].split("```", 1)[0]
     with tempfile.TemporaryDirectory(prefix="gpg-") as directory:
         root = Path(directory)
         data = root / "data"
@@ -82,6 +83,8 @@ def main():
                 assert sql("SELECT count(*) FROM pg_indexes WHERE schemaname='gramstat' AND tablename='deployments'") == "4"
                 assert sql("SELECT count(*) FROM jetton_wallet_states") == "4"
                 assert sql("SELECT count(*) FROM pg_indexes WHERE schemaname='public' AND tablename='jetton_wallet_states'") == "1"
+                assert sql("SELECT to_regclass('public.jetton_wallet_counts_daily') IS NULL") == "t"
+                assert sql("SELECT to_regclass('public.jetton_wallet_counts_daily_day_idx') IS NULL") == "t"
 
             fixture = (Path(__file__).resolve().parents[2] / "tondb-scanner/test/jetton-wallet-history.sql").read_text()
             sql("TRUNCATE jetton_wallet_states; TRUNCATE blocks;\n" + fixture)
@@ -89,6 +92,9 @@ def main():
                 "SELECT account,mc_seqno,gen_utime,last_tx_lt,existing,balance FROM jetton_wallet_states "
                 "ON CONFLICT (account,mc_seqno) DO NOTHING;")
             assert sql("SELECT count(*) FROM jetton_wallet_states") == "11"
+            # Optional aggregation is installed explicitly using the documentation,
+            # never by the production migration (including a 1.3.2 rerun).
+            sql(jetton_daily)
             # The first refresh populates the view. Later refreshes can be concurrent.
             sql("REFRESH MATERIALIZED VIEW jetton_wallet_counts_daily;")
             points = sql("SET TIME ZONE 'Pacific/Honolulu'; SELECT * FROM jetton_wallet_counts_daily ORDER BY day;")
@@ -99,7 +105,7 @@ def main():
             sql("REFRESH MATERIALIZED VIEW CONCURRENTLY jetton_wallet_counts_daily;")
             points = sql("SELECT * FROM jetton_wallet_counts_daily ORDER BY day;")
             assert points.splitlines() == [daily[0], "2026-09-02\t4\t2\t2\t0", "2026-09-03\t5\t2\t2\t0", *daily[3:]], points
-            print("PostgreSQL jetton history, unknown intervals and concurrent MV refresh: OK")
+            print("PostgreSQL jetton history and documented optional MV/concurrent refresh: OK")
             print("PostgreSQL documented Accounts/deployments SQL, prefix gaps and migration 1.3.2 rerun: OK")
         finally:
             run(pg_ctl, "-D", str(data), "-m", "immediate", "-w", "stop")

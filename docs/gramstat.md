@@ -356,9 +356,11 @@ first-deployment and daily-activity materializations can be added later.
 Both indexers write `jetton_wallet_states` in the ordinary database/schema
 (`public` in PostgreSQL), independently of `--gramstat`. PostgreSQL keeps this
 history even when current states are stored in Kvrocks. Migration **1.3.2** creates
-the PostgreSQL table and daily materialized view; an already-applied 1.3.2 needs
-`--rerun-last-migration`. ClickHouse creates its table and refreshable view at startup
-(requires refreshable-view support and an Atomic/Replicated database).
+the PostgreSQL history table; an already-applied 1.3.2 needs
+`--rerun-last-migration`. ClickHouse creates its history table at startup.
+Daily aggregation is optional: neither migration nor indexer creates or schedules
+a daily view. The [Go aggregator](gramstat-aggregate.md) can gain a separate history
+handler later; its current `actions` handler does not calculate these counts.
 
 | Column | Meaning |
 | --- | --- |
@@ -419,9 +421,9 @@ WHERE account = $1
 ORDER BY mc_seqno;
 ```
 
-### Daily counts
+### Optional daily counts
 
-`jetton_wallet_counts_daily` returns `day`, `mc_seqno` (day-end anchor),
+The optional `jetton_wallet_counts_daily` view below returns `day`, `mc_seqno` (day-end anchor),
 `existing_count`, `nonzero_count`, and `unknown_count`. It deduplicates history,
 computes signed changes in known/unknown indicators per address, sums by UTC day,
 then cumulatively sums those changes. Days with MC blocks but no state changes carry
@@ -440,8 +442,56 @@ history before blocks. Refresh after the relevant replay/ingestion has completed
 If history was populated by the older unfiltered collector, rebuild that affected
 history before replay: upsert/`ReplacingMergeTree` cannot remove now-excluded rows.
 
-PostgreSQL creates the MV `WITH NO DATA`; populate it once, then schedule refreshes
-externally (for example daily):
+PostgreSQL — create manually if materialization is desired:
+
+<!-- jetton-daily-postgres -->
+```sql
+CREATE MATERIALIZED VIEW IF NOT EXISTS public.jetton_wallet_counts_daily AS
+WITH horizon AS (
+    SELECT (to_timestamp(max(gen_utime)) AT TIME ZONE 'UTC')::date AS end_day
+    FROM blocks WHERE workchain = -1
+), samples AS (
+    SELECT account, mc_seqno, (to_timestamp(gen_utime) AT TIME ZONE 'UTC')::date AS day,
+           CASE WHEN existing IS TRUE THEN 1 ELSE 0 END::bigint AS known_existing,
+           CASE WHEN nonzero IS TRUE THEN 1 ELSE 0 END::bigint AS known_nonzero,
+           CASE WHEN existing IS NULL THEN 1 ELSE 0 END::bigint AS unknown
+    FROM public.jetton_wallet_states
+), changes AS (
+    SELECT day,
+           known_existing - lag(known_existing, 1, 0::bigint) OVER w AS de,
+           known_nonzero - lag(known_nonzero, 1, 0::bigint) OVER w AS dn,
+           unknown - lag(unknown, 1, 0::bigint) OVER w AS du
+    FROM samples
+    WINDOW w AS (PARTITION BY account ORDER BY mc_seqno)
+), daily AS (
+    SELECT day, sum(de) AS de, sum(dn) AS dn, sum(du) AS du
+    FROM changes GROUP BY day
+), days AS (
+    SELECT (to_timestamp(gen_utime) AT TIME ZONE 'UTC')::date AS day, max(seqno) AS mc_seqno
+    FROM blocks
+    WHERE workchain = -1
+    GROUP BY (to_timestamp(gen_utime) AT TIME ZONE 'UTC')::date
+), totals AS (
+    SELECT d.day, d.mc_seqno,
+           sum(coalesce(de, 0)) OVER w AS known_existing,
+           sum(coalesce(dn, 0)) OVER w AS known_nonzero,
+           sum(coalesce(du, 0)) OVER w AS unknown_count
+    FROM days d LEFT JOIN daily USING (day)
+    WHERE d.day >= (SELECT min(day) FROM samples)
+      AND d.day < (SELECT end_day FROM horizon)
+    WINDOW w AS (ORDER BY d.day ROWS UNBOUNDED PRECEDING)
+)
+SELECT day, mc_seqno,
+       CASE WHEN unknown_count = 0 THEN known_existing::bigint END AS existing_count,
+       CASE WHEN unknown_count = 0 THEN known_nonzero::bigint END AS nonzero_count,
+       unknown_count::bigint AS unknown_count
+FROM totals
+WITH NO DATA;
+CREATE UNIQUE INDEX IF NOT EXISTS jetton_wallet_counts_daily_day_idx
+ON public.jetton_wallet_counts_daily (day);
+```
+
+Populate it once, then schedule refreshes externally (for example daily):
 
 ```sql
 REFRESH MATERIALIZED VIEW public.jetton_wallet_counts_daily;
@@ -449,8 +499,56 @@ REFRESH MATERIALIZED VIEW public.jetton_wallet_counts_daily;
 REFRESH MATERIALIZED VIEW CONCURRENTLY public.jetton_wallet_counts_daily;
 ```
 
-ClickHouse uses `REFRESH EVERY 1 DAY`, without `APPEND`, and `EMPTY` to avoid a full
-scan during initial DDL. Control historical filling/refresh explicitly:
+ClickHouse — the optional recipe requires refreshable-view support and an
+Atomic/Replicated database. Running this DDL enables a daily full refresh.
+`EMPTY` skips the immediate initial refresh, not the schedule:
+
+<!-- jetton-daily-clickhouse -->
+```sql
+CREATE MATERIALIZED VIEW IF NOT EXISTS jetton_wallet_counts_daily
+REFRESH EVERY 1 DAY
+ENGINE = MergeTree ORDER BY day
+EMPTY AS
+WITH horizon AS (
+    SELECT toDate(toDateTime(max(gen_utime), 'UTC'), 'UTC') AS end_day
+    FROM blocks WHERE workchain = -1
+), samples AS (
+    SELECT account, mc_seqno, toDate(gen_utime, 'UTC') AS day,
+           toInt64(ifNull(existing, 0)) AS known_existing,
+           toInt64(ifNull(nonzero, 0)) AS known_nonzero,
+           toInt64(isNull(existing)) AS unknown
+    FROM jetton_wallet_states FINAL
+), changes AS (
+    SELECT day,
+           known_existing - lagInFrame(known_existing, 1, toInt64(0)) OVER w AS de,
+           known_nonzero - lagInFrame(known_nonzero, 1, toInt64(0)) OVER w AS dn,
+           unknown - lagInFrame(unknown, 1, toInt64(0)) OVER w AS du
+    FROM samples
+    WINDOW w AS (PARTITION BY account ORDER BY mc_seqno ROWS UNBOUNDED PRECEDING)
+), daily AS (
+    SELECT day, sum(de) AS de, sum(dn) AS dn, sum(du) AS du
+    FROM changes GROUP BY day
+), days AS (
+    SELECT toDate(toDateTime(gen_utime, 'UTC'), 'UTC') AS day, max(seqno) AS mc_seqno
+    FROM blocks WHERE workchain = -1 GROUP BY day
+), totals AS (
+    SELECT d.day AS day, toUInt32(d.mc_seqno) AS mc_seqno,
+           sum(ifNull(de, 0)) OVER w AS known_existing,
+           sum(ifNull(dn, 0)) OVER w AS known_nonzero,
+           sum(ifNull(du, 0)) OVER w AS unknown_count
+    FROM days d LEFT JOIN daily USING (day)
+    WHERE d.day >= (SELECT min(day) FROM samples)
+      AND d.day < (SELECT end_day FROM horizon)
+    WINDOW w AS (ORDER BY d.day ROWS UNBOUNDED PRECEDING)
+)
+SELECT day, mc_seqno,
+       if(unknown_count = 0, known_existing, NULL) AS existing_count,
+       if(unknown_count = 0, known_nonzero, NULL) AS nonzero_count,
+       unknown_count
+FROM totals;
+```
+
+Control historical filling/refresh explicitly after creating the view:
 
 ```sql
 SYSTEM STOP VIEW jetton_wallet_counts_daily;
@@ -461,8 +559,8 @@ SYSTEM WAIT VIEW jetton_wallet_counts_daily;
 ```
 
 Both mechanisms fully recalculate the daily result; they are not incremental
-per-INSERT views. The source query lives next to each backend's DDL and is exercised
-on the same controlled fixture in the existing SQL tests. Production indexing and
+per-INSERT views. These documentation examples are exercised on the same controlled
+fixture in the existing SQL tests. Production indexing and
 refresh cost remain to be measured after separately authorized historical filling.
 
 ## Block fees and issuance (always collected)

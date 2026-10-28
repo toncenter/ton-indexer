@@ -587,14 +587,6 @@ int main(int argc, char** argv) {
         std::cout << jetton_history::CREATE_STATES << ";\n";
         return 0;
     }
-    if (argc == 2 && std::string(argv[1]) == "--jetton-daily-query") {
-        std::cout << jetton_history::DAILY_QUERY;
-        return 0;
-    }
-    if (argc == 2 && std::string(argv[1]) == "--jetton-daily-view") {
-        std::cout << jetton_history::daily_view_sql() << ";\n";
-        return 0;
-    }
     if (argc == 2 && std::string(argv[1]) == "--schema") {
         std::cout << gramstat::CREATE_DATABASE << ";\n" << gramstat::CREATE_TOTAL_SUPPLY << ";\n"
                   << gramstat::CREATE_ACCOUNT_DELTAS << ";\n" << gramstat::CREATE_DEPLOYMENTS << ";\n";

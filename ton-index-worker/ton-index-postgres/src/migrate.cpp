@@ -1616,7 +1616,7 @@ void run_1_3_2_migrations(const std::string& connection_string, bool dry_run) {
       "ADD COLUMN IF NOT EXISTS created numeric(38, 0), "
       "ADD COLUMN IF NOT EXISTS burned numeric(38, 0);\n") +
       gramstat::postgres::SCHEMA_SQL + jetton_history::postgres::SCHEMA_SQL +
-      jetton_history::postgres::daily_view_sql() + set_version_query({1, 3, 2});
+      set_version_query({1, 3, 2});
   if (dry_run) {
     std::cout << query << std::endl;
     return;

@@ -369,7 +369,6 @@ void InsertManagerClickhouse::start_up() {
             client.Execute(builder.as_cslice().str());
             LOG(INFO) << "Table jetton_wallets created";
             client.Execute(jetton_history::CREATE_STATES);
-            client.Execute(jetton_history::daily_view_sql());
         }
         {
             td::StringBuilder builder;
