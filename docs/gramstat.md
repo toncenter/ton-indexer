@@ -347,6 +347,104 @@ at `to` and replace the final SELECT with
 Do not sum DAU. This lifetime JOIN needs a separate performance measurement;
 first-deployment and daily-activity materializations can be added later.
 
+## Jetton wallet balance history (always collected)
+
+Both indexers write `jetton_wallet_states` in the ordinary database/schema
+(`public` in PostgreSQL), independently of `--gramstat`. PostgreSQL keeps this
+history even when current states are stored in Kvrocks. Migration **1.3.2** creates
+the PostgreSQL table and daily materialized view; an already-applied 1.3.2 needs
+`--rerun-last-migration`. ClickHouse creates its table and refreshable view at startup
+(requires refreshable-view support and an Atomic/Replicated database).
+
+| Column | Meaning |
+| --- | --- |
+| `account` | Raw address, including workchain |
+| `mc_seqno` | Including MC; key is `(account, mc_seqno)` |
+| `gen_utime` | MC time: UTC `DateTime` in CH, Unix seconds in PG |
+| `last_tx_lt` | Last transaction of this address included in the MC |
+| `existing` | Nullable boolean: verified active jetton wallet / confirmed absence / unknown |
+| `balance` | Exact nonnegative raw jetton amount; PG `numeric(78,0)`, CH canonical decimal string |
+| `nonzero` | Generated/materialized nullable boolean: `existing AND balance > 0` |
+
+There is one final observation per touched address per MC, before writer-batch
+deduplication of current states. CH uses monthly `ReplacingMergeTree ORDER BY
+(account, mc_seqno)`; use `FINAL` before window calculations. PG upserts the same
+historical key. Owner/master metadata comes from current `jetton_wallets` when
+needed; this table has no owner/master fields or additional indexes/projections.
+
+`existing=true` requires successful `get_wallet_data` and master round-trip
+verification. `false` includes nonactive accounts, absent code, a proven missing
+getter, and a master returning a different wallet address. Getter execution,
+return-shape, library/state lookup failures and unsupported-dispatcher failures
+produce `NULL`, never zero balance or a false disappearance. An exported getter
+throwing exit code 11 is still unknown, not a missing getter. Failed final-state
+loads cannot fall back to an earlier active state. Getters use the MC configuration
+time, not wall time. No previous-state lookup or extra get-method execution is
+needed by history collection.
+
+False and unknown observations also cover addresses that have never been verified
+as jetton wallets: a stateless collector cannot know their previous classification.
+Unknown addresses are treated conservatively in the global counts. Balances remain
+NULL for both false and unknown observations; generated `nonzero` is respectively
+false or NULL. Mintless unclaimed rights do not substitute for a positive balance.
+
+An observation with `existing=NULL` starts a gap until the next definite observation.
+For example, balance 50 at MC 100, NULL at MC 110, and 70 at MC 120 means a gap on
+`[110,120)`, not a carried-forward balance of 50. An explicitly absent wallet ends
+the active balance series. Raw history queries must retain these NULL/false rows.
+
+```sql
+-- PostgreSQL; bind the raw address as $1. CH uses the same columns and FINAL.
+SELECT mc_seqno, gen_utime, last_tx_lt, existing, balance, nonzero
+FROM public.jetton_wallet_states
+WHERE account = $1
+ORDER BY mc_seqno;
+```
+
+### Daily counts
+
+`jetton_wallet_counts_daily` returns `day`, `mc_seqno` (day-end anchor),
+`existing_count`, `nonzero_count`, and `unknown_count`. It deduplicates history,
+computes signed changes in known/unknown indicators per address, sums by UTC day,
+then cumulatively sums those changes. Days with MC blocks but no state changes carry
+the prior counts. An unknown interval remains unknown on unchanged days too;
+both exact counts are NULL while the day-end `unknown_count` is nonzero. Resolving
+an unknown observation restores counts; a corrected historical replay is reflected
+by the next full refresh. Only days strictly before the latest indexed MC's UTC
+day are published, not the partial current indexed day.
+
+The initial count is zero: populate the complete required history from the zero
+baseline before using global counts. The query does not establish ingestion
+coverage. Old `blocks` rows are not proof that the new table was populated;
+historical filling requires explicit `--from N --to M --force` replay. No separate
+progress table or marker column is added. PG commits history with blocks; CH writes
+history before blocks. Refresh after the relevant replay/ingestion has completed.
+
+PostgreSQL creates the MV `WITH NO DATA`; populate it once, then schedule refreshes
+externally (for example daily):
+
+```sql
+REFRESH MATERIALIZED VIEW public.jetton_wallet_counts_daily;
+-- Subsequent refreshes preserve concurrent readers; a unique day index is provided.
+REFRESH MATERIALIZED VIEW CONCURRENTLY public.jetton_wallet_counts_daily;
+```
+
+ClickHouse uses `REFRESH EVERY 1 DAY`, without `APPEND`, and `EMPTY` to avoid a full
+scan during initial DDL. Control historical filling/refresh explicitly:
+
+```sql
+SYSTEM STOP VIEW jetton_wallet_counts_daily;
+-- After historical filling:
+SYSTEM START VIEW jetton_wallet_counts_daily;
+SYSTEM REFRESH VIEW jetton_wallet_counts_daily;
+SYSTEM WAIT VIEW jetton_wallet_counts_daily;
+```
+
+Both mechanisms fully recalculate the daily result; they are not incremental
+per-INSERT views. The source query lives next to each backend's DDL and is exercised
+on the same controlled fixture in the existing SQL tests. Production indexing and
+refresh cost remain to be measured after separately authorized historical filling.
+
 ## Block fees and issuance (always collected)
 
 Fees, issuance and burning are native block aggregates, stored in the ordinary

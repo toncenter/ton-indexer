@@ -401,6 +401,23 @@ struct JettonWalletDataV2 {
   td::Bits256 data_hash;
 };
 
+// One observation at an MC boundary. NULL existing terminates the last known
+// value just like false does, but represents an unknown interval, not absence.
+struct JettonWalletState {
+  block::StdAddress account;
+  std::uint32_t mc_seqno;
+  std::uint32_t gen_utime;
+  std::uint64_t last_tx_lt;
+  std::optional<bool> existing;
+  td::RefInt256 balance;
+
+  bool valid() const {
+    return existing.value_or(false)
+        ? balance.not_null() && balance->is_valid() && balance->sgn() >= 0
+        : balance.is_null();
+  }
+};
+
 struct VestingData
 {
   block::StdAddress address;
@@ -916,6 +933,8 @@ struct ParsedBlock {
   // Final-state jetton probe: true = verified, false = proven non-match,
   // nullopt = failed/indeterminate. Absence from this map means not probed.
   std::unordered_map<block::StdAddress, std::optional<bool>> jetton_wallet_detection_;
+  // An empty vector is a calculated empty MC; nullopt means not collected.
+  std::optional<std::vector<schema::JettonWalletState>> jetton_wallet_states_;
 
   template <class T>
   std::vector<T> get_events() {

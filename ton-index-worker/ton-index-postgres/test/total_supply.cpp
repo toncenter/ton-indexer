@@ -1,6 +1,8 @@
 #include <iostream>
 
 #include "GramstatPostgres.h"
+#include "JettonWalletStatesPostgres.h"
+#include "JettonWalletStatesSchema.h"
 #include "postgresql_tools.h"
 
 namespace {
@@ -14,12 +16,90 @@ InsertTaskStruct task(std::uint32_t seqno, std::uint32_t time, const char* total
         seqno, time, amount, amount - 101, td::make_refint(23), td::make_refint(31), td::make_refint(47)};
     result.parsed_block_->account_deltas_ = schema::AccountDeltas{seqno, time, -1, 2, 0};
     result.parsed_block_->deployments_.emplace();
+    result.parsed_block_->jetton_wallet_states_.emplace();
     return result;
 }
 
 long long count(pqxx::connection& connection, const char* table) {
     pqxx::read_transaction txn(connection);
     return txn.query_value<long long>(std::string("SELECT count(*) FROM ") + table);
+}
+
+void check_jetton_history(pqxx::connection& connection, pqxx::connection& observer) {
+    {
+        pqxx::work txn(connection);
+        txn.exec0(jetton_history::postgres::SCHEMA_SQL);
+        txn.exec0(jetton_history::postgres::SCHEMA_SQL);
+        txn.commit();
+    }
+    const auto address = block::StdAddress(0, td::Bits256::zero());
+    const std::string amount = "100000000000000000000000000000000000000000000000001";
+    std::vector<InsertTaskStruct> tasks;
+    for (auto seqno : {101U, 100U, 102U, 103U}) {
+        auto item = task(seqno, 1788220800, "1");
+        // History has no dependency on optional Gramstat snapshots or Kvrocks.
+        item.parsed_block_->total_supply_.reset();
+        item.parsed_block_->account_deltas_.reset();
+        schema::JettonWalletState row{address, seqno, 1788220800, 9007199254740993ULL + seqno, std::nullopt, {}};
+        if (seqno == 100 || seqno == 103) {
+            row.existing = true;
+            row.balance = seqno == 100 ? td::dec_string_to_int256(amount) : td::make_refint(0);
+        } else if (seqno == 102) {
+            row.existing = false;
+        }
+        item.parsed_block_->jetton_wallet_states_->push_back(row);
+        tasks.push_back(std::move(item));
+    }
+    {
+        pqxx::work txn(connection);
+        jetton_history::postgres::insert_states(txn, tasks);
+        CHECK(count(observer, "jetton_wallet_states") == 0);
+    }
+    CHECK(count(observer, "jetton_wallet_states") == 0);
+    {
+        pqxx::work txn(connection);
+        jetton_history::postgres::insert_states(txn, tasks);
+        jetton_history::postgres::insert_states(txn, tasks);
+        auto rows = txn.exec("SELECT existing, balance::text, nonzero FROM jetton_wallet_states ORDER BY mc_seqno");
+        CHECK(rows.size() == 4 && rows[0][1].as<std::string>() == amount && rows[0][2].as<bool>());
+        CHECK(rows[1][0].is_null() && rows[1][1].is_null() && rows[1][2].is_null());
+        CHECK(!rows[2][0].as<bool>() && rows[2][1].is_null() && !rows[2][2].as<bool>());
+        CHECK(rows[3][0].as<bool>() && rows[3][1].as<std::string>() == "0" && !rows[3][2].as<bool>());
+        txn.commit();
+    }
+    for (int failure = 0; failure < 3; ++failure) {
+        auto bad = task(104, 1788220800, "1");
+        if (failure == 0) {
+            bad.parsed_block_->jetton_wallet_states_.reset();
+        } else {
+            bad.parsed_block_->jetton_wallet_states_->push_back({address, failure == 1 ? 99U : 104U,
+                1788220800, 200, false, failure == 2 ? td::make_refint(1) : td::RefInt256{}});
+        }
+        bool rejected = false;
+        std::vector<InsertTaskStruct> bad_tasks;
+        bad_tasks.push_back(std::move(bad));
+        try {
+            pqxx::work txn(connection);
+            jetton_history::postgres::insert_states(txn, bad_tasks);
+            txn.commit();
+        } catch (const std::exception&) {
+            rejected = true;
+        }
+        CHECK(rejected && count(observer, "jetton_wallet_states") == 4);
+    }
+    {
+        pqxx::work txn(connection);
+        auto& repaired = tasks[0].parsed_block_->jetton_wallet_states_->front();
+        repaired.existing = true;
+        repaired.balance = td::make_refint(5);
+        jetton_history::postgres::insert_states(txn, tasks);
+        CHECK(txn.query_value<bool>("SELECT nonzero FROM jetton_wallet_states WHERE mc_seqno=101"));
+        std::vector<InsertTaskStruct> empty;
+        empty.push_back(task(104, 1788220800, "1"));
+        jetton_history::postgres::insert_states(txn, empty);
+        txn.commit();
+    }
+    CHECK(count(observer, "jetton_wallet_states") == 4);
 }
 
 }  // namespace
@@ -36,10 +116,11 @@ int main(int argc, char** argv) {
         gramstat::postgres::ensure_schema(txn);
         txn.exec0("CREATE TABLE blocks (workchain int, seqno bigint, shard bigint DEFAULT 0, "
                   "mc_block_seqno bigint DEFAULT 0, transaction_fees numeric(38,0), import_fees numeric(38,0), "
-                  "created numeric(38,0), burned numeric(38,0), "
+                  "created numeric(38,0), burned numeric(38,0), gen_utime bigint DEFAULT 0, "
                   "PRIMARY KEY (workchain, shard, seqno, mc_block_seqno))");
         txn.commit();
     }
+    check_jetton_history(connection, observer);
     std::vector<InsertTaskStruct> tasks;
     tasks.push_back(task(101, 1788224399, "100000000000000000102"));
     tasks.push_back(task(100, 1788224399, "100000000000000000101"));

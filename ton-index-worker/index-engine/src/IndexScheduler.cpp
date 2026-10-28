@@ -3,6 +3,7 @@
 #include "TotalSupply.h"
 #include "AccountDeltas.h"
 #include "Deployments.h"
+#include "JettonWalletStates.h"
 #include "Statistics.h"
 #include "common/delay.h"
 #include "td/utils/StringBuilder.h"
@@ -519,6 +520,14 @@ void IndexScheduler::seqno_traces_assembled(std::uint32_t mc_seqno, ParsedBlockP
 
 void IndexScheduler::seqno_interfaces_processed(std::uint32_t mc_seqno, ParsedBlockPtr parsed_block) {
     LOG(DEBUG) << "Interfaces processed for seqno " << mc_seqno;
+    auto history = jetton_history::collect_states(mc_seqno, *parsed_block);
+    if (history.is_error()) {
+        auto error = history.move_as_error();
+        LOG(ERROR) << "Failed to collect jetton wallet states for seqno " << mc_seqno << ": " << error;
+        handle_seqno_failure(mc_seqno, "indexer.jetton_history_error", std::move(error), false);
+        return;
+    }
+    parsed_block->jetton_wallet_states_ = history.move_as_ok();
     finish_seqno_otel_stage(mc_seqno);
     start_seqno_otel_stage(mc_seqno, "detect_actions");
 

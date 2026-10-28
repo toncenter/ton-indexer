@@ -8,6 +8,8 @@
 #include "GramstatStorage.h"
 #include "DataParser.h"
 #include "BlockInterfacesDetector.h"
+#include "JettonWalletStates.h"
+#include "JettonWalletStatesStorage.h"
 #include "../../tondb-scanner/test/smc-fixture.h"
 #include "vm/cp0.h"
 #include "crypto/block/block.h"
@@ -386,10 +388,102 @@ void check_jetton_detection_status() {
     }
 }
 
+void check_jetton_history() {
+    ParsedBlock parsed;
+    schema::Block mc{};
+    mc.workchain = -1;
+    mc.mc_block_workchain = -1;
+    mc.seqno = 10;
+    mc.mc_block_seqno = 10;
+    mc.gen_utime = 1788307200;
+    parsed.blocks_.push_back(mc);
+    CHECK(jetton_history::collect_states(10, parsed).move_as_ok().empty());
+    CHECK(jetton_history::collect_states(11, parsed).is_error());
+    CHECK(jetton_history::collect_states(10, {}).is_error());
+    const auto address = block::StdAddress(0, td::Bits256::zero());
+    for (auto lt : {200ULL, 100ULL}) {
+        schema::Block shard{};
+        shard.workchain = 0;
+        shard.mc_block_workchain = -1;
+        shard.mc_block_seqno = 10;
+        shard.gen_utime = 1788307199;
+        schema::Transaction tx{};
+        tx.account = address;
+        tx.mc_seqno = 10;
+        tx.lt = lt;
+        tx.end_status = schema::AccountStatus::active;
+        tx.account_state_hash_after = td::Bits256::zero();
+        shard.transactions.push_back(tx);
+        parsed.blocks_.push_back(shard);
+    }
+    schema::AccountState state{};
+    state.account = address;
+    state.hash = td::Bits256::zero();
+    state.last_trans_lt = 200;
+    state.account_status = "active";
+    state.code = state.data = vm::CellBuilder().finalize();
+    state.code_hash = state.data_hash = state.code->get_hash().bits();
+    parsed.account_states_.push_back(state);
+    schema::JettonWalletDataV2 wallet{};
+    wallet.address = address;
+    wallet.last_transaction_lt = 200;
+    wallet.code_hash = *state.code_hash;
+    wallet.data_hash = *state.data_hash;
+    const std::string amount = "100000000000000000000000000000000000000000000000001";
+    wallet.balance = td::dec_string_to_int256(amount);
+    parsed.account_interfaces_[address] = {wallet};
+    parsed.jetton_wallet_detection_[address] = true;
+    auto rows = jetton_history::collect_states(10, parsed).move_as_ok();
+    CHECK(rows.size() == 1 && rows[0].existing == true && rows[0].last_tx_lt == 200);
+    CHECK(rows[0].gen_utime == 1788307200 && rows[0].balance->to_dec_string() == amount);
+    auto columns = jetton_history::states_block(rows);
+    CHECK(columns.GetColumnCount() == 6 && columns.GetRowCount() == 1);
+    CHECK(columns[5]->As<clickhouse::ColumnNullable>()->Nested()->As<clickhouse::ColumnString>()->At(0) == amount);
+
+    // A failed final-state load must not silently carry forward the older state.
+    parsed.account_states_.back().last_trans_lt = 100;
+    CHECK(!jetton_history::collect_states(10, parsed).move_as_ok()[0].existing.has_value());
+    parsed.account_states_.back().last_trans_lt = 200;
+    parsed.jetton_wallet_detection_[address].reset();
+    auto unknown = jetton_history::collect_states(10, parsed).move_as_ok()[0];
+    CHECK(!unknown.existing && unknown.balance.is_null());
+    parsed.jetton_wallet_detection_[address] = false;
+    CHECK(jetton_history::collect_states(10, parsed).move_as_ok()[0].existing == false);
+    parsed.jetton_wallet_detection_[address] = true;
+    for (auto status : {schema::AccountStatus::nonexist, schema::AccountStatus::frozen, schema::AccountStatus::uninit}) {
+        parsed.blocks_[1].transactions[0].end_status = status;
+        auto terminal = jetton_history::collect_states(10, parsed).move_as_ok()[0];
+        CHECK(terminal.existing == false && terminal.balance.is_null());
+        auto serialized = jetton_history::states_block({terminal, unknown});
+        CHECK(!serialized[4]->As<clickhouse::ColumnNullable>()->IsNull(0));
+        CHECK(serialized[4]->As<clickhouse::ColumnNullable>()->IsNull(1));
+        CHECK(serialized[5]->As<clickhouse::ColumnNullable>()->IsNull(0));
+        CHECK(serialized[5]->As<clickhouse::ColumnNullable>()->IsNull(1));
+    }
+    // Redeployment becomes active again; stale interface data still cannot match.
+    parsed.blocks_[1].transactions[0].end_status = schema::AccountStatus::active;
+    std::get<schema::JettonWalletDataV2>(parsed.account_interfaces_[address][0]).last_transaction_lt = 100;
+    CHECK(!jetton_history::collect_states(10, parsed).move_as_ok()[0].existing.has_value());
+    std::get<schema::JettonWalletDataV2>(parsed.account_interfaces_[address][0]).last_transaction_lt = 200;
+    CHECK(jetton_history::collect_states(10, parsed).move_as_ok()[0].existing == true);
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
     td::Time::allow_freezes();
+    if (argc == 2 && std::string(argv[1]) == "--jetton-schema") {
+        std::cout << jetton_history::CREATE_STATES << ";\n";
+        return 0;
+    }
+    if (argc == 2 && std::string(argv[1]) == "--jetton-daily-query") {
+        std::cout << jetton_history::DAILY_QUERY;
+        return 0;
+    }
+    if (argc == 2 && std::string(argv[1]) == "--jetton-daily-view") {
+        std::cout << jetton_history::daily_view_sql() << ";\n";
+        return 0;
+    }
     if (argc == 2 && std::string(argv[1]) == "--schema") {
         std::cout << gramstat::CREATE_DATABASE << ";\n" << gramstat::CREATE_TOTAL_SUPPLY << ";\n"
                   << gramstat::CREATE_ACCOUNT_DELTAS << ";\n" << gramstat::CREATE_DEPLOYMENTS << ";\n";
@@ -412,5 +506,6 @@ int main(int argc, char** argv) {
     check_deployments();
     check_final_interface_state();
     check_jetton_detection_status();
+    check_jetton_history();
     std::cout << "Gramstat supply, account deltas, deployments and exact ClickHouse columns: OK\n";
 }

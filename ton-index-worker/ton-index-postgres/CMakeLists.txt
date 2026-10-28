@@ -8,6 +8,7 @@ add_executable(ton-index-postgres
     src/KvrocksProgress.cpp
     src/PartitionManagerPostgres.cpp
     src/GramstatPostgres.cpp
+    src/JettonWalletStatesPostgres.cpp
 )
 
 target_include_directories(ton-index-postgres
@@ -38,7 +39,7 @@ target_link_options(ton-index-postgres-migrate PUBLIC -rdynamic)
 
 install(TARGETS ton-index-postgres-migrate RUNTIME DESTINATION bin)
 
-add_executable(test-gramstat-postgres EXCLUDE_FROM_ALL test/total_supply.cpp src/GramstatPostgres.cpp)
+add_executable(test-gramstat-postgres EXCLUDE_FROM_ALL test/total_supply.cpp src/GramstatPostgres.cpp src/JettonWalletStatesPostgres.cpp)
 target_include_directories(test-gramstat-postgres PRIVATE src)
 target_link_libraries(test-gramstat-postgres PRIVATE tondb-scanner pqxx)
 add_dependencies(test-gramstat-postgres ton-index-postgres-migrate)

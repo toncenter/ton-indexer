@@ -11,8 +11,44 @@ import sys
 import tempfile
 
 
+def check_jetton_history(binary, clickhouse):
+    def exported(option):
+        return subprocess.check_output([binary, option], text=True)
+
+    fixture = (Path(__file__).resolve().parents[2] / "tondb-scanner/test/jetton-wallet-history.sql").read_text()
+    query = exported("--jetton-daily-query") + " ORDER BY day;\n"
+    schema = exported("--jetton-schema")
+    sql = "CREATE DATABASE history ENGINE=Atomic; USE history;\n"
+    sql += "CREATE TABLE blocks (workchain Int32, seqno UInt32, gen_utime UInt32) ENGINE=Memory;\n"
+    sql += schema + fixture
+    # Repeat only the history INSERT; states from different MCs must survive FINAL.
+    sql += "INSERT INTO jetton_wallet_states" + fixture.split("INSERT INTO jetton_wallet_states", 1)[1]
+    sql += "SELECT count() FROM jetton_wallet_states FINAL;\n"
+    sql += "SELECT balance FROM jetton_wallet_states FINAL WHERE account='0:A' AND mc_seqno=1;\n"
+    sql += query
+    sql += "OPTIMIZE TABLE jetton_wallet_states FINAL;\n" + query
+    sql += exported("--jetton-daily-view")
+    sql += "SYSTEM REFRESH VIEW jetton_wallet_counts_daily; SYSTEM WAIT VIEW jetton_wallet_counts_daily;\n"
+    sql += "SELECT * FROM jetton_wallet_counts_daily ORDER BY day;\n"
+    sql += "INSERT INTO jetton_wallet_states VALUES ('0:A',3,1788307200,30,true,'30');\n"
+    sql += "SYSTEM REFRESH VIEW jetton_wallet_counts_daily; SYSTEM WAIT VIEW jetton_wallet_counts_daily;\n"
+    sql += "SELECT * FROM jetton_wallet_counts_daily ORDER BY day;\n"
+    with tempfile.TemporaryDirectory(prefix="jetton-ch-") as directory:
+        result = subprocess.run([clickhouse, "local", "--path", directory, "--multiquery"],
+                                input=sql, text=True, capture_output=True, timeout=90)
+        if result.returncode:
+            raise RuntimeError(result.stdout + result.stderr)
+    daily = ["2026-09-01\t2\t2\t1\t0", "2026-09-02\t4\t\\N\t\\N\t1",
+             "2026-09-03\t5\t\\N\t\\N\t1", "2026-09-04\t6\t1\t0\t0", "2026-09-05\t7\t1\t1\t0"]
+    repaired = [daily[0], "2026-09-02\t4\t2\t2\t0", "2026-09-03\t5\t2\t2\t0", *daily[3:]]
+    expected = ["11", "100000000000000000000000000000000000000000000000001"] + daily * 3 + repaired
+    assert result.stdout.strip().splitlines() == expected, result.stdout
+    print("ClickHouse jetton history, unknown intervals, replay and refreshable MV: OK")
+
+
 def main():
     binary, clickhouse = sys.argv[1:]
+    check_jetton_history(binary, clickhouse)
 
     def exported(option):
         return subprocess.check_output([binary, option], text=True)

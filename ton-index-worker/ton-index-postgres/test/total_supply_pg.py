@@ -80,6 +80,26 @@ def main():
                 assert sql("SELECT count(*) FROM gramstat.total_supply") == "4"
                 assert sql("SELECT count(*) FROM gramstat.deployments") == "0"
                 assert sql("SELECT count(*) FROM pg_indexes WHERE schemaname='gramstat' AND tablename='deployments'") == "4"
+                assert sql("SELECT count(*) FROM jetton_wallet_states") == "4"
+                assert sql("SELECT count(*) FROM pg_indexes WHERE schemaname='public' AND tablename='jetton_wallet_states'") == "1"
+
+            fixture = (Path(__file__).resolve().parents[2] / "tondb-scanner/test/jetton-wallet-history.sql").read_text()
+            sql("TRUNCATE jetton_wallet_states; TRUNCATE blocks;\n" + fixture)
+            sql("INSERT INTO jetton_wallet_states (account,mc_seqno,gen_utime,last_tx_lt,existing,balance) "
+                "SELECT account,mc_seqno,gen_utime,last_tx_lt,existing,balance FROM jetton_wallet_states "
+                "ON CONFLICT (account,mc_seqno) DO NOTHING;")
+            assert sql("SELECT count(*) FROM jetton_wallet_states") == "11"
+            # The first refresh populates the view. Later refreshes can be concurrent.
+            sql("REFRESH MATERIALIZED VIEW jetton_wallet_counts_daily;")
+            points = sql("SET TIME ZONE 'Pacific/Honolulu'; SELECT * FROM jetton_wallet_counts_daily ORDER BY day;")
+            daily = ["2026-09-01\t2\t2\t1\t0", "2026-09-02\t4\t\t\t1", "2026-09-03\t5\t\t\t1",
+                     "2026-09-04\t6\t1\t0\t0", "2026-09-05\t7\t1\t1\t0"]
+            assert points.splitlines() == daily, points
+            sql("UPDATE jetton_wallet_states SET existing=true,balance=30 WHERE account='0:A' AND mc_seqno=3;")
+            sql("REFRESH MATERIALIZED VIEW CONCURRENTLY jetton_wallet_counts_daily;")
+            points = sql("SELECT * FROM jetton_wallet_counts_daily ORDER BY day;")
+            assert points.splitlines() == [daily[0], "2026-09-02\t4\t2\t2\t0", "2026-09-03\t5\t2\t2\t0", *daily[3:]], points
+            print("PostgreSQL jetton history, unknown intervals and concurrent MV refresh: OK")
             print("PostgreSQL documented Accounts/deployments SQL, prefix gaps and migration 1.3.2 rerun: OK")
         finally:
             run(pg_ctl, "-D", str(data), "-m", "immediate", "-w", "stop")
