@@ -7,6 +7,10 @@ and account-status changes in `gramstat.account_deltas`, one row per indexed
 masterchain block in each table. `gramstat.deployments` stores individual
 successful deployment events for all contract types.
 
+The separate [Go aggregator](gramstat-aggregate.md) refreshes daily jetton senders,
+jetton transfers and NFT transfers from indexed PostgreSQL actions into ClickHouse
+`gramstat.daily_metrics`. It runs hourly and supports independent future handlers.
+
 ## Calculation
 
 `index-engine/src/TotalSupply.cpp` calls TON's
