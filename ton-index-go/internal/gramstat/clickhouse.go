@@ -20,20 +20,31 @@ CREATE TABLE IF NOT EXISTS gramstat.daily_metrics (
     calculated_at DateTime64(6, 'UTC'),
     data_through DateTime('UTC'),
     source_mc_seqno UInt32,
-    is_partial UInt8
+    is_partial UInt8,
+    amount_nanoton Nullable(Decimal(38,0)) DEFAULT NULL,
+    breakdown Map(String, UInt64) DEFAULT map()
 ) ENGINE = ReplacingMergeTree(calculated_at)
 PARTITION BY toYYYYMM(day)
 ORDER BY (metric, day);
 `
 
+// Apply with the schema using an administrative account when upgrading a
+// deployment that predates monetary sums and categorical breakdowns.
+const DailyMigration = `ALTER TABLE gramstat.daily_metrics
+    ADD COLUMN IF NOT EXISTS amount_nanoton Nullable(Decimal(38,0)) DEFAULT NULL,
+    ADD COLUMN IF NOT EXISTS breakdown Map(String, UInt64) DEFAULT map();
+`
+
 type DailyMetric struct {
-	Metric        string `json:"metric"`
-	Day           string `json:"day"`
-	Value         uint64 `json:"value"`
-	CalculatedAt  string `json:"calculated_at"`
-	DataThrough   string `json:"data_through"`
-	SourceMCSeqno uint32 `json:"source_mc_seqno"`
-	IsPartial     uint8  `json:"is_partial"`
+	Metric        string            `json:"metric"`
+	Day           string            `json:"day"`
+	Value         uint64            `json:"value"`
+	CalculatedAt  string            `json:"calculated_at"`
+	DataThrough   string            `json:"data_through"`
+	SourceMCSeqno uint32            `json:"source_mc_seqno"`
+	IsPartial     uint8             `json:"is_partial"`
+	AmountNanoton *string           `json:"amount_nanoton"`
+	Breakdown     map[string]uint64 `json:"breakdown,omitempty"`
 }
 
 // ClickHouse is a small HTTP transport usable by handlers with different schemas.

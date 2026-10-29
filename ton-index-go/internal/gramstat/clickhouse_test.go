@@ -23,6 +23,9 @@ func TestClickHouseExactInsertAndLateError(t *testing.T) {
 		if !strings.Contains(string(body), `"value":9007199254740993`) {
 			t.Errorf("integer precision lost: %s", body)
 		}
+		if !strings.Contains(string(body), `"amount_nanoton":"100000000000000000001"`) {
+			t.Errorf("monetary precision lost: %s", body)
+		}
 		if failed {
 			// ClickHouse can report a query exception in an HTTP 200 body.
 			_, _ = io.WriteString(w, "Code: 241. DB::Exception: memory limit exceeded")
@@ -30,7 +33,8 @@ func TestClickHouseExactInsertAndLateError(t *testing.T) {
 	}))
 	defer server.Close()
 	ch, _ := NewClickHouse(server.URL, "reader_writer", "test-password")
-	rows := []DailyMetric{{Metric: "test", Value: 9007199254740993}}
+	amount := "100000000000000000001"
+	rows := []DailyMetric{{Metric: "test", Value: 9007199254740993, AmountNanoton: &amount}}
 	if err := ch.WriteDaily(context.Background(), rows); err != nil {
 		t.Fatal(err)
 	}

@@ -8,7 +8,7 @@ masterchain block in each table. `gramstat.deployments` stores individual
 successful deployment events for all contract types.
 
 The separate [Go aggregator](gramstat-aggregate.md) refreshes daily jetton/NFT
-senders, receivers and transfer counts from indexed PostgreSQL actions into ClickHouse
+activity, swaps, selected liquid-staking deposits and `.ton` mints from PostgreSQL actions into ClickHouse
 `gramstat.daily_metrics`. It runs hourly and supports independent future handlers.
 
 ## Calculation

@@ -38,6 +38,7 @@ func run(log *slog.Logger) error {
 	}
 	if *schema {
 		fmt.Print(gramstat.DailySchema)
+		fmt.Print(gramstat.DailyMigration)
 		return nil
 	}
 	if *list {

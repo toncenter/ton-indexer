@@ -2,6 +2,8 @@ package actions
 
 import (
 	"context"
+	_ "embed"
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -9,21 +11,12 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// One index-bounded scan supplies all six metrics. Do not exclude child
-// actions: transfers inside swaps and other composite actions also participate.
-const dailySQL = `SELECT
-    (to_timestamp(start_utime) AT TIME ZONE 'UTC')::date AS day,
-    count(DISTINCT source) FILTER (WHERE type = 'jetton_transfer') AS jetton_senders,
-    count(DISTINCT destination) FILTER (WHERE type = 'jetton_transfer') AS jetton_receivers,
-    count(*) FILTER (WHERE type = 'jetton_transfer') AS jetton_transfers,
-    count(DISTINCT source) FILTER (WHERE type = 'nft_transfer') AS nft_senders,
-    count(DISTINCT destination) FILTER (WHERE type = 'nft_transfer') AS nft_receivers,
-    count(*) FILTER (WHERE type = 'nft_transfer') AS nft_transfers
-FROM public.actions
-WHERE trace_mc_seqno_end >= $1 AND trace_mc_seqno_end <= $2
-  AND start_utime >= $3 AND start_utime < $4
-  AND success = true AND type IN ('jetton_transfer', 'nft_transfer')
-GROUP BY 1 ORDER BY 1`
+// One index-bounded scan supplies all metrics and breakdowns. GROUPING SETS
+// computes daily distinct users across all DEXes, not a sum of per-DEX users.
+// Child actions are included, just as in the original transfer metrics.
+//
+//go:embed daily.sql
+var dailySQL string
 
 type Postgres struct{ DSN string }
 
@@ -92,14 +85,25 @@ WHERE workchain = -1 AND seqno = $1 LIMIT 1`, upper).Scan(&sourceTime); err != n
 	for rows.Next() {
 		var d DayCounts
 		var senders, receivers, transfers, nftSenders, nftReceivers, nfts int64
-		if err = rows.Scan(&d.Day, &senders, &receivers, &transfers, &nftSenders, &nftReceivers, &nfts); err != nil {
+		var swaps, users, deposits, dnsMints int64
+		var dexJSON, poolsJSON []byte
+		if err = rows.Scan(&d.Day, &senders, &receivers, &transfers, &nftSenders, &nftReceivers, &nfts,
+			&swaps, &users, &dexJSON, &deposits, &d.LiquidStakingAmount, &poolsJSON, &dnsMints); err != nil {
 			return snapshot, err
 		}
-		if senders < 0 || receivers < 0 || transfers < 0 || nftSenders < 0 || nftReceivers < 0 || nfts < 0 {
+		if senders < 0 || receivers < 0 || transfers < 0 || nftSenders < 0 || nftReceivers < 0 || nfts < 0 ||
+			swaps < 0 || users < 0 || deposits < 0 || dnsMints < 0 {
 			return snapshot, fmt.Errorf("negative count")
 		}
 		d.JettonSenders, d.JettonReceivers, d.JettonTransfers = uint64(senders), uint64(receivers), uint64(transfers)
 		d.NFTSenders, d.NFTReceivers, d.NFTTransfers = uint64(nftSenders), uint64(nftReceivers), uint64(nfts)
+		d.Swaps, d.SwapUsers, d.LiquidStakingDeposits, d.TonDNSMints = uint64(swaps), uint64(users), uint64(deposits), uint64(dnsMints)
+		if err = json.Unmarshal(dexJSON, &d.SwapsByDEX); err != nil {
+			return snapshot, fmt.Errorf("decode DEX breakdown: %w", err)
+		}
+		if err = json.Unmarshal(poolsJSON, &d.LiquidStakingByPool); err != nil {
+			return snapshot, fmt.Errorf("decode liquid staking breakdown: %w", err)
+		}
 		snapshot.Days = append(snapshot.Days, d)
 	}
 	if err = rows.Err(); err != nil {
