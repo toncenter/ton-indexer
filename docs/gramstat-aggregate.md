@@ -2,7 +2,7 @@
 
 `ton-index-go/cmd/gramstat-aggregate` is a Go CLI for independent analytics
 handlers. It reads indexed sources and publishes to ClickHouse `gramstat`.
-The first handler, `actions`, reads cold PostgreSQL. It does not read node states.
+The first handler, `actions`, reads PostgreSQL. It does not read node states.
 
 ## Run
 
@@ -13,8 +13,8 @@ gramstat-aggregate --list-handlers
 gramstat-aggregate --print-schema  # apply this DDL once with an administrative CH user
 
 # Credentials belong in a protected environment file, not command arguments.
-export GRAMSTAT_PG_DSN='host=... port=15432 dbname=mainnet_e user=...'
-export GRAMSTAT_CH_URL='http://tc-ch-02.toncenter.local:8123/'
+export GRAMSTAT_PG_DSN='host=postgres.example.com port=5432 dbname=ton_index user=gramstat_reader'
+export GRAMSTAT_CH_URL='http://clickhouse.example.com:8123/'
 export GRAMSTAT_CH_USER='gramstat_aggregate'
 # GRAMSTAT_CH_PASSWORD / PostgreSQL password supplied by the deployment environment.
 gramstat-aggregate --handlers actions
@@ -85,12 +85,13 @@ range. Each whole chunk is collected before its synchronous ClickHouse insert;
 a retry can repair a failed/uncertain insert. Failed handlers leave their previous
 values in place, other handlers continue, and the process exits nonzero.
 
-## Deployment
+## Scheduled runs (systemd)
 
-Host: `tc-apps-01`. Binary: `/opt/gramstat/bin/gramstat-aggregate`.
-Protected environment: `/etc/gramstat-aggregate.env` (root-only).
-Service user: `gramstat`. Install the units from
-`ton-index-go/cmd/gramstat-aggregate/deploy/` and enable `gramstat-aggregate.timer`.
+The example units in `ton-index-go/cmd/gramstat-aggregate/deploy/` expect the binary
+at `/opt/gramstat/bin/gramstat-aggregate`, a root-only environment file at
+`/etc/gramstat-aggregate.env`, and a service user named `gramstat`. Adjust these
+paths as needed, install the units on a host with access to both databases, and
+enable `gramstat-aggregate.timer`.
 It runs every UTC hour, with persistent catch-up after a reboot. `flock` prevents
 overlap; manual runs on that host should use the same lock. The service has no
 write access to the source and needs only `SELECT, INSERT` on
