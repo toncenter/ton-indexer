@@ -563,6 +563,193 @@ per-INSERT views. These documentation examples are exercised on the same control
 fixture in the existing SQL tests. Production indexing and
 refresh cost remain to be measured after separately authorized historical filling.
 
+## NFT existence and owner history (always collected)
+
+`nft_item_states` follows the same MC-boundary model as `jetton_wallet_states`.
+Both histories are collected together by `AccountStateHistory`, after normal
+interface detection and before latest-state writer-batch deduplication. A single
+transaction walk, final-state selector, previous-state read and per-MC method cache
+serve both token types. The collector executes no additional getters/emulation.
+`NFTItemDataV2` supplies the same verified owner to latest storage and history.
+NFT metadata enrichment is best-effort: an unavailable/invalid content getter or
+content dictionary leaves `content` NULL without losing verified identity/ownership.
+Successful DNS enrichment can still supply known domain metadata.
+
+| Column | Meaning |
+| --- | --- |
+| `account` | NFT item address, including workchain |
+| `mc_seqno` | Including MC; key `(account, mc_seqno)` |
+| `gen_utime` | Including MC time: UTC `DateTime` in CH, Unix-second `bigint` in PG |
+| `last_tx_lt` | Last transaction of the item in this MC |
+| `existing` | Nullable boolean: confirmed initialized NFT / confirmed absence / unknown |
+| `owner` | Nullable on-chain `owner_address` from `get_nft_data`; PG `tonaddr`, CH `Nullable(String)` |
+
+`existing=true` requires successful core `get_nft_data` parsing, `init != 0`, and
+the collection's `get_nft_address_by_index(index)` returning the item address when
+a collection is present. Standalone items (`collection=addr_none`) are supported.
+Verified `init=0` is false; undefined owner/content fields are ignored in that case.
+A collection returning another address is false; getter/owner parsing/collection
+lookup failures are unknown, never disappearance. An initialized NFT can have
+`owner=addr_none`: `existing=true, owner=NULL` is valid. This measures initialized
+NFT contracts (including NFT-compatible SBTs), not spendability or SBT revocation.
+Transferring to a burn address does not itself remove the NFT contract.
+
+False/unknown active observations require `get_nft_data` (method ID 102351) in the
+current code, unless identity was successfully verified. Terminal observations
+use the same boundary rules as jettons: first transaction starts active, last ends
+frozen/uninit/nonexist, and the first before-state's code declares the NFT getter.
+Library resolution, unclassifiable-code filtering, retry on missing boundary/final
+states, and the deliberate omission of active-to-active code-change tracking are
+shared. `owner` is NULL for false/unknown observations; old owners are not carried
+through an unknown interval. Metadata errors alone do not create such an interval.
+
+One final row is stored per eligible item per touched MC, even if its owner is
+unchanged. This is MC-boundary ownership: `A → B → C` within one MC only observes
+the final owner C. The history uses the actual contract owner (which can be a sale
+contract), not latest storage's inferred `real_owner`. Queries about "ever owned"
+mean ownership observed at an MC boundary within the indexed coverage.
+
+Storage is unconditional, independently of `--gramstat`. PostgreSQL migration
+**1.3.2** creates `public.nft_item_states` and its partial B-tree `(owner, account)`
+index for `existing IS TRUE AND owner IS NOT NULL`; history stays in PG with Kvrocks
+enabled and commits atomically with blocks. Rerun an already-applied 1.3.2 with
+`--rerun-last-migration`. CH creates a monthly `ReplacingMergeTree` sorted by
+`(account, mc_seqno)` and an owner bloom-filter skip index at startup, and writes
+both token histories before blocks. The bloom filter skips granules; it is not a
+B-tree or a measured latency guarantee. Always deduplicate with `FINAL` before
+interpreting replayed history. Replaying a key replaces its owner as well as status.
+
+For one item's history, retain all rows (including false/unknown/ownerless), ordered
+by `mc_seqno`; consecutive equal states can be collapsed for presentation. To find
+distinct items observed at an owner address:
+
+<!-- nft-owner-postgres -->
+```sql
+SELECT DISTINCT account
+FROM public.nft_item_states
+WHERE existing IS TRUE AND owner IS NOT NULL AND owner = $1::tonaddr
+ORDER BY account;
+```
+
+<!-- nft-owner-clickhouse -->
+```sql
+SELECT DISTINCT account
+FROM nft_item_states FINAL
+WHERE existing = true AND ifNull(owner, '') = {owner:String}
+ORDER BY account;
+```
+
+### Optional daily existing NFT counts
+
+As with jettons, the source must cover history from the agreed zero baseline.
+Ordinary indexer progress cannot prove coverage of a newly introduced sparse
+history table. Older ranges require explicit `--from N --to M --force` replay.
+The collector's filtering limitations above also apply to this derived count.
+
+The following optional recipes publish closed UTC days according to the latest
+indexed MC, carrying counts through days with no item changes. Signed per-item
+deltas prevent repeated owners/observations from inflating the count. A nonzero
+`unknown_count` makes `existing_count` NULL. Both recipes fully recalculate history;
+production refresh cost/size have not been measured. The migration and indexers
+create no daily views or refresh jobs. The Go aggregator's current `actions`
+handler does not aggregate this history; a future handler can implement the recipe.
+
+PostgreSQL — optional manual creation:
+
+<!-- nft-daily-postgres -->
+```sql
+CREATE MATERIALIZED VIEW IF NOT EXISTS public.nft_item_counts_daily AS
+WITH horizon AS (
+    SELECT (to_timestamp(max(gen_utime)) AT TIME ZONE 'UTC')::date AS end_day
+    FROM blocks WHERE workchain = -1
+), samples AS (
+    SELECT account, mc_seqno, (to_timestamp(gen_utime) AT TIME ZONE 'UTC')::date AS day,
+           CASE WHEN existing IS TRUE THEN 1 ELSE 0 END::bigint AS known_existing,
+           CASE WHEN existing IS NULL THEN 1 ELSE 0 END::bigint AS unknown
+    FROM public.nft_item_states
+), changes AS (
+    SELECT day,
+           known_existing - lag(known_existing, 1, 0::bigint) OVER w AS de,
+           unknown - lag(unknown, 1, 0::bigint) OVER w AS du
+    FROM samples
+    WINDOW w AS (PARTITION BY account ORDER BY mc_seqno)
+), daily AS (
+    SELECT day, sum(de) AS de, sum(du) AS du FROM changes GROUP BY day
+), days AS (
+    SELECT (to_timestamp(gen_utime) AT TIME ZONE 'UTC')::date AS day, max(seqno) AS mc_seqno
+    FROM blocks WHERE workchain = -1
+    GROUP BY (to_timestamp(gen_utime) AT TIME ZONE 'UTC')::date
+), totals AS (
+    SELECT d.day, d.mc_seqno,
+           sum(coalesce(de, 0)) OVER w AS known_existing,
+           sum(coalesce(du, 0)) OVER w AS unknown_count
+    FROM days d LEFT JOIN daily USING (day)
+    WHERE d.day >= (SELECT min(day) FROM samples)
+      AND d.day < (SELECT end_day FROM horizon)
+    WINDOW w AS (ORDER BY d.day ROWS UNBOUNDED PRECEDING)
+)
+SELECT day, mc_seqno,
+       CASE WHEN unknown_count = 0 THEN known_existing::bigint END AS existing_count,
+       unknown_count::bigint AS unknown_count
+FROM totals
+WITH NO DATA;
+CREATE UNIQUE INDEX IF NOT EXISTS nft_item_counts_daily_day_idx
+ON public.nft_item_counts_daily (day);
+```
+
+First populate with `REFRESH MATERIALIZED VIEW public.nft_item_counts_daily;`.
+Subsequent refreshes can use `REFRESH MATERIALIZED VIEW CONCURRENTLY
+public.nft_item_counts_daily;` on an external schedule.
+
+ClickHouse — optional manual creation (Atomic/Replicated database with refreshable
+view support). Executing this DDL enables a daily full refresh; `EMPTY` skips only
+the immediate initial refresh:
+
+<!-- nft-daily-clickhouse -->
+```sql
+CREATE MATERIALIZED VIEW IF NOT EXISTS nft_item_counts_daily
+REFRESH EVERY 1 DAY
+ENGINE = MergeTree ORDER BY day
+EMPTY AS
+WITH horizon AS (
+    SELECT toDate(toDateTime(max(gen_utime), 'UTC'), 'UTC') AS end_day
+    FROM blocks WHERE workchain = -1
+), samples AS (
+    SELECT account, mc_seqno, toDate(gen_utime, 'UTC') AS day,
+           toInt64(ifNull(existing, 0)) AS known_existing,
+           toInt64(isNull(existing)) AS unknown
+    FROM nft_item_states FINAL
+), changes AS (
+    SELECT day,
+           known_existing - lagInFrame(known_existing, 1, toInt64(0)) OVER w AS de,
+           unknown - lagInFrame(unknown, 1, toInt64(0)) OVER w AS du
+    FROM samples
+    WINDOW w AS (PARTITION BY account ORDER BY mc_seqno ROWS UNBOUNDED PRECEDING)
+), daily AS (
+    SELECT day, sum(de) AS de, sum(du) AS du FROM changes GROUP BY day
+), days AS (
+    SELECT toDate(toDateTime(gen_utime, 'UTC'), 'UTC') AS day, max(seqno) AS mc_seqno
+    FROM blocks WHERE workchain = -1 GROUP BY day
+), totals AS (
+    SELECT d.day AS day, toUInt32(d.mc_seqno) AS mc_seqno,
+           sum(ifNull(de, 0)) OVER w AS known_existing,
+           sum(ifNull(du, 0)) OVER w AS unknown_count
+    FROM days d LEFT JOIN daily USING (day)
+    WHERE d.day >= (SELECT min(day) FROM samples)
+      AND d.day < (SELECT end_day FROM horizon)
+    WINDOW w AS (ORDER BY d.day ROWS UNBOUNDED PRECEDING)
+)
+SELECT day, mc_seqno,
+       if(unknown_count = 0, known_existing, NULL) AS existing_count,
+       unknown_count
+FROM totals;
+```
+
+Use `SYSTEM STOP VIEW nft_item_counts_daily` while filling history if necessary,
+then `SYSTEM START VIEW nft_item_counts_daily`. To calculate immediately:
+`SYSTEM REFRESH VIEW nft_item_counts_daily; SYSTEM WAIT VIEW nft_item_counts_daily;`.
+The SQL tests execute both recipes and owner queries against the same fixture.
+
 ## Block fees and issuance (always collected)
 
 Fees, issuance and burning are native block aggregates, stored in the ordinary

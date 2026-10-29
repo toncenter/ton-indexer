@@ -28,6 +28,20 @@ JettonWalletDetectorR::JettonWalletDetectorR(block::StdAddress address,
 
 namespace {
 
+td::Status classify_token_getter_error(td::Status error, const td::Ref<vm::Cell>& code,
+                                      const block::ConfigInfo* config,
+                                      unsigned long long method, int non_match) {
+  if (error.code() == SMC_METHOD_NOT_FOUND) {
+    auto methods = parse_contract_methods(code, config);
+    // An exported getter can itself throw 11. Failed method inspection also
+    // cannot prove absence (including unresolved code libraries).
+    if (methods.is_ok() && std::find(methods.ok().begin(), methods.ok().end(), method) == methods.ok().end()) {
+      return td::Status::Error(non_match, "Token data getter is not exported");
+    }
+  }
+  return error;
+}
+
 // The jetton master round-trip: ask the master which wallet it would derive for
 // this owner and require it to be the account under detection.
 td::Status verify_jetton_wallet_with_master(td::Ref<vm::Cell> master_code, td::Ref<vm::Cell> master_data,
@@ -64,16 +78,8 @@ td::Result<JettonWalletDetectorR::Result> JettonWalletDetectorR::detect(
   auto stack_r = execute_smc_method<4>(address, code_cell, data_cell, config, "get_wallet_data", {},
     {vm::StackEntry::Type::t_int, vm::StackEntry::Type::t_slice, vm::StackEntry::Type::t_slice, vm::StackEntry::Type::t_cell});
   if (stack_r.is_error()) {
-    auto error = stack_r.move_as_error();
-    if (error.code() == SMC_METHOD_NOT_FOUND) {
-      auto methods = parse_contract_methods(code_cell, config.get());
-      // A declared getter may itself throw 11. Unsupported dispatchers/unresolved
-      // libraries cannot prove absence either: retain an unknown detection.
-      if (methods.is_ok() && std::find(methods.ok().begin(), methods.ok().end(), 97026ULL) == methods.ok().end()) {
-        return td::Status::Error(NOT_JETTON_WALLET, "get_wallet_data is not exported");
-      }
-    }
-    return error;
+    return classify_token_getter_error(stack_r.move_as_error(), code_cell, config.get(),
+                                       DATA_METHOD_ID, NOT_JETTON_WALLET);
   }
   auto stack = stack_r.move_as_ok();
   Result data;
@@ -178,12 +184,21 @@ td::Result<NftItemDetectorR::Result> NftItemDetectorR::detect(
     return td::Status::Error("Code or data null");
   }
 
-  TRY_RESULT(stack, execute_smc_method<5>(address, code_cell, data_cell, config, "get_nft_data", {},
-        {vm::StackEntry::Type::t_int, vm::StackEntry::Type::t_int, vm::StackEntry::Type::t_slice, vm::StackEntry::Type::t_slice, vm::StackEntry::Type::t_cell}));
-
-  Result data;
+  // TEP-62 leaves owner/content undefined for init=0. Read the required prefix
+  // first; metadata failures must not discard verified identity/ownership.
+  auto stack_r = execute_smc_method<3>(address, code_cell, data_cell, config, "get_nft_data", {},
+      {vm::StackEntry::Type::t_int, vm::StackEntry::Type::t_int, vm::StackEntry::Type::t_slice});
+  if (stack_r.is_error()) {
+    return classify_token_getter_error(stack_r.move_as_error(), code_cell, config.get(),
+                                       DATA_METHOD_ID, NOT_NFT_ITEM);
+  }
+  auto stack = stack_r.move_as_ok();
+  if (!stack[0].as_int()->is_valid() || !stack[1].as_int()->is_valid() || stack[1].as_int()->sgn() < 0) {
+    return td::Status::Error("Invalid NFT init/index");
+  }
+  Result data{};
   data.address = address;
-  data.init = stack[0].as_int()->to_long() != 0;
+  data.init = stack[0].as_int()->sgn() != 0;
   data.index = stack[1].as_int();
 
   auto collection_addr_cs = stack[2].as_slice();
@@ -197,53 +212,52 @@ td::Result<NftItemDetectorR::Result> NftItemDetectorR::detect(
     data.collection_address = collection_address.move_as_ok();
   }
 
-  auto owner_addr_cs = stack[3].as_slice();
-  if (owner_addr_cs->size() == 2 && owner_addr_cs->prefetch_ulong(2) == 0) {
-    data.owner_address = std::nullopt;
-  } else {
-    auto owner_address = convert::to_std_address(stack[3].as_slice());
-    if (owner_address.is_error()) {
-      return owner_address.move_as_error_prefix("nft owner address parsing failed: ");
+  if (data.init) {
+    if (stack.size() < 4 || stack[3].type() != vm::StackEntry::Type::t_slice) {
+      return td::Status::Error("Invalid NFT owner result");
     }
-    data.owner_address = owner_address.move_as_ok();
+    auto owner_addr_cs = stack[3].as_slice();
+    if (!(owner_addr_cs->size() == 2 && owner_addr_cs->prefetch_ulong(2) == 0)) {
+      TRY_RESULT(owner, convert::to_std_address(owner_addr_cs));
+      data.owner_address = owner;
+    }
   }
 
-  if (!data.collection_address) {
-    auto content = parse_token_data(stack[4].as_cell());
-    if (content.is_error()) {
-      return content.move_as_error_prefix("nft content parsing failed: ");
+  td::Ref<vm::Cell> collection_code, collection_data;
+  if (data.collection_address) {
+    TRY_RESULT(collection, lookup_account(shard_states, *data.collection_address));
+    collection_code = collection.code;
+    collection_data = collection.data;
+    TRY_RESULT(address_stack, execute_smc_method<1>(*data.collection_address, collection_code,
+        collection_data, config, "get_nft_address_by_index", {vm::StackEntry(data.index)},
+        {vm::StackEntry::Type::t_slice}));
+    TRY_RESULT(nft_address, convert::to_std_address(address_stack[0].as_slice()));
+    if (!(nft_address == address)) {
+      return td::Status::Error(NOT_NFT_ITEM, "NFT Item doesn't belong to the referred collection");
     }
-    data.content = content.move_as_ok();
+  }
+
+  if (!data.init) {
     return data;
   }
-
-  auto ind_content = stack[4].as_cell();
-  TRY_RESULT(collection, lookup_account(shard_states, *data.collection_address));
-
-  TRY_RESULT(address_stack, execute_smc_method<1>(*data.collection_address, collection.code,
-      collection.data, config, "get_nft_address_by_index", {vm::StackEntry(data.index)},
-      {vm::StackEntry::Type::t_slice}));
-  auto nft_address = convert::to_std_address(address_stack[0].as_slice());
-  if (nft_address.is_error()) {
-    return td::Status::Error("get_nft_address_by_index parse address failed");
+  auto content = safe_parse::guard("NFT metadata", [&]() -> td::Result<std::map<std::string, std::string>> {
+    if (stack.size() < 5 || stack[4].type() != vm::StackEntry::Type::t_cell) {
+      return td::Status::Error("Invalid NFT content result");
+    }
+    auto content_cell = stack[4].as_cell();
+    if (data.collection_address) {
+      TRY_RESULT(content_stack, execute_smc_method<1>(*data.collection_address, collection_code,
+          collection_data, config, "get_nft_content",
+          {vm::StackEntry(data.index), vm::StackEntry(content_cell)}, {vm::StackEntry::Type::t_cell}));
+      content_cell = content_stack[0].as_cell();
+    }
+    return parse_token_data(content_cell);
+  });
+  if (content.is_ok()) {
+    data.content = content.move_as_ok();
+  } else {
+    LOG(DEBUG) << "NFT metadata unavailable for " << address << ": " << content.move_as_error();
   }
-  if (!(nft_address.move_as_ok() == address)) {
-    return td::Status::Error("NFT Item doesn't belong to the referred collection");
-  }
-
-  auto content_stack_r = execute_smc_method<1>(*data.collection_address, collection.code,
-      collection.data, config, "get_nft_content",
-      {vm::StackEntry(data.index), vm::StackEntry(ind_content)},
-      {vm::StackEntry::Type::t_cell});
-  if (content_stack_r.is_error()) {
-    return content_stack_r.move_as_error_prefix("failed to get nft item content: ");
-  }
-  auto content_stack = content_stack_r.move_as_ok();
-  auto content = parse_token_data(content_stack[0].as_cell());
-  if (content.is_error()) {
-    return content.move_as_error_prefix("failed to get nft item content: ");
-  }
-  data.content = content.move_as_ok();
   return data;
 }
 
@@ -284,65 +298,17 @@ std::optional<block::StdAddress> NftItemDetectorR::dot_t_dot_me_dns_root_addr() 
   return dot_t_dot_me_dns_root_addr_mainnet;
 }
 
-void NftItemDetectorR::got_collection(Result item_data, td::Ref<vm::Cell> ind_content, td::Ref<vm::Cell> collection_code, td::Ref<vm::Cell> collection_data) {
-  auto verify = verify_with_collection(item_data.collection_address.value(), collection_code, collection_data, item_data.index);
-  if (verify.is_error()) {
-    promise_.set_error(verify.move_as_error());
-    stop();
-    return;
-  }
-  
-  auto content = get_content(item_data.index, ind_content, item_data.collection_address.value(), collection_code, collection_data);
-  if (content.is_error()) {
-    promise_.set_error(content.move_as_error_prefix("failed to get nft item content: "));
-    stop();
-    return;
-  }
-  item_data.content = content.move_as_ok();
-
-  process_domain_and_dns_data(get_dot_ton_dns_root_addr(), [this](){ return this->get_ton_domain(); }, item_data);
-  auto t_me_root = dot_t_dot_me_dns_root_addr();
-  if (t_me_root) {
-      process_domain_and_dns_data(t_me_root.value(), [this](){ return this->get_t_me_domain(); }, item_data);
-  }
-
-  promise_.set_value(std::move(item_data));
-  stop();
-}
-
-td::Status NftItemDetectorR::verify_with_collection(block::StdAddress collection_address, td::Ref<vm::Cell> collection_code, td::Ref<vm::Cell> collection_data, td::RefInt256 index) {
-  auto stack_r = execute_smc_method<1>(collection_address, collection_code, collection_data, config_, "get_nft_address_by_index", 
-    {vm::StackEntry(index)}, {vm::StackEntry::Type::t_slice});
-
-  if (stack_r.is_error()) {
-    return stack_r.move_as_error();
-  }
-  auto stack = stack_r.move_as_ok();
-
-  auto nft_address = convert::to_std_address(stack[0].as_slice());
-  if (nft_address.is_error()) {
-    return td::Status::Error("get_nft_address_by_index parse address failed");
-  }
-
-  return nft_address.move_as_ok() == address_ ? td::Status::OK() : td::Status::Error("NFT Item doesn't belong to the referred collection");
-}
-
-td::Result<std::map<std::string, std::string>> NftItemDetectorR::get_content(td::RefInt256 index, td::Ref<vm::Cell> ind_content, block::StdAddress collection_address,
-    td::Ref<vm::Cell> collection_code, td::Ref<vm::Cell> collection_data) {
-  TRY_RESULT(stack, execute_smc_method<1>(collection_address, collection_code, collection_data, config_, "get_nft_content", 
-    {vm::StackEntry(index), vm::StackEntry(ind_content)}, {vm::StackEntry::Type::t_cell}));
-
-  return parse_token_data(stack[0].as_cell());
-}
-
 void NftItemDetectorR::process_domain_and_dns_data(const block::StdAddress& root_address, const std::function<td::Result<std::string>()>& get_domain_function, Result& item_data) {
-  if (!item_data.collection_address.has_value() || !(item_data.collection_address.value() == root_address)) {
+  if (!item_data.init || !item_data.collection_address.has_value() || !(item_data.collection_address.value() == root_address)) {
     return;
   }
   auto domain = get_domain_function();
   if (domain.is_error()) {
     LOG(ERROR) << "Failed to get domain for " << address_ << ": " << domain.move_as_error();
   } else {
+    if (!item_data.content) {
+      item_data.content.emplace();
+    }
     item_data.content.value()["domain"] = domain.ok();
 
     auto dns_data = get_dns_entry_data();

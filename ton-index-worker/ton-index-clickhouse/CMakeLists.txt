@@ -4,7 +4,7 @@ add_executable(ton-index-clickhouse
     src/main.cpp
     src/InsertManagerClickhouse.cpp
     src/GramstatStorage.cpp
-    src/JettonWalletStatesStorage.cpp
+    src/TokenStatesStorage.cpp
 )
 target_compile_features(ton-index-clickhouse PRIVATE cxx_std_20)
 target_link_libraries(ton-index-clickhouse
@@ -17,7 +17,7 @@ target_link_options(ton-index-clickhouse PUBLIC -rdynamic)
 
 install(TARGETS ton-index-clickhouse RUNTIME DESTINATION bin)
 
-add_executable(test-gramstat EXCLUDE_FROM_ALL test/total_supply.cpp src/GramstatStorage.cpp src/JettonWalletStatesStorage.cpp)
+add_executable(test-gramstat EXCLUDE_FROM_ALL test/total_supply.cpp src/GramstatStorage.cpp src/TokenStatesStorage.cpp)
 target_include_directories(test-gramstat PRIVATE src)
 target_link_libraries(test-gramstat PRIVATE index-engine-core clickhouse-cpp-lib)
 add_test(NAME gramstat_native COMMAND test-gramstat)

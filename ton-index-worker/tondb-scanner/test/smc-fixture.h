@@ -40,20 +40,70 @@ inline td::Ref<vm::Cell> test_library_reference(const td::Ref<vm::Cell>& library
 }
 
 inline td::Ref<vm::Cell> test_active_account(const block::StdAddress& address,
-                                         const td::Ref<vm::Cell>& code) {
+                                         const td::Ref<vm::Cell>& code, td::Ref<vm::Cell> data = {}) {
     vm::CellBuilder account;
     account.store_long(1, 1).store_long(4, 3).store_long(address.workchain, 8).store_bits(address.addr.bits(), 256);
     account.store_zeroes(3 + 3 + 3 + 32 + 1);  // StorageInfo
     account.store_zeroes(64 + 5).store_long(1, 1);  // AccountStorage, active
     account.store_long(0, 2);  // StateInit split_depth/special
     CHECK(account.store_maybe_ref(code));
-    return account.store_long(0, 2).finalize();  // no data/local libraries
+    CHECK(account.store_maybe_ref(data));
+    return account.store_long(0, 1).finalize();  // no local libraries
 }
 
-inline td::Ref<vm::Cell> test_method_dispatcher(unsigned method, td::Ref<vm::Cell> body) {
+inline td::Ref<vm::Cell> test_methods_dispatcher(
+    const std::vector<std::pair<unsigned, td::Ref<vm::Cell>>>& bodies) {
     vm::Dictionary methods{19};
-    CHECK(methods.set(td::BitArray<19>(method), vm::load_cell_slice_ref(body)));
+    for (const auto& [method, body] : bodies) {
+        CHECK(methods.set(td::BitArray<19>(method), vm::load_cell_slice_ref(body)));
+    }
     // SETCP0; 19 DICTPUSHCONST; DICTIGETJMPZ; 11 THROW.
     return vm::CellBuilder().store_long(0xff00, 16).store_long(0xf4a413, 24)
         .store_ref(methods.get_root_cell()).store_long(0xf4bc, 16).store_long(0xf20b, 16).finalize();
+}
+
+inline td::Ref<vm::Cell> test_method_dispatcher(unsigned method, td::Ref<vm::Cell> body) {
+    return test_methods_dispatcher({{method, std::move(body)}});
+}
+
+inline td::Ref<vm::Cell> test_address_cell(std::optional<block::StdAddress> address = {}) {
+    if (!address) {
+        return vm::CellBuilder().store_long(0, 2).finalize();
+    }
+    return vm::CellBuilder().store_long(4, 3).store_long(address->workchain, 8)
+        .store_bits(address->addr.bits(), 256).finalize();
+}
+
+inline td::Ref<vm::Cell> test_nft_code(bool init, td::Ref<vm::Cell> owner,
+                                     td::Ref<vm::Cell> content, td::Ref<vm::Cell> collection = {}) {
+    vm::CellBuilder body;
+    // PUSHINT init; PUSHINT 0; PUSHREFSLICE collection; owner; content.
+    body.store_long(init ? 0x7f : 0x70, 8).store_long(0x70, 8)
+        .store_long(0x89, 8).store_ref(collection.not_null() ? collection : test_address_cell());
+    if (owner.not_null()) {
+        body.store_long(0x89, 8).store_ref(owner);
+    } else {
+        body.store_long(0x6d, 8);  // PUSHNULL
+    }
+    if (content.not_null()) {
+        body.store_long(0x88, 8).store_ref(content);
+    } else {
+        body.store_long(0x6d, 8);
+    }
+    return test_method_dispatcher(102351, body.finalize());
+}
+
+inline td::Ref<vm::Cell> test_shard_with_account(const block::StdAddress& address,
+                                               const td::Ref<vm::Cell>& code) {
+    auto empty = vm::CellBuilder().finalize();
+    auto account = test_active_account(address, code, empty);
+    auto shard_account = vm::CellBuilder().store_ref(account).store_zeroes(256 + 64).finalize();
+    vm::AugmentedDictionary accounts{256, block::tlb::aug_ShardAccounts};
+    CHECK(accounts.set(address.addr, vm::load_cell_slice_ref(shard_account)));
+    auto aux = vm::CellBuilder().store_zeroes(128 + 5 + 5 + 1 + 1).finalize();
+    return vm::CellBuilder().store_long(0x9023afe2, 32).store_long(-3, 32)
+        .store_long(0, 8).store_long(address.workchain, 32).store_zeroes(64 + 64)
+        .store_long(1700000000, 32).store_zeroes(64 + 32)
+        .store_ref(empty).store_long(0, 1).store_ref(accounts.get_wrapped_dict_root())
+        .store_ref(aux).store_long(0, 1).finalize();
 }

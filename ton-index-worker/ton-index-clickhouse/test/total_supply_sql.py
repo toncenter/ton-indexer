@@ -49,9 +49,47 @@ def check_jetton_history(binary, clickhouse):
     print("ClickHouse jetton history and documented optional refreshable MV: OK")
 
 
+def check_nft_history(binary, clickhouse):
+    fixture = (Path(__file__).resolve().parents[2] / "tondb-scanner/test/nft-item-history.sql").read_text()
+    docs = (Path(__file__).resolve().parents[3] / "docs/gramstat.md").read_text()
+    view = docs.split("<!-- nft-daily-clickhouse -->", 1)[1].split("```sql\n", 1)[1].split("```", 1)[0]
+    owner_query = docs.split("<!-- nft-owner-clickhouse -->", 1)[1].split("```sql\n", 1)[1].split("```", 1)[0]
+    query = view.split("EMPTY AS\n", 1)[1].rstrip().removesuffix(";") + " ORDER BY day;\n"
+    schema = subprocess.check_output([binary, "--nft-schema"], text=True)
+    sql = "CREATE DATABASE history ENGINE=Atomic; USE history;\n"
+    sql += "CREATE TABLE blocks (workchain Int32, seqno UInt32, gen_utime UInt32) ENGINE=Memory;\n"
+    sql += schema + fixture
+    sql += "SELECT count() FROM system.tables WHERE database=currentDatabase() AND name='nft_item_counts_daily';\n"
+    sql += "INSERT INTO nft_item_states" + fixture.split("INSERT INTO nft_item_states", 1)[1]
+    sql += "SELECT count() FROM nft_item_states FINAL;\n"
+    sql += owner_query.replace("{owner:String}", "'0:X'")
+    sql += query
+    sql += "OPTIMIZE TABLE nft_item_states FINAL;\n" + query
+    sql += view + "SYSTEM REFRESH VIEW nft_item_counts_daily; SYSTEM WAIT VIEW nft_item_counts_daily;\n"
+    sql += "SELECT * FROM nft_item_counts_daily ORDER BY day;\n"
+    sql += "INSERT INTO nft_item_states VALUES ('0:A',3,1788307200,30,true,'0:obsolete');\n"
+    sql += "SYSTEM STOP MERGES nft_item_states;\n"
+    sql += "INSERT INTO nft_item_states VALUES ('0:A',3,1788307200,30,true,'0:Z');\n"
+    sql += "SELECT count() FROM (" + owner_query.replace("{owner:String}", "'0:obsolete'").strip().removesuffix(";") + ");\n"
+    sql += "SELECT owner FROM nft_item_states FINAL WHERE account='0:A' AND mc_seqno=3;\n"
+    sql += "SYSTEM REFRESH VIEW nft_item_counts_daily; SYSTEM WAIT VIEW nft_item_counts_daily;\n"
+    sql += "SELECT * FROM nft_item_counts_daily ORDER BY day;\n"
+    with tempfile.TemporaryDirectory(prefix="nft-ch-") as directory:
+        result = subprocess.run([clickhouse, "local", "--path", directory, "--multiquery"],
+                                input=sql, text=True, capture_output=True, timeout=90)
+        if result.returncode:
+            raise RuntimeError(result.stdout + result.stderr)
+    daily = ["2026-09-01\t2\t2\t0", "2026-09-02\t4\t\\N\t1", "2026-09-03\t5\t\\N\t1",
+             "2026-09-04\t6\t1\t0", "2026-09-05\t7\t1\t0"]
+    repaired = [daily[0], "2026-09-02\t4\t2\t0", "2026-09-03\t5\t2\t0", *daily[3:]]
+    assert result.stdout.strip().splitlines() == ["0", "11", "0:A", "0:B"] + daily * 3 + ["0", "0:Z"] + repaired, result.stdout
+    print("ClickHouse NFT owner history, replay and documented optional daily view: OK")
+
+
 def main():
     binary, clickhouse = sys.argv[1:]
     check_jetton_history(binary, clickhouse)
+    check_nft_history(binary, clickhouse)
 
     def exported(option):
         return subprocess.check_output([binary, option], text=True)

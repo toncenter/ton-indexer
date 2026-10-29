@@ -8,8 +8,9 @@
 #include "GramstatStorage.h"
 #include "DataParser.h"
 #include "BlockInterfacesDetector.h"
-#include "JettonWalletStates.h"
-#include "JettonWalletStatesStorage.h"
+#include "TokenStatesStorage.h"
+#include "AccountStateHistory.h"
+#include "convert-utils.h"
 #include "../../tondb-scanner/test/smc-fixture.h"
 #include "vm/cp0.h"
 #include "vm/db/DynamicBagOfCellsDb.h"
@@ -376,7 +377,7 @@ void check_jetton_detection_status() {
             td::actor::create_actor<BlockInterfaceProcessor>("jetton_status", parsed,
                 td::PromiseCreator::lambda([&](td::Result<ParsedBlockPtr> result) {
                     auto block = result.move_as_ok();
-                    CHECK(block->jetton_wallet_detection_.at(state.account) ==
+                    CHECK(block->token_detection_.at(state.account).jetton_wallet ==
                         (declared ? std::nullopt : std::optional<bool>(false)));
                     CHECK(block->get_accounts_v2<schema::JettonWalletDataV2>().empty());
                     finished = true;
@@ -423,9 +424,9 @@ void check_jetton_history() {
     mc.mc_block_seqno = 10;
     mc.gen_utime = 1788307200;
     parsed.blocks_.push_back(mc);
-    CHECK(jetton_history::collect_states(10, parsed).move_as_ok().empty());
-    CHECK(jetton_history::collect_states(11, parsed).is_error());
-    CHECK(jetton_history::collect_states(10, {}).is_error());
+    CHECK(account_history::collect_states(10, parsed).move_as_ok().jetton_wallets.empty());
+    CHECK(account_history::collect_states(11, parsed).is_error());
+    CHECK(account_history::collect_states(10, {}).is_error());
     const auto address = block::StdAddress(0, td::Bits256::zero());
     for (auto lt : {200ULL, 100ULL}) {
         schema::Block shard{};
@@ -469,8 +470,8 @@ void check_jetton_history() {
     const std::string amount = "100000000000000000000000000000000000000000000000001";
     wallet.balance = td::dec_string_to_int256(amount);
     parsed.account_interfaces_[address] = {wallet};
-    parsed.jetton_wallet_detection_[address] = true;
-    auto rows = jetton_history::collect_states(10, parsed).move_as_ok();
+    parsed.token_detection_[address].jetton_wallet = true;
+    auto rows = account_history::collect_states(10, parsed).move_as_ok().jetton_wallets;
     CHECK(rows.size() == 1 && rows[0].existing == true && rows[0].last_tx_lt == 200);
     CHECK(rows[0].gen_utime == 1788307200 && rows[0].balance->to_dec_string() == amount);
     auto columns = jetton_history::states_block(rows);
@@ -479,19 +480,19 @@ void check_jetton_history() {
 
     // A failed final-state load must not silently carry forward the older state.
     parsed.account_states_.back().last_trans_lt = 100;
-    CHECK(jetton_history::collect_states(10, parsed).is_error());
+    CHECK(account_history::collect_states(10, parsed).is_error());
     parsed.account_states_.back().last_trans_lt = 200;
-    parsed.jetton_wallet_detection_[address].reset();
-    auto unknown = jetton_history::collect_states(10, parsed).move_as_ok()[0];
+    parsed.token_detection_[address].jetton_wallet.reset();
+    auto unknown = account_history::collect_states(10, parsed).move_as_ok().jetton_wallets[0];
     CHECK(!unknown.existing && unknown.balance.is_null());
-    parsed.jetton_wallet_detection_[address] = false;
-    CHECK(jetton_history::collect_states(10, parsed).move_as_ok()[0].existing == false);
-    parsed.jetton_wallet_detection_[address] = true;
+    parsed.token_detection_[address].jetton_wallet = false;
+    CHECK(account_history::collect_states(10, parsed).move_as_ok().jetton_wallets[0].existing == false);
+    parsed.token_detection_[address].jetton_wallet = true;
     CHECK(reader->reads.empty());
     for (auto status : {schema::AccountStatus::nonexist, schema::AccountStatus::frozen, schema::AccountStatus::uninit}) {
         reader->reads.clear();
         parsed.blocks_[1].transactions[0].end_status = status;
-        auto terminal = jetton_history::collect_states(10, parsed).move_as_ok()[0];
+        auto terminal = account_history::collect_states(10, parsed).move_as_ok().jetton_wallets[0];
         CHECK(terminal.existing == false && terminal.balance.is_null());
         CHECK(reader->reads == std::vector<std::string>{before->get_hash().as_slice().str()});
         auto serialized = jetton_history::states_block({terminal, unknown});
@@ -504,30 +505,30 @@ void check_jetton_history() {
     parsed.blocks_[1].transactions[0].end_status = schema::AccountStatus::active;
     reader->reads.clear();
     std::get<schema::JettonWalletDataV2>(parsed.account_interfaces_[address][0]).last_transaction_lt = 100;
-    CHECK(!jetton_history::collect_states(10, parsed).move_as_ok()[0].existing.has_value());
+    CHECK(!account_history::collect_states(10, parsed).move_as_ok().jetton_wallets[0].existing.has_value());
     std::get<schema::JettonWalletDataV2>(parsed.account_interfaces_[address][0]).last_transaction_lt = 200;
-    CHECK(jetton_history::collect_states(10, parsed).move_as_ok()[0].existing == true);
+    CHECK(account_history::collect_states(10, parsed).move_as_ok().jetton_wallets[0].existing == true);
     CHECK(reader->reads.empty());
 
     // An ordinary active account emits neither false nor unknown observations.
     auto ordinary_code = test_method_dispatcher(42, throw11);
     parsed.account_states_.back().code = ordinary_code;
     parsed.account_states_.back().code_hash = ordinary_code->get_hash().bits();
-    parsed.jetton_wallet_detection_[address] = false;
-    CHECK(jetton_history::collect_states(10, parsed).move_as_ok().empty());
-    parsed.jetton_wallet_detection_[address].reset();
-    CHECK(jetton_history::collect_states(10, parsed).move_as_ok().empty());
+    parsed.token_detection_[address].jetton_wallet = false;
+    CHECK(account_history::collect_states(10, parsed).move_as_ok().jetton_wallets.empty());
+    parsed.token_detection_[address].jetton_wallet.reset();
+    CHECK(account_history::collect_states(10, parsed).move_as_ok().jetton_wallets.empty());
     // Even a potential SETCODE is not a reason to read before-state while active.
     schema::TransactionDescr_ord setcode{};
     setcode.action.emplace();
     setcode.action->spec_actions = 1;
     parsed.blocks_[1].transactions[0].description = setcode;
-    CHECK(jetton_history::collect_states(10, parsed).move_as_ok().empty());
+    CHECK(account_history::collect_states(10, parsed).move_as_ok().jetton_wallets.empty());
     CHECK(reader->reads.empty());
 
     parsed.account_states_.back().code = throw11;  // unsupported method dispatcher
     parsed.account_states_.back().code_hash = throw11->get_hash().bits();
-    CHECK(jetton_history::collect_states(10, parsed).move_as_ok().empty());
+    CHECK(account_history::collect_states(10, parsed).move_as_ok().jetton_wallets.empty());
     CHECK(reader->reads.empty());
 
     auto ordinary_before = test_active_account(address, ordinary_code);
@@ -536,25 +537,25 @@ void check_jetton_history() {
     for (auto status : {schema::AccountStatus::nonexist, schema::AccountStatus::frozen, schema::AccountStatus::uninit}) {
         reader->reads.clear();
         parsed.blocks_[1].transactions[0].end_status = status;
-        CHECK(jetton_history::collect_states(10, parsed).move_as_ok().empty());
+        CHECK(account_history::collect_states(10, parsed).move_as_ok().jetton_wallets.empty());
         CHECK(reader->reads == std::vector<std::string>{ordinary_before->get_hash().as_slice().str()});
     }
     // Already nonactive accounts, and deploy+destroy inside this MC, need no read.
     reader->reads.clear();
     for (auto status : {schema::AccountStatus::nonexist, schema::AccountStatus::frozen, schema::AccountStatus::uninit}) {
         parsed.blocks_[2].transactions[0].orig_status = status;
-        CHECK(jetton_history::collect_states(10, parsed).move_as_ok().empty());
+        CHECK(account_history::collect_states(10, parsed).move_as_ok().jetton_wallets.empty());
     }
     CHECK(reader->reads.empty());
 
     // A missing/corrupt boundary state is a load error, not a generic tombstone.
     parsed.blocks_[2].transactions[0].orig_status = schema::AccountStatus::active;
     reader->cells.clear();
-    CHECK(jetton_history::collect_states(10, parsed).is_error());
+    CHECK(account_history::collect_states(10, parsed).is_error());
     auto malformed = vm::CellBuilder().finalize();
     reader->add(malformed);
     parsed.blocks_[2].transactions[0].account_state_hash_before = malformed->get_hash().bits();
-    CHECK(jetton_history::collect_states(10, parsed).is_error());
+    CHECK(account_history::collect_states(10, parsed).is_error());
 
     // Library-backed wallet code is checked from the same MC configuration.
     auto library_code = test_library_reference(state.code);
@@ -562,21 +563,132 @@ void check_jetton_history() {
     reader->add(library_before);
     parsed.blocks_[2].transactions[0].account_state_hash_before = library_before->get_hash().bits();
     parsed.mc_block_.config_ = test_smc_config(1788307200, {state.code});
-    CHECK(jetton_history::collect_states(10, parsed).move_as_ok()[0].existing == false);
+    CHECK(account_history::collect_states(10, parsed).move_as_ok().jetton_wallets[0].existing == false);
     parsed.blocks_[1].transactions[0].end_status = schema::AccountStatus::active;
     parsed.account_states_.back().code = library_code;
     parsed.account_states_.back().code_hash = library_code->get_hash().bits();
     reader->reads.clear();
-    auto library_unknown = jetton_history::collect_states(10, parsed).move_as_ok();
+    auto library_unknown = account_history::collect_states(10, parsed).move_as_ok().jetton_wallets;
     CHECK(library_unknown.size() == 1 && !library_unknown[0].existing.has_value());
     CHECK(reader->reads.empty());
     // Unresolved code cannot prove eligibility. It is not a negative observation.
     parsed.mc_block_.config_ = test_smc_config(1788307200);
-    CHECK(jetton_history::collect_states(10, parsed).move_as_ok().empty());
+    CHECK(account_history::collect_states(10, parsed).move_as_ok().jetton_wallets.empty());
     CHECK(reader->reads.empty());
     parsed.blocks_[1].transactions[0].end_status = schema::AccountStatus::frozen;
-    CHECK(jetton_history::collect_states(10, parsed).move_as_ok().empty());
+    CHECK(account_history::collect_states(10, parsed).move_as_ok().jetton_wallets.empty());
     CHECK(reader->reads == std::vector<std::string>{library_before->get_hash().as_slice().str()});
+}
+
+void check_nft_history() {
+    auto parsed = std::make_shared<ParsedBlock>();
+    parsed->mc_block_.config_ = test_smc_config(1788307200);
+    schema::Block mc{};
+    mc.workchain = -1;
+    mc.mc_block_workchain = -1;
+    mc.seqno = 10;
+    mc.mc_block_seqno = 10;
+    mc.gen_utime = 1788307200;
+    parsed->blocks_.push_back(mc);
+    schema::Block shard{};
+    shard.workchain = 0;
+    shard.mc_block_workchain = -1;
+    shard.mc_block_seqno = 10;
+    const auto address = block::StdAddress(0, td::Bits256::zero());
+    const auto owner = block::StdAddress(-1, td::Bits256::zero());
+    schema::Transaction tx{};
+    tx.account = address;
+    tx.mc_seqno = 10;
+    tx.orig_status = tx.end_status = schema::AccountStatus::active;
+    tx.account_state_hash_after = td::Bits256::zero();
+    tx.lt = 200;
+    shard.transactions.push_back(tx);
+    tx.lt = 100;
+    auto throw11 = vm::CellBuilder().store_long(0xf20b, 16).finalize();
+    auto boundary_code = test_methods_dispatcher({{97026, throw11}, {102351, throw11}});
+    auto before = test_active_account(address, boundary_code);
+    tx.account_state_hash_before = before->get_hash().bits();
+    shard.transactions.push_back(tx);
+    parsed->blocks_.push_back(shard);
+    auto reader = std::make_shared<HistoryCellReader>();
+    reader->add(before);
+    parsed->cell_db_reader_ = reader;
+    schema::AccountState state{};
+    state.account = address;
+    state.hash = td::Bits256::zero();
+    state.last_trans_lt = 200;
+    state.account_status = "active";
+    state.code = test_nft_code(true, test_address_cell(owner), {});  // invalid metadata
+    state.data = vm::CellBuilder().finalize();
+    state.code_hash = state.code->get_hash().bits();
+    state.data_hash = state.data->get_hash().bits();
+    parsed->account_states_.push_back(state);
+    auto earlier = state;
+    earlier.last_trans_lt = 100;
+    earlier.code = test_nft_code(true, test_address_cell(address), {});
+    earlier.code_hash = earlier.code->get_hash().bits();
+    parsed->account_states_.push_back(earlier);
+    bool finished = false;
+    td::actor::TestScheduler scheduler;
+    scheduler.run([&]() -> td::actor::Task<> {
+        td::actor::create_actor<BlockInterfaceProcessor>("nft_history", parsed,
+            td::PromiseCreator::lambda([&](td::Result<ParsedBlockPtr> result) {
+                result.ensure();
+                finished = true;
+            })).release();
+        while (!finished) {
+            co_await scheduler.wait_sync_work();
+        }
+        co_return td::Unit{};
+    });
+    auto collect = [&]() { return account_history::collect_states(10, *parsed).move_as_ok(); };
+    auto rows = collect();
+    auto latest = parsed->get_accounts_v2<schema::NFTItemDataV2>();
+    CHECK(latest.size() == 1 && !latest[0].content && latest[0].owner_address == owner);
+    CHECK(rows.jetton_wallets.empty() && rows.nft_items.size() == 1);
+    CHECK(rows.nft_items[0].existing == true && rows.nft_items[0].owner == latest[0].owner_address);
+    CHECK(rows.nft_items[0].last_tx_lt == 200 && rows.nft_items[0].gen_utime == 1788307200);
+    auto columns = nft_history::states_block(rows.nft_items);
+    CHECK(columns.GetColumnCount() == 6 && columns.GetRowCount() == 1);
+    CHECK(columns[5]->As<clickhouse::ColumnNullable>()->Nested()->As<clickhouse::ColumnString>()->At(0) ==
+          convert::to_raw_address(owner));
+    auto& item = std::get<schema::NFTItemDataV2>(parsed->account_interfaces_[address][0]);
+    item.owner_address.reset();
+    CHECK(collect().nft_items[0].existing == true && !collect().nft_items[0].owner);
+    item.init = false;
+    CHECK(collect().nft_items[0].existing == false);
+    item.init = true;
+    item.owner_address = owner;
+    item.last_transaction_lt = 100;
+    CHECK(!collect().nft_items[0].existing && !collect().nft_items[0].owner);
+    item.last_transaction_lt = 200;
+    parsed->token_detection_[address].nft_item.reset();
+    CHECK(!collect().nft_items[0].existing && !collect().nft_items[0].owner);
+    parsed->token_detection_[address].nft_item = false;
+    CHECK(collect().nft_items[0].existing == false && !collect().nft_items[0].owner);
+    CHECK(reader->reads.empty());
+
+    // Both tombstones share exactly one read of the FIRST transaction's before
+    // state. The last transaction's before-state is deliberately unavailable.
+    for (auto status : {schema::AccountStatus::nonexist, schema::AccountStatus::frozen, schema::AccountStatus::uninit}) {
+        reader->reads.clear();
+        parsed->blocks_[1].transactions[0].end_status = status;
+        auto terminal = collect();
+        CHECK(terminal.jetton_wallets.size() == 1 && terminal.nft_items.size() == 1);
+        CHECK(terminal.jetton_wallets[0].existing == false && terminal.nft_items[0].existing == false);
+        CHECK(!terminal.nft_items[0].owner && reader->reads.size() == 1);
+    }
+    reader->reads.clear();
+    parsed->blocks_[1].transactions[1].orig_status = schema::AccountStatus::uninit;
+    CHECK(collect().nft_items.empty() && reader->reads.empty());
+    parsed->blocks_[1].transactions[1].orig_status = schema::AccountStatus::active;
+    auto library_before = test_active_account(address, test_library_reference(boundary_code));
+    reader->add(library_before);
+    parsed->blocks_[1].transactions[1].account_state_hash_before = library_before->get_hash().bits();
+    parsed->mc_block_.config_ = test_smc_config(1788307200, {boundary_code});
+    CHECK(collect().nft_items[0].existing == false && reader->reads.size() == 1);
+    parsed->mc_block_.config_ = test_smc_config(1788307200);
+    CHECK(collect().nft_items.empty());
 }
 
 }  // namespace
@@ -585,6 +697,10 @@ int main(int argc, char** argv) {
     td::Time::allow_freezes();
     if (argc == 2 && std::string(argv[1]) == "--jetton-schema") {
         std::cout << jetton_history::CREATE_STATES << ";\n";
+        return 0;
+    }
+    if (argc == 2 && std::string(argv[1]) == "--nft-schema") {
+        std::cout << nft_history::CREATE_STATES << ";\n";
         return 0;
     }
     if (argc == 2 && std::string(argv[1]) == "--schema") {
@@ -610,5 +726,6 @@ int main(int argc, char** argv) {
     check_final_interface_state();
     check_jetton_detection_status();
     check_jetton_history();
+    check_nft_history();
     std::cout << "Gramstat supply, account deltas, deployments and exact ClickHouse columns: OK\n";
 }

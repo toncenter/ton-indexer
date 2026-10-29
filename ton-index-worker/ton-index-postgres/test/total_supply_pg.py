@@ -26,6 +26,8 @@ def main():
     accounts = docs.split("<!-- accounts-postgres -->", 1)[1].split("```sql\n", 1)[1].split("```", 1)[0]
     deployments = docs.split("<!-- deployments-postgres -->", 1)[1].split("```sql\n", 1)[1].split("```", 1)[0]
     jetton_daily = docs.split("<!-- jetton-daily-postgres -->", 1)[1].split("```sql\n", 1)[1].split("```", 1)[0]
+    nft_daily = docs.split("<!-- nft-daily-postgres -->", 1)[1].split("```sql\n", 1)[1].split("```", 1)[0]
+    nft_owner = docs.split("<!-- nft-owner-postgres -->", 1)[1].split("```sql\n", 1)[1].split("```", 1)[0]
     with tempfile.TemporaryDirectory(prefix="gpg-") as directory:
         root = Path(directory)
         data = root / "data"
@@ -75,6 +77,7 @@ def main():
                 "INSERT INTO ton_db_version VALUES (1, 1, 3, 1);")
             for extra in ([], ["--rerun-last-migration"]):
                 sql("DROP TABLE gramstat.account_deltas; DROP TABLE gramstat.deployments;")
+                sql("DROP TABLE nft_item_states;")
                 run(migrate, "--pg", connection, "--no-create-indexes", *extra)
                 assert sql("SELECT major || '.' || minor || '.' || patch FROM ton_db_version") == "1.3.2"
                 assert sql("SELECT count(*) FROM gramstat.account_deltas") == "0"
@@ -85,6 +88,10 @@ def main():
                 assert sql("SELECT count(*) FROM pg_indexes WHERE schemaname='public' AND tablename='jetton_wallet_states'") == "1"
                 assert sql("SELECT to_regclass('public.jetton_wallet_counts_daily') IS NULL") == "t"
                 assert sql("SELECT to_regclass('public.jetton_wallet_counts_daily_day_idx') IS NULL") == "t"
+                assert sql("SELECT count(*) FROM nft_item_states") == "0"
+                assert sql("SELECT count(*) FROM pg_indexes WHERE schemaname='public' AND tablename='nft_item_states'") == "2"
+                assert sql("SELECT to_regclass('public.nft_item_counts_daily') IS NULL") == "t"
+                assert sql("SELECT to_regclass('public.nft_item_counts_daily_day_idx') IS NULL") == "t"
 
             fixture = (Path(__file__).resolve().parents[2] / "tondb-scanner/test/jetton-wallet-history.sql").read_text()
             sql("TRUNCATE jetton_wallet_states; TRUNCATE blocks;\n" + fixture)
@@ -106,6 +113,25 @@ def main():
             points = sql("SELECT * FROM jetton_wallet_counts_daily ORDER BY day;")
             assert points.splitlines() == [daily[0], "2026-09-02\t4\t2\t2\t0", "2026-09-03\t5\t2\t2\t0", *daily[3:]], points
             print("PostgreSQL jetton history and documented optional MV/concurrent refresh: OK")
+            fixture = (Path(__file__).resolve().parents[2] / "tondb-scanner/test/nft-item-history.sql").read_text()
+            sql("TRUNCATE nft_item_states; TRUNCATE blocks;\n" + fixture)
+            sql("INSERT INTO nft_item_states SELECT * FROM nft_item_states ON CONFLICT (account,mc_seqno) DO NOTHING;")
+            assert sql("SELECT count(*) FROM nft_item_states") == "11"
+            owners = sql("PREPARE nft_owner(tonaddr) AS " + nft_owner + "\nEXECUTE nft_owner('0:X');")
+            assert owners.splitlines() == ["0:A", "0:B"], owners
+            sql(nft_daily)
+            sql("REFRESH MATERIALIZED VIEW nft_item_counts_daily;")
+            points = sql("SET TIME ZONE 'Pacific/Honolulu'; SELECT * FROM nft_item_counts_daily ORDER BY day;")
+            daily = ["2026-09-01\t2\t2\t0", "2026-09-02\t4\t\t1", "2026-09-03\t5\t\t1",
+                     "2026-09-04\t6\t1\t0", "2026-09-05\t7\t1\t0"]
+            assert points.splitlines() == daily, points
+            sql("INSERT INTO nft_item_states VALUES ('0:A',3,1788307200,30,true,'0:Z') "
+                "ON CONFLICT (account,mc_seqno) DO UPDATE SET existing=EXCLUDED.existing,owner=EXCLUDED.owner;")
+            sql("REFRESH MATERIALIZED VIEW CONCURRENTLY nft_item_counts_daily;")
+            points = sql("SELECT * FROM nft_item_counts_daily ORDER BY day;")
+            assert points.splitlines() == [daily[0], "2026-09-02\t4\t2\t0", "2026-09-03\t5\t2\t0", *daily[3:]], points
+            assert sql("SELECT count(*) FROM nft_item_states WHERE existing AND owner IS NULL") == "1"
+            print("PostgreSQL NFT owner history, replay and documented optional daily view: OK")
             print("PostgreSQL documented Accounts/deployments SQL, prefix gaps and migration 1.3.2 rerun: OK")
         finally:
             run(pg_ctl, "-D", str(data), "-m", "immediate", "-w", "stop")

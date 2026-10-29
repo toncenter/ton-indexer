@@ -1,19 +1,12 @@
 #include "BlockInterfacesDetector.h"
 #include <td/actor/MultiPromise.h>
 #include "Statistics.h"
+#include "AccountStateHistory.h"
 
 // class methods
 void BlockInterfaceProcessor::start_up() {
   timer_.resume();
-  std::unordered_map<block::StdAddress, schema::AccountState>
-      account_states_to_detect;
-  for (const auto &account_state : block_->account_states_) {
-    auto existing = account_states_to_detect.find(account_state.account);
-    if (existing == account_states_to_detect.end() ||
-        account_state.last_trans_lt > existing->second.last_trans_lt) {
-      account_states_to_detect[account_state.account] = account_state;
-    }
-  }
+  const auto account_states_to_detect = account_history::final_states(*block_);
 
   std::vector<td::Ref<vm::Cell>> shard_states;
   for (const auto &shard_state : block_->mc_block_.shard_blocks_) {
@@ -30,7 +23,8 @@ void BlockInterfaceProcessor::start_up() {
   auto ig = mp.init_guard();
   ig.add_promise(std::move(P));
 
-  for (const auto &[_, account_state] : account_states_to_detect) {
+  for (const auto &[_, state] : account_states_to_detect) {
+    const auto& account_state = *state;
     // Select the final state BEFORE filtering: a later destruction/freeze must
     // supersede an earlier active state from another shard block in this MC.
     interfaces_[account_state.account] = {};
@@ -47,9 +41,9 @@ void BlockInterfaceProcessor::start_up() {
         }
       }
     }
-    auto jetton_detection = std::make_shared<std::optional<bool>>();
+    auto token_detection = std::make_shared<TokenDetectionStatus>();
     td::actor::create_actor<FullDetector>("InterfacesDetector", account_state.account, account_state.code, account_state.data, shard_states, block_->mc_block_.config_,
-                td::PromiseCreator::lambda([SelfId = actor_id(this), account_state, jetton_detection, promise = ig.get_promise()](td::Result<std::vector<typename FullDetector::DetectedInterface>> interfaces) mutable {
+                td::PromiseCreator::lambda([SelfId = actor_id(this), account_state, token_detection, promise = ig.get_promise()](td::Result<std::vector<typename FullDetector::DetectedInterface>> interfaces) mutable {
                     if (interfaces.is_error()) {
                         promise.set_error(interfaces.move_as_error());
                         return;
@@ -57,16 +51,16 @@ void BlockInterfaceProcessor::start_up() {
                     auto detected_interfaces = interfaces.move_as_ok();
                     td::actor::send_closure(SelfId, &BlockInterfaceProcessor::process_address_interfaces, account_state.account, std::move(detected_interfaces), 
                                             account_state.code_hash.value(), account_state.data_hash.value(), account_state.last_trans_lt,
-                                            account_state.timestamp, *jetton_detection, std::move(promise));
-            }), jetton_detection).release();
+                                            account_state.timestamp, *token_detection, std::move(promise));
+            }), token_detection).release();
   }
 }
 void BlockInterfaceProcessor::process_address_interfaces(
     block::StdAddress address,
     std::vector<FullDetector::DetectedInterface> interfaces,
     td::Bits256 code_hash, td::Bits256 data_hash, uint64_t last_trans_lt,
-    uint32_t last_trans_now, std::optional<bool> jetton_detection, td::Promise<td::Unit> promise) {
-  block_->jetton_wallet_detection_[address] = jetton_detection;
+    uint32_t last_trans_now, TokenDetectionStatus token_detection, td::Promise<td::Unit> promise) {
+  block_->token_detection_[address] = token_detection;
   for (auto &interface : interfaces) {
     std::visit(
         [&](auto &&arg) {

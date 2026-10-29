@@ -418,6 +418,21 @@ struct JettonWalletState {
   }
 };
 
+struct NFTItemState {
+  block::StdAddress account;
+  std::uint32_t mc_seqno;
+  std::uint32_t gen_utime;
+  std::uint64_t last_tx_lt;
+  std::optional<bool> existing;
+  std::optional<block::StdAddress> owner;
+
+  bool valid() const {
+    // addr_none is valid for a confirmed NFT. Unknown/absent observations must
+    // not carry a stale owner across the boundary.
+    return existing.value_or(false) || !owner;
+  }
+};
+
 struct VestingData
 {
   block::StdAddress address;
@@ -930,11 +945,12 @@ struct ParsedBlock {
   std::vector<schema::ValidatorComplaint> validator_complaints_;
 
   std::unordered_map<block::StdAddress, std::vector<schema::BlockchainInterfaceV2>> account_interfaces_;
-  // Final-state jetton probe: true = verified, false = proven non-match,
+  // Final-state token probes: true = verified, false = proven non-match,
   // nullopt = failed/indeterminate. Absence from this map means not probed.
-  std::unordered_map<block::StdAddress, std::optional<bool>> jetton_wallet_detection_;
+  std::unordered_map<block::StdAddress, TokenDetectionStatus> token_detection_;
   // An empty vector is a calculated empty MC; nullopt means not collected.
   std::optional<std::vector<schema::JettonWalletState>> jetton_wallet_states_;
+  std::optional<std::vector<schema::NFTItemState>> nft_item_states_;
 
   template <class T>
   std::vector<T> get_events() {

@@ -1,8 +1,8 @@
 #include <iostream>
 
 #include "GramstatPostgres.h"
-#include "JettonWalletStatesPostgres.h"
-#include "JettonWalletStatesSchema.h"
+#include "TokenStatesPostgres.h"
+#include "TokenStatesSchema.h"
 #include "postgresql_tools.h"
 
 namespace {
@@ -17,6 +17,7 @@ InsertTaskStruct task(std::uint32_t seqno, std::uint32_t time, const char* total
     result.parsed_block_->account_deltas_ = schema::AccountDeltas{seqno, time, -1, 2, 0};
     result.parsed_block_->deployments_.emplace();
     result.parsed_block_->jetton_wallet_states_.emplace();
+    result.parsed_block_->nft_item_states_.emplace();
     return result;
 }
 
@@ -30,6 +31,8 @@ void check_jetton_history(pqxx::connection& connection, pqxx::connection& observ
         pqxx::work txn(connection);
         txn.exec0(jetton_history::postgres::SCHEMA_SQL);
         txn.exec0(jetton_history::postgres::SCHEMA_SQL);
+        txn.exec0(nft_history::postgres::SCHEMA_SQL);
+        txn.exec0(nft_history::postgres::SCHEMA_SQL);
         txn.commit();
     }
     const auto address = block::StdAddress(0, td::Bits256::zero());
@@ -48,18 +51,31 @@ void check_jetton_history(pqxx::connection& connection, pqxx::connection& observ
             row.existing = false;
         }
         item.parsed_block_->jetton_wallet_states_->push_back(row);
+        item.parsed_block_->nft_item_states_->push_back({address, seqno, row.gen_utime, row.last_tx_lt,
+            row.existing, row.existing == true ? std::optional<block::StdAddress>(
+                block::StdAddress(seqno == 100 ? 0 : -1, td::Bits256::zero())) : std::nullopt});
         tasks.push_back(std::move(item));
     }
     {
         pqxx::work txn(connection);
         jetton_history::postgres::insert_states(txn, tasks);
+        nft_history::postgres::insert_states(txn, tasks);
         CHECK(count(observer, "jetton_wallet_states") == 0);
+        CHECK(count(observer, "nft_item_states") == 0);
     }
     CHECK(count(observer, "jetton_wallet_states") == 0);
+    CHECK(count(observer, "nft_item_states") == 0);
     {
         pqxx::work txn(connection);
         jetton_history::postgres::insert_states(txn, tasks);
         jetton_history::postgres::insert_states(txn, tasks);
+        nft_history::postgres::insert_states(txn, tasks);
+        nft_history::postgres::insert_states(txn, tasks);
+        auto nfts = txn.exec("SELECT existing, owner::text FROM nft_item_states ORDER BY mc_seqno");
+        CHECK(nfts.size() == 4 && nfts[0][0].as<bool>() && nfts[0][1].as<std::string>().substr(0, 2) == "0:");
+        CHECK(nfts[1][0].is_null() && nfts[1][1].is_null());
+        CHECK(!nfts[2][0].as<bool>() && nfts[2][1].is_null());
+        CHECK(nfts[3][0].as<bool>() && nfts[3][1].as<std::string>().substr(0, 3) == "-1:");
         auto rows = txn.exec("SELECT existing, balance::text, nonzero FROM jetton_wallet_states ORDER BY mc_seqno");
         CHECK(rows.size() == 4 && rows[0][1].as<std::string>() == amount && rows[0][2].as<bool>());
         CHECK(rows[1][0].is_null() && rows[1][1].is_null() && rows[1][2].is_null());
@@ -100,6 +116,45 @@ void check_jetton_history(pqxx::connection& connection, pqxx::connection& observ
         txn.commit();
     }
     CHECK(count(observer, "jetton_wallet_states") == 4);
+    CHECK(count(observer, "nft_item_states") == 4);
+    for (int failure = 0; failure < 3; ++failure) {
+        std::vector<InsertTaskStruct> bad_tasks;
+        bad_tasks.push_back(task(104, 1788220800, "1"));
+        auto& bad = *bad_tasks[0].parsed_block_;
+        if (failure == 0) {
+            bad.nft_item_states_.reset();
+        } else {
+            bad.nft_item_states_->push_back({address, failure == 1 ? 99U : 104U,
+                1788220800, 200, false, failure == 2 ? std::optional<block::StdAddress>(address) : std::nullopt});
+        }
+        bool rejected = false;
+        try {
+            pqxx::work txn(connection);
+            jetton_history::postgres::insert_states(txn, tasks);
+            nft_history::postgres::insert_states(txn, bad_tasks);
+            txn.commit();
+        } catch (const std::exception&) {
+            rejected = true;
+        }
+        CHECK(rejected && count(observer, "nft_item_states") == 4);
+    }
+    {
+        pqxx::work txn(connection);
+        auto& repaired = tasks[0].parsed_block_->nft_item_states_->front();
+        repaired.existing = true;
+        repaired.owner = address;
+        nft_history::postgres::insert_states(txn, tasks);
+        CHECK(txn.query_value<long long>("SELECT count(DISTINCT account) FROM nft_item_states "
+            "WHERE existing IS TRUE AND owner IS NOT NULL AND owner LIKE '0:%'") == 1);
+        // Replay changes the owner at the same key, and can represent addr_none.
+        repaired.owner.reset();
+        nft_history::postgres::insert_states(txn, tasks);
+        CHECK(txn.query_value<bool>("SELECT existing AND owner IS NULL FROM nft_item_states WHERE mc_seqno=101"));
+        std::vector<InsertTaskStruct> empty;
+        empty.push_back(task(104, 1788220800, "1"));
+        nft_history::postgres::insert_states(txn, empty);
+        txn.commit();
+    }
 }
 
 }  // namespace

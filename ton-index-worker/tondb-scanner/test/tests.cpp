@@ -83,6 +83,52 @@ TEST(TonDbScanner, contract_methods_resolve_libraries) {
     ASSERT_EQ(failed.error().code(), SMC_METHOD_NOT_FOUND);
 }
 
+TEST(TonDbScanner, nft_identity_survives_metadata_errors) {
+    vm::init_op_cp0();
+    auto config = test_smc_config(1700000000);
+    auto address = block::StdAddress(0, td::Bits256::zero());
+    auto owner = block::StdAddress(-1, td::Bits256::zero());
+    auto empty = vm::CellBuilder().finalize();
+    for (auto content : std::vector<td::Ref<vm::Cell>>{{}, empty, vm::CellBuilder().store_long(255, 8).finalize()}) {
+        auto result = NftItemDetectorR::detect(address, test_nft_code(true, test_address_cell(owner), content),
+                                               empty, {}, config).move_as_ok();
+        ASSERT_TRUE(result.init && result.owner_address == owner && !result.content);
+    }
+    auto uninitialized = NftItemDetectorR::detect(address, test_nft_code(false, {}, {}), empty, {}, config).move_as_ok();
+    ASSERT_TRUE(!uninitialized.init && !uninitialized.owner_address);
+    auto ownerless = NftItemDetectorR::detect(address, test_nft_code(true, test_address_cell(), {}), empty, {}, config).move_as_ok();
+    ASSERT_TRUE(ownerless.init && !ownerless.owner_address);
+    ASSERT_TRUE(NftItemDetectorR::detect(address, test_nft_code(true, {}, empty), empty, {}, config).is_error());
+
+    auto throw11 = vm::CellBuilder().store_long(0xf20b, 16).finalize();
+    auto absent = NftItemDetectorR::detect(address, test_method_dispatcher(42, throw11), empty, {}, config);
+    ASSERT_EQ(absent.error().code(), NftItemDetectorR::NOT_NFT_ITEM);
+    auto failed = NftItemDetectorR::detect(address, test_method_dispatcher(102351, throw11), empty, {}, config);
+    ASSERT_EQ(failed.error().code(), SMC_METHOD_NOT_FOUND);
+    auto unsupported = NftItemDetectorR::detect(address, throw11, empty, {}, config);
+    ASSERT_TRUE(unsupported.error().code() != NftItemDetectorR::NOT_NFT_ITEM);
+
+    // A real shard dictionary exercises collection lookup and the address
+    // round-trip. Content getter throws, but the core identity remains valid.
+    auto collection = block::StdAddress(0, td::Bits256::ones());
+    auto item_code = test_nft_code(true, test_address_cell(owner), empty, test_address_cell(collection));
+    auto lookup_failed = NftItemDetectorR::detect(address, item_code, empty, {}, config);
+    ASSERT_TRUE(lookup_failed.is_error() && lookup_failed.error().code() != NftItemDetectorR::NOT_NFT_ITEM);
+    for (bool match : {true, false}) {
+        auto lookup_code = vm::CellBuilder().store_long(0x30, 8).store_long(0x89, 8)
+            .store_ref(test_address_cell(match ? address : owner)).finalize();
+        auto collection_code = test_methods_dispatcher({{92067, lookup_code}, {68445, throw11}});
+        auto result = NftItemDetectorR::detect(address, item_code, empty,
+            {test_shard_with_account(collection, collection_code)}, config);
+        if (match) {
+            auto item = result.move_as_ok();
+            ASSERT_TRUE(item.init && item.owner_address == owner && !item.content);
+        } else {
+            ASSERT_EQ(result.error().code(), NftItemDetectorR::NOT_NFT_ITEM);
+        }
+    }
+}
+
 TEST(convert, to_raw_address) {
     auto address = vm::std_boc_deserialize(td::base64_decode(td::Slice("te6ccgEBAQEAJAAAQ4ARhy+Ifz/haSyza6FGBWNSde+ZjHy+uBieS1O4PxaPVnA=")).move_as_ok()).move_as_ok();
     auto raw_address_serialized = convert::to_raw_address(vm::load_cell_slice_ref(address));

@@ -1,6 +1,6 @@
 #include "InsertManagerClickhouse.h"
 #include "GramstatStorage.h"
-#include "JettonWalletStatesStorage.h"
+#include "TokenStatesStorage.h"
 
 #include "td/utils/StringBuilder.h"
 #include "clickhouse/client.h"
@@ -30,7 +30,6 @@ private:
     bool collect_gramstat_;
 
     void insert_jettons(clickhouse::Client& client);
-    void insert_jetton_wallet_states(clickhouse::Client& client);
     void insert_nfts(clickhouse::Client& client);
     void insert_transactions(clickhouse::Client& client);
     void insert_messages(clickhouse::Client& client);
@@ -369,6 +368,7 @@ void InsertManagerClickhouse::start_up() {
             client.Execute(builder.as_cslice().str());
             LOG(INFO) << "Table jetton_wallets created";
             client.Execute(jetton_history::CREATE_STATES);
+            client.Execute(nft_history::CREATE_STATES);
         }
         {
             td::StringBuilder builder;
@@ -556,7 +556,7 @@ void InsertBatchClickhouse::start_up() {
         insert_shard_state(client);
         insert_nfts(client);
         insert_jettons(client);
-        insert_jetton_wallet_states(client);
+        account_history::insert_states(client, insert_tasks_);
         insert_blocks(client);
         if (collect_gramstat_) {
             insert_total_supply(client);
@@ -579,24 +579,6 @@ void InsertBatchClickhouse::start_up() {
         promise_.set_error(td::Status::Error(ErrorCode::DB_ERROR, PSLICE() << "Error inserting batch to Clickhouse: " << e.what()));
     }
     stop();
-}
-
-void InsertBatchClickhouse::insert_jetton_wallet_states(clickhouse::Client& client) {
-    std::vector<schema::JettonWalletState> states;
-    for (const auto& task : insert_tasks_) {
-        if (!task.parsed_block_->jetton_wallet_states_) {
-            throw std::runtime_error("Missing jetton wallet history in ClickHouse batch");
-        }
-        for (const auto& state : *task.parsed_block_->jetton_wallet_states_) {
-            if (state.mc_seqno != task.mc_seqno_) {
-                throw std::runtime_error("Mismatched jetton wallet history in ClickHouse batch");
-            }
-            states.push_back(state);
-        }
-    }
-    if (!states.empty()) {
-        client.Insert("jetton_wallet_states", jetton_history::states_block(states));
-    }
 }
 
 void InsertBatchClickhouse::insert_total_supply(clickhouse::Client& client) {

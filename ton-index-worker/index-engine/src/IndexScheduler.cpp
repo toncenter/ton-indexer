@@ -3,7 +3,7 @@
 #include "TotalSupply.h"
 #include "AccountDeltas.h"
 #include "Deployments.h"
-#include "JettonWalletStates.h"
+#include "AccountStateHistory.h"
 #include "Statistics.h"
 #include "common/delay.h"
 #include "td/utils/StringBuilder.h"
@@ -520,14 +520,16 @@ void IndexScheduler::seqno_traces_assembled(std::uint32_t mc_seqno, ParsedBlockP
 
 void IndexScheduler::seqno_interfaces_processed(std::uint32_t mc_seqno, ParsedBlockPtr parsed_block) {
     LOG(DEBUG) << "Interfaces processed for seqno " << mc_seqno;
-    auto history = jetton_history::collect_states(mc_seqno, *parsed_block);
+    auto history = account_history::collect_states(mc_seqno, *parsed_block);
     if (history.is_error()) {
         auto error = history.move_as_error();
-        LOG(ERROR) << "Failed to collect jetton wallet states for seqno " << mc_seqno << ": " << error;
-        handle_seqno_failure(mc_seqno, "indexer.jetton_history_error", std::move(error), false);
+        LOG(ERROR) << "Failed to collect token states for seqno " << mc_seqno << ": " << error;
+        handle_seqno_failure(mc_seqno, "indexer.token_history_error", std::move(error), false);
         return;
     }
-    parsed_block->jetton_wallet_states_ = history.move_as_ok();
+    auto states = history.move_as_ok();
+    parsed_block->jetton_wallet_states_ = std::move(states.jetton_wallets);
+    parsed_block->nft_item_states_ = std::move(states.nft_items);
     finish_seqno_otel_stage(mc_seqno);
     start_seqno_otel_stage(mc_seqno, "detect_actions");
 

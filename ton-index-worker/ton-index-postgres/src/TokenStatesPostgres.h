@@ -8,3 +8,9 @@ namespace jetton_history::postgres {
 void insert_states(pqxx::work& txn, const std::vector<InsertTaskStruct>& tasks);
 
 }  // namespace jetton_history::postgres
+
+namespace nft_history::postgres {
+
+void insert_states(pqxx::work& txn, const std::vector<InsertTaskStruct>& tasks);
+
+}  // namespace nft_history::postgres
