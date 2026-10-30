@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"mime/multipart"
 	"net/http"
 	"net/url"
 	"strings"
@@ -72,6 +73,44 @@ func (c *ClickHouse) Query(ctx context.Context, query string, params url.Values)
 }
 
 func (c *ClickHouse) request(ctx context.Context, query string, params url.Values, body []byte) ([]byte, error) {
+	return c.requestContent(ctx, query, params, body, "application/octet-stream")
+}
+
+// QueryExternal supplies an ephemeral JSONEachRow input, never a persistent source table.
+func (c *ClickHouse) QueryExternal(ctx context.Context, query string, params url.Values, name, structure string, data []byte) ([]byte, error) {
+	var body bytes.Buffer
+	w := multipart.NewWriter(&body)
+	if err := w.WriteField(name+"_structure", structure); err != nil {
+		return nil, err
+	}
+	if err := w.WriteField(name+"_format", "JSONEachRow"); err != nil {
+		return nil, err
+	}
+	f, err := w.CreateFormFile(name, name+".jsonl")
+	if err != nil {
+		return nil, err
+	}
+	if _, err = f.Write(data); err != nil {
+		return nil, err
+	}
+	if err = w.Close(); err != nil {
+		return nil, err
+	}
+	return c.requestContent(ctx, query, params, body.Bytes(), w.FormDataContentType())
+}
+
+// InsertJSON writes a complete handler-owned snapshot synchronously.
+func (c *ClickHouse) InsertJSON(ctx context.Context, table string, data []byte) error {
+	for _, ch := range table {
+		if !(ch == '.' || ch == '_' || ch >= 'a' && ch <= 'z' || ch >= '0' && ch <= '9') {
+			return fmt.Errorf("invalid ClickHouse table name")
+		}
+	}
+	_, err := c.request(ctx, "INSERT INTO "+table+" FORMAT JSONEachRow", nil, data)
+	return err
+}
+
+func (c *ClickHouse) requestContent(ctx context.Context, query string, params url.Values, body []byte, contentType string) ([]byte, error) {
 	u := *c.endpoint
 	values := make(url.Values)
 	for k, v := range params {
@@ -87,7 +126,7 @@ func (c *ClickHouse) request(ctx context.Context, query string, params url.Value
 		return nil, err
 	}
 	req.SetBasicAuth(c.user, c.password)
-	req.Header.Set("Content-Type", "application/octet-stream")
+	req.Header.Set("Content-Type", contentType)
 	resp, err := c.client.Do(req)
 	if err != nil {
 		// url.Error includes the whole query URL; retain only the underlying cause.

@@ -2,7 +2,9 @@
 
 `ton-index-go/cmd/gramstat-aggregate` is a Go CLI for independent analytics
 handlers. It reads indexed sources and publishes to ClickHouse `gramstat`.
-The first handler, `actions`, reads PostgreSQL. It does not read node states.
+The `actions` handler reads PostgreSQL. [Validator handlers](gramstat-validators.md)
+publish elected counts and existing session-stats locations by round. They run
+independently through the same hourly runner.
 
 ## Run
 
@@ -165,11 +167,10 @@ only the source clients and writer it needs. `Request.AsOf` supplies one stable
 UTC reference; handlers own their refresh policy and may publish a different
 typed table. SQL and individual metric definitions stay with their handler.
 
-For example, a future validator-countries handler can combine the selected #34
-roster, timestamp-bounded session-stats IP observations and a GeoLite2 MMDB. Its
-complete distribution, coverage and GeoIP version should be one versioned
-snapshot in its own `gramstat` table, so removed countries cannot remain as stale
-rows. It is not implemented by this first release.
+The `validators` and `validator_geo` handlers demonstrate separate typed tables:
+verified #34 rosters and full round-level location/distribution snapshots. GeoIP
+fields are reused directly from session stats, with explicit coverage and unknown
+values; no additional MMDB lookup is performed. See [validator rounds](gramstat-validators.md).
 
 ## Checks
 
