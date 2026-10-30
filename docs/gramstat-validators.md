@@ -99,7 +99,7 @@ gramstat-aggregate --print-schema  # apply DDL using an administrative destinati
 export GRAMSTAT_PG_DSN='host=postgres.example.com dbname=ton_index user=gramstat_reader'
 export GRAMSTAT_CH_URL='http://clickhouse.example.com:8123/'
 export GRAMSTAT_CH_USER='gramstat_aggregate'
-export GRAMSTAT_CONFIG_URL='https://rpc.example.com/api/v2'
+export GRAMSTAT_CONFIG_URL='https://toncenter.com/api/v2'
 # Optional GRAMSTAT_CONFIG_API_KEY; all passwords belong in a protected environment.
 export GRAMSTAT_SS_URL='http://session-stats.example.com:8123/'
 export GRAMSTAT_SS_USER='gramstat_reader'
@@ -120,8 +120,9 @@ handler before geo when both are requested.
 The destination runtime role needs `SELECT, INSERT` on both new tables and
 `SELECT` on the view for map readers. The SS role needs only source `SELECT`;
 queries additionally set `readonly=1` and resource limits. The example systemd
-unit runs all three handlers hourly. Source credentials and actual deployment
-hosts must not be committed to this repository.
+unit runs all three handlers hourly. Source credentials and private infrastructure
+hostnames must not be committed to this repository. The public TON Center API URL
+is shown directly; internal database and service addresses use placeholders.
 
 ## Charts and map queries
 
