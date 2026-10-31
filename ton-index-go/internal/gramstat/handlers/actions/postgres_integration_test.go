@@ -47,8 +47,11 @@ func TestPostgresDailyAggregation(t *testing.T) {
 	_, err = fixture.Exec(ctx, `CREATE TABLE blocks(workchain integer, seqno integer, gen_utime bigint);
 CREATE TYPE staking_details AS (provider text);
 CREATE TYPE jetton_swap_details AS (dex text);
+CREATE TYPE ton_transfer_details AS (content text);
+CREATE TYPE jetton_transfer_details AS (comment text);
 CREATE TABLE actions(trace_mc_seqno_end integer, start_utime bigint, source text, destination text, type text, success boolean, parent_action_id text,
-    amount numeric, asset text, staking_data staking_details, jetton_swap_data jetton_swap_details);
+    amount numeric, asset text, staking_data staking_details, jetton_swap_data jetton_swap_details,
+    ton_transfer_data ton_transfer_details, jetton_transfer_data jetton_transfer_details);
 INSERT INTO blocks VALUES (-1,99,1792540799), (-1,100,1792544400), (-1,101,1792630800), (-1,102,1792717200);
 INSERT INTO actions(trace_mc_seqno_end,start_utime,source,destination,type,success,parent_action_id) VALUES
   (100,1792540800,'alice','carol','jetton_transfer',true,NULL),
@@ -124,6 +127,70 @@ INSERT INTO actions(trace_mc_seqno_end,start_utime,type,success,destination,stak
 	}
 	if _, err := dailyRows(from, from.Add(48*time.Hour), s); err != nil {
 		t.Fatal(err)
+	}
+	// Add payments after checking the pre-existing metrics. Repeated actions by
+	// one sender (including nested/batched payments) must count individually.
+	comments := []string{"50 Telegram Stars \n\nRef#a", "50.0 Telegram Stars", "00050.000 Telegram Stars",
+		"500 Prepaid Telegram Stars", "Telegram Stars Ref#missing", "0 Telegram Stars", "50.5 Telegram Stars",
+		"18446744073709551616 Telegram Stars", strings.Repeat("9", 100) + " Telegram Stars",
+		"18446744073709551615 Telegram Stars"}
+	const fragment = "0:852443F8599FE6A5DA34FE43049AC4E0BEB3071BB2BFB56635EA9421287C283A"
+	const usdt = "0:B113A994B5024A16719F69139328EB759596C38A25F59028B146FECDC3621DFE"
+	for _, comment := range comments {
+		_, err = fixture.Exec(ctx, `INSERT INTO actions(trace_mc_seqno_end,start_utime,source,destination,type,success,parent_action_id,ton_transfer_data)
+VALUES(102,$1,'alice',$2,'ton_transfer',true,'batch',ROW($3::text))`, from.Unix()+10, fragment, comment)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, test := range []struct {
+		dest, asset, comment string
+		success              bool
+		utime                int64
+	}{
+		{fragment, usdt, "100 Telegram Stars", true, from.Unix() + 10},
+		{fragment, usdt, "100 Telegram Stars", true, from.Unix() + 10},
+		{fragment, "fake_usdt", "100 Telegram Stars", true, from.Unix() + 10},
+		{"other", usdt, "100 Telegram Stars", true, from.Unix() + 10},
+		{fragment, usdt, "100 Telegram Stars", false, from.Unix() + 10},
+		{fragment, usdt, "12 months Telegram Premium", true, from.Unix() + 10},
+		{fragment, usdt, "100 Telegram Stars", true, from.Unix() - 1},
+		{fragment, usdt, "100 Telegram Stars", true, from.Add(48 * time.Hour).Unix()},
+	} {
+		_, err = fixture.Exec(ctx, `INSERT INTO actions(trace_mc_seqno_end,start_utime,source,destination,type,success,parent_action_id,asset,jetton_transfer_data)
+VALUES(102,$1,'alice',$2,'jetton_transfer',$3,'batch',$4,ROW($5::text))`, test.utime, test.dest, test.success, test.asset, test.comment)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	s, err = source.Collect(ctx, from, from.Add(48*time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s.Days[0].StarsPurchases != 12 || s.Days[1].StarsPurchases != 0 {
+		t.Fatalf("Stars filter/bounds: %+v", s.Days)
+	}
+	stars, err := starsRows(from, s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stars[0].UnknownPurchases != 5 || stars[0].KnownStarsTotal != "18446744073709552465" || stars[0].StarsTotal != nil || stars[1].KnownStarsTotal != "0" || stars[1].StarsTotal == nil || *stars[1].StarsTotal != "0" {
+		t.Fatalf("wrong exact/unknown Stars totals: %+v", stars)
+	}
+	var fifty, hundred, prepaid uint64
+	for _, b := range stars[0].Buckets {
+		if b.StarsPerPurchase != nil && *b.StarsPerPurchase == 50 && b.PaymentAsset == "TON" {
+			fifty = b.Purchases
+		}
+		if b.StarsPerPurchase != nil && *b.StarsPerPurchase == 100 && b.PaymentAsset == "USDT" {
+			hundred = b.Purchases
+		}
+		if b.Product == "prepaid" {
+			prepaid += b.Purchases
+		}
+	}
+	if fifty != 3 || hundred != 2 || prepaid != 1 {
+		t.Fatalf("decimal notation/batch/prepaid buckets: %+v", stars[0].Buckets)
 	}
 	// EXPLAIN the actual embedded SQL: adding dimensions must not introduce a
 	// second scan of actions. The tiny fixture naturally uses a sequential scan.

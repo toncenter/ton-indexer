@@ -38,6 +38,7 @@ func (p Postgres) Collect(ctx context.Context, from, to time.Time) (snapshot Sna
 	cfg.ConnConfig.RuntimeParams["statement_timeout"] = "300000"
 	cfg.ConnConfig.RuntimeParams["lock_timeout"] = "5000"
 	cfg.ConnConfig.RuntimeParams["timezone"] = "UTC"
+	cfg.ConnConfig.RuntimeParams["jit"] = "off"
 	pool, err := pgxpool.NewWithConfig(ctx, cfg)
 	if err != nil {
 		return snapshot, err
@@ -86,23 +87,28 @@ WHERE workchain = -1 AND seqno = $1 LIMIT 1`, upper).Scan(&sourceTime); err != n
 		var d DayCounts
 		var senders, receivers, transfers, nftSenders, nftReceivers, nfts int64
 		var swaps, users, deposits, dnsMints int64
-		var dexJSON, poolsJSON []byte
+		var dexJSON, poolsJSON, starsJSON []byte
+		var starsPurchases int64
 		if err = rows.Scan(&d.Day, &senders, &receivers, &transfers, &nftSenders, &nftReceivers, &nfts,
-			&swaps, &users, &dexJSON, &deposits, &d.LiquidStakingAmount, &poolsJSON, &dnsMints); err != nil {
+			&swaps, &users, &dexJSON, &deposits, &d.LiquidStakingAmount, &poolsJSON, &dnsMints, &starsPurchases, &starsJSON); err != nil {
 			return snapshot, err
 		}
 		if senders < 0 || receivers < 0 || transfers < 0 || nftSenders < 0 || nftReceivers < 0 || nfts < 0 ||
-			swaps < 0 || users < 0 || deposits < 0 || dnsMints < 0 {
+			swaps < 0 || users < 0 || deposits < 0 || dnsMints < 0 || starsPurchases < 0 {
 			return snapshot, fmt.Errorf("negative count")
 		}
 		d.JettonSenders, d.JettonReceivers, d.JettonTransfers = uint64(senders), uint64(receivers), uint64(transfers)
 		d.NFTSenders, d.NFTReceivers, d.NFTTransfers = uint64(nftSenders), uint64(nftReceivers), uint64(nfts)
 		d.Swaps, d.SwapUsers, d.LiquidStakingDeposits, d.TonDNSMints = uint64(swaps), uint64(users), uint64(deposits), uint64(dnsMints)
+		d.StarsPurchases = uint64(starsPurchases)
 		if err = json.Unmarshal(dexJSON, &d.SwapsByDEX); err != nil {
 			return snapshot, fmt.Errorf("decode DEX breakdown: %w", err)
 		}
 		if err = json.Unmarshal(poolsJSON, &d.LiquidStakingByPool); err != nil {
 			return snapshot, fmt.Errorf("decode liquid staking breakdown: %w", err)
+		}
+		if err = json.Unmarshal(starsJSON, &d.StarsBuckets); err != nil {
+			return snapshot, fmt.Errorf("decode Stars distribution: %w", err)
 		}
 		snapshot.Days = append(snapshot.Days, d)
 	}

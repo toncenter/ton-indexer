@@ -45,6 +45,7 @@ have a five-minute timeout and run in a read-only, repeatable-read transaction.
 | `liquid_staking_deposits` | Deposit count summed over the four selected pools; `amount_nanoton` holds their total deposit amount |
 | `liquid_staking_deposits_<pool>` | Per-pool count and `amount_nanoton`; `<pool>` is `tonstakers`, `stakee`, `kton`, or `sgram` |
 | `ton_dns_mints` | Successful `nft_mint` actions whose `asset` is the mainnet `.ton` collection |
+| `telegram_stars_purchases` | Successful TON/USDT payments to the selected Fragment address with a Stars comment; includes unknown quantities |
 
 The UTC day is derived from `start_utime`. Child actions are included, so a
 transfer nested inside a swap participates. These are classified actions, not a
@@ -82,17 +83,23 @@ DNS mints filter the collection in `asset`:
 `0:B774D95EB20543F186C06B371AB88AD704F7E256130CAF96189368A7D0CB6CCF`.
 They count mint actions, not auction completions, sales or renewals.
 
+The [Stars distribution](gramstat-stars.md) stores both purchase counts and Stars
+quantities per exact purchase size, payment asset and standard/prepaid product.
+It uses PostgreSQL only, with no external API calls.
+
 The embedded [daily.sql](../ton-index-go/internal/gramstat/handlers/actions/daily.sql)
-computes all metrics in one source scan using `GROUPING SETS` for day, DEX and
-pool. Additional distinct counts share the scan, with additional aggregation
+computes all metrics in one source scan using `GROUPING SETS` for day, DEX,
+pool and Stars bucket. Comment parsing is materialized once to prevent repeated
+regex evaluation after CTE inlining. Additional distinct counts share the scan, with additional aggregation
 CPU/memory. Before aggregation, the handler finds the
 MC immediately before the interval using `blocks.gen_utime`. It restricts actions
 by the existing **`trace_mc_seqno_end` index**, retaining the exact timestamp filter.
 The upper MC bound is the latest action MC in the same database snapshot, **not**
 the MC at the interval end: a transfer can finish its trace after midnight.
 PostgreSQL uses custom query plans for the actual bounds rather than a cached
-generic plan. In a seven-day comparison within one database snapshot, the six
-transfer metrics took **3.787 s**, and the full query took **11.879 s**.
+generic plan. In the original seven-day comparison, the six transfer metrics
+took **3.787 s**, and the pre-Stars query took **11.879 s**. With Stars, a
+37-hour read-only probe took **13.24 s**; these are individual cached measurements.
 
 ## Destination and refresh semantics
 
@@ -134,6 +141,12 @@ and the individual day's end. A truncated day has `is_partial=1`; days beyond th
 source head are not emitted. Empty days inside a successfully queried interval
 get explicit zero counts. Missing source anchors and failed queries emit nothing.
 
+The Stars distribution is written before its `telegram_stars_purchases` daily
+metric, which serves as the catch-up completion marker. An interrupted insert
+leaves the chunk eligible for a retry; chart readers use the self-contained
+Stars snapshot rather than joining independently versioned tables. Adding the
+metric repairs its missing days within established actions history.
+
 These are **counts of currently indexed actions**. The latest source MC is an
 observation boundary, not proof of continuous classification coverage. Even a
 closed calendar day can change after late classification. The rolling refresh
@@ -151,8 +164,11 @@ paths as needed, install the units on a host with access to both databases, and
 enable `gramstat-aggregate.timer`.
 It runs every UTC hour, with persistent catch-up after a reboot. `flock` prevents
 overlap; manual runs on that host should use the same lock. The service has no
-write access to the source and needs only `SELECT, INSERT` on
-`gramstat.daily_metrics` in ClickHouse. DDL is applied separately by an administrator.
+write access to the source. For actions it needs `SELECT, INSERT` on
+`gramstat.daily_metrics` and `gramstat.telegram_stars_daily`, plus `SELECT` on
+`gramstat.telegram_stars_buckets` for chart readers. The validator handlers have
+their own grants. DDL is applied separately by an administrator before upgrading
+the binary; `--print-schema` includes all tables and views.
 
 ```bash
 sudo systemctl start gramstat-aggregate.service

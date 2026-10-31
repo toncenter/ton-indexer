@@ -18,6 +18,7 @@ var Metrics = []string{
 	"swaps_total", "swaps_users", "liquid_staking_deposits", "ton_dns_mints",
 	"liquid_staking_deposits_tonstakers", "liquid_staking_deposits_stakee",
 	"liquid_staking_deposits_kton", "liquid_staking_deposits_sgram",
+	"telegram_stars_purchases",
 }
 
 var liquidPools = []string{"tonstakers", "stakee", "kton", "sgram"}
@@ -35,6 +36,8 @@ type DayCounts struct {
 	LiquidStakingAmount                                  *string
 	SwapsByDEX                                           map[string]uint64
 	LiquidStakingByPool                                  map[string]PoolDeposits
+	StarsPurchases                                       uint64
+	StarsBuckets                                         []gramstat.StarsBucket
 }
 
 type Snapshot struct {
@@ -51,6 +54,7 @@ type Source interface {
 type Sink interface {
 	StoredDays(context.Context, []string, time.Time) (map[string][]time.Time, error)
 	WriteDaily(context.Context, []gramstat.DailyMetric) error
+	WriteStars(context.Context, []gramstat.DailyStars) error
 }
 
 type Handler struct {
@@ -86,6 +90,15 @@ func (h *Handler) Run(ctx context.Context, req gramstat.Request) error {
 		rows, err := dailyRows(start, end, snapshot)
 		if err != nil {
 			return err
+		}
+		stars, err := starsRows(start, snapshot)
+		if err != nil {
+			return err
+		}
+		// The daily metric is the completion marker used by catch-up. Publish the
+		// full distribution first so an interrupted write cannot hide a gap.
+		if err := h.Sink.WriteStars(ctx, stars); err != nil {
+			return fmt.Errorf("publish Stars distributions: %w", err)
 		}
 		// Publish only after the entire chunk has been read and checked. Retries
 		// replace absolute values, including a corrected decrease or an actual zero.
@@ -173,6 +186,7 @@ func dailyRows(from, to time.Time, snapshot Snapshot) ([]gramstat.DailyMetric, e
 		for _, pool := range liquidPools {
 			values = append(values, d.LiquidStakingByPool[pool].Count)
 		}
+		values = append(values, d.StarsPurchases)
 		through := day.AddDate(0, 0, 1)
 		partial := uint8(0)
 		if through.After(snapshot.Through) {

@@ -19,14 +19,14 @@ func TestDailyRowsZeroAndSourceLag(t *testing.T) {
 		Through: from.Add(36 * time.Hour), CalculatedAt: from.Add(40 * time.Hour), SourceMC: 101,
 	}
 	rows, err := dailyRows(from, from.Add(72*time.Hour), s)
-	if err != nil || len(rows) != 28 {
+	if err != nil || len(rows) != 2*len(Metrics) {
 		t.Fatalf("only covered days should be emitted: %v, %v", rows, err)
 	}
 	want := map[string]uint64{"jetton_senders": 2, "jetton_receivers": 3, "jetton_transfers": 5,
 		"nft_senders": 4, "nft_receivers": 6, "nft_transfers": 7,
 		"swaps_total": 0, "swaps_users": 0, "ton_dns_mints": 0, "liquid_staking_deposits": 0,
 		"liquid_staking_deposits_tonstakers": 0, "liquid_staking_deposits_stakee": 0,
-		"liquid_staking_deposits_kton": 0, "liquid_staking_deposits_sgram": 0}
+		"liquid_staking_deposits_kton": 0, "liquid_staking_deposits_sgram": 0, "telegram_stars_purchases": 0}
 	for _, row := range rows {
 		value, exists := want[row.Metric]
 		if !exists {
@@ -121,6 +121,7 @@ func (*testSink) StoredDays(context.Context, []string, time.Time) (map[string][]
 	return nil, nil
 }
 func (s *testSink) WriteDaily(context.Context, []gramstat.DailyMetric) error { s.writes++; return nil }
+func (s *testSink) WriteStars(context.Context, []gramstat.DailyStars) error  { s.writes++; return nil }
 
 func TestSourceFailureDoesNotPublish(t *testing.T) {
 	sink := &testSink{}
