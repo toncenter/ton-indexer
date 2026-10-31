@@ -1,0 +1,19 @@
+[Unit]
+Description=Gramstat indexed-data aggregates
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=gramstat
+Group=gramstat
+EnvironmentFile=/etc/gramstat-aggregate.env
+StateDirectory=gramstat-aggregate
+ExecStart=/usr/bin/flock --nonblock /var/lib/gramstat-aggregate/run.lock /opt/gramstat/bin/gramstat-aggregate --handlers actions,validators,validator_geo,staking
+TimeoutStartSec=85min
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+RestrictSUIDSGID=true

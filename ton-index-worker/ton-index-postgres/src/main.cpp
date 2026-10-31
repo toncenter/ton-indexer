@@ -48,6 +48,7 @@ int main(int argc, char *argv[]) {
   bool run_migrations = true;
   bool kvrocks_skip_current_tables = false;
   bool pg_no_copy = false;
+  bool gramstat = false;
   double failover_check_interval = 10.0;
   std::uint32_t failover_strikes = 3;
   InsertManagerPostgres::Credential credential;
@@ -84,6 +85,9 @@ int main(int argc, char *argv[]) {
   });
   p.add_option('\0', "pg", "PostgreSQL connection string", [&](td::Slice value) { 
     credential.conn_str = value.str();
+  });
+  p.add_option('\0', "gramstat", "Collect Gramstat metrics (total supply, account deltas, deployments) in the gramstat schema", [&]() {
+    gramstat = true;
   });
   p.add_option('\0', "pg-no-copy", "Use INSERT ... ON CONFLICT instead of COPY for PostgreSQL historical table writes", [&]() {
     pg_no_copy = true;
@@ -585,7 +589,7 @@ int main(int argc, char *argv[]) {
   scheduler.run_in_context([&] {
     insert_manager_ = td::actor::create_actor<InsertManagerPostgres>(
         "insertmanager", credential, kvrocks_config, partition_config, no_leader, bounded_archive_range,
-        kvrocks_skip_current_tables, pg_no_copy, failover_baseline);
+        kvrocks_skip_current_tables, pg_no_copy, failover_baseline, gramstat);
   });
   scheduler.run_in_context([&] { parse_manager_ = td::actor::create_actor<ParseManager>("parsemanager"); });
   scheduler.run_in_context([&] {
@@ -596,7 +600,7 @@ int main(int argc, char *argv[]) {
 
   scheduler.run_in_context([&, watcher = std::move(watcher)] { index_scheduler_ = td::actor::create_actor<IndexScheduler>("indexscheduler", db_scanner_.get(),
     insert_manager_.get(), parse_manager_.get(), working_dir, from_seqno, to_seqno, force_index, max_active_tasks, max_queue, stats_timeout, watcher, prewarm_count,
-    db_event_fifo_path);
+    db_event_fifo_path, gramstat);
   });
   if (!bounded_archive_range && failover_check_interval > 0) {
     scheduler.run_in_context([&] {

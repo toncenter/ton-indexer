@@ -1,0 +1,10 @@
+[Unit]
+Description=Refresh Gramstat aggregates hourly
+
+[Timer]
+OnCalendar=*-*-* *:00:00 UTC
+Persistent=true
+Unit=gramstat-aggregate.service
+
+[Install]
+WantedBy=timers.target

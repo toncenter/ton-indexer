@@ -5,8 +5,18 @@
 
 using AllShardStates = std::vector<td::Ref<vm::Cell>>;
 
+// Per-address probes from the normal detector run. Unknown includes failed
+// getters/lookups; only a proven non-match is false.
+struct TokenDetectionStatus {
+  std::optional<bool> jetton_wallet;
+  std::optional<bool> nft_item;
+};
+
 class JettonWalletDetectorR: public td::actor::Actor {
 public:
+  static constexpr unsigned long long DATA_METHOD_ID = 97026;
+  // A proven non-match, as opposed to an unavailable/invalid getter result.
+  static constexpr int NOT_JETTON_WALLET = 11001;
   struct Result {
     td::RefInt256 balance;
     block::StdAddress address;
@@ -70,6 +80,8 @@ private:
 
 class NftItemDetectorR: public td::actor::Actor {
 public:
+  static constexpr unsigned long long DATA_METHOD_ID = 102351;
+  static constexpr int NOT_NFT_ITEM = 11002;
   struct Result {
     struct DNSEntry {
       std::string domain;
@@ -111,10 +123,6 @@ public:
                                    const std::shared_ptr<block::ConfigInfo>& config);
 
 private:
-  void got_collection(Result item_data, td::Ref<vm::Cell> ind_content, td::Ref<vm::Cell> collection_code, td::Ref<vm::Cell> collection_data);
-  td::Status verify_with_collection(block::StdAddress collection_address, td::Ref<vm::Cell> collection_code, td::Ref<vm::Cell> collection_data, td::RefInt256 index);
-  td::Result<std::map<std::string, std::string>> get_content(td::RefInt256 index, td::Ref<vm::Cell> ind_content, block::StdAddress collection_address,
-                                                            td::Ref<vm::Cell> collection_code, td::Ref<vm::Cell> collection_data);
   void process_domain_and_dns_data(const block::StdAddress& root_address, const std::function<td::Result<std::string>()>& get_domain_function, Result& item_data);
   td::Result<NftItemDetectorR::Result::DNSEntry> get_dns_entry_data();
   td::Status get_auction_info(Result::DNSEntry& entry);
@@ -129,7 +137,6 @@ private:
   std::shared_ptr<block::ConfigInfo> config_;
   td::Promise<Result> promise_;
 
-  td::Ref<vm::Cell> ind_content_;
 };
 
 class NftCollectionDetectorR: public td::actor::Actor {

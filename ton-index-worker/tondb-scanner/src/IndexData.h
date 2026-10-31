@@ -272,6 +272,13 @@ struct Block {
   std::string rand_seed;
   std::string created_by;
 
+  // Native block dictionary aggregates, in nanotons (before fee burning).
+  td::RefInt256 transaction_fees;
+  td::RefInt256 import_fees;
+  // ValueFlow Toncoin issuance and protocol burning, in nanotons.
+  td::RefInt256 created;
+  td::RefInt256 burned;
+
   std::vector<Transaction> transactions;
   std::vector<BlockReference> prev_blocks;
 };
@@ -284,6 +291,17 @@ struct MasterchainBlockShard {
   int32_t workchain;
   int64_t shard;
   uint32_t seqno;
+};
+
+// Successful deployment event; classification uses the incoming StateInit code.
+struct Deployment {
+  std::uint32_t mc_seqno;
+  std::uint32_t gen_utime;
+  block::StdAddress account;
+  std::uint64_t lt;
+  td::Bits256 tx_hash;
+  std::optional<td::Bits256> init_code_hash;
+  std::uint32_t out_msgs_count;
 };
 
 struct AccountState {
@@ -381,6 +399,38 @@ struct JettonWalletDataV2 {
   uint32_t last_transaction_now;
   td::Bits256 code_hash;
   td::Bits256 data_hash;
+};
+
+// One observation at an MC boundary. NULL existing terminates the last known
+// value just like false does, but represents an unknown interval, not absence.
+struct JettonWalletState {
+  block::StdAddress account;
+  std::uint32_t mc_seqno;
+  std::uint32_t gen_utime;
+  std::uint64_t last_tx_lt;
+  std::optional<bool> existing;
+  td::RefInt256 balance;
+
+  bool valid() const {
+    return existing.value_or(false)
+        ? balance.not_null() && balance->is_valid() && balance->sgn() >= 0
+        : balance.is_null();
+  }
+};
+
+struct NFTItemState {
+  block::StdAddress account;
+  std::uint32_t mc_seqno;
+  std::uint32_t gen_utime;
+  std::uint64_t last_tx_lt;
+  std::optional<bool> existing;
+  std::optional<block::StdAddress> owner;
+
+  bool valid() const {
+    // addr_none is valid for a confirmed NFT. Unknown/absent observations must
+    // not carry a stale owner across the boundary.
+    return existing.value_or(false) || !owner;
+  }
 };
 
 struct VestingData
@@ -572,6 +622,61 @@ struct ValidatorCycleMember {
   uint64_t weight;
   std::optional<td::RefInt256> stake;
   uint32_t source_mc_seqno;
+};
+
+// Complete observations at an MC boundary. Amounts remain TVM integers until
+// serialized as canonical decimal strings (never JSON floating point numbers).
+struct FrozenPosition {
+  std::string pubkey;
+  std::string holder;
+  uint64_t weight;
+  td::RefInt256 stake;
+  bool banned;
+  std::optional<std::string> adnl;
+};
+
+struct FrozenElection {
+  uint32_t election_id;
+  uint32_t unfreeze_at;
+  uint32_t stake_held;
+  std::string vset_hash;
+  td::RefInt256 total_stake;
+  std::vector<FrozenPosition> positions;
+};
+
+struct StakeHolder {
+  uint32_t mc_seqno = 0;
+  uint32_t gen_utime = 0;
+  std::string address;
+  std::string code_hash;
+  std::string data_hash;
+  std::string kind = "unknown";
+  std::optional<std::string> pool;
+  std::string error;
+};
+
+struct ElectorSnapshot {
+  uint32_t mc_seqno;
+  uint32_t gen_utime;
+  std::string address;
+  std::string code_hash;
+  std::string data_hash;
+  std::string previous_data_hash;
+  bool complete = false;
+  bool penalty_activity = false;
+  std::string error;
+  std::vector<FrozenElection> elections;
+  bool applications_complete = false;
+  std::optional<ValidatorElection> applications;
+  std::string applications_error;
+  std::vector<StakeHolder> holders;
+};
+
+struct ValidatorSetState {
+  uint32_t mc_seqno;
+  uint32_t gen_utime;
+  std::string config_hash;
+  std::string config_boc; // base64; allows consumers to verify every roster field
 };
 
 struct ValidatorCycle {
@@ -811,6 +916,26 @@ struct MasterchainBlockDataState {
   std::shared_ptr<block::ConfigInfo> config_;
 };
 
+// One masterchain post-state snapshot. All monetary amounts are exact nanotons.
+struct TotalSupply {
+  std::uint32_t mc_seqno;
+  std::uint32_t gen_utime;
+  td::RefInt256 total;
+  td::RefInt256 accounts;
+  td::RefInt256 dispatch_queue;
+  td::RefInt256 unprocessed_messages;
+  td::RefInt256 unrecovered_validator_fees;
+};
+
+// Net account-status changes in the MC and its newly included shard blocks.
+struct AccountDeltas {
+  std::uint32_t mc_seqno;
+  std::uint32_t gen_utime;
+  std::int64_t delta_uninit = 0;
+  std::int64_t delta_active = 0;
+  std::int64_t delta_frozen = 0;
+};
+
 using BlockchainEvent = std::variant<JettonTransfer,
                                      JettonBurn,
                                      NFTTransfer,
@@ -858,6 +983,11 @@ struct ParsedBlock {
   schema::MasterchainBlockDataState mc_block_;
   std::shared_ptr<vm::CellDbReader> cell_db_reader_;  // for loading previous states
 
+  std::optional<schema::TotalSupply> total_supply_;
+  std::optional<schema::AccountDeltas> account_deltas_;
+  // nullopt = not calculated; an empty vector = successfully calculated zero events.
+  std::optional<std::vector<schema::Deployment>> deployments_;
+
   std::vector<schema::Block> blocks_;
   std::vector<schema::AccountState> account_states_;
   std::vector<schema::MasterchainBlockShard> shard_state_;
@@ -867,9 +997,19 @@ struct ParsedBlock {
   std::vector<schema::BlockchainEvent> events_;
   std::vector<schema::ValidatorElection> validator_elections_;
   std::vector<schema::ValidatorCycle> validator_cycles_;
+  bool elector_baseline_ = false;
+  std::optional<schema::ElectorSnapshot> elector_snapshot_;
+  std::vector<schema::StakeHolder> stake_holder_states_;
+  std::optional<schema::ValidatorSetState> validator_set_state_;
   std::vector<schema::ValidatorComplaint> validator_complaints_;
 
   std::unordered_map<block::StdAddress, std::vector<schema::BlockchainInterfaceV2>> account_interfaces_;
+  // Final-state token probes: true = verified, false = proven non-match,
+  // nullopt = failed/indeterminate. Absence from this map means not probed.
+  std::unordered_map<block::StdAddress, TokenDetectionStatus> token_detection_;
+  // An empty vector is a calculated empty MC; nullopt means not collected.
+  std::optional<std::vector<schema::JettonWalletState>> jetton_wallet_states_;
+  std::optional<std::vector<schema::NFTItemState>> nft_item_states_;
 
   template <class T>
   std::vector<T> get_events() {

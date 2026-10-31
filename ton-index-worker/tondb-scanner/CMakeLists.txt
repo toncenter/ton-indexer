@@ -8,6 +8,7 @@ add_library(tondb-scanner STATIC
     src/DataParser.cpp
     src/TraceAssembler.cpp
     src/queue_state.cpp
+    src/ElectorSnapshots.cpp
     src/parse_token_data.cpp
     src/parse_contract_methods.cpp
     src/convert-utils.cpp

@@ -21,8 +21,10 @@ public:
   struct Options {};
 private:
   InsertManagerClickhouse::Credential credential_;
+  bool collect_gramstat_{false};
 public:
-  InsertManagerClickhouse(Credential credential) : credential_(credential) {}
+  InsertManagerClickhouse(Credential credential, bool collect_gramstat = false)
+    : credential_(credential), collect_gramstat_(collect_gramstat) {}
 
   void start_up() override;
 

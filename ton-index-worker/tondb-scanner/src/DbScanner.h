@@ -48,6 +48,7 @@ public:
   void get_cell_db_reader(td::Promise<std::shared_ptr<vm::CellDbReader>> promise);
   void iterate_temp_block_handles(std::function<void(const ton::validator::BlockHandleInterface&)> f);
   void fetch_block_by_id(ton::BlockIdExt block_id, td::Promise<schema::BlockDataState> promise);
+  void fetch_state_by_id(ton::BlockIdExt block_id, td::Promise<td::Ref<ton::validator::ShardState>> promise);
   void request_catch_up(td::Promise<td::Unit> promise,
                         ton::validator::CatchUpMode mode = ton::validator::CatchUpMode::Force);
 private:

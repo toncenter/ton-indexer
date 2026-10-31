@@ -2,6 +2,9 @@
 #include "td/utils/crypto.h"
 #include "td/utils/misc.h"
 #include "InsertManagerPostgres.h"
+#include "GramstatPostgres.h"
+#include "TokenStatesPostgres.h"
+#include "ElectorSnapshotsPostgres.h"
 #include "convert-utils.h"
 #include "Statistics.h"
 #include "version.h"
@@ -98,7 +101,8 @@ public:
                       bool no_leader = false,
                       bool disable_progress_advance = false,
                       bool kvrocks_skip_current_tables = false,
-                      bool pg_no_copy = false) :
+                      bool pg_no_copy = false,
+                      bool collect_gramstat = false) :
     credential_(std::move(credential)), kvrocks_(std::move(kvrocks)), leader_heartbeat_(leader_heartbeat), worker_id_(std::move(worker_id)),
     insert_tasks_(std::move(insert_tasks)), promise_(std::move(promise)), max_data_depth_(max_data_depth),
     latest_states_prepare_parallelism_(latest_states_prepare_parallelism),
@@ -107,6 +111,7 @@ public:
     no_leader_(no_leader),
     disable_progress_advance_(disable_progress_advance),
     kvrocks_skip_current_tables_(kvrocks_skip_current_tables),
+    collect_gramstat_(collect_gramstat),
     with_copy_(!pg_no_copy) {
       // sorting in descending seqno order for easier processing of interfaces
       std::sort(insert_tasks_.begin(), insert_tasks_.end(), [](const auto& a, const auto& b) {
@@ -131,6 +136,7 @@ private:
   bool no_leader_;
   bool disable_progress_advance_;
   bool kvrocks_skip_current_tables_;
+  bool collect_gramstat_;
   bool with_copy_{true};
   bool is_leader_{false};
   std::optional<LeaderHeartbeatGuard> leader_heartbeat_guard_;
@@ -2852,7 +2858,8 @@ void InsertBatchPostgres::ensure_inserted() {
     seqnos += std::to_string(mc_seqno);
   }
   seqnos += ")";
-  auto query = "select count(*) from blocks where workchain = -1 and seqno in " + seqnos + ";";
+  auto query = "select count(*) from blocks where workchain = -1 and seqno in " + seqnos +
+               gramstat::postgres::completed_block_condition(collect_gramstat_) + ";";
   try {
     td::Timer timer;
     pqxx::connection c(connection_string_);
@@ -3122,6 +3129,15 @@ void InsertBatchPostgres::commit_prepared_batch() {
   }
 
   insert_blocks(txn, with_copy_);
+  // Historical rows always stay in Postgres, also when current states use Kvrocks.
+  jetton_history::postgres::insert_states(txn, insert_tasks_);
+  nft_history::postgres::insert_states(txn, insert_tasks_);
+  staking_history::postgres::insert_states(txn, insert_tasks_);
+  if (collect_gramstat_) {
+    gramstat::postgres::insert_total_supply(txn, insert_tasks_);
+    gramstat::postgres::insert_deployments(txn, insert_tasks_);
+    gramstat::postgres::insert_account_deltas(txn, insert_tasks_);
+  }
   insert_shard_state(txn, with_copy_);
   insert_transactions(txn, with_copy_);
   insert_messages(txn, with_copy_);
@@ -3328,11 +3344,12 @@ void InsertBatchPostgres::insert_blocks(pqxx::work &txn, bool with_copy) {
     "workchain", "shard", "seqno", "root_hash", "file_hash", "mc_block_seqno",
     "global_id", "version", "after_merge", "before_split", "after_split", "want_merge", "want_split", "key_block",
     "vert_seqno_incr", "flags", "gen_utime", "start_lt", "end_lt", "validator_list_hash_short", "gen_catchain_seqno",
-    "min_ref_mc_seqno", "prev_key_block_seqno", "vert_seqno", "master_ref_seqno", "rand_seed", "created_by", "tx_count", "prev_blocks"
+    "min_ref_mc_seqno", "prev_key_block_seqno", "vert_seqno", "master_ref_seqno", "rand_seed", "created_by", "tx_count", "prev_blocks",
+    "transaction_fees", "import_fees", "created", "burned"
   };
   PopulateTableStream stream(txn, "blocks", columns, 1000, with_copy);
   if (!with_copy) {
-    stream.setConflictDoNothing();
+    configure_block_aggregates_upsert(stream);
   }
 
   // Prepare data
@@ -3367,7 +3384,11 @@ void InsertBatchPostgres::insert_blocks(pqxx::work &txn, bool with_copy) {
         block.rand_seed,
         block.created_by,
         block.transactions.size(),
-        block.prev_blocks
+        block.prev_blocks,
+        block.transaction_fees,
+        block.import_fees,
+        block.created,
+        block.burned
       );
       stream.insert_row(std::move(tuple));
     }
@@ -4495,6 +4516,19 @@ void InsertManagerPostgres::start_up() {
     std::_Exit(2);
   }
 
+  if (collect_gramstat_) {
+    try {
+      pqxx::connection c(credential_.get_connection_string());
+      pqxx::work txn(c);
+      gramstat::postgres::ensure_schema(txn);
+      txn.commit();
+      LOG(INFO) << "Gramstat enabled: writing total_supply, deployments and account_deltas";
+    } catch (const std::exception& e) {
+      LOG(ERROR) << "Error preparing Gramstat schema: " << e.what();
+      std::_Exit(2);
+    }
+  }
+
   if (kvrocks_config_.enabled) {
     try {
       KvrocksClient kvrocks(kvrocks_config_);
@@ -4580,7 +4614,8 @@ void InsertManagerPostgres::create_insert_actor(std::vector<InsertTaskStruct> in
       no_leader_,
       disable_progress_advance_,
       kvrocks_skip_current_tables_,
-      pg_no_copy_).release();
+      pg_no_copy_,
+      collect_gramstat_).release();
 }
 
 void InsertManagerPostgres::get_existing_seqnos(td::Promise<std::vector<std::uint32_t>> promise, std::int32_t from_seqno, std::int32_t to_seqno) {
@@ -4591,6 +4626,7 @@ void InsertManagerPostgres::get_existing_seqnos(td::Promise<std::vector<std::uin
     pqxx::work txn(c);
     td::StringBuilder sb;
     sb << "select seqno from blocks where workchain = -1";
+    sb << gramstat::postgres::completed_block_condition(collect_gramstat_);
     if (from_seqno > 0) {
       sb << " and seqno >= " << from_seqno;
     }

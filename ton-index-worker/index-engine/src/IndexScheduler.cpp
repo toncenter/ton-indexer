@@ -1,5 +1,9 @@
 #include "IndexScheduler.h"
 #include "BlockInterfacesDetector.h"
+#include "TotalSupply.h"
+#include "AccountDeltas.h"
+#include "Deployments.h"
+#include "AccountStateHistory.h"
 #include "Statistics.h"
 #include "common/delay.h"
 #include "td/utils/StringBuilder.h"
@@ -516,6 +520,18 @@ void IndexScheduler::seqno_traces_assembled(std::uint32_t mc_seqno, ParsedBlockP
 
 void IndexScheduler::seqno_interfaces_processed(std::uint32_t mc_seqno, ParsedBlockPtr parsed_block) {
     LOG(DEBUG) << "Interfaces processed for seqno " << mc_seqno;
+    parsed_block->elector_baseline_ = mc_seqno == 1 ||
+        (from_seqno_ > 0 && mc_seqno == static_cast<std::uint32_t>(from_seqno_));
+    auto history = account_history::collect_states(mc_seqno, *parsed_block);
+    if (history.is_error()) {
+        auto error = history.move_as_error();
+        LOG(ERROR) << "Failed to collect token states for seqno " << mc_seqno << ": " << error;
+        handle_seqno_failure(mc_seqno, "indexer.token_history_error", std::move(error), false);
+        return;
+    }
+    auto states = history.move_as_ok();
+    parsed_block->jetton_wallet_states_ = std::move(states.jetton_wallets);
+    parsed_block->nft_item_states_ = std::move(states.nft_items);
     finish_seqno_otel_stage(mc_seqno);
     start_seqno_otel_stage(mc_seqno, "detect_actions");
 
@@ -542,6 +558,62 @@ void IndexScheduler::seqno_actions_processed(std::uint32_t mc_seqno, ParsedBlock
         return;
     }
 
+    if (collect_gramstat_) {
+        start_seqno_otel_stage(mc_seqno, "gramstat");
+        auto deltas = gramstat::calculate_account_deltas(mc_seqno, *parsed_block);
+        if (deltas.is_error()) {
+            auto error = deltas.move_as_error();
+            LOG(ERROR) << "Failed to calculate account deltas for seqno " << mc_seqno << ": " << error;
+            handle_seqno_failure(mc_seqno, "indexer.gramstat_error", std::move(error), false);
+            return;
+        }
+        parsed_block->account_deltas_ = deltas.move_as_ok();
+        auto deployments = gramstat::collect_deployments(mc_seqno, *parsed_block);
+        if (deployments.is_error()) {
+            auto error = deployments.move_as_error();
+            LOG(ERROR) << "Failed to collect deployments for seqno " << mc_seqno << ": " << error;
+            handle_seqno_failure(mc_seqno, "indexer.gramstat_error", std::move(error), false);
+            return;
+        }
+        parsed_block->deployments_ = deployments.move_as_ok();
+        auto P = td::PromiseCreator::lambda(
+            [SelfId = actor_id(this), mc_seqno, parsed_block](td::Result<schema::TotalSupply> R) mutable {
+                td::actor::send_closure(SelfId, &IndexScheduler::seqno_supply_processed,
+                                       mc_seqno, std::move(parsed_block), std::move(R));
+            });
+        auto load_state = [scanner = db_scanner_](ton::BlockIdExt id)
+            -> td::actor::Task<td::Ref<ton::validator::ShardState>> {
+            co_return co_await td::actor::ask(scanner, &DbScanner::fetch_state_by_id, id);
+        };
+        td::connect(std::move(P), gramstat::calculate_total_supply(parsed_block->mc_block_, std::move(load_state)));
+        return;
+    }
+    insert_seqno(mc_seqno, std::move(parsed_block));
+}
+
+void IndexScheduler::seqno_supply_processed(std::uint32_t mc_seqno, ParsedBlockPtr parsed_block,
+                                           td::Result<schema::TotalSupply> result) {
+    if (result.is_ok()) {
+        const auto* mc_block = find_masterchain_block(*parsed_block);
+        if (!mc_block || mc_block->workchain != -1 || result.ok().mc_seqno != mc_seqno ||
+            result.ok().gen_utime != static_cast<std::uint32_t>(mc_block->gen_utime)) {
+            result = td::Status::Error("Total supply snapshot does not match the parsed masterchain block");
+        }
+    }
+    if (result.is_error()) {
+        auto error = result.move_as_error();
+        LOG(ERROR) << "Failed to calculate total supply for seqno " << mc_seqno << ": " << error;
+        handle_seqno_failure(mc_seqno, "indexer.gramstat_error", std::move(error), false);
+        return;
+    }
+    parsed_block->total_supply_ = result.move_as_ok();
+    finish_seqno_otel_stage(mc_seqno);
+    insert_seqno(mc_seqno, std::move(parsed_block));
+}
+
+void IndexScheduler::insert_seqno(std::uint32_t mc_seqno, ParsedBlockPtr parsed_block) {
+    const auto* mc_block = find_masterchain_block(*parsed_block);
+    const std::int32_t block_gen_utime = mc_block ? mc_block->gen_utime : 0;
     start_seqno_otel_stage(mc_seqno, "insert_seqno");
     set_seqno_otel_attribute(mc_seqno, "ton.indexer.insert.force", is_in_sync_);
 

@@ -342,6 +342,20 @@ void DbScanner::fetch_block_by_id(ton::BlockIdExt block_id, td::Promise<schema::
   td::actor::send_closure(db_, &RootDb::get_block_handle, block_id, std::move(P));
 }
 
+void DbScanner::fetch_state_by_id(ton::BlockIdExt block_id, td::Promise<td::Ref<ShardState>> promise) {
+  // Auxiliary MC states and zerostate shard tips need no block body. Use the
+  // same secondary RootDb, including its state/cell cache, as normal indexing.
+  auto P = td::PromiseCreator::lambda(
+      [db = db_.get(), promise = std::move(promise)](td::Result<BlockHandle> R) mutable {
+        if (R.is_error()) {
+          promise.set_error(R.move_as_error());
+          return;
+        }
+        td::actor::send_closure(db, &RootDb::get_block_state, R.move_as_ok(), std::move(promise));
+      });
+  td::actor::send_closure(db_, &RootDb::get_block_handle, block_id, std::move(P));
+}
+
 void DbScanner::request_catch_up(td::Promise<td::Unit> promise, CatchUpMode mode) {
   if (mode_ == dbs_readonly || db_.empty()) {
     promise.set_error(td::Status::Error("cannot catch up in readonly mode"));

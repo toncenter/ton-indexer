@@ -1,36 +1,12 @@
 #include "BlockInterfacesDetector.h"
 #include <td/actor/MultiPromise.h>
 #include "Statistics.h"
+#include "AccountStateHistory.h"
 
 // class methods
 void BlockInterfaceProcessor::start_up() {
   timer_.resume();
-  std::unordered_map<block::StdAddress, schema::AccountState>
-      account_states_to_detect;
-  for (const auto &account_state : block_->account_states_) {
-    if (!account_state.code_hash || !account_state.data_hash) {
-      continue;
-    }
-    auto existing = account_states_to_detect.find(account_state.account);
-    if (existing == account_states_to_detect.end() ||
-        account_state.last_trans_lt > existing->second.last_trans_lt) {
-      account_states_to_detect[account_state.account] = account_state;
-      interfaces_[account_state.account] = {};
-
-      // check if need to parse contract methods
-      if (account_state.code.not_null()) {
-        auto code_hash = account_state.code_hash.value();
-        if (contract_methods_.find(code_hash) == contract_methods_.end()) {
-          auto methods_result = parse_contract_methods(account_state.code);
-          if (methods_result.is_ok()) {
-            for (auto method_id : methods_result.move_as_ok()) {
-              contract_methods_.emplace(code_hash, method_id);
-            }
-          }
-        }
-      }
-    }
-  }
+  const auto account_states_to_detect = account_history::final_states(*block_);
 
   std::vector<td::Ref<vm::Cell>> shard_states;
   for (const auto &shard_state : block_->mc_block_.shard_blocks_) {
@@ -47,27 +23,44 @@ void BlockInterfaceProcessor::start_up() {
   auto ig = mp.init_guard();
   ig.add_promise(std::move(P));
 
-  for (const auto &[_, account_state] : account_states_to_detect) {
-    if (account_state.code.is_null()) {
+  for (const auto &[_, state] : account_states_to_detect) {
+    const auto& account_state = *state;
+    // Select the final state BEFORE filtering: a later destruction/freeze must
+    // supersede an earlier active state from another shard block in this MC.
+    interfaces_[account_state.account] = {};
+    if (!account_state.code_hash || !account_state.data_hash ||
+        account_state.code.is_null() || account_state.data.is_null()) {
       continue;
     }
-    td::actor::create_actor<FullDetector>("InterfacesDetector", account_state.account, account_state.code, account_state.data, shard_states, block_->mc_block_.config_, 
-                td::PromiseCreator::lambda([SelfId = actor_id(this), account_state, promise = ig.get_promise()](td::Result<std::vector<typename FullDetector::DetectedInterface>> interfaces) mutable {
+    auto code_hash = account_state.code_hash.value();
+    if (contract_methods_.find(code_hash) == contract_methods_.end()) {
+      auto methods_result = parse_contract_methods(account_state.code, block_->mc_block_.config_.get());
+      if (methods_result.is_ok()) {
+        for (auto method_id : methods_result.move_as_ok()) {
+          contract_methods_.emplace(code_hash, method_id);
+        }
+      }
+    }
+    auto token_detection = std::make_shared<TokenDetectionStatus>();
+    td::actor::create_actor<FullDetector>("InterfacesDetector", account_state.account, account_state.code, account_state.data, shard_states, block_->mc_block_.config_,
+                td::PromiseCreator::lambda([SelfId = actor_id(this), account_state, token_detection, promise = ig.get_promise()](td::Result<std::vector<typename FullDetector::DetectedInterface>> interfaces) mutable {
                     if (interfaces.is_error()) {
                         promise.set_error(interfaces.move_as_error());
                         return;
                     }
                     auto detected_interfaces = interfaces.move_as_ok();
                     td::actor::send_closure(SelfId, &BlockInterfaceProcessor::process_address_interfaces, account_state.account, std::move(detected_interfaces), 
-                                            account_state.code_hash.value(), account_state.data_hash.value(), account_state.last_trans_lt, account_state.timestamp, std::move(promise));
-            })).release();
+                                            account_state.code_hash.value(), account_state.data_hash.value(), account_state.last_trans_lt,
+                                            account_state.timestamp, *token_detection, std::move(promise));
+            }), token_detection).release();
   }
 }
 void BlockInterfaceProcessor::process_address_interfaces(
     block::StdAddress address,
     std::vector<FullDetector::DetectedInterface> interfaces,
     td::Bits256 code_hash, td::Bits256 data_hash, uint64_t last_trans_lt,
-    uint32_t last_trans_now, td::Promise<td::Unit> promise) {
+    uint32_t last_trans_now, TokenDetectionStatus token_detection, td::Promise<td::Unit> promise) {
+  block_->token_detection_[address] = token_detection;
   for (auto &interface : interfaces) {
     std::visit(
         [&](auto &&arg) {

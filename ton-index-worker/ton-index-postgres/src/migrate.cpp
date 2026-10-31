@@ -5,6 +5,9 @@
 #include "td/utils/logging.h"
 #include "pqxx/pqxx"
 #include "version.h"
+#include "GramstatSchema.h"
+#include "TokenStatesSchema.h"
+#include "ElectorSnapshotsSchema.h"
 
 bool migration_needed(std::optional<Version> current_version, Version migration_version) {
   return current_version.has_value() && *current_version < migration_version;
@@ -1605,6 +1608,34 @@ void run_1_3_1_migrations(const std::string& connection_string, bool dry_run) {
   LOG(INFO) << "Migration to version 1.3.1 completed successfully.";
 }
 
+void run_1_3_2_migrations(const std::string& connection_string, bool dry_run) {
+  LOG(INFO) << "Running migrations to version 1.3.2";
+  const auto query = std::string(
+      "ALTER TABLE blocks "
+      "ADD COLUMN IF NOT EXISTS transaction_fees numeric(38, 0), "
+      "ADD COLUMN IF NOT EXISTS import_fees numeric(38, 0), "
+      "ADD COLUMN IF NOT EXISTS created numeric(38, 0), "
+      "ADD COLUMN IF NOT EXISTS burned numeric(38, 0);\n") +
+      gramstat::postgres::SCHEMA_SQL + jetton_history::postgres::SCHEMA_SQL +
+      nft_history::postgres::SCHEMA_SQL + staking_history::postgres::SCHEMA_SQL +
+      set_version_query({1, 3, 2});
+  if (dry_run) {
+    std::cout << query << std::endl;
+    return;
+  }
+  try {
+    pqxx::connection c(connection_string);
+    pqxx::work txn(c);
+    txn.exec("SELECT pg_advisory_xact_lock(hashtext('gramstat.schema'))");
+    txn.exec(query).no_rows();
+    txn.commit();
+  } catch (const std::exception& e) {
+    LOG(ERROR) << "Error while migrating database: " << e.what();
+    std::exit(1);
+  }
+  LOG(INFO) << "Migration to version 1.3.2 completed successfully.";
+}
+
 void create_indexes(std::string connection_string, bool dry_run) {
   try {
     pqxx::connection c(connection_string);
@@ -1828,9 +1859,13 @@ int main(int argc, char *argv[]) {
       run_1_3_0_migrations(pg_connection_string, custom_types, dry_run);
       current_version = Version{1, 3, 0};
     }
-    if (rerun_last_migration || migration_needed(current_version, Version{1, 3, 1})) {
+    if (migration_needed(current_version, Version{1, 3, 1})) {
       run_1_3_1_migrations(pg_connection_string, dry_run);
       current_version = Version{1, 3, 1};
+    }
+    if (rerun_last_migration || migration_needed(current_version, Version{1, 3, 2})) {
+      run_1_3_2_migrations(pg_connection_string, dry_run);
+      current_version = Version{1, 3, 2};
     }
 
     // In future, more migrations will be added here

@@ -2,6 +2,8 @@
 #include "tokens-tlb.h"
 #include "common/checksum.h"
 #include "safe-parse.h"
+#include "parse_contract_methods.h"
+#include "crypto/block/mc-config.h"
 
 namespace {
 
@@ -10,11 +12,32 @@ constexpr std::size_t kMaxContractMethods = 4096;
 }  // namespace
 
 
-td::Result<std::vector<unsigned long long>> parse_contract_methods(td::Ref<vm::Cell> code_cell) {
+td::Result<std::vector<unsigned long long>> parse_contract_methods(
+    td::Ref<vm::Cell> code_cell, const block::ConfigInfo* config) {
   // check if first op is SETCP0
   // check if second op is DICTPUSHCONST
   // and load method ids from this dict of methods
   return safe_parse::guard("Failed to parse contract's method ids", [&]() -> td::Result<std::vector<unsigned long long>> {
+    for (unsigned depth = 0; ; ++depth) {
+      if (code_cell.is_null()) {
+        return td::Status::Error("Contract code is missing");
+      }
+      vm::CellSlice code(vm::NoVm{}, code_cell);
+      if (code.special_type() != vm::Cell::SpecialType::Library) {
+        break;
+      }
+      if (!config || depth >= 16) {
+        return td::Status::Error("Cannot resolve contract code library reference");
+      }
+      td::Bits256 hash;
+      if (!(code.advance(8) && code.fetch_bits_to(hash))) {
+        return td::Status::Error("Invalid contract code library reference");
+      }
+      code_cell = config->lookup_library(hash);
+      if (code_cell.is_null()) {
+        return td::Status::Error("Contract code library is unavailable");
+      }
+    }
     vm::CellSlice cs = vm::load_cell_slice(code_cell);
 
     auto first_op = cs.fetch_ulong(8);

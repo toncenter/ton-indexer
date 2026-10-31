@@ -26,6 +26,7 @@ public:
 
     void start_up() override;
     void process_address_interfaces(block::StdAddress address, std::vector<typename FullDetector::DetectedInterface> interfaces,
-                                    td::Bits256 code_hash, td::Bits256 data_hash, uint64_t last_trans_lt, uint32_t last_trans_now, td::Promise<td::Unit> promise);
+                                     td::Bits256 code_hash, td::Bits256 data_hash, uint64_t last_trans_lt, uint32_t last_trans_now,
+                                     TokenDetectionStatus token_detection, td::Promise<td::Unit> promise);
     void finish(td::Result<td::Unit> status);
 };

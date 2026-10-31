@@ -15,7 +15,119 @@
 #include "convert-utils.h"
 #include "ActionDetector.h"
 #include "IndexData.h"
+#include "smc-interfaces/execute-smc.h"
+#include "smc-fixture.h"
+#include "parse_contract_methods.h"
 
+
+TEST(TonDbScanner, get_method_uses_snapshot_time) {
+    vm::init_op_cp0();
+    // DROP the method id; NOW. The timestamp comes from the MC snapshot,
+    // independently of the date/time at which this historical block is replayed.
+    auto code = vm::CellBuilder().store_long(0x30f823, 24).finalize();
+    auto data = vm::CellBuilder().finalize();
+    auto address = block::StdAddress(0, td::Bits256::zero());
+    for (auto now : {1600000000U, 1700000000U, 1600000000U}) {
+        auto config = test_smc_config(now);
+        auto result = execute_smc_method<1>(address, code, data, config, "snapshot_time", {},
+                                            {vm::StackEntry::Type::t_int}).move_as_ok();
+        ASSERT_EQ(result[0].as_int()->to_long(), now);
+    }
+    ASSERT_TRUE(execute_smc_method(address, code, data, nullptr, "snapshot_time", {}).is_error());
+}
+
+TEST(TonDbScanner, jetton_missing_getter_is_not_a_failed_getter) {
+    vm::init_op_cp0();
+    auto config = test_smc_config(1700000000);
+    auto address = block::StdAddress(0, td::Bits256::zero());
+    auto data = vm::CellBuilder().finalize();
+    auto throw11 = vm::CellBuilder().store_long(0xf20b, 16).finalize();
+    auto missing = JettonWalletDetectorR::detect(address, test_method_dispatcher(42, throw11), data, {}, config);
+    ASSERT_TRUE(missing.is_error());
+    ASSERT_EQ(missing.error().code(), JettonWalletDetectorR::NOT_JETTON_WALLET);
+    // Identical exit code, but this time it was thrown INSIDE get_wallet_data.
+    auto failed = JettonWalletDetectorR::detect(address, test_method_dispatcher(97026, throw11), data, {}, config);
+    ASSERT_TRUE(failed.is_error());
+    ASSERT_EQ(failed.error().code(), SMC_METHOD_NOT_FOUND);
+    // An unknown dispatcher or an invalid return shape is not proof of absence.
+    auto unsupported = JettonWalletDetectorR::detect(address, throw11, data, {}, config);
+    ASSERT_TRUE(unsupported.is_error());
+    ASSERT_TRUE(unsupported.error().code() != JettonWalletDetectorR::NOT_JETTON_WALLET);
+    auto invalid = JettonWalletDetectorR::detect(address,
+        test_method_dispatcher(97026, vm::CellBuilder().store_long(0x71, 8).finalize()), data, {}, config);
+    ASSERT_TRUE(invalid.is_error());
+    ASSERT_TRUE(invalid.error().code() != JettonWalletDetectorR::NOT_JETTON_WALLET);
+}
+
+TEST(TonDbScanner, contract_methods_resolve_libraries) {
+    vm::init_op_cp0();
+    auto throw11 = vm::CellBuilder().store_long(0xf20b, 16).finalize();
+    auto wallet = test_method_dispatcher(97026, throw11);
+    auto ordinary = test_method_dispatcher(42, throw11);
+    auto config = test_smc_config(1700000000, {wallet, ordinary});
+    auto wallet_ref = test_library_reference(wallet);
+    auto ordinary_ref = test_library_reference(ordinary);
+    auto methods = parse_contract_methods(wallet_ref, config.get()).move_as_ok();
+    ASSERT_EQ(methods.size(), 1u);
+    ASSERT_EQ(methods[0], 97026ULL);
+    ASSERT_TRUE(parse_contract_methods(wallet_ref).is_error());
+    auto missing_config = test_smc_config(1700000000);
+    ASSERT_TRUE(parse_contract_methods(wallet_ref, missing_config.get()).is_error());
+    auto address = block::StdAddress(0, td::Bits256::zero());
+    auto data = vm::CellBuilder().finalize();
+    auto missing = JettonWalletDetectorR::detect(address, ordinary_ref, data, {}, config);
+    ASSERT_TRUE(missing.is_error());
+    ASSERT_EQ(missing.error().code(), JettonWalletDetectorR::NOT_JETTON_WALLET);
+    auto failed = JettonWalletDetectorR::detect(address, wallet_ref, data, {}, config);
+    ASSERT_TRUE(failed.is_error());
+    ASSERT_EQ(failed.error().code(), SMC_METHOD_NOT_FOUND);
+}
+
+TEST(TonDbScanner, nft_identity_survives_metadata_errors) {
+    vm::init_op_cp0();
+    auto config = test_smc_config(1700000000);
+    auto address = block::StdAddress(0, td::Bits256::zero());
+    auto owner = block::StdAddress(-1, td::Bits256::zero());
+    auto empty = vm::CellBuilder().finalize();
+    for (auto content : std::vector<td::Ref<vm::Cell>>{{}, empty, vm::CellBuilder().store_long(255, 8).finalize()}) {
+        auto result = NftItemDetectorR::detect(address, test_nft_code(true, test_address_cell(owner), content),
+                                               empty, {}, config).move_as_ok();
+        ASSERT_TRUE(result.init && result.owner_address == owner && !result.content);
+    }
+    auto uninitialized = NftItemDetectorR::detect(address, test_nft_code(false, {}, {}), empty, {}, config).move_as_ok();
+    ASSERT_TRUE(!uninitialized.init && !uninitialized.owner_address);
+    auto ownerless = NftItemDetectorR::detect(address, test_nft_code(true, test_address_cell(), {}), empty, {}, config).move_as_ok();
+    ASSERT_TRUE(ownerless.init && !ownerless.owner_address);
+    ASSERT_TRUE(NftItemDetectorR::detect(address, test_nft_code(true, {}, empty), empty, {}, config).is_error());
+
+    auto throw11 = vm::CellBuilder().store_long(0xf20b, 16).finalize();
+    auto absent = NftItemDetectorR::detect(address, test_method_dispatcher(42, throw11), empty, {}, config);
+    ASSERT_EQ(absent.error().code(), NftItemDetectorR::NOT_NFT_ITEM);
+    auto failed = NftItemDetectorR::detect(address, test_method_dispatcher(102351, throw11), empty, {}, config);
+    ASSERT_EQ(failed.error().code(), SMC_METHOD_NOT_FOUND);
+    auto unsupported = NftItemDetectorR::detect(address, throw11, empty, {}, config);
+    ASSERT_TRUE(unsupported.error().code() != NftItemDetectorR::NOT_NFT_ITEM);
+
+    // A real shard dictionary exercises collection lookup and the address
+    // round-trip. Content getter throws, but the core identity remains valid.
+    auto collection = block::StdAddress(0, td::Bits256::ones());
+    auto item_code = test_nft_code(true, test_address_cell(owner), empty, test_address_cell(collection));
+    auto lookup_failed = NftItemDetectorR::detect(address, item_code, empty, {}, config);
+    ASSERT_TRUE(lookup_failed.is_error() && lookup_failed.error().code() != NftItemDetectorR::NOT_NFT_ITEM);
+    for (bool match : {true, false}) {
+        auto lookup_code = vm::CellBuilder().store_long(0x30, 8).store_long(0x89, 8)
+            .store_ref(test_address_cell(match ? address : owner)).finalize();
+        auto collection_code = test_methods_dispatcher({{92067, lookup_code}, {68445, throw11}});
+        auto result = NftItemDetectorR::detect(address, item_code, empty,
+            {test_shard_with_account(collection, collection_code)}, config);
+        if (match) {
+            auto item = result.move_as_ok();
+            ASSERT_TRUE(item.init && item.owner_address == owner && !item.content);
+        } else {
+            ASSERT_EQ(result.error().code(), NftItemDetectorR::NOT_NFT_ITEM);
+        }
+    }
+}
 
 TEST(convert, to_raw_address) {
     auto address = vm::std_boc_deserialize(td::base64_decode(td::Slice("te6ccgEBAQEAJAAAQ4ARhy+Ifz/haSyza6FGBWNSde+ZjHy+uBieS1O4PxaPVnA=")).move_as_ok()).move_as_ok();
@@ -329,7 +441,10 @@ TEST(db_event_listener, delivers_events_and_survives_fifo_recreation) {
 
 int main(int argc, char **argv) {
   td::set_default_failure_signal_handler().ensure();
-    auto &runner = td::TestsRunner::get_default();
+  auto &runner = td::TestsRunner::get_default();
+  for (int i = 1; i < argc; ++i) {
+    runner.add_substr_filter(argv[i]);
+  }
   runner.run_all();
   return 0;
 }
