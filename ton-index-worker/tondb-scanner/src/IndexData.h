@@ -624,6 +624,61 @@ struct ValidatorCycleMember {
   uint32_t source_mc_seqno;
 };
 
+// Complete observations at an MC boundary. Amounts remain TVM integers until
+// serialized as canonical decimal strings (never JSON floating point numbers).
+struct FrozenPosition {
+  std::string pubkey;
+  std::string holder;
+  uint64_t weight;
+  td::RefInt256 stake;
+  bool banned;
+  std::optional<std::string> adnl;
+};
+
+struct FrozenElection {
+  uint32_t election_id;
+  uint32_t unfreeze_at;
+  uint32_t stake_held;
+  std::string vset_hash;
+  td::RefInt256 total_stake;
+  std::vector<FrozenPosition> positions;
+};
+
+struct StakeHolder {
+  uint32_t mc_seqno = 0;
+  uint32_t gen_utime = 0;
+  std::string address;
+  std::string code_hash;
+  std::string data_hash;
+  std::string kind = "unknown";
+  std::optional<std::string> pool;
+  std::string error;
+};
+
+struct ElectorSnapshot {
+  uint32_t mc_seqno;
+  uint32_t gen_utime;
+  std::string address;
+  std::string code_hash;
+  std::string data_hash;
+  std::string previous_data_hash;
+  bool complete = false;
+  bool penalty_activity = false;
+  std::string error;
+  std::vector<FrozenElection> elections;
+  bool applications_complete = false;
+  std::optional<ValidatorElection> applications;
+  std::string applications_error;
+  std::vector<StakeHolder> holders;
+};
+
+struct ValidatorSetState {
+  uint32_t mc_seqno;
+  uint32_t gen_utime;
+  std::string config_hash;
+  std::string config_boc; // base64; allows consumers to verify every roster field
+};
+
 struct ValidatorCycle {
   std::optional<uint32_t> election_id;
   uint32_t utime_since;
@@ -942,6 +997,10 @@ struct ParsedBlock {
   std::vector<schema::BlockchainEvent> events_;
   std::vector<schema::ValidatorElection> validator_elections_;
   std::vector<schema::ValidatorCycle> validator_cycles_;
+  bool elector_baseline_ = false;
+  std::optional<schema::ElectorSnapshot> elector_snapshot_;
+  std::vector<schema::StakeHolder> stake_holder_states_;
+  std::optional<schema::ValidatorSetState> validator_set_state_;
   std::vector<schema::ValidatorComplaint> validator_complaints_;
 
   std::unordered_map<block::StdAddress, std::vector<schema::BlockchainInterfaceV2>> account_interfaces_;

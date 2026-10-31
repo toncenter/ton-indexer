@@ -349,3 +349,5 @@ tmp/
 
 **/ton-mch-engine/generated/
 **/ton-abi/generated/
+# CocoIndex Code (ccc)
+/.cocoindex_code/

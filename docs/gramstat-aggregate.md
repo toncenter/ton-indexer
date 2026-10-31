@@ -188,6 +188,10 @@ verified #34 rosters and full round-level location/distribution snapshots. GeoIP
 fields are reused directly from session stats, with explicit coverage and unknown
 values; no additional MMDB lookup is performed. See [validator rounds](gramstat-validators.md).
 
+The `staking` handler derives exact accepted/selected/remaining principal and
+holder-type/Telegram breakdowns from native Elector history and SS. See
+[Staked Gram](gramstat-staking.md) for source schema, uncertainty and replay.
+
 ## Checks
 
 ```bash

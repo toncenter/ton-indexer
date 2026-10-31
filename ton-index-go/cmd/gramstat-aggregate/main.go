@@ -14,6 +14,7 @@ import (
 
 	"github.com/toncenter/ton-indexer/ton-index-go/internal/gramstat"
 	"github.com/toncenter/ton-indexer/ton-index-go/internal/gramstat/handlers/actions"
+	"github.com/toncenter/ton-indexer/ton-index-go/internal/gramstat/handlers/staking"
 	"github.com/toncenter/ton-indexer/ton-index-go/internal/gramstat/handlers/validators"
 )
 
@@ -42,12 +43,14 @@ func run(log *slog.Logger) error {
 		fmt.Print(gramstat.DailyMigration)
 		fmt.Print(gramstat.StarsSchema)
 		fmt.Print(validators.Schema)
+		fmt.Print(staking.Schema)
 		return nil
 	}
 	if *list {
 		fmt.Println("actions: " + strings.Join(actions.Metrics, ", "))
 		fmt.Println("validators: elected #34 count and roster by round")
 		fmt.Println("validator_geo: session-stats locations, countries and coverage by round")
+		fmt.Println("staking: accepted, selected and remaining Elector stake with holder/Telegram attribution")
 		return nil
 	}
 	if *timeout <= 0 {
@@ -73,9 +76,12 @@ func run(log *slog.Logger) error {
 		return err
 	}
 	registry := []gramstat.Handler{
+		&staking.Handler{Source: staking.Postgres{DSN: os.Getenv("GRAMSTAT_PG_DSN")},
+			SS:   staking.SessionStats{URL: os.Getenv("GRAMSTAT_SS_URL"), User: os.Getenv("GRAMSTAT_SS_USER"), Password: os.Getenv("GRAMSTAT_SS_PASSWORD")},
+			Sink: ch, Log: log},
 		&actions.Handler{Source: actions.Postgres{DSN: os.Getenv("GRAMSTAT_PG_DSN")}, Sink: ch, Log: log},
 		&validators.Handler{Source: validators.Postgres{DSN: os.Getenv("GRAMSTAT_PG_DSN")},
-			Verifier: validators.ConfigRPC{URL: strings.TrimRight(os.Getenv("GRAMSTAT_CONFIG_URL"), "/"), APIKey: os.Getenv("GRAMSTAT_CONFIG_API_KEY")},
+			Verifier: validators.IndexedConfig{DSN: os.Getenv("GRAMSTAT_PG_DSN")},
 			Sink:     validators.Store{CH: ch}, Log: log},
 		&validators.GeoHandler{Source: validators.SessionStats{URL: os.Getenv("GRAMSTAT_SS_URL"), User: os.Getenv("GRAMSTAT_SS_USER"), Password: os.Getenv("GRAMSTAT_SS_PASSWORD")},
 			Sink: validators.Store{CH: ch}, Log: log},

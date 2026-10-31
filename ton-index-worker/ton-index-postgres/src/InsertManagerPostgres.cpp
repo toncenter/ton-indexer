@@ -4,6 +4,7 @@
 #include "InsertManagerPostgres.h"
 #include "GramstatPostgres.h"
 #include "TokenStatesPostgres.h"
+#include "ElectorSnapshotsPostgres.h"
 #include "convert-utils.h"
 #include "Statistics.h"
 #include "version.h"
@@ -3131,6 +3132,7 @@ void InsertBatchPostgres::commit_prepared_batch() {
   // Historical rows always stay in Postgres, also when current states use Kvrocks.
   jetton_history::postgres::insert_states(txn, insert_tasks_);
   nft_history::postgres::insert_states(txn, insert_tasks_);
+  staking_history::postgres::insert_states(txn, insert_tasks_);
   if (collect_gramstat_) {
     gramstat::postgres::insert_total_supply(txn, insert_tasks_);
     gramstat::postgres::insert_deployments(txn, insert_tasks_);

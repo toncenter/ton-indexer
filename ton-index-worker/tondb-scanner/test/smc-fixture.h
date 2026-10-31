@@ -5,10 +5,13 @@
 
 // A minimal MC zerostate with a real ConfigInfo timestamp. No network fixtures.
 inline std::shared_ptr<block::ConfigInfo> test_smc_config(
-    std::uint32_t now, const std::vector<td::Ref<vm::Cell>>& libraries = {}) {
+    std::uint32_t now, const std::vector<td::Ref<vm::Cell>>& libraries = {},
+    const std::vector<std::pair<int32_t, td::Ref<vm::Cell>>>& params = {}) {
     auto empty = vm::CellBuilder().finalize();
     vm::Dictionary config_dict{32};
     CHECK(config_dict.set_ref(td::BitArray<32>::zero(), empty));
+    if (!params.empty()) CHECK(config_dict.set_ref(td::BitArray<32>(31), vm::CellBuilder().store_long(0,1).finalize()));
+    for (const auto& [id, cell] : params) CHECK(config_dict.set_ref(td::BitArray<32>(id), cell));
     auto mc_aux = vm::CellBuilder().store_zeroes(16 + 65 + 66 + 1 + 1).finalize();
     auto mc_extra = vm::CellBuilder().store_long(0xcc26, 16).store_long(0, 1)
         .store_zeroes(256).store_ref(config_dict.get_root_cell()).store_ref(mc_aux)
@@ -32,7 +35,8 @@ inline std::shared_ptr<block::ConfigInfo> test_smc_config(
         .store_long(1, 1).store_ref(mc_extra).finalize();
     ton::BlockIdExt id{ton::masterchainId, ton::shardIdAll, 0, td::Bits256::zero(), td::Bits256::zero()};
     return block::ConfigInfo::extract_config(root, id,
-        libraries.empty() ? 0 : block::ConfigInfo::needLibraries).move_as_ok();
+        (libraries.empty() ? 0 : block::ConfigInfo::needLibraries) |
+        (params.empty() ? 0 : block::ConfigInfo::needSpecialSmc)).move_as_ok();
 }
 
 inline td::Ref<vm::Cell> test_library_reference(const td::Ref<vm::Cell>& library) {
@@ -40,11 +44,11 @@ inline td::Ref<vm::Cell> test_library_reference(const td::Ref<vm::Cell>& library
 }
 
 inline td::Ref<vm::Cell> test_active_account(const block::StdAddress& address,
-                                         const td::Ref<vm::Cell>& code, td::Ref<vm::Cell> data = {}) {
+                                         const td::Ref<vm::Cell>& code, td::Ref<vm::Cell> data = {}, uint64_t last_trans_end = 0) {
     vm::CellBuilder account;
     account.store_long(1, 1).store_long(4, 3).store_long(address.workchain, 8).store_bits(address.addr.bits(), 256);
     account.store_zeroes(3 + 3 + 3 + 32 + 1);  // StorageInfo
-    account.store_zeroes(64 + 5).store_long(1, 1);  // AccountStorage, active
+    account.store_long(last_trans_end, 64).store_zeroes(5).store_long(1, 1);  // AccountStorage, active
     account.store_long(0, 2);  // StateInit split_depth/special
     CHECK(account.store_maybe_ref(code));
     CHECK(account.store_maybe_ref(data));

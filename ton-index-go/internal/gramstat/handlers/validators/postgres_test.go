@@ -2,6 +2,7 @@ package validators
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
 	"net/url"
 	"os"
@@ -76,6 +77,26 @@ INSERT INTO validator_cycles VALUES(100,200,2,1,9007199254741000,12),(300,400,2,
 	}
 	if err = rows[0].validate(); err != nil {
 		t.Fatal(err)
+	}
+	boc := configBOC(t, r)
+	hash, err := verifyConfig(boc, rows[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = fixture.Exec(ctx, `CREATE TABLE validator_set_states(mc_seqno bigint PRIMARY KEY,gen_utime bigint,config_hash text,config_boc text)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = fixture.Exec(ctx, `INSERT INTO validator_set_states VALUES(10,100,$1,$2)`, hash, base64.StdEncoding.EncodeToString(boc)); err != nil {
+		t.Fatal(err)
+	}
+	verifier := IndexedConfig{DSN: testDSN}
+	if got, err := verifier.Verify(ctx, rows[0]); err != nil || got != hash {
+		t.Fatalf("native config: %s %v", got, err)
+	}
+	bad := rows[0]
+	bad.AnchorRoot = "different"
+	if _, err = verifier.Verify(ctx, bad); err == nil {
+		t.Fatal("native config accepted wrong MC identity")
 	}
 	stored := map[uint32]Coverage{100: {Since: 100, Until: 200, Through: 200, Version: Version}}
 	rows, err = source.Collect(ctx, time.Unix(120, 0), time.Unix(500, 0), time.Unix(220, 0), stored)

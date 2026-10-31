@@ -42,7 +42,9 @@ public:
     }
     auto validator_data_status = staking_processor.process_snapshots();
     if (validator_data_status.is_error()) {
-      LOG(DEBUG) << "Failed to process validator snapshots: " << validator_data_status.move_as_error();
+      promise_.set_error(validator_data_status.move_as_error());
+      stop();
+      return;
     }
     g_statistics.record_time(DETECT_ACTIONS_SEQNO, timer_.elapsed() * 1e6);
     promise_.set_value(std::move(block_));

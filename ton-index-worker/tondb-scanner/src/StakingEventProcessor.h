@@ -2,10 +2,12 @@
 
 #include "common/refint.h"
 #include "DataParser.h"
+#include "ElectorSnapshots.h"
 #include "convert-utils.h"
 #include "emulator/transaction-emulator.h"
 #include "smc-interfaces/NominatorPool.h"
 #include "smc-interfaces/execute-smc.h"
+#include "smc-interfaces/FetchAccountFromShard.h"
 #include "crypto/block/mc-config.h"
 #include "td/utils/base64.h"
 #include "td/utils/JsonBuilder.h"
@@ -16,6 +18,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <functional>
 #include <limits>
 #include <map>
 #include <optional>
@@ -27,11 +30,18 @@
 #include <vector>
 
 class StakingEventProcessor {
+public:
+  using Getter = std::function<td::Result<std::vector<vm::StackEntry>>(
+      const schema::AccountState&, const std::string&, std::vector<vm::StackEntry>, uint32_t)>;
 private:
   ParsedBlockPtr block_;
+  Getter getter_;
+  uint64_t first_elector_lt_ = std::numeric_limits<uint64_t>::max();
+  std::string previous_elector_data_hash_;
 
 public:
-  explicit StakingEventProcessor(ParsedBlockPtr block): block_(std::move(block)) {
+  explicit StakingEventProcessor(ParsedBlockPtr block, Getter getter = {}):
+      block_(std::move(block)), getter_(std::move(getter)) {
   }
 
   void process_transaction(const schema::Transaction& transaction) {
@@ -374,26 +384,31 @@ private:
         transaction.hash,
         transaction.lt,
         transaction.now));
+    if (transaction.lt < first_elector_lt_) {
+      first_elector_lt_ = transaction.lt;
+      previous_elector_data_hash_ = before_hash ? before_hash->to_hex() : "";
+    }
     return before_hash != after_hash;
   }
 
   struct ValidatorSnapshotTriggers {
     bool has_key_block{false};
+    bool data_changed{false};
     bool active_election_dirty{false};
     std::unordered_set<std::uint32_t> complaint_election_ids;
 
     bool needs_cycles() const {
-      return has_key_block || !complaint_election_ids.empty();
+      return has_key_block || data_changed;
     }
 
     bool has_work() const {
-      return has_key_block || active_election_dirty || !complaint_election_ids.empty();
+      return needs_cycles() || active_election_dirty;
     }
   };
 
   ValidatorSnapshotTriggers collect_validator_snapshot_triggers() {
     ValidatorSnapshotTriggers triggers;
-    triggers.has_key_block = has_masterchain_key_block();
+    triggers.has_key_block = has_masterchain_key_block() || block_->elector_baseline_;
 
     auto elector_address_r = get_elector_std_address();
     if (elector_address_r.is_error()) {
@@ -419,6 +434,7 @@ private:
         if (!data_changed) {
           continue;
         }
+        triggers.data_changed = true;
 
         if (std::holds_alternative<schema::TransactionDescr_tick_tock>(transaction.description)) {
           triggers.active_election_dirty = true;
@@ -569,40 +585,12 @@ private:
     return td::Status::Error(PSLICE() << "Expected cell stack entry for " << field_name);
   }
 
-  td::Result<std::unordered_map<std::string, td::RefInt256>> parse_frozen_stakes_by_pubkey(
-      const vm::StackEntry& entry) const {
-    std::unordered_map<std::string, td::RefInt256> result;
-    TRY_RESULT(frozen_cell, stack_cell_or_null(entry, "past_election_frozen_dict"));
-    if (frozen_cell.is_null()) {
-      return result;
-    }
-
-    vm::Dictionary frozen_dict{frozen_cell, 256};
-    for (auto it = frozen_dict.begin(); !it.eof(); ++it) {
-      auto value = *it.cur_value();
-      td::Bits256 stake_holder_addr;
-      unsigned long long frozen_weight = 0;
-      if (!value.fetch_bits_to(stake_holder_addr) || !value.fetch_uint_to(64, frozen_weight)) {
-        LOG(DEBUG) << "Failed to parse frozen validator address/weight";
-        continue;
-      }
-
-      auto stake = block::tlb::t_Grams.as_integer_skip(value);
-      if (stake.is_null()) {
-        LOG(DEBUG) << "Failed to parse frozen validator stake";
-        continue;
-      }
-
-      result[td::BitArray<256>(it.cur_pos()).to_hex()] = stake;
-    }
-    return result;
-  }
-
   td::Result<std::vector<vm::StackEntry>> run_get_method_at_time(
       const schema::AccountState& account_state,
       const std::string& method_id,
       std::vector<vm::StackEntry> input,
       uint32_t now) const {
+    if (getter_) return getter_(account_state, method_id, std::move(input), now);
     if (account_state.code.is_null() || account_state.data.is_null()) {
       return td::Status::Error("Account state has no code or data");
     }
@@ -634,7 +622,7 @@ private:
     TRY_RESULT(elector_address, get_elector_std_address());
     const schema::AccountState* latest_state = nullptr;
     for (const auto& account_state : block_->account_states_) {
-      if (account_state.account != elector_address || account_state.code.is_null() || account_state.data.is_null()) {
+      if (account_state.account != elector_address) {
         continue;
       }
       if (latest_state == nullptr || account_state.last_trans_lt > latest_state->last_trans_lt) {
@@ -644,6 +632,7 @@ private:
     if (latest_state == nullptr) {
       return std::optional<const schema::AccountState*>{};
     }
+    if (latest_state->code.is_null() || latest_state->data.is_null()) return td::Status::Error("Elector has no final active state");
     return std::optional<const schema::AccountState*>{latest_state};
   }
 
@@ -720,56 +709,16 @@ private:
       const schema::AccountState& elector_state) const {
     std::unordered_map<std::string, PastElectionInfo> result;
     TRY_RESULT(stack, run_get_method_at_time(elector_state, "past_elections", {}, current_block_time()));
-    if (stack.empty()) {
-      return result;
-    }
-    TRY_RESULT(elections, stack_list_to_vector(stack[0], "past_elections"));
-    for (const auto& election_entry : elections) {
-      auto election_tuple = election_entry.as_tuple();
-      if (election_tuple.is_null() || election_tuple->size() < 2) {
-        continue;
-      }
-      auto election_id = stack_int_to_u32(election_tuple->at(0), "past_election_id");
-      if (election_id.is_error()) {
-        continue;
-      }
-      auto election_id_value = election_id.move_as_ok();
-      td::Result<std::string> vset_hash = td::Status::Error("past election vset hash not found");
-      td::Result<td::RefInt256> total_stake = td::Status::Error("past election total stake not found");
-      std::unordered_map<std::string, td::RefInt256> stakes_by_pubkey;
-      if (election_tuple->size() >= 6) {
-        vset_hash = stack_int_to_hex(election_tuple->at(3), "past_election_vset_hash");
-        auto stakes_r = parse_frozen_stakes_by_pubkey(election_tuple->at(4));
-        if (stakes_r.is_ok()) {
-          stakes_by_pubkey = stakes_r.move_as_ok();
-        } else {
-          LOG(DEBUG) << "Failed to parse frozen stakes for past election " << election_id_value
-                     << ": " << stakes_r.move_as_error();
-        }
-        total_stake = stack_int(election_tuple->at(5), "past_election_total_stake");
-      } else {
-        auto data_tuple = election_tuple->at(1).as_tuple();
-        if (data_tuple.not_null() && data_tuple->size() >= 5) {
-          vset_hash = stack_int_to_hex(data_tuple->at(2), "past_election_vset_hash");
-          auto stakes_r = parse_frozen_stakes_by_pubkey(data_tuple->at(3));
-          if (stakes_r.is_ok()) {
-            stakes_by_pubkey = stakes_r.move_as_ok();
-          } else {
-            LOG(DEBUG) << "Failed to parse frozen stakes for past election " << election_id_value
-                       << ": " << stakes_r.move_as_error();
-          }
-          total_stake = stack_int(data_tuple->at(4), "past_election_total_stake");
-        }
-      }
-      if (vset_hash.is_ok() && total_stake.is_ok()) {
-        auto normalized_hash = vset_hash.move_as_ok();
-        result[normalized_hash] = PastElectionInfo{
-            .election_id = election_id_value,
-            .total_stake = total_stake.move_as_ok(),
-            .stakes_by_pubkey = std::move(stakes_by_pubkey),
-        };
+    TRY_RESULT(elections, staking_history::parse_elections(stack));
+    for (const auto& election : elections) {
+      PastElectionInfo info{election.election_id, election.total_stake, {}};
+      for (const auto& position : election.positions) info.stakes_by_pubkey[position.pubkey] = position.stake;
+      if (!result.emplace(election.vset_hash, std::move(info)).second) {
+        return td::Status::Error("Duplicate Elector validator set hash");
       }
     }
+    block_->elector_snapshot_->elections = std::move(elections);
+    block_->elector_snapshot_->complete = true;
     return result;
   }
 
@@ -851,6 +800,8 @@ private:
     election.source_mc_seqno = mc_seqno;
 
     TRY_RESULT(participants, stack_list_to_vector(stack[4], "participants"));
+    td::RefInt256 sum = td::make_refint(0);
+    std::unordered_set<std::string> pubkeys;
     for (const auto& participant_entry : participants) {
       auto participant_tuple = participant_entry.as_tuple();
       if (participant_tuple.is_null() || participant_tuple->size() < 2) {
@@ -870,7 +821,13 @@ private:
       participant.stake_holder_address = "-1:" + td::hex_string(addr, true, 64);
       TRY_RESULT_ASSIGN(participant.adnl_addr, stack_int_to_hex(participant_data->at(3), "participant_adnl"));
       participant.source_mc_seqno = mc_seqno;
+      if (!participant.stake->is_valid() || participant.stake->sgn() < 0 || participant.stake->bit_size(false) > 120 ||
+          !pubkeys.insert(participant.validator_pubkey).second) return td::Status::Error("Invalid election participant");
+      sum += participant.stake;
       election.participants.push_back(std::move(participant));
+    }
+    if (!election.total_stake->is_valid() || election.total_stake->bit_size(false) > 120 || td::cmp(sum, election.total_stake) != 0) {
+      return td::Status::Error("Election application sum mismatch");
     }
 
     return std::optional<schema::ValidatorElection>{std::move(election)};
@@ -974,11 +931,26 @@ private:
       return td::Status::OK();
     }
     const auto mc_seqno = current_mc_seqno();
+    staking_history::collect_changed_holders(mc_seqno, current_block_time(), *block_);
     auto triggers = collect_validator_snapshot_triggers();
     if (!triggers.has_work()) {
       // Most masterchain blocks only run elector tick without changing elector data; skip expensive get-method snapshots.
       return td::Status::OK();
     }
+
+    if (triggers.has_key_block) {
+      auto cell = block_->mc_block_.config_->get_config_param(34);
+      if (cell.is_null()) return td::Status::Error("Missing config #34");
+      TRY_RESULT(boc, vm::std_boc_serialize(cell));
+      block_->validator_set_state_ = schema::ValidatorSetState{
+          mc_seqno, current_block_time(), cell->get_hash().to_hex(), td::base64_encode(boc.as_slice())};
+    }
+    auto& snapshot = block_->elector_snapshot_.emplace();
+    snapshot.mc_seqno = mc_seqno;
+    snapshot.gen_utime = current_block_time();
+    snapshot.penalty_activity = !triggers.complaint_election_ids.empty();
+    TRY_RESULT(elector_address, get_elector_std_address());
+    snapshot.address = convert::to_raw_address(elector_address);
 
     std::unordered_map<std::string, PastElectionInfo> past_elections_by_vset_hash;
     std::optional<const schema::AccountState*> elector_state;
@@ -986,7 +958,22 @@ private:
     if (elector_state_r.is_ok()) {
       elector_state = elector_state_r.move_as_ok();
     } else {
-      LOG(DEBUG) << "Failed to find elector state: " << elector_state_r.move_as_error();
+      return elector_state_r.move_as_error();
+    }
+
+    std::optional<schema::AccountState> loaded_state;
+    if (!elector_state) {
+      AllShardStates roots;
+      for (const auto& state : block_->mc_block_.shard_blocks_) roots.push_back(state.block_state);
+      TRY_RESULT(state, lookup_account(roots, elector_address));
+      loaded_state = std::move(state);
+      elector_state = &*loaded_state;
+    }
+    if (elector_state.value()->code.not_null()) snapshot.code_hash = elector_state.value()->code->get_hash().to_hex();
+    if (elector_state.value()->data.not_null()) snapshot.data_hash = elector_state.value()->data->get_hash().to_hex();
+    snapshot.previous_data_hash = previous_elector_data_hash_;
+    if (first_elector_lt_ == std::numeric_limits<uint64_t>::max() && !triggers.data_changed) {
+      snapshot.previous_data_hash = snapshot.data_hash;
     }
 
     if (triggers.needs_cycles() && elector_state.has_value()) {
@@ -994,7 +981,7 @@ private:
       if (past_elections_r.is_ok()) {
         past_elections_by_vset_hash = past_elections_r.move_as_ok();
       } else {
-        LOG(WARNING) << "Failed to read past elections: " << past_elections_r.move_as_error();
+        snapshot.error = past_elections_r.move_as_error().message().str();
       }
     }
 
@@ -1035,11 +1022,6 @@ private:
       }
     }
 
-    if (!elector_state.has_value()) {
-      // Elector get-method snapshots need current elector code/data; config-only cycle parsing above is all we can do here.
-      return td::Status::OK();
-    }
-
     std::unordered_map<std::string, const schema::ValidatorCycle*> cycles_by_vset_hash;
     const schema::ValidatorCycle* current_voting_cycle = nullptr;
     for (const auto& parsed_cycle : current_cycles) {
@@ -1049,16 +1031,37 @@ private:
       }
     }
 
-    if (triggers.active_election_dirty) {
+    if (triggers.active_election_dirty || triggers.needs_cycles()) {
       auto election_r = parse_validator_election(*elector_state.value(), mc_seqno);
       if (election_r.is_ok()) {
         auto election = election_r.move_as_ok();
+        snapshot.applications_complete = true;
+        snapshot.applications = election;
         if (election.has_value()) {
           block_->validator_elections_.push_back(std::move(election.value()));
         }
       } else {
-        LOG(WARNING) << "Failed to parse validator election: " << election_r.move_as_error();
+        snapshot.applications_error = election_r.move_as_error().message().str();
       }
+    }
+
+    if (snapshot.complete) {
+      for (auto& election : snapshot.elections) {
+        for (auto& position : election.positions) {
+          for (const auto& cycle : current_cycles) {
+            if (cycle.vset_hash != election.vset_hash) continue;
+            for (const auto& member : cycle.cycle.members) {
+              if (member.validator_pubkey == position.pubkey) position.adnl = member.adnl_addr;
+            }
+          }
+          if (!position.adnl && snapshot.applications && snapshot.applications->election_id == election.election_id) {
+            for (const auto& p : snapshot.applications->participants) {
+              if (p.validator_pubkey == position.pubkey && p.stake_holder_address == position.holder) position.adnl = p.adnl_addr;
+            }
+          }
+        }
+      }
+      staking_history::detect_holders(snapshot, *block_);
     }
 
     if (!triggers.has_key_block && triggers.complaint_election_ids.empty()) {

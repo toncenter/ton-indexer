@@ -10,6 +10,9 @@
 #include "BlockInterfacesDetector.h"
 #include "TokenStatesStorage.h"
 #include "AccountStateHistory.h"
+#include "ElectorSnapshotsStorage.h"
+#include "StakingEventProcessor.h"
+#include "../../tondb-scanner/test/elector-fixture.h"
 #include "convert-utils.h"
 #include "../../tondb-scanner/test/smc-fixture.h"
 #include "vm/cp0.h"
@@ -580,6 +583,108 @@ void check_jetton_history() {
     CHECK(reader->reads == std::vector<std::string>{library_before->get_hash().as_slice().str()});
 }
 
+void check_elector_history() {
+    for (bool flat : {true,false}) for (bool banned : {true,false}) {
+        auto e=staking_history::parse_elections(test_elector_stack(flat,banned)).move_as_ok();
+        CHECK(e.size()==1 && e[0].positions.size()==1 && e[0].positions[0].banned==banned);
+        CHECK(e[0].unfreeze_at==200 && e[0].positions[0].holder=="-1:"+std::string(64,'0'));
+        CHECK(e[0].positions[0].stake->to_dec_string()=="95");
+    }
+    CHECK(staking_history::parse_elections(test_elector_stack(false,false,100)).is_error());
+    CHECK(staking_history::parse_elections(test_elector_stack(false,false,95,true)).is_error());
+    CHECK(staking_history::parse_elections({}).is_error());
+    CHECK(staking_history::parse_elections({vm::StackEntry{}}).move_as_ok().empty());
+    auto s=test_elector_snapshot();
+    auto json=staking_history::serialize(s);
+    CHECK(json.find("\"stake\":\"95\"")!=std::string::npos);
+    auto columns=staking_history::clickhouse_storage::states_block({s});
+    CHECK(columns.GetRowCount()==1 && columns.GetColumnCount()==4);
+
+    // Real before/after Account cells exercise the existing change check. The
+    // injected local getter counts calls independently of transaction count.
+    auto block=std::make_shared<ParsedBlock>();
+    auto address=block::StdAddress(-1,td::Bits256::zero());
+    block->mc_block_.config_=test_smc_config(1788220800,{},{{1,vm::CellBuilder().store_zeroes(256).finalize()}});
+    auto code=test_method_dispatcher(42,vm::CellBuilder().store_long(0xf20b,16).finalize());
+    auto data=vm::CellBuilder().finalize();
+    auto before=test_active_account(address,code,data);
+    auto after_data=vm::CellBuilder().store_long(1,1).finalize();
+    auto after=test_active_account(address,code,after_data,11);
+    auto reader=std::make_shared<HistoryCellReader>(); reader->add(before); reader->add(after);
+    block->cell_db_reader_=reader;
+    schema::Block mc{}; mc.workchain=-1; mc.seqno=100; mc.gen_utime=1788220800;
+    schema::Transaction tx{}; tx.account=address; tx.lt=10; tx.now=1788220800;
+    tx.account_state_hash_before=before->get_hash().bits(); tx.account_state_hash_after=before->get_hash().bits();
+    tx.description=schema::TransactionDescr_tick_tock{};
+    mc.transactions={tx,tx}; block->blocks_.push_back(mc);
+    schema::AccountState account{}; account.account=address; account.code=code; account.data=data;
+    account.last_trans_lt=10; block->account_states_.push_back(account);
+    int calls=0;
+    auto getter=[&](const auto&,const std::string& method,auto,uint32_t now)->td::Result<std::vector<vm::StackEntry>> {
+        CHECK(now==1788220800);
+        if(method=="past_elections") { ++calls; return std::vector<vm::StackEntry>{vm::StackEntry{}}; }
+        CHECK(method=="participant_list_extended");
+        return std::vector<vm::StackEntry>{elector_number(0),elector_number(0),elector_number(0),elector_number(0),{},elector_number(0),elector_number(0)};
+    };
+    StakingEventProcessor(block,getter).process_snapshots().ensure();
+    CHECK(calls==0 && !block->elector_snapshot_);
+    for(auto& transaction:block->blocks_[0].transactions) transaction.account_state_hash_after=after->get_hash().bits();
+    block->account_states_[0].data=after_data;
+    StakingEventProcessor(block,getter).process_snapshots().ensure();
+    CHECK(calls==1 && block->elector_snapshot_->complete && block->elector_snapshot_->elections.empty());
+    CHECK(block->elector_snapshot_->previous_data_hash==data->get_hash().to_hex());
+    CHECK(block->elector_snapshot_->applications_complete);
+    auto failing=[](const auto&,const auto&,auto,uint32_t)->td::Result<std::vector<vm::StackEntry>> { return td::Status::Error("getter failed"); };
+    StakingEventProcessor(block,failing).process_snapshots().ensure();
+    CHECK(!block->elector_snapshot_->complete && !block->elector_snapshot_->error.empty());
+}
+
+void check_holder_history() {
+    ParsedBlock parsed;
+    parsed.mc_block_.config_ = test_smc_config(1788220800);
+    auto holder = block::StdAddress(-1, td::Bits256::zero());
+    auto pool = block::StdAddress(0, td::Bits256::ones());
+    auto validator = block::StdAddress(-1, td::Bits256::ones());
+    auto code = [&](bool hipo) {
+        vm::CellBuilder body;
+        if (hipo) {
+            body.store_long(0x89,8).store_ref(test_address_cell(holder));
+            body.store_long(0x89,8).store_ref(test_address_cell(pool));
+            body.store_long(0x89,8).store_ref(test_address_cell(validator));
+            body.store_long(0x70,8);
+        } else {
+            for (int i=0;i<11;++i) body.store_long(0x70,8);
+            body.store_long(0x89,8).store_ref(test_address_cell(validator));
+            body.store_long(0x89,8).store_ref(test_address_cell(pool));
+        }
+        std::string method = hipo ? "get_loan_state" : "get_validator_controller_data";
+        return test_method_dispatcher((td::crc16(method) & 0xffff) | 0x10000,
+                                      body.finalize());
+    };
+    schema::AccountState state{};
+    state.account=holder; state.last_trans_lt=100;
+    state.data=vm::CellBuilder().finalize();
+    for (bool hipo : {false,true}) {
+        state.code=code(hipo);
+        parsed.account_states_={state};
+        staking_history::collect_changed_holders(100,1788220800,parsed);
+        CHECK(parsed.stake_holder_states_.size()==1);
+        CHECK(parsed.stake_holder_states_[0].pool==convert::to_raw_address(pool));
+        CHECK(parsed.stake_holder_states_[0].kind==(hipo ? "hipo_controller" : "liquid_staking_controller"));
+        auto snapshot=test_elector_snapshot();
+        auto second=snapshot.elections[0]; second.election_id=101; snapshot.elections.push_back(second);
+        // No shard roots are available: success proves reuse across elections.
+        staking_history::detect_holders(snapshot,parsed);
+        CHECK(snapshot.holders.size()==1 && snapshot.holders[0].pool==convert::to_raw_address(pool));
+        CHECK(parsed.stake_holder_states_.size()==1);
+    }
+    auto destroyed=state; destroyed.last_trans_lt=200; destroyed.code.clear(); destroyed.data.clear();
+    parsed.account_states_={destroyed,state};
+    staking_history::collect_changed_holders(101,1788220801,parsed);
+    CHECK(parsed.stake_holder_states_.size()==1 && !parsed.stake_holder_states_[0].pool);
+    CHECK(!parsed.stake_holder_states_[0].error.empty());
+}
+
 void check_nft_history() {
     auto parsed = std::make_shared<ParsedBlock>();
     parsed->mc_block_.config_ = test_smc_config(1788307200);
@@ -694,6 +799,15 @@ void check_nft_history() {
 }  // namespace
 
 int main(int argc, char** argv) {
+    if (argc == 2 && std::string(argv[1]) == "--elector-schema") {
+        using namespace staking_history::clickhouse_storage;
+        std::cout << SCHEMA_SQL << ";\n" << SET_SCHEMA_SQL << ";\n" << VIEW_SQL << ";\n" << HOLDER_SCHEMA_SQL << ";\n";
+        return 0;
+    }
+    if (argc == 2 && std::string(argv[1]) == "--elector-fixture") {
+        std::cout << staking_history::serialize(test_elector_snapshot());
+        return 0;
+    }
     td::Time::allow_freezes();
     if (argc == 2 && std::string(argv[1]) == "--jetton-schema") {
         std::cout << jetton_history::CREATE_STATES << ";\n";
@@ -727,5 +841,7 @@ int main(int argc, char** argv) {
     check_jetton_detection_status();
     check_jetton_history();
     check_nft_history();
+    check_elector_history();
+    check_holder_history();
     std::cout << "Gramstat supply, account deltas, deployments and exact ClickHouse columns: OK\n";
 }

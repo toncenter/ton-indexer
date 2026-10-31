@@ -1,6 +1,7 @@
 #include "InsertManagerClickhouse.h"
 #include "GramstatStorage.h"
 #include "TokenStatesStorage.h"
+#include "ElectorSnapshotsStorage.h"
 
 #include "td/utils/StringBuilder.h"
 #include "clickhouse/client.h"
@@ -369,6 +370,10 @@ void InsertManagerClickhouse::start_up() {
             LOG(INFO) << "Table jetton_wallets created";
             client.Execute(jetton_history::CREATE_STATES);
             client.Execute(nft_history::CREATE_STATES);
+            client.Execute(staking_history::clickhouse_storage::SCHEMA_SQL);
+            client.Execute(staking_history::clickhouse_storage::SET_SCHEMA_SQL);
+            client.Execute(staking_history::clickhouse_storage::VIEW_SQL);
+            client.Execute(staking_history::clickhouse_storage::HOLDER_SCHEMA_SQL);
         }
         {
             td::StringBuilder builder;
@@ -557,6 +562,7 @@ void InsertBatchClickhouse::start_up() {
         insert_nfts(client);
         insert_jettons(client);
         account_history::insert_states(client, insert_tasks_);
+        staking_history::clickhouse_storage::insert_states(client, insert_tasks_);
         insert_blocks(client);
         if (collect_gramstat_) {
             insert_total_supply(client);

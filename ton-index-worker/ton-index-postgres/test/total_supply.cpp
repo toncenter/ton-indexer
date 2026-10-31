@@ -3,6 +3,9 @@
 #include "GramstatPostgres.h"
 #include "TokenStatesPostgres.h"
 #include "TokenStatesSchema.h"
+#include "ElectorSnapshotsSchema.h"
+#include "ElectorSnapshotsPostgres.h"
+#include "../../tondb-scanner/test/elector-fixture.h"
 #include "postgresql_tools.h"
 
 namespace {
@@ -159,6 +162,35 @@ void check_jetton_history(pqxx::connection& connection, pqxx::connection& observ
 
 }  // namespace
 
+void check_elector_history(pqxx::connection& connection, pqxx::connection& observer) {
+    { pqxx::work txn(connection); txn.exec0(staking_history::postgres::SCHEMA_SQL); txn.commit(); }
+    std::vector<InsertTaskStruct> tasks;
+    auto t=task(200,1788220800,"1");
+    t.parsed_block_->elector_snapshot_=test_elector_snapshot(200);
+    t.parsed_block_->validator_set_state_=schema::ValidatorSetState{200,1788220800,"hash","boc"};
+    tasks.push_back(std::move(t));
+    { pqxx::work txn(connection); staking_history::postgres::insert_states(txn,tasks);
+      CHECK(count(observer,"elector_stake_states")==0); }
+    CHECK(count(observer,"elector_stake_states")==0);
+    { pqxx::work txn(connection); staking_history::postgres::insert_states(txn,tasks);
+      staking_history::postgres::insert_states(txn,tasks);
+      CHECK(txn.query_value<std::string>("SELECT stake::text FROM elector_frozen_positions")=="95");
+      CHECK(txn.query_value<long long>("SELECT count(*) FROM elector_frozen_elections")==1);
+      txn.commit(); }
+    auto& s=*tasks[0].parsed_block_->elector_snapshot_;
+    s.complete=false; s.error="failed"; s.elections.clear();
+    { pqxx::work txn(connection); staking_history::postgres::insert_states(txn,tasks);
+      CHECK(txn.query_value<long long>("SELECT count(*) FROM elector_frozen_positions")==0);
+      CHECK(txn.query_value<long long>("SELECT count(*) FROM elector_frozen_elections")==0);
+      CHECK(!txn.query_value<bool>("SELECT complete FROM elector_stake_states"));
+      txn.commit(); }
+    s.complete=true; s.error.clear();
+    { pqxx::work txn(connection); staking_history::postgres::insert_states(txn,tasks);
+      CHECK(txn.query_value<bool>("SELECT complete AND payload->'elections'='[]'::jsonb FROM elector_stake_states"));
+      txn.commit(); }
+    CHECK(count(observer,"elector_stake_states")==1);
+}
+
 int main(int argc, char** argv) {
     CHECK(argc == 2);  // The test runner supplies a fresh, private PostgreSQL cluster.
     pqxx::connection connection(argv[1]);
@@ -176,6 +208,7 @@ int main(int argc, char** argv) {
         txn.commit();
     }
     check_jetton_history(connection, observer);
+    check_elector_history(connection, observer);
     std::vector<InsertTaskStruct> tasks;
     tasks.push_back(task(101, 1788224399, "100000000000000000102"));
     tasks.push_back(task(100, 1788224399, "100000000000000000101"));

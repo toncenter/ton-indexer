@@ -22,15 +22,16 @@ These tables contain sets observed in #32/#34/#36. Their `source_mc_seqno` is
 the latest indexed observation, **not** an activation block. For each round the
 handler locates the first indexed MC at or after `utime_since` (within 300 seconds),
 requires a key block and its immediately preceding MC before `utime_since`, and
-reads `getConfigParam(config_id=34, seqno=anchor_mc_seqno)` from a TON Center v2 API.
+reads config #34 from native `public.validator_set_states` at that MC.
 It decodes the entire set and compares interval, total, main, indices, pubkeys,
 ADNL and exact weights with PostgreSQL. The config cell hash, full MC identity
-and roster digest are saved. The RPC check is reused only while the full anchor
+and roster digest are saved. The native-cell check is reused only while the full anchor
 identity, roster digest and calculation version match.
 
-This is a **trusted historical RPC check**, not an independent Merkle-proof
-verification: v2 `getConfigParam` does not return a state proof. No NodeDB replay
-is performed. Unresolvable/ambiguous activation boundaries or mismatching sets
+The cell is collected by the source indexer from its loaded MC state, in the same
+batch as the block. The aggregator checks block identity and cell hash without a
+blockchain RPC request. Old anchors require explicit source replay.
+Unresolvable/ambiguous activation boundaries or mismatching sets
 fail that round; valid sibling rounds can still be published. Historical gaps
 and interval overlaps are not filled by guessing the nearest cycle.
 
@@ -99,14 +100,13 @@ gramstat-aggregate --print-schema  # apply DDL using an administrative destinati
 export GRAMSTAT_PG_DSN='host=postgres.example.com dbname=ton_index user=gramstat_reader'
 export GRAMSTAT_CH_URL='http://clickhouse.example.com:8123/'
 export GRAMSTAT_CH_USER='gramstat_aggregate'
-export GRAMSTAT_CONFIG_URL='https://toncenter.com/api/v2'
-# Optional GRAMSTAT_CONFIG_API_KEY; all passwords belong in a protected environment.
+# Migration 1.3.2 and populated native validator_set_states are required.
 export GRAMSTAT_SS_URL='http://session-stats.example.com:8123/'
 export GRAMSTAT_SS_USER='gramstat_reader'
 # GRAMSTAT_CH_PASSWORD and GRAMSTAT_SS_PASSWORD supplied by the deployment environment.
 
 gramstat-aggregate --handlers validators,validator_geo --from 2026-10-21 --to 2026-10-31
-gramstat-aggregate --handlers actions,validators,validator_geo
+gramstat-aggregate --handlers actions,validators,validator_geo,staking
 ```
 
 Dates select overlapping rounds and cap the observation cutoff; `--to` is
@@ -120,9 +120,9 @@ handler before geo when both are requested.
 The destination runtime role needs `SELECT, INSERT` on both new tables and
 `SELECT` on the view for map readers. The SS role needs only source `SELECT`;
 queries additionally set `readonly=1` and resource limits. The example systemd
-unit runs all three handlers hourly. Source credentials and private infrastructure
-hostnames must not be committed to this repository. The public TON Center API URL
-is shown directly; internal database and service addresses use placeholders.
+unit runs all four handlers hourly. Source credentials and private infrastructure
+hostnames must not be committed to this repository. Internal addresses use placeholders.
+See [staking](gramstat-staking.md) for the Elector history and stake breakdowns.
 
 ## Charts and map queries
 

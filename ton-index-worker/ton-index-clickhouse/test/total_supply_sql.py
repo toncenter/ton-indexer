@@ -5,6 +5,7 @@ Only creates databases in a fresh clickhouse-local temporary directory.
 """
 
 import base64
+import json
 import subprocess
 from pathlib import Path
 import sys
@@ -86,10 +87,33 @@ def check_nft_history(binary, clickhouse):
     print("ClickHouse NFT owner history, replay and documented optional daily view: OK")
 
 
+def check_elector_history(binary, clickhouse):
+    schema = subprocess.check_output([binary, "--elector-schema"], text=True)
+    payload = subprocess.check_output([binary, "--elector-fixture"], text=True)
+    def row(value):
+        payload = json.dumps(value).replace("\\", "\\\\").replace("'", "\\'")
+        return "INSERT INTO elector_stake_states VALUES (100,1788220800," + str(value["complete"]).lower() + ",'" + payload + "');\n"
+    state = json.loads(payload)
+    sql = schema + row(state) + row(state)
+    sql += "SELECT count(),sum(stake) FROM elector_frozen_positions;\n"
+    state.update(complete=False, elections=[], error="getter failed")
+    sql += "SYSTEM STOP MERGES elector_stake_states;\n" + row(state)
+    sql += "SELECT count() FROM elector_frozen_positions; SELECT complete FROM elector_stake_states FINAL;\n"
+    state.update(complete=True, error="")
+    sql += row(state) + "SELECT complete,JSONLength(payload,'elections') FROM elector_stake_states FINAL;\n"
+    with tempfile.TemporaryDirectory(prefix="elector-ch-") as directory:
+        result = subprocess.run([clickhouse, "local", "--path", directory, "--multiquery"],
+                                input=sql, text=True, capture_output=True, timeout=90)
+        assert result.returncode == 0, result.stdout + result.stderr
+    assert result.stdout.strip().splitlines() == ["1\t95", "0", "false", "true\t0"], result.stdout
+    print("ClickHouse Elector exact amounts, full replacement, unknown and empty states: OK")
+
+
 def main():
     binary, clickhouse = sys.argv[1:]
     check_jetton_history(binary, clickhouse)
     check_nft_history(binary, clickhouse)
+    check_elector_history(binary, clickhouse)
 
     def exported(option):
         return subprocess.check_output([binary, option], text=True)

@@ -12,7 +12,7 @@ import (
 	"time"
 )
 
-const Version = "rounds-v1"
+const Version = "rounds-v2-native"
 
 type Member struct {
 	Index  uint16 `json:"idx"`
