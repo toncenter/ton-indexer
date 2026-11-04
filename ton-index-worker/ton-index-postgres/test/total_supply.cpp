@@ -3,6 +3,8 @@
 #include "GramstatPostgres.h"
 #include "TokenStatesPostgres.h"
 #include "TokenStatesSchema.h"
+#include "ValidatorRoundResultsSchema.h"
+#include "ValidatorRoundResultsPostgres.h"
 #include "postgresql_tools.h"
 
 namespace {
@@ -157,6 +159,54 @@ void check_jetton_history(pqxx::connection& connection, pqxx::connection& observ
     }
 }
 
+void check_round_results(pqxx::connection& connection, pqxx::connection& observer) {
+    {
+        pqxx::work txn(connection);
+        txn.exec0(elector::postgres::SCHEMA_SQL);
+        txn.exec0(elector::postgres::SCHEMA_SQL);
+        txn.commit();
+    }
+    std::vector<InsertTaskStruct> tasks;
+    auto item = task(100, 1788220800, "1");
+    item.parsed_block_->total_supply_.reset();
+    item.parsed_block_->validator_round_results_.push_back({1788000000, std::string(64, 'A'),
+        td::dec_string_to_int256(std::string("900719925474099312345")), td::make_refint(123456789),
+        100, 1788220800, 9007199254740993ULL, td::Bits256::zero()});
+    tasks.push_back(std::move(item));
+    {
+        pqxx::work txn(connection);
+        elector::postgres::insert_round_results(txn, tasks);
+        CHECK(count(observer, "validator_round_results") == 0);
+    }
+    CHECK(count(observer, "validator_round_results") == 0);
+    {
+        pqxx::work txn(connection);
+        elector::postgres::insert_round_results(txn, tasks);
+        elector::postgres::insert_round_results(txn, tasks);
+        CHECK(txn.query_value<std::string>("SELECT total_stake::text FROM validator_round_results") == "900719925474099312345");
+        CHECK(txn.query_value<long long>("SELECT unfreeze_tx_lt FROM validator_round_results") == 9007199254740993LL);
+        txn.commit();
+    }
+    CHECK(count(observer, "validator_round_results") == 1);
+    // A corrected replay replaces the result, including smaller rewards.
+    auto& row = tasks[0].parsed_block_->validator_round_results_[0];
+    row.bonuses = td::make_refint(0);
+    {
+        pqxx::work txn(connection);
+        elector::postgres::insert_round_results(txn, tasks);
+        CHECK(txn.query_value<long long>("SELECT bonuses FROM validator_round_results") == 0);
+        txn.commit();
+    }
+    row.total_stake = td::make_refint(-1);
+    bool rejected = false;
+    try {
+        pqxx::work txn(connection);
+        elector::postgres::insert_round_results(txn, tasks);
+        txn.commit();
+    } catch (const std::exception&) { rejected = true; }
+    CHECK(rejected && count(observer, "validator_round_results") == 1);
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -176,6 +226,7 @@ int main(int argc, char** argv) {
         txn.commit();
     }
     check_jetton_history(connection, observer);
+    check_round_results(connection, observer);
     std::vector<InsertTaskStruct> tasks;
     tasks.push_back(task(101, 1788224399, "100000000000000000102"));
     tasks.push_back(task(100, 1788224399, "100000000000000000101"));

@@ -9,6 +9,7 @@
 #include "DataParser.h"
 #include "BlockInterfacesDetector.h"
 #include "TokenStatesStorage.h"
+#include "ValidatorRoundResultsStorage.h"
 #include "AccountStateHistory.h"
 #include "convert-utils.h"
 #include "../../tondb-scanner/test/smc-fixture.h"
@@ -694,6 +695,10 @@ void check_nft_history() {
 }  // namespace
 
 int main(int argc, char** argv) {
+    if (argc == 2 && std::string(argv[1]) == "--round-results-schema") {
+        std::cout << elector::clickhouse_storage::SCHEMA_SQL << ";\n";
+        return 0;
+    }
     td::Time::allow_freezes();
     if (argc == 2 && std::string(argv[1]) == "--jetton-schema") {
         std::cout << jetton_history::CREATE_STATES << ";\n";
@@ -717,6 +722,16 @@ int main(int argc, char** argv) {
         return 0;
     }
     CHECK(argc == 1);
+    schema::ValidatorRoundResult round{1788000000, std::string(64, 'A'),
+        td::dec_string_to_int256(std::string("900719925474099312345")), td::make_refint(123456789),
+        100, 1788220800, 9007199254740993ULL, td::Bits256::zero()};
+    auto result_block = elector::clickhouse_storage::results_block({round});
+    CHECK(result_block.GetRowCount() == 1 && result_block.GetColumnCount() == 8);
+    std::ostringstream stake;
+    stake << result_block[2]->As<clickhouse::ColumnDecimal>()->At(0);
+    CHECK(stake.str() == "900719925474099312345");
+    CHECK(result_block[3]->As<clickhouse::ColumnDecimal>()->At(0) == 123456789);
+    CHECK(result_block[6]->As<clickhouse::ColumnUInt64>()->At(0) == 9007199254740993ULL);
     check_amounts_and_columns();
     check_incomplete_input();
     check_block_fees();

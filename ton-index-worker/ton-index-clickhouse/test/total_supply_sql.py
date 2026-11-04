@@ -86,10 +86,32 @@ def check_nft_history(binary, clickhouse):
     print("ClickHouse NFT owner history, replay and documented optional daily view: OK")
 
 
+def check_round_results(binary, clickhouse):
+    schema = subprocess.check_output([binary, "--round-results-schema"], text=True)
+    sql = schema + """
+SYSTEM STOP MERGES validator_round_results;
+INSERT INTO validator_round_results VALUES
+  (1788000000,'A',900719925474099312345,123456789,100,1788220800,9007199254740993,'hash'),
+  (1788000000,'A',900719925474099312345,123456789,100,1788220800,9007199254740993,'hash');
+SELECT count(),sum(total_stake),sum(bonuses) FROM validator_round_results FINAL;
+INSERT INTO validator_round_results VALUES
+  (1788000000,'A',900719925474099312345,0,100,1788220800,9007199254740993,'hash');
+SELECT total_stake,bonuses,unfreeze_tx_lt FROM validator_round_results FINAL;
+"""
+    with tempfile.TemporaryDirectory(prefix="round-results-ch-") as directory:
+        result = subprocess.run([clickhouse, "local", "--path", directory, "--multiquery"],
+                                input=sql, text=True, capture_output=True, timeout=90)
+        assert result.returncode == 0, result.stdout + result.stderr
+    assert result.stdout.strip().splitlines() == [
+        "1\t900719925474099312345\t123456789", "900719925474099312345\t0\t9007199254740993"], result.stdout
+    print("ClickHouse round results: exact amounts, deduplication and corrected replay: OK")
+
+
 def main():
     binary, clickhouse = sys.argv[1:]
     check_jetton_history(binary, clickhouse)
     check_nft_history(binary, clickhouse)
+    check_round_results(binary, clickhouse)
 
     def exported(option):
         return subprocess.check_output([binary, option], text=True)
