@@ -61,6 +61,31 @@ class TestEthenaActions(BaseGenericActionTest):
 class TestCocoonActions(BaseGenericActionTest):
     yaml_file = "cocoon.yaml"
 
+
+class TestHipoActions(BaseGenericActionTest):
+    yaml_file = "hipo.yaml"
+
+
+class TestHipoRollback:
+    """A rolled back Hipo unstake must not be reported as a withdrawal."""
+
+    @pytest.mark.asyncio
+    async def test_hipo_rollback_is_not_a_withdrawal(self, traces_dir):
+        trace_id = "ug2Oph0srx2HCRk2K4qReHJujz1x5FwMhmrn_EUOav8="
+        trace, interfaces = load_trace_from_file(traces_dir / f"{trace_id}.lz4")
+        context.interface_repository.set(TestInterfaceRepository(interfaces))
+
+        _, state, actions, _ = await process_trace(trace)
+
+        assert state == "ok"
+        staking_actions = [
+            a
+            for a in actions
+            if a.type in ("stake_deposit", "stake_withdrawal", "stake_withdrawal_request")
+        ]
+        assert staking_actions == []
+        assert any(a.type == "jetton_burn" for a in actions)
+
 class TestClassificationCommon:
 
     def load_trace(self, trace_id, traces_dir) -> Trace:
