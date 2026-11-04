@@ -5,10 +5,14 @@
 
 // A minimal MC zerostate with a real ConfigInfo timestamp. No network fixtures.
 inline std::shared_ptr<block::ConfigInfo> test_smc_config(
-    std::uint32_t now, const std::vector<td::Ref<vm::Cell>>& libraries = {}) {
+    std::uint32_t now, const std::vector<td::Ref<vm::Cell>>& libraries = {},
+    const std::vector<std::pair<int32_t, td::Ref<vm::Cell>>>& params = {},
+    td::Ref<vm::Cell>* state_root = nullptr) {
     auto empty = vm::CellBuilder().finalize();
     vm::Dictionary config_dict{32};
     CHECK(config_dict.set_ref(td::BitArray<32>::zero(), empty));
+    if (!params.empty()) CHECK(config_dict.set_ref(td::BitArray<32>(31), vm::CellBuilder().store_long(0, 1).finalize()));
+    for (const auto& [id, value] : params) CHECK(config_dict.set_ref(td::BitArray<32>(id), value));
     auto mc_aux = vm::CellBuilder().store_zeroes(16 + 65 + 66 + 1 + 1).finalize();
     auto mc_extra = vm::CellBuilder().store_long(0xcc26, 16).store_long(0, 1)
         .store_zeroes(256).store_ref(config_dict.get_root_cell()).store_ref(mc_aux)
@@ -31,8 +35,10 @@ inline std::shared_ptr<block::ConfigInfo> test_smc_config(
         .store_ref(empty).store_long(0, 1).store_ref(empty).store_ref(state_aux)
         .store_long(1, 1).store_ref(mc_extra).finalize();
     ton::BlockIdExt id{ton::masterchainId, ton::shardIdAll, 0, td::Bits256::zero(), td::Bits256::zero()};
+    if (state_root) *state_root = root;
     return block::ConfigInfo::extract_config(root, id,
-        libraries.empty() ? 0 : block::ConfigInfo::needLibraries).move_as_ok();
+        (libraries.empty() ? 0 : block::ConfigInfo::needLibraries) |
+        (params.empty() ? 0 : block::ConfigInfo::needSpecialSmc)).move_as_ok();
 }
 
 inline td::Ref<vm::Cell> test_library_reference(const td::Ref<vm::Cell>& library) {

@@ -8,6 +8,7 @@ add_library(tondb-scanner STATIC
     src/DataParser.cpp
     src/TraceAssembler.cpp
     src/queue_state.cpp
+    src/ElectorRoundResults.cpp
     src/parse_token_data.cpp
     src/parse_contract_methods.cpp
     src/convert-utils.cpp
@@ -63,3 +64,7 @@ target_include_directories(test-tondb
 
 target_link_libraries(test-tondb PRIVATE tdutils tdactor smc-envelope tondb-scanner ton_block)
 add_dependencies(test-tondb test-tdutils)
+
+add_executable(test-elector-rounds EXCLUDE_FROM_ALL test/elector-round-results.cpp)
+target_link_libraries(test-elector-rounds PRIVATE tondb-scanner)
+add_test(NAME gramstat_elector_rounds COMMAND test-elector-rounds)

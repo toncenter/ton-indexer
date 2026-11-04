@@ -2,6 +2,7 @@
 
 #include "common/refint.h"
 #include "DataParser.h"
+#include "ElectorRoundResults.h"
 #include "convert-utils.h"
 #include "emulator/transaction-emulator.h"
 #include "smc-interfaces/NominatorPool.h"
@@ -77,10 +78,6 @@ private:
   static constexpr std::uint32_t ELECTOR_NEW_COMPLAINT = 0x52674370;
   static constexpr std::uint32_t ELECTOR_VOTE_COMPLAINT = 0x56744370;
   static constexpr std::int64_t ELECTOR_STAKE_FEE = 1000000000;
-  // SmartContract::run_get_method defaults to a 1M gas budget, but list_complaints serializes every
-  // voter of every complaint (~700 gas per entry) and dies at ~1500 entries, freezing snapshots
-  // mid-voting. Size the budget for the elector's worst case (hundreds of complaints x full vset).
-  static constexpr long long ELECTOR_GET_METHOD_GAS_LIMIT = 1'000'000'000;
   static constexpr std::uint32_t NOMINATOR_POOL_VALIDATOR_DEPOSIT = 4;
   static constexpr std::uint32_t NOMINATOR_POOL_VALIDATOR_WITHDRAWAL = 5;
 
@@ -603,31 +600,7 @@ private:
       const std::string& method_id,
       std::vector<vm::StackEntry> input,
       uint32_t now) const {
-    if (account_state.code.is_null() || account_state.data.is_null()) {
-      return td::Status::Error("Account state has no code or data");
-    }
-    if (!block_->mc_block_.config_) {
-      return td::Status::Error("Config is not available");
-    }
-
-    ton::SmartContract smc({account_state.code, account_state.data});
-    ton::SmartContract::Args args;
-    auto libraries_root = block_->mc_block_.config_->get_libraries_root();
-    if (libraries_root.not_null()) {
-      args.set_libraries(vm::Dictionary(libraries_root, 256));
-    }
-    args.set_config(block_->mc_block_.config_);
-    args.set_now(now);
-    args.set_address(account_state.account);
-    args.set_stack(std::move(input));
-    args.set_method_id(method_id);
-    args.set_limits(vm::GasLimits{ELECTOR_GET_METHOD_GAS_LIMIT});
-
-    auto result = smc.run_get_method(args);
-    if (!result.success) {
-      return td::Status::Error(method_id + " failed");
-    }
-    return result.stack->extract_contents();
+    return elector::run_get_method(account_state, block_->mc_block_.config_, method_id, std::move(input), now);
   }
 
   td::Result<std::optional<const schema::AccountState*>> get_elector_account_state() const {

@@ -614,6 +614,26 @@ struct ValidatorElection {
   std::vector<ValidatorElectionParticipant> participants;
 };
 
+// One final observation per election, immediately before scheduled unfreezing.
+// Principal and accumulated rewards are separate exact nano-unit amounts.
+struct ValidatorRoundResult {
+  uint32_t election_id;
+  std::string vset_hash;
+  td::RefInt256 total_stake;
+  td::RefInt256 bonuses;
+  uint32_t unfreeze_mc_seqno;
+  uint32_t unfreeze_utime;
+  uint64_t unfreeze_tx_lt;
+  td::Bits256 unfreeze_tx_hash;
+
+  bool valid() const {
+    auto coins = [](const td::RefInt256& value) {
+      return value.not_null() && value->is_valid() && value->sgn() >= 0 && value->bit_size(false) <= 120;
+    };
+    return vset_hash.size() == 64 && coins(total_stake) && coins(bonuses);
+  }
+};
+
 struct ValidatorCycleMember {
   uint32_t utime_since;
   uint32_t validator_index;
@@ -942,6 +962,7 @@ struct ParsedBlock {
   std::vector<schema::BlockchainEvent> events_;
   std::vector<schema::ValidatorElection> validator_elections_;
   std::vector<schema::ValidatorCycle> validator_cycles_;
+  std::vector<schema::ValidatorRoundResult> validator_round_results_;
   std::vector<schema::ValidatorComplaint> validator_complaints_;
 
   std::unordered_map<block::StdAddress, std::vector<schema::BlockchainInterfaceV2>> account_interfaces_;
