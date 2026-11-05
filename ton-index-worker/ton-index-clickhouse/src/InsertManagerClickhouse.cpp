@@ -19,9 +19,10 @@
 class InsertBatchClickhouse: public td::actor::Actor {
 public:
     InsertBatchClickhouse(clickhouse::ClientOptions client_options, std::vector<InsertTaskStruct> insert_tasks,
-                          td::Promise<InsertManagerInterface::InsertResult> promise, bool collect_gramstat)
+                          td::Promise<InsertManagerInterface::InsertResult> promise, bool collect_gramstat,
+                          std::string gramstat_db)
       : client_options_(std::move(client_options)), insert_tasks_(std::move(insert_tasks)), promise_(std::move(promise)),
-        collect_gramstat_(collect_gramstat) {}
+        collect_gramstat_(collect_gramstat), gramstat_db_(std::move(gramstat_db)) {}
 
     void start_up() override;
 private:
@@ -29,6 +30,7 @@ private:
     std::vector<InsertTaskStruct> insert_tasks_;
     td::Promise<InsertManagerInterface::InsertResult> promise_;
     bool collect_gramstat_;
+    std::string gramstat_db_;
 
     void insert_jettons(clickhouse::Client& client);
     void insert_nfts(clickhouse::Client& client);
@@ -62,10 +64,7 @@ void InsertManagerClickhouse::start_up() {
         auto options = credential_.get_clickhouse_options();
         clickhouse::Client client(options);
         if (collect_gramstat_) {
-            client.Execute(gramstat::CREATE_DATABASE);
-            client.Execute(gramstat::CREATE_TOTAL_SUPPLY);
-            client.Execute(gramstat::CREATE_ACCOUNT_DELTAS);
-            client.Execute(gramstat::CREATE_DEPLOYMENTS);
+            for (const auto& query : gramstat::schema_queries(gramstat_db_)) client.Execute(query);
         }
         {
             td::StringBuilder builder;
@@ -428,7 +427,7 @@ void InsertManagerClickhouse::start_up() {
 void InsertManagerClickhouse::create_insert_actor(std::vector<InsertTaskStruct> insert_tasks,
                                                   td::Promise<InsertManagerInterface::InsertResult> promise) {
     td::actor::create_actor<InsertBatchClickhouse>("insert_batch_clickhouse", credential_.get_clickhouse_options(),
-                                                std::move(insert_tasks), std::move(promise), collect_gramstat_).release();
+                                                std::move(insert_tasks), std::move(promise), collect_gramstat_, gramstat_db_).release();
 }
 
 void InsertManagerClickhouse::get_existing_seqnos(td::Promise<std::vector<std::uint32_t>> promise, std::int32_t from_seqno, std::int32_t to_seqno)
@@ -439,7 +438,7 @@ void InsertManagerClickhouse::get_existing_seqnos(td::Promise<std::vector<std::u
         clickhouse::Client client(options);
         
         std::vector<std::uint32_t> result;
-        client.Select(gramstat::completed_seqnos_query(collect_gramstat_, from_seqno, to_seqno),
+        client.Select(gramstat::completed_seqnos_query(collect_gramstat_, from_seqno, to_seqno, gramstat_db_),
                       [&result](const clickhouse::Block& block) {
             for (size_t i = 0; i < block.GetRowCount(); ++i) {
                 result.push_back(block[0]->As<clickhouse::ColumnInt32>()->At(i));
@@ -465,7 +464,7 @@ void InsertManagerClickhouse::get_resume_seqno(td::Promise<InsertManagerInterfac
         clickhouse::Client client(options);
 
         std::vector<std::uint32_t> existing_seqnos;
-        client.Select(gramstat::completed_seqnos_query(collect_gramstat_, from_seqno, to_seqno),
+        client.Select(gramstat::completed_seqnos_query(collect_gramstat_, from_seqno, to_seqno, gramstat_db_),
                       [&existing_seqnos](const clickhouse::Block& block) {
             for (size_t i = 0; i < block.GetRowCount(); ++i) {
                 existing_seqnos.push_back(block[0]->As<clickhouse::ColumnInt32>()->At(i));
@@ -493,7 +492,7 @@ void InsertManagerClickhouse::get_resume_seqno(td::Promise<InsertManagerInterfac
 void InsertManagerClickhouse::Credential::set_conn_str(const std::string& conn_str) {
   auto pos = conn_str.find("://");
   if (pos == std::string::npos) {
-    LOG(FATAL) << "Invalid connection string: " << conn_str;
+    LOG(FATAL) << "Invalid ClickHouse connection string: missing protocol";
     std::_Exit(2);
   }
   auto protocol = conn_str.substr(0, pos);
@@ -532,9 +531,9 @@ void InsertManagerClickhouse::Credential::set_conn_str(const std::string& conn_s
   } else {
       host = std::move(host_port);
   }
-  LOG(ERROR) << "Parsed Clickhouse connection string: host=" << host
+  LOG(INFO) << "Clickhouse connection: host=" << host
              << ", port=" << port << ", user=" << user
-             << ", password=" << password << ", dbname=" << dbname;
+             << ", dbname=" << dbname;
 }
 
 clickhouse::ClientOptions InsertManagerClickhouse::Credential::get_clickhouse_options()
@@ -595,7 +594,7 @@ void InsertBatchClickhouse::insert_total_supply(clickhouse::Client& client) {
         snapshots.push_back(*supply);
     }
     if (!snapshots.empty()) {
-        client.Insert("gramstat.total_supply", gramstat::total_supply_block(snapshots));
+        client.Insert(gramstat::table_name(gramstat_db_, "total_supply"), gramstat::total_supply_block(snapshots));
     }
 }
 
@@ -614,7 +613,7 @@ void InsertBatchClickhouse::insert_deployments(clickhouse::Client& client) {
         }
     }
     if (!deployments.empty()) {
-        client.Insert("gramstat.deployments", gramstat::deployments_block(deployments));
+        client.Insert(gramstat::table_name(gramstat_db_, "deployments"), gramstat::deployments_block(deployments));
     }
 }
 
@@ -631,7 +630,7 @@ void InsertBatchClickhouse::insert_account_deltas(clickhouse::Client& client) {
         deltas.push_back(*delta);
     }
     if (!deltas.empty()) {
-        client.Insert("gramstat.account_deltas", gramstat::account_deltas_block(deltas));
+        client.Insert(gramstat::table_name(gramstat_db_, "account_deltas"), gramstat::account_deltas_block(deltas));
     }
 }
 

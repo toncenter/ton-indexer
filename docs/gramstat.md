@@ -75,6 +75,30 @@ three rows before acknowledging a leader's batch. For independent PostgreSQL
 backfill use `--no-leader --pg-no-copy`. Missing metrics are repaired without
 `--force`; use `--force` to recompute already-present account deltas.
 
+### Isolated ClickHouse runs
+
+`--ch` selects the ordinary index database, including `blocks`, account states,
+token histories and `validator_round_results`. `--gramstat-db NAME` selects the
+database for `total_supply`, `account_deltas` and `deployments` (default: `gramstat`).
+It applies to schema creation, inserts, resume and bounded-backfill checks.
+Enable collection with `--gramstat`; the database option alone does not enable it.
+Names must match `[A-Za-z_][A-Za-z0-9_]*`.
+
+For an independent historical run, select both databases and a dedicated working
+directory for secondary RocksDB logs and trace state:
+
+```sh
+# PILOT_CH selects the dedicated raw database, for example gramstat_pilot_raw.
+ton-index-clickhouse --ch "$PILOT_CH" --db /path/to/node/db \
+  --working-dir /path/to/gramstat-pilot \
+  --gramstat --gramstat-db gramstat_pilot_metrics --from N --to M
+```
+
+The two database names may also be identical. Each pair belongs to one network
+and one indexing dataset. Use the selected metrics database in downstream queries
+instead of the default `gramstat` shown in this document. Database isolation is
+logical; runs on the same hosts still share CPU, memory, disk and ClickHouse capacity.
+
 **Deployments:** ClickHouse writes deployments synchronously **before account
 deltas**, making deltas the completion marker even for MCs with zero deployments.
 PostgreSQL commits all metrics together. There is no separate progress table.

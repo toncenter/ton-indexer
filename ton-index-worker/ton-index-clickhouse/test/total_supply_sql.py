@@ -107,11 +107,49 @@ SELECT total_stake,bonuses,unfreeze_tx_lt FROM validator_round_results FINAL;
     print("ClickHouse round results: exact amounts, deduplication and corrected replay: OK")
 
 
+def check_database_isolation(binary, clickhouse):
+    def exported(option, *args):
+        return subprocess.check_output([binary, option, *args], text=True)
+
+    pilot = "gramstat_pilot_metrics"
+    supply, deltas, deployments = [exported("--table", pilot, table)
+                                   for table in ("total_supply", "account_deltas", "deployments")]
+    completed = exported("--completed-query", pilot)
+    sql = exported("--schema") + exported("--schema", pilot) + """
+CREATE DATABASE gramstat_pilot_raw;
+USE gramstat_pilot_raw;
+CREATE TABLE blocks (workchain Int32, seqno Int32) ENGINE=Memory;
+INSERT INTO blocks VALUES (-1,100),(-1,101);
+INSERT INTO gramstat.total_supply VALUES (100,'2026-09-01',123,123,0,0,0);
+INSERT INTO gramstat.account_deltas VALUES (100,'2026-09-01',1,0,0);
+"""
+    # Existing default metrics must not make the pilot skip an unprocessed MC.
+    sql += f"SELECT groupArray(seqno) FROM ({completed} ORDER BY seqno);\n"
+    sql += f"""
+INSERT INTO {supply} VALUES (101,'2026-09-01',456,456,0,0,0);
+INSERT INTO {deployments} VALUES (101,'2026-09-01','0:A',1,'hash',NULL,0);
+SELECT groupArray(seqno) FROM ({completed} ORDER BY seqno);
+INSERT INTO {deltas} VALUES (101,'2026-09-01',0,1,0);
+SELECT groupArray(seqno) FROM ({completed} ORDER BY seqno);
+SELECT total FROM gramstat.total_supply FINAL;
+SELECT count() FROM gramstat.deployments FINAL;
+SELECT total FROM {supply} FINAL;
+SELECT count() FROM {deployments} FINAL;
+"""
+    with tempfile.TemporaryDirectory(prefix="gramstat-isolation-") as directory:
+        result = subprocess.run([clickhouse, "local", "--path", directory, "--multiquery"],
+                                input=sql, text=True, capture_output=True, timeout=90)
+        assert result.returncode == 0, result.stdout + result.stderr
+    assert result.stdout.strip().splitlines() == ["[]", "[]", "[101]", "123", "0", "456", "1"], result.stdout
+    print("ClickHouse custom database: isolated schema, insert targets and resume checks: OK")
+
+
 def main():
     binary, clickhouse = sys.argv[1:]
     check_jetton_history(binary, clickhouse)
     check_nft_history(binary, clickhouse)
     check_round_results(binary, clickhouse)
+    check_database_isolation(binary, clickhouse)
 
     def exported(option):
         return subprocess.check_output([binary, option], text=True)

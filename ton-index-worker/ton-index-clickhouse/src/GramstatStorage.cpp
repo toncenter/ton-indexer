@@ -1,5 +1,6 @@
 #include "GramstatStorage.h"
 
+#include <algorithm>
 #include <stdexcept>
 
 #include "clickhouse/columns/date.h"
@@ -10,6 +11,62 @@
 #include "convert-utils.h"
 
 namespace gramstat {
+
+bool valid_database_name(const std::string& database) {
+    auto letter = [](char c) { return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_'; };
+    return !database.empty() && letter(database.front()) &&
+        std::all_of(database.begin(), database.end(), [&](char c) { return letter(c) || (c >= '0' && c <= '9'); });
+}
+
+std::string table_name(const std::string& database, const std::string& table) {
+    if (!valid_database_name(database) || !valid_database_name(table)) {
+        throw std::invalid_argument("Invalid Gramstat database or table name");
+    }
+    return "`" + database + "`.`" + table + "`";
+}
+
+std::vector<std::string> schema_queries(const std::string& database) {
+    // Use the same qualified names for DDL, inserts and resume checks.
+    auto supply = table_name(database, "total_supply");
+    auto deltas = table_name(database, "account_deltas");
+    auto deployments = table_name(database, "deployments");
+    return {
+        "CREATE DATABASE IF NOT EXISTS `" + database + "`",
+        "CREATE TABLE IF NOT EXISTS " + supply + R"SQL( (
+    mc_seqno UInt32,
+    gen_utime DateTime('UTC'),
+    total Decimal(38, 0),
+    accounts Decimal(38, 0),
+    dispatch_queue Decimal(38, 0),
+    unprocessed_messages Decimal(38, 0),
+    unrecovered_validator_fees Decimal(38, 0)
+) ENGINE = ReplacingMergeTree
+PARTITION BY toYYYYMM(gen_utime)
+ORDER BY (gen_utime, mc_seqno)
+)SQL",
+        "CREATE TABLE IF NOT EXISTS " + deltas + R"SQL( (
+    mc_seqno UInt32,
+    gen_utime DateTime('UTC'),
+    delta_uninit Int64,
+    delta_active Int64,
+    delta_frozen Int64
+) ENGINE = ReplacingMergeTree
+PARTITION BY toYYYYMM(gen_utime)
+ORDER BY (gen_utime, mc_seqno)
+)SQL",
+        "CREATE TABLE IF NOT EXISTS " + deployments + R"SQL( (
+    mc_seqno UInt32,
+    gen_utime DateTime('UTC'),
+    account String,
+    lt UInt64,
+    tx_hash FixedString(44),
+    init_code_hash Nullable(FixedString(44)),
+    out_msgs_count UInt32
+) ENGINE = ReplacingMergeTree
+PARTITION BY toYYYYMM(gen_utime)
+ORDER BY (account, lt, tx_hash)
+)SQL"};
+}
 
 clickhouse::Block total_supply_block(const std::vector<schema::TotalSupply>& snapshots) {
     using namespace clickhouse;
@@ -103,7 +160,8 @@ clickhouse::Block deployments_block(const std::vector<schema::Deployment>& deplo
     return block;
 }
 
-std::string completed_seqnos_query(bool collect_gramstat, std::int32_t from_seqno, std::int32_t to_seqno) {
+std::string completed_seqnos_query(bool collect_gramstat, std::int32_t from_seqno, std::int32_t to_seqno,
+                                  const std::string& database) {
     auto range = [from_seqno, to_seqno](const char* column) {
         std::string sql;
         if (from_seqno > 0) {
@@ -116,9 +174,9 @@ std::string completed_seqnos_query(bool collect_gramstat, std::int32_t from_seqn
     };
     std::string sql = "SELECT DISTINCT seqno FROM blocks WHERE workchain = -1" + range("seqno");
     if (collect_gramstat) {
-        sql += " AND toUInt32(seqno) IN (SELECT mc_seqno FROM gramstat.total_supply WHERE 1" +
+        sql += " AND toUInt32(seqno) IN (SELECT mc_seqno FROM " + table_name(database, "total_supply") + " WHERE 1" +
                range("mc_seqno") + ")";
-        sql += " AND toUInt32(seqno) IN (SELECT mc_seqno FROM gramstat.account_deltas WHERE 1" +
+        sql += " AND toUInt32(seqno) IN (SELECT mc_seqno FROM " + table_name(database, "account_deltas") + " WHERE 1" +
                range("mc_seqno") + ")";
     }
     return sql;

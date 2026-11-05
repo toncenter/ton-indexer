@@ -8,6 +8,7 @@
 #include "crypto/vm/cp0.h"
 
 #include "InsertManagerClickhouse.h"
+#include "GramstatStorage.h"
 #include "DataParser.h"
 #include "DbScanner.h"
 #include "TraceAssembler.h"
@@ -38,6 +39,7 @@ int main(int argc, char *argv[]) {
   InsertManagerClickhouse::Credential credential;
   bool testnet = false;
   bool gramstat = false;
+  std::string gramstat_db = "gramstat";
 
   std::uint32_t max_active_tasks = 7;
   std::uint32_t max_insert_actors = 12;
@@ -65,8 +67,15 @@ int main(int argc, char *argv[]) {
   p.add_option('\0', "ch", "Clickhouse connection string",  [&](td::Slice value) {
     credential.set_conn_str(value.str());
   });
-  p.add_option('\0', "gramstat", "Collect Gramstat metrics (total supply, account deltas, deployments) in the gramstat database", [&] {
+  p.add_option('\0', "gramstat", "Collect Gramstat metrics (total supply, account deltas, deployments)", [&] {
     gramstat = true;
+  });
+  p.add_checked_option('\0', "gramstat-db", "ClickHouse database for Gramstat metrics (default: gramstat)", [&](td::Slice value) {
+    if (!gramstat::valid_database_name(value.str())) {
+      return td::Status::Error("--gramstat-db must match [A-Za-z_][A-Za-z0-9_]*");
+    }
+    gramstat_db = value.str();
+    return td::Status::OK();
   });
   p.add_checked_option('f', "from", "Masterchain seqno to start indexing from", [&](td::Slice fname) { 
     int v;
@@ -267,7 +276,7 @@ int main(int argc, char *argv[]) {
   });
 
   td::actor::Scheduler scheduler({td::actor::Scheduler::NodeInfo{threads, io_workers}});
-  scheduler.run_in_context([&] { insert_manager_ = td::actor::create_actor<InsertManagerClickhouse>("insertmanager", credential, gramstat); });
+  scheduler.run_in_context([&] { insert_manager_ = td::actor::create_actor<InsertManagerClickhouse>("insertmanager", credential, gramstat, gramstat_db); });
   scheduler.run_in_context([&] { parse_manager_ = td::actor::create_actor<ParseManager>("parsemanager"); });
   scheduler.run_in_context([&] {
     db_scanner_ = td::actor::create_actor<DbScanner>("scanner", db_root, dbs_secondary,

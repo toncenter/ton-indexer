@@ -708,13 +708,18 @@ int main(int argc, char** argv) {
         std::cout << nft_history::CREATE_STATES << ";\n";
         return 0;
     }
-    if (argc == 2 && std::string(argv[1]) == "--schema") {
-        std::cout << gramstat::CREATE_DATABASE << ";\n" << gramstat::CREATE_TOTAL_SUPPLY << ";\n"
-                  << gramstat::CREATE_ACCOUNT_DELTAS << ";\n" << gramstat::CREATE_DEPLOYMENTS << ";\n";
+    if ((argc == 2 || argc == 3) && std::string(argv[1]) == "--schema") {
+        for (const auto& query : gramstat::schema_queries(argc == 3 ? argv[2] : "gramstat")) {
+            std::cout << query << ";\n";
+        }
         return 0;
     }
-    if (argc == 2 && std::string(argv[1]) == "--completed-query") {
-        std::cout << gramstat::completed_seqnos_query(true, 100, 105);
+    if ((argc == 2 || argc == 3) && std::string(argv[1]) == "--completed-query") {
+        std::cout << gramstat::completed_seqnos_query(true, 100, 105, argc == 3 ? argv[2] : "gramstat");
+        return 0;
+    }
+    if (argc == 4 && std::string(argv[1]) == "--table") {
+        std::cout << gramstat::table_name(argv[2], argv[3]);
         return 0;
     }
     if (argc == 2 && std::string(argv[1]) == "--legacy-query") {
@@ -722,6 +727,12 @@ int main(int argc, char** argv) {
         return 0;
     }
     CHECK(argc == 1);
+    for (const std::string invalid : {"", "a.b", "a`b", "a;b", "1pilot"}) {
+        CHECK(!gramstat::valid_database_name(invalid));
+        bool rejected = false;
+        try { gramstat::schema_queries(invalid); } catch (const std::invalid_argument&) { rejected = true; }
+        CHECK(rejected);
+    }
     schema::ValidatorRoundResult round{1788000000, std::string(64, 'A'),
         td::dec_string_to_int256(std::string("900719925474099312345")), td::make_refint(123456789),
         100, 1788220800, 9007199254740993ULL, td::Bits256::zero()};
