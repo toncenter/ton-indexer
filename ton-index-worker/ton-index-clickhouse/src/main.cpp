@@ -4,6 +4,7 @@
 #include "td/utils/logging.h"
 #include "td/utils/check.h"
 #include "td/utils/port/path.h"
+#include <atomic>
 
 #include "crypto/vm/cp0.h"
 
@@ -271,8 +272,9 @@ int main(int argc, char *argv[]) {
 
   NftItemDetectorR::is_testnet = testnet;
 
-  auto watcher = td::create_shared_destructor([] {
-    td::actor::SchedulerContext::get().stop();
+  auto finish_requested = std::make_shared<std::atomic_bool>(false);
+  auto watcher = td::create_shared_destructor([finish_requested] {
+    finish_requested->store(true);
   });
 
   td::actor::Scheduler scheduler({td::actor::Scheduler::NodeInfo{threads, io_workers}});
@@ -295,8 +297,18 @@ int main(int argc, char *argv[]) {
   });
   scheduler.run_in_context([&] { td::actor::send_closure(index_scheduler_, &IndexScheduler::run); });
   
-  while(scheduler.run(1)) {
+  while(!finish_requested->load() && scheduler.run(1)) {
     // do something
+  }
+  if (finish_requested->load()) {
+    scheduler.run_in_context([&] {
+      index_scheduler_.reset();
+      insert_manager_.reset();
+      parse_manager_.reset();
+      db_scanner_.reset();
+      td::actor::SchedulerContext::get().stop();
+    });
+    scheduler.run();
   }
   LOG(INFO) << "Done!";
   return 0;

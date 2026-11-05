@@ -439,8 +439,10 @@ void DbScanner::alarm() {
     return;
   }
 
-  auto P = td::PromiseCreator::lambda([](td::Result<td::Unit> R) {
-    R.ensure();
+  auto P = td::PromiseCreator::lambda([SelfId = actor_id(this)](td::Result<td::Unit> R) {
+    // Teardown may drop an in-flight periodic catch-up promise. Check failures
+    // only while the scanner is alive; messages to a stopped actor are discarded.
+    td::actor::send_lambda(SelfId, [R = std::move(R)]() mutable { R.ensure(); });
   });
 
   request_catch_up(std::move(P), CatchUpMode::Throttled);
