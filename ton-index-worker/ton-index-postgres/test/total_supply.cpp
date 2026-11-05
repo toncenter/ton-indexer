@@ -207,6 +207,83 @@ void check_round_results(pqxx::connection& connection, pqxx::connection& observe
     CHECK(rejected && count(observer, "validator_round_results") == 1);
 }
 
+void check_sampled_supply(pqxx::connection& connection, pqxx::connection& observer) {
+    const auto previous_blocks = count(observer, "blocks");
+    const auto previous_supply = count(observer, "gramstat.total_supply");
+    const auto previous_deltas = count(observer, "gramstat.account_deltas");
+    const auto completed = std::string("SELECT count(*) FROM blocks WHERE workchain = -1 "
+                                       "AND seqno BETWEEN 149 AND 301") +
+                           gramstat::postgres::completed_block_condition(true);
+    std::vector<InsertTaskStruct> tasks;
+    for (auto seqno : {301U, 149U, 150U, 151U, 299U, 300U}) {
+        auto item = task(seqno, 1788220800, "100000000000000000102");
+        if (seqno != 150 && seqno != 300) item.parsed_block_->total_supply_.reset();
+        tasks.push_back(std::move(item));
+    }
+    {
+        pqxx::work txn(connection);
+        txn.exec0("INSERT INTO blocks VALUES (-1,149),(-1,150),(-1,151),(-1,299),(-1,300),(-1,301)");
+        for (int retry = 0; retry < 2; ++retry) {
+            gramstat::postgres::insert_total_supply(txn, tasks);
+            gramstat::postgres::insert_deployments(txn, tasks);
+            gramstat::postgres::insert_account_deltas(txn, tasks);
+        }
+        CHECK(txn.query_value<int>("SELECT count(*) FROM gramstat.total_supply WHERE mc_seqno BETWEEN 149 AND 301") == 2);
+        CHECK(txn.query_value<int>("SELECT count(*) FROM gramstat.account_deltas WHERE mc_seqno BETWEEN 149 AND 301") == 6);
+        CHECK(txn.query_value<int>(completed) == 6);
+        CHECK(count(observer, "gramstat.total_supply") == previous_supply);
+
+        txn.exec0("DELETE FROM gramstat.total_supply WHERE mc_seqno=150");
+        CHECK(txn.query_value<int>(completed) == 5);
+        gramstat::postgres::insert_total_supply(txn, tasks);
+        CHECK(txn.query_value<int>(completed) == 6);
+        txn.exec0("DELETE FROM gramstat.account_deltas WHERE mc_seqno=149");
+        CHECK(txn.query_value<int>(completed) == 5);  // deltas remain mandatory off-grid
+        gramstat::postgres::insert_account_deltas(txn, tasks);
+        CHECK(txn.query_value<int>(completed) == 6);
+
+        // An entire batch can have no supply rows; its deltas still commit normally.
+        std::vector<InsertTaskStruct> skipped;
+        for (auto seqno : {601U, 602U}) {
+            auto item = task(seqno, 1788220800, "100000000000000000102");
+            item.parsed_block_->total_supply_.reset();
+            skipped.push_back(std::move(item));
+        }
+        txn.exec0("INSERT INTO blocks VALUES (-1,601),(-1,602)");
+        gramstat::postgres::insert_total_supply(txn, skipped);
+        gramstat::postgres::insert_deployments(txn, skipped);
+        gramstat::postgres::insert_account_deltas(txn, skipped);
+        CHECK(txn.query_value<int>("SELECT count(*) FROM gramstat.total_supply WHERE mc_seqno IN (601,602)") == 0);
+        CHECK(txn.query_value<int>(std::string("SELECT count(*) FROM blocks WHERE workchain=-1 AND seqno IN (601,602)") +
+                                  gramstat::postgres::completed_block_condition(true)) == 2);
+        // Roll back this fixture so the documented chart tests retain their inputs.
+    }
+    CHECK(count(observer, "blocks") == previous_blocks);
+    CHECK(count(observer, "gramstat.total_supply") == previous_supply);
+    CHECK(count(observer, "gramstat.account_deltas") == previous_deltas);
+
+    for (int failure = 0; failure < 3; ++failure) {
+        std::vector<InsertTaskStruct> bad;
+        auto item = task(failure == 0 ? 450 : 451, 1788220800, "100000000000000000102");
+        if (failure == 1) {
+            item.parsed_block_->total_supply_->mc_seqno = 450;
+        } else {
+            item.parsed_block_->total_supply_.reset();
+            if (failure == 2) item.parsed_block_->account_deltas_.reset();
+        }
+        bad.push_back(std::move(item));
+        bool rejected = false;
+        try {
+            pqxx::work txn(connection);
+            // Deltas must also reject missing selected supply, mismatched optional
+            // supply and missing deltas on an otherwise legitimately skipped MC.
+            gramstat::postgres::insert_account_deltas(txn, bad);
+            txn.commit();
+        } catch (const std::runtime_error&) { rejected = true; }
+        CHECK(rejected && count(observer, "gramstat.account_deltas") == previous_deltas);
+    }
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -338,12 +415,12 @@ FROM (
     // An application-level missing snapshot and a database write failure must
     // both roll back the block insert, not leave an apparently completed MC.
     std::vector<InsertTaskStruct> bad;
-    bad.push_back(task(106, 1788307201, "100000000000000000106"));
+    bad.push_back(task(450, 1788307201, "100000000000000000106"));
     bad[0].parsed_block_->total_supply_.reset();
     bool rejected = false;
     try {
         pqxx::work txn(connection);
-        txn.exec0("INSERT INTO blocks VALUES (-1, 106)");
+        txn.exec0("INSERT INTO blocks VALUES (-1, 450)");
         gramstat::postgres::insert_total_supply(txn, bad);
         txn.commit();
     } catch (const std::runtime_error&) {
@@ -438,6 +515,7 @@ FROM (
         CHECK(count(observer, "gramstat.account_deltas") == 4);
         CHECK(count(observer, "gramstat.deployments") == 2);
     }
+    check_sampled_supply(connection, observer);
     // A complete small prefix for the documented chart SQL (run by the runner).
     std::vector<InsertTaskStruct> history;
     for (const auto& delta : std::vector<schema::AccountDeltas>{

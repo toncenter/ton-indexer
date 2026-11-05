@@ -12,7 +12,7 @@ void ensure_schema(pqxx::work& txn) {
 }
 
 void insert_total_supply(pqxx::work& txn, const std::vector<InsertTaskStruct>& tasks) {
-    // One row per MC: a batched INSERT with conflict handling also works for
+    // One row per sampled MC: a batched INSERT with conflict handling also works for
     // prewarm, historical backfill and retries of an already committed batch.
     std::initializer_list<std::string_view> columns = {
         "mc_seqno", "gen_utime", "total", "accounts", "dispatch_queue",
@@ -21,6 +21,9 @@ void insert_total_supply(pqxx::work& txn, const std::vector<InsertTaskStruct>& t
     stream.setConflictDoNothing();
     for (const auto& task : tasks) {
         const auto& snapshot = task.parsed_block_->total_supply_;
+        if (!snapshot && !should_calculate_total_supply(task.mc_seqno_)) {
+            continue;
+        }
         if (!snapshot || snapshot->mc_seqno != task.mc_seqno_) {
             throw std::runtime_error("Missing or mismatched total supply snapshot in PostgreSQL batch");
         }
@@ -63,8 +66,9 @@ void insert_account_deltas(pqxx::work& txn, const std::vector<InsertTaskStruct>&
     for (const auto& task : tasks) {
         const auto& delta = task.parsed_block_->account_deltas_;
         const auto& supply = task.parsed_block_->total_supply_;
-        if (!delta || delta->mc_seqno != task.mc_seqno_ || !supply ||
-            supply->mc_seqno != delta->mc_seqno || supply->gen_utime != delta->gen_utime) {
+        if (!delta || delta->mc_seqno != task.mc_seqno_ ||
+            (!supply && should_calculate_total_supply(task.mc_seqno_)) ||
+            (supply && (supply->mc_seqno != delta->mc_seqno || supply->gen_utime != delta->gen_utime))) {
             throw std::runtime_error("Missing or mismatched account deltas in PostgreSQL batch");
         }
         stream.insert_row(std::make_tuple(delta->mc_seqno, delta->gen_utime,

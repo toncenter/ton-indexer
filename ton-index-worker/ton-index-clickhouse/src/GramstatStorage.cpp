@@ -1,4 +1,5 @@
 #include "GramstatStorage.h"
+#include "GramstatSampling.h"
 
 #include <algorithm>
 #include <stdexcept>
@@ -174,8 +175,9 @@ std::string completed_seqnos_query(bool collect_gramstat, std::int32_t from_seqn
     };
     std::string sql = "SELECT DISTINCT seqno FROM blocks WHERE workchain = -1" + range("seqno");
     if (collect_gramstat) {
-        sql += " AND toUInt32(seqno) IN (SELECT mc_seqno FROM " + table_name(database, "total_supply") + " WHERE 1" +
-               range("mc_seqno") + ")";
+        sql += " AND (seqno % " + std::to_string(TOTAL_SUPPLY_INTERVAL) +
+               " != 0 OR toUInt32(seqno) IN (SELECT mc_seqno FROM " + table_name(database, "total_supply") + " WHERE 1" +
+               range("mc_seqno") + "))";
         sql += " AND toUInt32(seqno) IN (SELECT mc_seqno FROM " + table_name(database, "account_deltas") + " WHERE 1" +
                range("mc_seqno") + ")";
     }

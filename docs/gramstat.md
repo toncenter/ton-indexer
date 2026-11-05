@@ -3,9 +3,10 @@
 Both `ton-index-clickhouse` and `ton-index-postgres` support `--gramstat`.
 The shared `collect_gramstat` switch enables the Gramstat stage in the existing
 `IndexScheduler` pipeline. It collects total supply in `gramstat.total_supply`
-and account-status changes in `gramstat.account_deltas`, one row per indexed
-masterchain block in each table. `gramstat.deployments` stores individual
-successful deployment events for all contract types.
+**every 150 masterchain blocks** (`mc_seqno % 150 == 0`) and account-status
+changes in `gramstat.account_deltas` on **every indexed masterchain block**.
+`gramstat.deployments` stores individual successful deployment events for all
+contract types.
 
 The [validator handlers](gramstat-validators.md) publish elected validator counts,
 country distributions and map-ready session-stats locations per validation round.
@@ -23,6 +24,12 @@ activity, swaps, selected liquid-staking deposits and `.ton` mints from PostgreS
 states from `ParsedBlock::mc_block_`. Auxiliary historical MC states needed for
 `processed_upto`, and seqno-zero shard tips, are loaded through the same
 `DbScanner` and secondary RootDb.
+
+Only MCs on the fixed 150-block grid invoke this calculation. Other MCs skip it
+entirely and have no new supply row; their account deltas and deployments are
+still collected. Each selected snapshot is a full, independent calculation, so
+different MCs remain parallel. The grid is independent of `--from`, batch sizes
+and restarts; skipped MCs are not filled with zero or a carried-forward balance.
 
 All amounts are exact integer nanoTON:
 
@@ -68,14 +75,18 @@ role needs the corresponding permissions. Configure the flag consistently on
 PostgreSQL leader and standby workers.
 
 Use `--gramstat --from N --to M` for historical backfill; both bounds are
-inclusive. Bounded replay skips an MC only when its block, supply and account
-deltas all exist. ClickHouse normal resume also checks all three tables because
-their inserts are not atomic. PostgreSQL normal resume uses
-`_ton_indexer_progress`; new blocks and metrics are committed atomically, while
-pre-existing history needs an explicit bounded backfill. Standbys require all
-three rows before acknowledging a leader's batch. For independent PostgreSQL
-backfill use `--no-leader --pg-no-copy`. Missing metrics are repaired without
+inclusive. Bounded replay skips an MC only when its block and account deltas
+exist, **plus its supply snapshot if `mc_seqno % 150 == 0`**. ClickHouse normal
+resume uses the same condition because the inserts are not atomic. PostgreSQL
+normal resume uses `_ton_indexer_progress`; new blocks and metrics are committed atomically, while
+pre-existing history needs an explicit bounded backfill. Standbys use the same
+sampling-aware condition before acknowledging a leader's batch. For independent
+PostgreSQL backfill use `--no-leader --pg-no-copy`. Missing metrics are repaired without
 `--force`; use `--force` to recompute already-present account deltas.
+
+Existing per-MC supply history remains valid and is retained. No schema migration
+is needed for sparse snapshots. Deploy the same sampling policy on all writers
+and standbys; older binaries still require a supply row on every MC.
 
 ### Isolated ClickHouse runs
 
@@ -181,7 +192,7 @@ ClickHouse uses monthly `ReplacingMergeTree` partitions and
 across replays. **Use `FINAL` before any SUM** so unmerged retries do not inflate
 counts. PostgreSQL uses an index on `(gen_utime, mc_seqno)` and batched
 `ON CONFLICT (mc_seqno) DO UPDATE` replacing the time and three deltas, never
-adding them to the old row. It commits with blocks and Supply, including in
+adding them to the old row. It commits with blocks and any sampled supply, including in
 Kvrocks mode.
 
 ### Daily Accounts queries

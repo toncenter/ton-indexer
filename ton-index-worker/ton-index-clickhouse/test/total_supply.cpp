@@ -730,8 +730,10 @@ int main(int argc, char** argv) {
         }
         return 0;
     }
-    if ((argc == 2 || argc == 3) && std::string(argv[1]) == "--completed-query") {
-        std::cout << gramstat::completed_seqnos_query(true, 100, 105, argc == 3 ? argv[2] : "gramstat");
+    if ((argc == 2 || argc == 3 || argc == 5) && std::string(argv[1]) == "--completed-query") {
+        std::cout << gramstat::completed_seqnos_query(true,
+            argc == 5 ? std::stoi(argv[3]) : 100, argc == 5 ? std::stoi(argv[4]) : 105,
+            argc >= 3 ? argv[2] : "gramstat");
         return 0;
     }
     if (argc == 4 && std::string(argv[1]) == "--table") {

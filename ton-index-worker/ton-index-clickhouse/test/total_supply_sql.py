@@ -115,22 +115,22 @@ def check_database_isolation(binary, clickhouse):
     pilot = "gramstat_pilot_metrics"
     supply, deltas, deployments = [exported("--table", pilot, table)
                                    for table in ("total_supply", "account_deltas", "deployments")]
-    completed = exported("--completed-query", pilot)
+    completed = exported("--completed-query", pilot, "150", "300")
     sql = exported("--schema") + exported("--schema", pilot) + """
 CREATE DATABASE gramstat_pilot_raw;
 USE gramstat_pilot_raw;
 CREATE TABLE blocks (workchain Int32, seqno Int32) ENGINE=Memory;
-INSERT INTO blocks VALUES (-1,100),(-1,101);
-INSERT INTO gramstat.total_supply VALUES (100,'2026-09-01',123,123,0,0,0);
-INSERT INTO gramstat.account_deltas VALUES (100,'2026-09-01',1,0,0);
+INSERT INTO blocks VALUES (-1,150),(-1,300);
+INSERT INTO gramstat.total_supply VALUES (150,'2026-09-01',123,123,0,0,0);
+INSERT INTO gramstat.account_deltas VALUES (150,'2026-09-01',1,0,0);
 """
     # Existing default metrics must not make the pilot skip an unprocessed MC.
     sql += f"SELECT groupArray(seqno) FROM ({completed} ORDER BY seqno);\n"
     sql += f"""
-INSERT INTO {supply} VALUES (101,'2026-09-01',456,456,0,0,0);
-INSERT INTO {deployments} VALUES (101,'2026-09-01','0:A',1,'hash',NULL,0);
+INSERT INTO {supply} VALUES (300,'2026-09-01',456,456,0,0,0);
+INSERT INTO {deployments} VALUES (300,'2026-09-01','0:A',1,'hash',NULL,0);
 SELECT groupArray(seqno) FROM ({completed} ORDER BY seqno);
-INSERT INTO {deltas} VALUES (101,'2026-09-01',0,1,0);
+INSERT INTO {deltas} VALUES (300,'2026-09-01',0,1,0);
 SELECT groupArray(seqno) FROM ({completed} ORDER BY seqno);
 SELECT total FROM gramstat.total_supply FINAL;
 SELECT count() FROM gramstat.deployments FINAL;
@@ -141,8 +141,51 @@ SELECT count() FROM {deployments} FINAL;
         result = subprocess.run([clickhouse, "local", "--path", directory, "--multiquery"],
                                 input=sql, text=True, capture_output=True, timeout=90)
         assert result.returncode == 0, result.stdout + result.stderr
-    assert result.stdout.strip().splitlines() == ["[]", "[]", "[101]", "123", "0", "456", "1"], result.stdout
+    assert result.stdout.strip().splitlines() == ["[]", "[]", "[300]", "123", "0", "456", "1"], result.stdout
     print("ClickHouse custom database: isolated schema, insert targets and resume checks: OK")
+
+
+def check_sampled_supply(binary, clickhouse):
+    def completed(start, end):
+        query = subprocess.check_output(
+            [binary, "--completed-query", "gramstat", str(start), str(end)], text=True)
+        return f"SELECT groupArray(seqno) FROM ({query} ORDER BY seqno);\n"
+
+    sql = subprocess.check_output([binary, "--schema"], text=True) + """
+CREATE TABLE blocks (workchain Int32, seqno Int32) ENGINE=Memory;
+INSERT INTO blocks VALUES
+    (-1,149),(-1,150),(-1,151),(-1,299),(-1,300),(-1,301),(-1,450),(-1,451),(0,600);
+INSERT INTO gramstat.account_deltas VALUES
+    (149,'2026-09-01',0,0,0),(150,'2026-09-01',0,0,0),(151,'2026-09-01',0,0,0),
+    (299,'2026-09-01',0,0,0),(300,'2026-09-01',0,0,0),(301,'2026-09-01',0,0,0),
+    (450,'2026-09-01',0,0,0),(600,'2026-09-01',0,0,0),(900,'2026-09-01',0,0,0);
+INSERT INTO gramstat.total_supply VALUES
+    (300,'2026-09-01',123,123,0,0,0),
+    (451,'2026-09-01',123,123,0,0,0), -- legacy dense history, but missing deltas
+    (600,'2026-09-01',123,123,0,0,0), -- shard-only block
+    (900,'2026-09-01',123,123,0,0,0); -- missing block
+"""
+    # Non-sampled MCs are complete without supply. Selected MCs 150/450 need repair.
+    sql += completed(149, 900)
+    sql += """
+INSERT INTO gramstat.total_supply VALUES
+    (150,'2026-09-01',456,456,0,0,0),(150,'2026-09-01',456,456,0,0,0),
+    (450,'2026-09-01',789,789,0,0,0);
+"""
+    sql += completed(149, 900)
+    sql += "INSERT INTO gramstat.account_deltas VALUES (451,'2026-09-01',0,0,0);\n"
+    sql += completed(149, 900)
+    sql += completed(151, 299)  # resumed interval with no sampling points
+    sql += completed(150, 300)  # inclusive sampling boundaries
+    with tempfile.TemporaryDirectory(prefix="gramstat-sampled-") as directory:
+        result = subprocess.run([clickhouse, "local", "--path", directory, "--multiquery"],
+                                input=sql, text=True, capture_output=True, timeout=90)
+        assert result.returncode == 0, result.stdout + result.stderr
+    assert result.stdout.strip().splitlines() == [
+        "[149,151,299,300,301]", "[149,150,151,299,300,301,450]",
+        "[149,150,151,299,300,301,450,451]", "[151,299]", "[150,151,299,300]",
+    ], result.stdout
+    print("ClickHouse sampled supply: sparse resume, boundary repair and legacy history: OK")
 
 
 def main():
@@ -151,6 +194,7 @@ def main():
     check_nft_history(binary, clickhouse)
     check_round_results(binary, clickhouse)
     check_database_isolation(binary, clickhouse)
+    check_sampled_supply(binary, clickhouse)
     check_validators(binary, clickhouse)
 
     def exported(option):
@@ -322,7 +366,7 @@ ENGINE = Memory;
         )
         assert result.returncode == 0, result.stderr
     expected = [
-        "[100,101,105]",  # excludes missing supply, shard-only and missing MC rows
+        "[100,101,105]",  # dense legacy history: excludes missing deltas, shard-only and missing MC rows
         "[100,101,102,105]",
         "2026-09-01 00:00:00\t100000000000000000102",
         "2026-09-01 02:00:00\t100000000000000000104",

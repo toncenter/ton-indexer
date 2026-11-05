@@ -1,6 +1,7 @@
 #include "IndexScheduler.h"
 #include "BlockInterfacesDetector.h"
 #include "TotalSupply.h"
+#include "GramstatSampling.h"
 #include "AccountDeltas.h"
 #include "Deployments.h"
 #include "AccountStateHistory.h"
@@ -574,6 +575,12 @@ void IndexScheduler::seqno_actions_processed(std::uint32_t mc_seqno, ParsedBlock
             return;
         }
         parsed_block->deployments_ = deployments.move_as_ok();
+        if (!gramstat::should_calculate_total_supply(mc_seqno)) {
+            parsed_block->total_supply_.reset();
+            finish_seqno_otel_stage(mc_seqno);
+            insert_seqno(mc_seqno, std::move(parsed_block));
+            return;
+        }
         auto P = td::PromiseCreator::lambda(
             [SelfId = actor_id(this), mc_seqno, parsed_block](td::Result<schema::TotalSupply> R) mutable {
                 td::actor::send_closure(SelfId, &IndexScheduler::seqno_supply_processed,

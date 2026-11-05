@@ -1,5 +1,6 @@
 #include "InsertManagerClickhouse.h"
 #include "GramstatStorage.h"
+#include "GramstatSampling.h"
 #include "TokenStatesStorage.h"
 #include "ValidatorRoundResultsStorage.h"
 #include "ValidatorStorage.h"
@@ -591,6 +592,9 @@ void InsertBatchClickhouse::insert_total_supply(clickhouse::Client& client) {
     snapshots.reserve(insert_tasks_.size());
     for (const auto& task : insert_tasks_) {
         const auto& supply = task.parsed_block_->total_supply_;
+        if (!supply && !gramstat::should_calculate_total_supply(task.mc_seqno_)) {
+            continue;
+        }
         if (!supply || supply->mc_seqno != task.mc_seqno_) {
             throw std::runtime_error("Missing or mismatched total supply snapshot in insert batch");
         }
@@ -626,8 +630,9 @@ void InsertBatchClickhouse::insert_account_deltas(clickhouse::Client& client) {
     for (const auto& task : insert_tasks_) {
         const auto& delta = task.parsed_block_->account_deltas_;
         const auto& supply = task.parsed_block_->total_supply_;
-        if (!delta || delta->mc_seqno != task.mc_seqno_ || !supply ||
-            supply->mc_seqno != delta->mc_seqno || supply->gen_utime != delta->gen_utime) {
+        if (!delta || delta->mc_seqno != task.mc_seqno_ ||
+            (!supply && gramstat::should_calculate_total_supply(task.mc_seqno_)) ||
+            (supply && (supply->mc_seqno != delta->mc_seqno || supply->gen_utime != delta->gen_utime))) {
             throw std::runtime_error("Missing or mismatched account deltas in ClickHouse batch");
         }
         deltas.push_back(*delta);
