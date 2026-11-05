@@ -22,6 +22,10 @@
 #include "clickhouse/columns/string.h"
 #include "td/actor/TestScheduler.h"
 
+void print_validator_schema();
+void print_validator_fixture(bool corrected);
+void check_validator_storage();
+
 namespace {
 
 void check_amounts_and_columns() {
@@ -695,6 +699,18 @@ void check_nft_history() {
 }  // namespace
 
 int main(int argc, char** argv) {
+    if (argc == 2 && std::string(argv[1]) == "--validator-schema") {
+        print_validator_schema();
+        return 0;
+    }
+    if (argc == 2 && std::string(argv[1]) == "--validator-fixture") {
+        print_validator_fixture(false);
+        return 0;
+    }
+    if (argc == 2 && std::string(argv[1]) == "--validator-correction") {
+        print_validator_fixture(true);
+        return 0;
+    }
     if (argc == 2 && std::string(argv[1]) == "--round-results-schema") {
         std::cout << elector::clickhouse_storage::SCHEMA_SQL << ";\n";
         return 0;
@@ -753,5 +769,6 @@ int main(int argc, char** argv) {
     check_jetton_detection_status();
     check_jetton_history();
     check_nft_history();
+    check_validator_storage();
     std::cout << "Gramstat supply, account deltas, deployments and exact ClickHouse columns: OK\n";
 }

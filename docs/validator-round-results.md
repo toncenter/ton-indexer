@@ -39,6 +39,11 @@ Existing PostgreSQL tables retain their meanings:
   round. It is used as the selected capital when the full history is indexed.
 * `validator_round_results.total_stake`: final remaining principal after fines.
 
+The ClickHouse indexer also stores the existing validator source data. Its cycle
+and member tables retain key-block observations; reduce them to maximum observed
+stakes before joining results. See [ClickHouse validator tables](validator-clickhouse.md)
+for keys, nullable enrichment and read queries.
+
 Join cycles to results by `election_id`. A missing result means the release has
 not been indexed; it does not mean zero stake or zero rewards. An open round has
 no final result yet.

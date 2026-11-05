@@ -9,6 +9,7 @@ import subprocess
 from pathlib import Path
 import sys
 import tempfile
+from validators_sql import check_validators
 
 
 def check_jetton_history(binary, clickhouse):
@@ -150,6 +151,7 @@ def main():
     check_nft_history(binary, clickhouse)
     check_round_results(binary, clickhouse)
     check_database_isolation(binary, clickhouse)
+    check_validators(binary, clickhouse)
 
     def exported(option):
         return subprocess.check_output([binary, option], text=True)

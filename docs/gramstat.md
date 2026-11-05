@@ -9,6 +9,8 @@ successful deployment events for all contract types.
 
 The [validator handlers](gramstat-validators.md) publish elected validator counts,
 country distributions and map-ready session-stats locations per validation round.
+The ClickHouse indexer also writes [validator source tables](validator-clickhouse.md)
+and [final stake/reward results](validator-round-results.md) in its ordinary database.
 
 The separate [Go aggregator](gramstat-aggregate.md) refreshes daily jetton/NFT
 activity, swaps, selected liquid-staking deposits and `.ton` mints from PostgreSQL actions into ClickHouse
