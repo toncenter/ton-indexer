@@ -167,8 +167,9 @@ release, byte/entry eviction and out-of-order/different snapshot identities.
 
 ## Inter-block parent states and warmed cells
 
-The indexing scheduler owns a **512 MiB** parent-cache budget, shared by all its
-parallel MC detector groups. It updates cached parents immediately after the
+The indexing scheduler owns a **512 MiB** parent-cache budget (about **20 MiB** was
+observed in the 30-minute profile of the seven-day pilot indexer run), shared by
+all its parallel MC detector groups. It updates cached parents immediately after the
 existing ordered TraceAssembler stage. There is no new actor barrier or waiting
 for another MC: incompatible snapshots use the existing per-MC lookup path.
 
