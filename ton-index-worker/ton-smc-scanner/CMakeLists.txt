@@ -12,6 +12,12 @@ target_include_directories(ton-smc-scanner
 target_compile_features(ton-smc-scanner PRIVATE cxx_std_20)
 target_link_libraries(ton-smc-scanner tondb-scanner ton-kvrocks-state pqxx)
 
+# Redis/hiredis may export a broad system include directory containing another
+# libpqxx version. Prefer headers from the same pqxx target that we link.
+target_include_directories(ton-smc-scanner BEFORE PRIVATE
+    $<TARGET_PROPERTY:pqxx,INTERFACE_INCLUDE_DIRECTORIES>
+)
+
 set(INTERFACES_DETECTOR_TYPES "" CACHE STRING "Semicolon-separated list of detectors to instantiate")
 string(REPLACE ";" "," DETECTORS_COMMA "${INTERFACES_DETECTOR_TYPES}")
 
