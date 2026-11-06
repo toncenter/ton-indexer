@@ -3,6 +3,8 @@
 #include "common/refint.h"
 #include "DataParser.h"
 #include "ElectorRoundResults.h"
+#include "ValidatorElection.h"
+#include "Statistics.h"
 #include "convert-utils.h"
 #include "emulator/transaction-emulator.h"
 #include "smc-interfaces/NominatorPool.h"
@@ -409,7 +411,9 @@ private:
         bool data_changed = true;
         if (data_changed_r.is_ok()) {
           data_changed = data_changed_r.move_as_ok();
+          g_statistics.record_count(data_changed ? ELECTOR_COMPARE_CHANGED : ELECTOR_COMPARE_UNCHANGED);
         } else {
+          g_statistics.record_count(ELECTOR_COMPARE_ERROR);
           LOG(DEBUG) << "Failed to compare elector data before/after transaction: "
                      << data_changed_r.move_as_error();
         }
@@ -804,49 +808,7 @@ private:
   td::Result<std::optional<schema::ValidatorElection>> parse_validator_election(
       const schema::AccountState& elector_state,
       uint32_t mc_seqno) const {
-    TRY_RESULT(stack, run_get_method_at_time(elector_state, "participant_list_extended", {}, current_block_time()));
-    if (stack.size() < 7) {
-      return td::Status::Error("participant_list_extended returned too few stack entries");
-    }
-
-    TRY_RESULT(election_id, stack_int_to_u32(stack[0], "elect_at"));
-    if (election_id == 0) {
-      return std::optional<schema::ValidatorElection>{};
-    }
-
-    schema::ValidatorElection election;
-    election.election_id = election_id;
-    TRY_RESULT_ASSIGN(election.elect_close, stack_int_to_u32(stack[1], "elect_close"));
-    TRY_RESULT_ASSIGN(election.min_stake, stack_int(stack[2], "min_stake"));
-    TRY_RESULT_ASSIGN(election.total_stake, stack_int(stack[3], "total_stake"));
-    TRY_RESULT_ASSIGN(election.failed, stack_int_to_bool(stack[5], "failed"));
-    TRY_RESULT_ASSIGN(election.finished, stack_int_to_bool(stack[6], "finished"));
-    election.source_mc_seqno = mc_seqno;
-
-    TRY_RESULT(participants, stack_list_to_vector(stack[4], "participants"));
-    for (const auto& participant_entry : participants) {
-      auto participant_tuple = participant_entry.as_tuple();
-      if (participant_tuple.is_null() || participant_tuple->size() < 2) {
-        return td::Status::Error("Invalid participant entry");
-      }
-      auto participant_data = participant_tuple->at(1).as_tuple();
-      if (participant_data.is_null() || participant_data->size() < 4) {
-        return td::Status::Error("Invalid participant data");
-      }
-
-      schema::ValidatorElectionParticipant participant;
-      participant.election_id = election.election_id;
-      TRY_RESULT_ASSIGN(participant.validator_pubkey, stack_int_to_hex(participant_tuple->at(0), "participant_pubkey"));
-      TRY_RESULT_ASSIGN(participant.stake, stack_int(participant_data->at(0), "participant_stake"));
-      TRY_RESULT_ASSIGN(participant.max_factor, stack_int_to_u32(participant_data->at(1), "participant_max_factor"));
-      TRY_RESULT(addr, stack_int(participant_data->at(2), "participant_stake_holder"));
-      participant.stake_holder_address = "-1:" + td::hex_string(addr, true, 64);
-      TRY_RESULT_ASSIGN(participant.adnl_addr, stack_int_to_hex(participant_data->at(3), "participant_adnl"));
-      participant.source_mc_seqno = mc_seqno;
-      election.participants.push_back(std::move(participant));
-    }
-
-    return std::optional<schema::ValidatorElection>{std::move(election)};
+    return elector::parse_election(elector_state, block_->mc_block_.config_, current_block_time(), mc_seqno);
   }
 
   std::optional<std::string> find_cycle_adnl(const schema::ValidatorCycle& cycle, const std::string& validator_pubkey) const {
@@ -948,6 +910,7 @@ private:
     }
     const auto mc_seqno = current_mc_seqno();
     auto triggers = collect_validator_snapshot_triggers();
+    if (triggers.active_election_dirty) g_statistics.record_count(ELECTOR_ELECTION_TRIGGER);
     if (!triggers.has_work()) {
       // Most masterchain blocks only run elector tick without changing elector data; skip expensive get-method snapshots.
       return td::Status::OK();

@@ -98,6 +98,11 @@ enum Ticker : uint32_t {
   EMULATE_SRC_REDIS,
   EMULATE_SRC_OVERLAY,
   EMULATE_SRC_BLOCKS,
+  ELECTOR_COMPARE_ERROR,
+  ELECTOR_COMPARE_CHANGED,
+  ELECTOR_COMPARE_UNCHANGED,
+  ELECTOR_ELECTION_TRIGGER,
+  ELECTOR_PARTICIPANT_GETTER,
   TICKERS_COUNT
 };
 
@@ -145,7 +150,12 @@ const std::unordered_map<uint32_t, std::string_view> ticker_names = {
     {DB_EVENT_CATCH_UP, "indexer.db_event.catch_up"},
     {EMULATE_SRC_REDIS, "emulator.source.redis"},
     {EMULATE_SRC_OVERLAY, "emulator.source.overlay"},
-    {EMULATE_SRC_BLOCKS, "emulator.source.blocks"}
+    {EMULATE_SRC_BLOCKS, "emulator.source.blocks"},
+    {ELECTOR_COMPARE_ERROR, "indexer.elector.compare.error"},
+    {ELECTOR_COMPARE_CHANGED, "indexer.elector.compare.changed"},
+    {ELECTOR_COMPARE_UNCHANGED, "indexer.elector.compare.unchanged"},
+    {ELECTOR_ELECTION_TRIGGER, "indexer.elector.election.trigger"},
+    {ELECTOR_PARTICIPANT_GETTER, "indexer.elector.participant_getter"}
 };
 const std::unordered_map<uint32_t, std::string_view> histogram_names = {
     {PROCESS_SEQNO, "indexer.index.seqno.millis"},

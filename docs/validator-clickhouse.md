@@ -6,6 +6,10 @@ It also stores the method IDs already extracted by interface detection.
 Collection is independent of `--gramstat` and uses the ordinary database selected
 by `--ch`. Tables are created at startup and inserted before the batch's `blocks`.
 
+Election getters and contract-method parsing use bounded [inter-block caches](gramstat-caches.md).
+Successful method metadata remains known even when a different historical config
+lacks the referenced library; it is not a claim of executability at that MC.
+
 ## Tables and replacement keys
 
 | Table | Logical key / observation key | Reading |

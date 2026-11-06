@@ -9,6 +9,7 @@ add_library(tondb-scanner STATIC
     src/TraceAssembler.cpp
     src/queue_state.cpp
     src/ElectorRoundResults.cpp
+    src/ValidatorElection.cpp
     src/parse_token_data.cpp
     src/parse_contract_methods.cpp
     src/convert-utils.cpp
@@ -68,3 +69,10 @@ add_dependencies(test-tondb test-tdutils)
 add_executable(test-elector-rounds EXCLUDE_FROM_ALL test/elector-round-results.cpp)
 target_link_libraries(test-elector-rounds PRIVATE tondb-scanner)
 add_test(NAME gramstat_elector_rounds COMMAND test-elector-rounds)
+
+add_executable(test-memoized-parsers EXCLUDE_FROM_ALL test/memoized-parsers.cpp)
+target_link_libraries(test-memoized-parsers PRIVATE tondb-scanner)
+target_compile_definitions(test-memoized-parsers PRIVATE
+    ELECTOR_CACHE_FIXTURE="${CMAKE_CURRENT_SOURCE_DIR}/test/fixtures/elector-code.b64")
+add_test(NAME gramstat_caches COMMAND test-memoized-parsers)
+set_tests_properties(gramstat_caches PROPERTIES TIMEOUT 60)
