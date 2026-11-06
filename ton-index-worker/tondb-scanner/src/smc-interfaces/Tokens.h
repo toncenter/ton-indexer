@@ -4,6 +4,7 @@
 #include <mc-config.h>
 
 using AllShardStates = std::vector<td::Ref<vm::Cell>>;
+class AccountLookupContext;
 
 // Per-address probes from the normal detector run. Unknown includes failed
 // getters/lookups; only a proven non-match is false.
@@ -30,7 +31,8 @@ public:
                        td::Ref<vm::Cell> data_cell, 
                        AllShardStates shard_states,
                        std::shared_ptr<block::ConfigInfo> config,
-                       td::Promise<Result> promise);
+                       td::Promise<Result> promise,
+                       std::shared_ptr<AccountLookupContext> lookup = nullptr);
 
   void start_up() override;
 
@@ -38,7 +40,8 @@ public:
                                    const td::Ref<vm::Cell>& code_cell,
                                    const td::Ref<vm::Cell>& data_cell,
                                    const AllShardStates& shard_states,
-                                   const std::shared_ptr<block::ConfigInfo>& config);
+                                   const std::shared_ptr<block::ConfigInfo>& config,
+                                   AccountLookupContext* lookup = nullptr);
 
 private:
   block::StdAddress address_;
@@ -47,6 +50,7 @@ private:
   AllShardStates shard_states_;
   std::shared_ptr<block::ConfigInfo> config_;
   td::Promise<Result> promise_;
+  std::shared_ptr<AccountLookupContext> lookup_;
 };
 
 class JettonMasterDetectorR: public td::actor::Actor {
@@ -112,7 +116,8 @@ public:
                        td::Ref<vm::Cell> data_cell, 
                        AllShardStates shard_states,
                        std::shared_ptr<block::ConfigInfo> config,
-                       td::Promise<Result> promise);
+                       td::Promise<Result> promise,
+                       std::shared_ptr<AccountLookupContext> lookup = nullptr);
 
   void start_up() override;
 
@@ -120,7 +125,8 @@ public:
                                    const td::Ref<vm::Cell>& code_cell,
                                    const td::Ref<vm::Cell>& data_cell,
                                    const AllShardStates& shard_states,
-                                   const std::shared_ptr<block::ConfigInfo>& config);
+                                   const std::shared_ptr<block::ConfigInfo>& config,
+                                   AccountLookupContext* lookup = nullptr);
 
 private:
   void process_domain_and_dns_data(const block::StdAddress& root_address, const std::function<td::Result<std::string>()>& get_domain_function, Result& item_data);
@@ -129,6 +135,8 @@ private:
   td::Status get_last_fill_up_time(Result::DNSEntry& entry);
   td::Result<std::string> get_ton_domain();
   td::Result<std::string> get_t_me_domain();
+
+  std::shared_ptr<AccountLookupContext> lookup_;
 
   block::StdAddress address_;
   td::Ref<vm::Cell> code_cell_;
@@ -185,7 +193,8 @@ public:
                      td::Ref<vm::Cell> data_cell,
                      AllShardStates shard_states,
                      std::shared_ptr<block::ConfigInfo> config,
-                     td::Promise<Result> promise);
+                     td::Promise<Result> promise,
+                     std::shared_ptr<AccountLookupContext> lookup = nullptr);
 
   void start_up() override;
 
@@ -194,9 +203,11 @@ public:
                                    const td::Ref<vm::Cell>& code_cell,
                                    const td::Ref<vm::Cell>& data_cell,
                                    const AllShardStates& shard_states,
-                                   const std::shared_ptr<block::ConfigInfo>& config);
+                                   const std::shared_ptr<block::ConfigInfo>& config,
+                                   AccountLookupContext* lookup = nullptr);
 
 private:
+  std::shared_ptr<AccountLookupContext> lookup_;
   block::StdAddress address_;
   td::Ref<vm::Cell> code_cell_;
   td::Ref<vm::Cell> data_cell_;

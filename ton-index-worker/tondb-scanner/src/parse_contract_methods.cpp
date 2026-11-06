@@ -9,21 +9,17 @@ namespace {
 
 constexpr std::size_t kMaxContractMethods = 4096;
 
-using Methods = std::vector<unsigned long long>;
-memo::Cache<td::Bits256, Methods>& methods_cache() {
-  static memo::Cache<td::Bits256, Methods> cache(128 * 1024 * 1024);
+memo::Cache<td::Bits256, ContractMethodInfo>& methods_cache() {
+  static memo::Cache<td::Bits256, ContractMethodInfo> cache(128 * 1024 * 1024);
   return cache;
 }
 
-}  // namespace
-
-
-td::Result<std::vector<unsigned long long>> parse_contract_methods_uncached(
+td::Result<ContractMethodInfo> inspect_methods(
     td::Ref<vm::Cell> code_cell, const block::ConfigInfo* config) {
   // check if first op is SETCP0
   // check if second op is DICTPUSHCONST
   // and load method ids from this dict of methods
-  return safe_parse::guard("Failed to parse contract's method ids", [&]() -> td::Result<std::vector<unsigned long long>> {
+  return safe_parse::guard("Failed to parse contract's method ids", [&]() -> td::Result<ContractMethodInfo> {
     for (unsigned depth = 0; ; ++depth) {
       if (code_cell.is_null()) {
         return td::Status::Error("Contract code is missing");
@@ -66,23 +62,43 @@ td::Result<std::vector<unsigned long long>> parse_contract_methods_uncached(
       return td::Status::Error("Method id is wider than 32 bits");
     }
     auto methods_dict_cell = cs.fetch_ref();
-    std::vector<unsigned long long> method_ids;
+    ContractMethodInfo result;
+    // DICTIGETJMPZ followed by unconditional THROW 11 or THROWARG 11,
+    // with no trailing bits/references/implicit continuation. Unknown tails
+    // may implement additional methods and must retain the full detector path.
+    if (cs.size_refs() == 0) {
+      if (cs.size() == 32) result.exhaustive = cs.prefetch_ulong(32) == 0xf4bcf20bULL;
+      if (cs.size() == 40) result.exhaustive = cs.prefetch_ulong(40) == 0xf4bcf2c80bULL;
+    }
     TRY_STATUS(safe_parse::for_each_dict_entry(methods_dict_cell, methods_dict_key_len, kMaxContractMethods,
         [&](td::ConstBitPtr key, int key_len, td::Ref<vm::CellSlice>) -> td::Status {
-          method_ids.push_back(key.get_uint(key_len));
+          result.ids.push_back(key.get_uint(key_len));
           return td::Status::OK();
         }));
-    return method_ids;
+    return result;
   });
+}
+
+}  // namespace
+
+td::Result<std::shared_ptr<const ContractMethodInfo>> get_contract_method_info(
+    td::Ref<vm::Cell> code_cell, const block::ConfigInfo* config) {
+  if (code_cell.is_null()) return td::Status::Error("Contract code is missing");
+  return methods_cache().get(td::Bits256(code_cell->get_hash().bits()),
+      [&] { return inspect_methods(code_cell, config); },
+      [](const ContractMethodInfo& methods) { return methods.ids.capacity() * sizeof(unsigned long long); });
 }
 
 td::Result<std::vector<unsigned long long>> parse_contract_methods(
     td::Ref<vm::Cell> code_cell, const block::ConfigInfo* config) {
-  if (code_cell.is_null()) return td::Status::Error("Contract code is missing");
-  TRY_RESULT(value, methods_cache().get(td::Bits256(code_cell->get_hash().bits()),
-      [&] { return parse_contract_methods_uncached(code_cell, config); },
-      [](const Methods& methods) { return methods.capacity() * sizeof(Methods::value_type); }));
-  return *value;  // Copy outside the cache lock; callers own their method list.
+  TRY_RESULT(value, get_contract_method_info(std::move(code_cell), config));
+  return value->ids;  // Copy outside the cache lock; callers own their method list.
+}
+
+td::Result<std::vector<unsigned long long>> parse_contract_methods_uncached(
+    td::Ref<vm::Cell> code_cell, const block::ConfigInfo* config) {
+  TRY_RESULT(value, inspect_methods(std::move(code_cell), config));
+  return std::move(value.ids);
 }
 
 memo::Stats contract_methods_cache_stats() { return methods_cache().stats(); }

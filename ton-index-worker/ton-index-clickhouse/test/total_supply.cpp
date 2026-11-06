@@ -25,6 +25,7 @@
 void print_validator_schema();
 void print_validator_fixture(bool corrected);
 void check_validator_storage();
+void check_detector_caches();
 
 namespace {
 
@@ -776,5 +777,6 @@ int main(int argc, char** argv) {
     check_jetton_history();
     check_nft_history();
     check_validator_storage();
+    check_detector_caches();
     std::cout << "Gramstat supply, account deltas, deployments and exact ClickHouse columns: OK\n";
 }

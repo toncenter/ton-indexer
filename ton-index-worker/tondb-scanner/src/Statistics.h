@@ -103,6 +103,15 @@ enum Ticker : uint32_t {
   ELECTOR_COMPARE_UNCHANGED,
   ELECTOR_ELECTION_TRIGGER,
   ELECTOR_PARTICIPANT_GETTER,
+  DETECTOR_STARTED,
+  DETECTOR_SKIPPED,
+  DETECTOR_FILTER_FALLBACK,
+  LOOKUP_ACCOUNT_HIT,
+  LOOKUP_ACCOUNT_MISS,
+  LOOKUP_ACCOUNT_COALESCED,
+  LOOKUP_ACCOUNT_EVICTION,
+  LOOKUP_ACCOUNT_BYPASS,
+  LOOKUP_ACCOUNT_ERROR,
   TICKERS_COUNT
 };
 
@@ -124,6 +133,7 @@ enum Histogram : uint32_t {
 
   DETECT_INTERFACES_SEQNO,
   DETECT_ACTIONS_SEQNO,
+  LOOKUP_ACCOUNT,
 
   INSERT_SEQNO,
   INSERT_BATCH_CONNECT,
@@ -155,7 +165,16 @@ const std::unordered_map<uint32_t, std::string_view> ticker_names = {
     {ELECTOR_COMPARE_CHANGED, "indexer.elector.compare.changed"},
     {ELECTOR_COMPARE_UNCHANGED, "indexer.elector.compare.unchanged"},
     {ELECTOR_ELECTION_TRIGGER, "indexer.elector.election.trigger"},
-    {ELECTOR_PARTICIPANT_GETTER, "indexer.elector.participant_getter"}
+    {ELECTOR_PARTICIPANT_GETTER, "indexer.elector.participant_getter"},
+    {DETECTOR_STARTED, "indexer.detector.started"},
+    {DETECTOR_SKIPPED, "indexer.detector.skipped"},
+    {DETECTOR_FILTER_FALLBACK, "indexer.detector.filter_fallback"},
+    {LOOKUP_ACCOUNT_HIT, "indexer.lookup_account.cache.hit"},
+    {LOOKUP_ACCOUNT_MISS, "indexer.lookup_account.cache.miss"},
+    {LOOKUP_ACCOUNT_COALESCED, "indexer.lookup_account.cache.coalesced"},
+    {LOOKUP_ACCOUNT_EVICTION, "indexer.lookup_account.cache.eviction"},
+    {LOOKUP_ACCOUNT_BYPASS, "indexer.lookup_account.cache.bypass"},
+    {LOOKUP_ACCOUNT_ERROR, "indexer.lookup_account.error"}
 };
 const std::unordered_map<uint32_t, std::string_view> histogram_names = {
     {PROCESS_SEQNO, "indexer.index.seqno.millis"},
@@ -171,6 +190,7 @@ const std::unordered_map<uint32_t, std::string_view> histogram_names = {
     {TRACE_ASSEMBLER_PROCESS_BLOCK, "indexer.traceassembler.process_block.micros"},
     {DETECT_INTERFACES_SEQNO, "indexer.interfaces.seqno.millis"},
     {DETECT_ACTIONS_SEQNO, "indexer.actions.seqno.micros"},
+    {LOOKUP_ACCOUNT, "indexer.lookup_account.micros"},
     {INSERT_SEQNO, "indexer.insert.seqno.millis"},
     {INSERT_BATCH_CONNECT, "indexer.insert.batch.connect.millis"},
     {INSERT_BATCH_KVROCKS, "indexer.insert.batch.kvrocks.millis"},

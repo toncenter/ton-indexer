@@ -1,6 +1,6 @@
 # Inter-block parsing caches
 
-The indexer's shared scanner library keeps two process-local, bounded LRU caches.
+The indexer's shared scanner library keeps two inter-block, bounded LRU caches.
 They work across parallel MCs and across the ClickHouse/PostgreSQL pipelines.
 The keys are content identities, not the most recently processed MC. Retries and
 out-of-order blocks therefore cannot reuse a different state's value.
@@ -108,3 +108,58 @@ For an end-to-end performance comparison, use the same MC range, resources and
 writer configuration, with fresh destination databases or explicit forced replay.
 Compare logical database results as well as throughput, read volume, cache counts
 and a new profile. The previous CPU profile alone does not measure the new speedup.
+
+## Detector routing and shared parent lookups
+
+The method cache also records whether it recognized an **exhaustive dispatcher**:
+SETCP0 / DICTPUSHCONST / DICTIGETJMPZ / unconditional THROW 11 or THROWARG 11,
+with no trailing bits or references. A parsed dictionary with a different tail
+remains useful metadata but cannot prove that other methods are absent.
+
+`InterfacesDetector` consults this shared metadata before creating detector
+actors. For an exhaustive dispatcher it skips probes whose primary getter is
+absent. The auction probe allows either `get_auction_data_v4` or `get_sale_data`;
+optional getters do not disqualify a candidate. Vesting, NominatorPool and DeDust
+retain their own cheap exact-code checks, including direct storage parsing.
+Unknown selectors and inspection failures run the full detector set.
+
+A getter being present is only a candidate filter. The selected detector still
+executes it against the current address/data/config/time, validates its return
+types and verifies its parent contract. An exported getter throwing exit code 11
+remains a failed/unknown probe. Library metadata retains the semantics above:
+known missing methods can be excluded, while a declared method whose library is
+currently unavailable is attempted and remains unknown.
+
+Each `BlockInterfaceProcessor` also creates one `AccountLookupContext`, shared by
+all of that MC's jetton-wallet, NFT-item, multisig-order and DeDust detectors.
+Successful `lookup_account` results are cached by full workchain/address, so
+multiple children referencing the same master/collection perform one account
+dictionary lookup and unpack. Parent getter executions remain per-child, with
+their original arguments and current config.
+
+The context owns immutable shard-state roots and is released when its detector
+group finishes. It has an LRU cap of **1,024 accounts / 4 MiB of accounted decoded
+headers and scalar values**. Code/data are lazy references into that block's
+snapshot, not serialized account BOCs; this is not a bound on the complete
+reachable cell graph or process RSS. Concurrent requests for the same account
+coalesce; errors and absent accounts are not retained. Supplying a context with
+different shard-root identities falls back to an uncached lookup instead of
+returning an account from another snapshot.
+
+Additional interval statistics in `stats.txt`:
+
+- `indexer.detector.started|skipped`: number of detector actors started/avoided.
+- `indexer.detector.filter_fallback`: account-level filter attempts falling back
+  because method inspection failed or the selector was not exhaustive.
+- `indexer.lookup_account.cache.hit|miss|coalesced|bypass`: lookup caller outcomes.
+- `indexer.lookup_account.cache.eviction`: evictions, reported when each context
+  is destroyed (at the end of its detector group).
+- `indexer.lookup_account.error`: actual failed dictionary lookup/unpack attempts.
+- `indexer.lookup_account.micros`: elapsed-time histogram of actual lookups,
+  including bypasses and failures, excluding hits/coalesced followers.
+
+`gramstat_native` compares filtered and full detector results, including a custom
+selector that implements an NFT getter outside its dictionary. It also checks
+that two wallets sharing a master in one MC execute only one parent lookup.
+`gramstat_caches` covers lookup concurrency, transient read retries, context
+release, byte/entry eviction and out-of-order/different snapshot identities.

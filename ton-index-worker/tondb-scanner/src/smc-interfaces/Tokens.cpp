@@ -22,9 +22,10 @@ JettonWalletDetectorR::JettonWalletDetectorR(block::StdAddress address,
                                              td::Ref<vm::Cell> data_cell,
                                              AllShardStates shard_states,
                                              std::shared_ptr<block::ConfigInfo> config,
-                                             td::Promise<Result> promise)
+                                             td::Promise<Result> promise,
+                                             std::shared_ptr<AccountLookupContext> lookup)
   : address_(std::move(address)), code_cell_(std::move(code_cell)), data_cell_(std::move(data_cell)),
-    shard_states_(std::move(shard_states)), config_(std::move(config)), promise_(std::move(promise)) {}
+    shard_states_(std::move(shard_states)), config_(std::move(config)), promise_(std::move(promise)), lookup_(std::move(lookup)) {}
 
 namespace {
 
@@ -70,7 +71,8 @@ td::Status verify_jetton_wallet_with_master(td::Ref<vm::Cell> master_code, td::R
 
 td::Result<JettonWalletDetectorR::Result> JettonWalletDetectorR::detect(
     const block::StdAddress& address, const td::Ref<vm::Cell>& code_cell, const td::Ref<vm::Cell>& data_cell,
-    const AllShardStates& shard_states, const std::shared_ptr<block::ConfigInfo>& config) {
+    const AllShardStates& shard_states, const std::shared_ptr<block::ConfigInfo>& config,
+    AccountLookupContext* lookup) {
   if (code_cell.is_null() || data_cell.is_null()) {
     return td::Status::Error("Code or data null");
   }
@@ -100,13 +102,13 @@ td::Result<JettonWalletDetectorR::Result> JettonWalletDetectorR::detect(
     data.mintless_is_claimed = std::nullopt;
   }
 
-  TRY_RESULT(master, lookup_account(shard_states, data.jetton));
+  TRY_RESULT(master, lookup_account(shard_states, data.jetton, lookup));
   TRY_STATUS(verify_jetton_wallet_with_master(master.code, master.data, config, data));
   return data;
 }
 
 void JettonWalletDetectorR::start_up() {
-  promise_.set_result(detect(address_, code_cell_, data_cell_, shard_states_, config_));
+  promise_.set_result(detect(address_, code_cell_, data_cell_, shard_states_, config_, lookup_.get()));
   stop();
 }
 
@@ -172,14 +174,15 @@ NftItemDetectorR::NftItemDetectorR(block::StdAddress address,
                        td::Ref<vm::Cell> data_cell, 
                        AllShardStates shard_states,
                        std::shared_ptr<block::ConfigInfo> config,
-                       td::Promise<Result> promise) :
-  address_(std::move(address)), code_cell_(std::move(code_cell)), data_cell_(std::move(data_cell)),
+                       td::Promise<Result> promise,
+                       std::shared_ptr<AccountLookupContext> lookup) :
+   lookup_(std::move(lookup)), address_(std::move(address)), code_cell_(std::move(code_cell)), data_cell_(std::move(data_cell)),
   shard_states_(std::move(shard_states)), config_(std::move(config)), promise_(std::move(promise)) {}
 
 td::Result<NftItemDetectorR::Result> NftItemDetectorR::detect(
     const block::StdAddress& address, const td::Ref<vm::Cell>& code_cell,
     const td::Ref<vm::Cell>& data_cell, const AllShardStates& shard_states,
-    const std::shared_ptr<block::ConfigInfo>& config) {
+    const std::shared_ptr<block::ConfigInfo>& config, AccountLookupContext* lookup) {
   if (code_cell.is_null() || data_cell.is_null()) {
     return td::Status::Error("Code or data null");
   }
@@ -225,7 +228,7 @@ td::Result<NftItemDetectorR::Result> NftItemDetectorR::detect(
 
   td::Ref<vm::Cell> collection_code, collection_data;
   if (data.collection_address) {
-    TRY_RESULT(collection, lookup_account(shard_states, *data.collection_address));
+    TRY_RESULT(collection, lookup_account(shard_states, *data.collection_address, lookup));
     collection_code = collection.code;
     collection_data = collection.data;
     TRY_RESULT(address_stack, execute_smc_method<1>(*data.collection_address, collection_code,
@@ -262,7 +265,7 @@ td::Result<NftItemDetectorR::Result> NftItemDetectorR::detect(
 }
 
 void NftItemDetectorR::start_up() {
-  auto result = detect(address_, code_cell_, data_cell_, shard_states_, config_);
+  auto result = detect(address_, code_cell_, data_cell_, shard_states_, config_, lookup_.get());
   if (result.is_error()) {
     promise_.set_error(result.move_as_error());
     stop();
@@ -565,8 +568,9 @@ DedustPoolDetector::DedustPoolDetector(block::StdAddress address,
                                        td::Ref<vm::Cell> data_cell,
                                        AllShardStates shard_states,
                                        std::shared_ptr<block::ConfigInfo> config,
-                                       td::Promise<Result> promise) :
-  address_(std::move(address)), code_cell_(std::move(code_cell)), data_cell_(std::move(data_cell)),
+                                        td::Promise<Result> promise,
+                                        std::shared_ptr<AccountLookupContext> lookup) :
+   lookup_(std::move(lookup)), address_(std::move(address)), code_cell_(std::move(code_cell)), data_cell_(std::move(data_cell)),
   shard_states_(std::move(shard_states)), config_(std::move(config)), promise_(std::move(promise)) {}
 
 namespace {
@@ -654,7 +658,7 @@ td::Status verify_dedust_with_factory(td::Ref<vm::Cell> factory_code, td::Ref<vm
 
 td::Result<DedustPoolDetector::Result> DedustPoolDetector::detect(
     const block::StdAddress &address, const td::Ref<vm::Cell> &code_cell, const td::Ref<vm::Cell> &data_cell,
-    const AllShardStates &shard_states, const std::shared_ptr<block::ConfigInfo> &config) {
+    const AllShardStates &shard_states, const std::shared_ptr<block::ConfigInfo> &config, AccountLookupContext* lookup) {
   if (code_cell.is_null() || data_cell.is_null()) {
     return td::Status::Error("Code or data null");
   }
@@ -731,12 +735,12 @@ td::Result<DedustPoolDetector::Result> DedustPoolDetector::detect(
     }
   }
 
-  TRY_RESULT(factory, lookup_account(shard_states, DEDUST_FACTORY_ADDRESS));
+  TRY_RESULT(factory, lookup_account(shard_states, DEDUST_FACTORY_ADDRESS, lookup));
   TRY_STATUS(verify_dedust_with_factory(factory.code, factory.data, config, address, data));
   return data;
 }
 
 void DedustPoolDetector::start_up() {
-  promise_.set_result(detect(address_, code_cell_, data_cell_, shard_states_, config_));
+  promise_.set_result(detect(address_, code_cell_, data_cell_, shard_states_, config_, lookup_.get()));
   stop();
 }

@@ -99,17 +99,26 @@ inline td::Ref<vm::Cell> test_nft_code(bool init, td::Ref<vm::Cell> owner,
     return test_method_dispatcher(102351, body.finalize());
 }
 
-inline td::Ref<vm::Cell> test_shard_with_account(const block::StdAddress& address,
-                                               const td::Ref<vm::Cell>& code) {
+inline td::Ref<vm::Cell> test_shard_with_accounts(
+    const std::vector<std::pair<block::StdAddress, td::Ref<vm::Cell>>>& entries) {
     auto empty = vm::CellBuilder().finalize();
-    auto account = test_active_account(address, code, empty);
-    auto shard_account = vm::CellBuilder().store_ref(account).store_zeroes(256 + 64).finalize();
     vm::AugmentedDictionary accounts{256, block::tlb::aug_ShardAccounts};
-    CHECK(accounts.set(address.addr, vm::load_cell_slice_ref(shard_account)));
+    const int workchain = entries.empty() ? 0 : entries.front().first.workchain;
+    for (const auto& [address, code] : entries) {
+        CHECK(address.workchain == workchain);
+        auto account = test_active_account(address, code, empty);
+        auto shard_account = vm::CellBuilder().store_ref(account).store_zeroes(256 + 64).finalize();
+        CHECK(accounts.set(address.addr, vm::load_cell_slice_ref(shard_account)));
+    }
     auto aux = vm::CellBuilder().store_zeroes(128 + 5 + 5 + 1 + 1).finalize();
     return vm::CellBuilder().store_long(0x9023afe2, 32).store_long(-3, 32)
-        .store_long(0, 8).store_long(address.workchain, 32).store_zeroes(64 + 64)
+        .store_long(0, 8).store_long(workchain, 32).store_zeroes(64 + 64)
         .store_long(1700000000, 32).store_zeroes(64 + 32)
         .store_ref(empty).store_long(0, 1).store_ref(accounts.get_wrapped_dict_root())
         .store_ref(aux).store_long(0, 1).finalize();
+}
+
+inline td::Ref<vm::Cell> test_shard_with_account(const block::StdAddress& address,
+                                               const td::Ref<vm::Cell>& code) {
+    return test_shard_with_accounts({{address, code}});
 }

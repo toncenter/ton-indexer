@@ -2,6 +2,7 @@
 #include <td/actor/MultiPromise.h>
 #include "Statistics.h"
 #include "AccountStateHistory.h"
+#include "smc-interfaces/AccountLookupContext.h"
 
 // class methods
 void BlockInterfaceProcessor::start_up() {
@@ -12,6 +13,7 @@ void BlockInterfaceProcessor::start_up() {
   for (const auto &shard_state : block_->mc_block_.shard_blocks_) {
     shard_states.push_back(shard_state.block_state);
   }
+  auto lookup = std::make_shared<AccountLookupContext>(shard_states);
 
   auto P = td::PromiseCreator::lambda(
       [&, SelfId = actor_id(this)](td::Result<td::Unit> res) mutable {
@@ -52,7 +54,7 @@ void BlockInterfaceProcessor::start_up() {
                     td::actor::send_closure(SelfId, &BlockInterfaceProcessor::process_address_interfaces, account_state.account, std::move(detected_interfaces), 
                                             account_state.code_hash.value(), account_state.data_hash.value(), account_state.last_trans_lt,
                                             account_state.timestamp, *token_detection, std::move(promise));
-            }), token_detection).release();
+            }), token_detection, DetectionOptions{true, lookup}).release();
   }
 }
 void BlockInterfaceProcessor::process_address_interfaces(

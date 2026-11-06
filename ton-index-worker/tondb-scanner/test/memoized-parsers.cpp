@@ -3,6 +3,7 @@
 #include "StakingEventProcessor.h"
 #include "parse_contract_methods.h"
 #include "smc-fixture.h"
+#include "smc-interfaces/FetchAccountFromShard.h"
 #include "td/utils/base64.h"
 #include "vm/boc.h"
 #include "vm/cp0.h"
@@ -124,6 +125,7 @@ void check_methods() {
   auto methods = parse_contract_methods(reference, available.get()).move_as_ok();
   CHECK(methods == parse_contract_methods_uncached(reference, available.get()).move_as_ok());
   CHECK(methods == (std::vector<unsigned long long>{99001, 99002}));
+  CHECK(get_contract_method_info(reference, available.get()).move_as_ok()->exhaustive);
   // Metadata survives both a historical missing library and no config at all.
   CHECK(parse_contract_methods(reference, missing.get()).move_as_ok() == methods);
   CHECK(parse_contract_methods(reference).move_as_ok() == methods);
@@ -161,6 +163,76 @@ void check_methods() {
   auto after = contract_methods_cache_stats();
   CHECK(after.entries == before.entries && after.inflight == 0);
   CHECK(after.errors == before.errors + 512 && after.computations == before.computations + 512);
+
+  // Standard THROWARG tail is exhaustive too; an extra ref must not be ignored.
+  vm::CellSlice original(vm::NoVm{}, code);
+  original.advance(40);
+  auto dict = original.fetch_ref();
+  auto throwarg = vm::CellBuilder().store_long(0xff00f4a413LL, 40).store_ref(dict)
+      .store_long(0xf4bcf2c80bLL, 40).finalize();
+  CHECK(get_contract_method_info(throwarg).move_as_ok()->exhaustive);
+  auto chained = vm::CellBuilder().append_cellslice(vm::load_cell_slice(throwarg)).store_ref(body).finalize();
+  CHECK(!get_contract_method_info(chained).move_as_ok()->exhaustive);
+}
+
+void check_account_lookup() {
+  const auto address = block::StdAddress(0, td::Bits256::zero());
+  auto code_a = vm::CellBuilder().store_long(1, 8).finalize();
+  auto code_b = vm::CellBuilder().store_long(2, 8).finalize();
+  AllShardStates roots_a{test_shard_with_account(address, code_a)};
+  AllShardStates roots_b{test_shard_with_account(address, code_b)};
+  auto a = std::make_shared<AccountLookupContext>(roots_a);
+  AccountLookupContext b(roots_b);
+  CHECK(lookup_account(roots_a, address, a.get()).move_as_ok() == lookup_account(roots_a, address).move_as_ok());
+  CHECK(lookup_account(roots_b, address, &b).move_as_ok().code->get_hash() == code_b->get_hash());
+  CHECK(lookup_account(roots_a, address, a.get()).move_as_ok().code->get_hash() == code_a->get_hash());
+  // A context from another snapshot is bypassed, never used for stale data.
+  CHECK(lookup_account(roots_b, address, a.get()).move_as_ok().code->get_hash() == code_b->get_hash());
+  CHECK(a->stats().computations == 1 && a->stats().hits == 1 && b.stats().computations == 1);
+  std::weak_ptr<AccountLookupContext> weak = a;
+  a.reset();
+  CHECK(weak.expired());
+
+  auto fail = std::make_shared<std::atomic<bool>>(true);
+  AllShardStates flaky{td::make_ref<ReadFaultCell>(roots_a.front(), fail)};
+  AccountLookupContext retry(flaky);
+  CHECK(lookup_account(flaky, address, &retry).is_error());
+  CHECK(retry.stats().entries == 0);
+  *fail = false;
+  CHECK(lookup_account(flaky, address, &retry).move_as_ok().code->get_hash() == code_a->get_hash());
+  CHECK(retry.stats().computations == 2 && retry.stats().entries == 1);
+
+  auto absent = block::StdAddress(0, td::Bits256::ones());
+  CHECK(lookup_account(flaky, absent, &retry).is_error());
+  CHECK(lookup_account(flaky, absent, &retry).is_error());
+  CHECK(retry.stats().computations == 4 && retry.stats().entries == 1);
+
+  AccountLookupContext concurrent(roots_a);
+  std::promise<void> start;
+  auto go = start.get_future().share();
+  std::vector<std::future<td::Result<schema::AccountState>>> tasks;
+  for (int i = 0; i < 8; ++i) {
+    tasks.push_back(std::async(std::launch::async, [&] {
+      go.wait();
+      return lookup_account(roots_a, address, &concurrent);
+    }));
+  }
+  start.set_value();
+  for (auto& task : tasks) CHECK(task.get().move_as_ok().code->get_hash() == code_a->get_hash());
+  CHECK(concurrent.stats().computations == 1);
+  CHECK(concurrent.stats().hits + concurrent.stats().coalesced == 7);
+
+  std::vector<std::pair<block::StdAddress, td::Ref<vm::Cell>>> accounts;
+  for (int i = 0; i < 1060; ++i) {
+    auto key = td::Bits256::zero();
+    (key.bits() + 224).store_uint(i, 32);
+    accounts.emplace_back(block::StdAddress(0, key), code_a);
+  }
+  AllShardStates large{test_shard_with_accounts(accounts)};
+  AccountLookupContext bounded(large);
+  for (const auto& [addr, _] : accounts) CHECK(lookup_account(large, addr, &bounded).is_ok());
+  CHECK(bounded.stats().entries == 1024 && bounded.stats().evictions == 36);
+  CHECK(bounded.stats().bytes <= 4 * 1024 * 1024);
 }
 
 td::Ref<vm::Cell> elector_code() {
@@ -360,6 +432,7 @@ int main() {
   check_coalescing(false);
   check_coalescing(true);
   check_methods();
+  check_account_lookup();
   check_elections();
   check_trigger_counters();
   std::cout << "Memoized parsers: bounded LRU, concurrent coalescing, retries, metadata and historical Elector parity: OK\n";

@@ -1,4 +1,5 @@
 #pragma once
+#include <algorithm>
 #include <vector>
 #include "td/utils/Status.h"
 #include "vm/cells/Cell.h"
@@ -8,6 +9,18 @@
 namespace block {
 class ConfigInfo;
 }
+
+struct ContractMethodInfo {
+  std::vector<unsigned long long> ids;
+  // True only for a recognized dispatcher whose missing-key path always throws
+  // 11. A successfully parsed dictionary alone does not prove completeness.
+  bool exhaustive = false;
+
+  bool has(unsigned long long id) const { return std::binary_search(ids.begin(), ids.end(), id); }
+};
+
+td::Result<std::shared_ptr<const ContractMethodInfo>> get_contract_method_info(
+    td::Ref<vm::Cell> code_cell, const block::ConfigInfo* config = nullptr);
 
 // Code metadata, not proof of executability in the current MC. Successful
 // parses are remembered by the ORIGINAL code hash, including library references.

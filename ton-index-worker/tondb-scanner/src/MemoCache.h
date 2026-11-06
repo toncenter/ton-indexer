@@ -13,6 +13,8 @@
 
 namespace memo {
 
+enum class Access { hit, miss, coalesced };
+
 struct Stats {
   uint64_t hits = 0, misses = 0, coalesced = 0, evictions = 0;
   uint64_t computations = 0, errors = 0, bypasses = 0, oversized = 0;
@@ -33,16 +35,18 @@ class Cache {
       : max_bytes_(max_bytes), max_entries_(max_entries) {}
 
   template<class Load, class DynamicBytes>
-  td::Result<Ref> get(const Key& key, Load&& load, DynamicBytes&& dynamic_bytes) {
+  td::Result<Ref> get(const Key& key, Load&& load, DynamicBytes&& dynamic_bytes, Access* access = nullptr) {
     std::shared_ptr<Flight> flight;
     {
       std::unique_lock lock(mutex_);
       if (auto it = index_.find(key); it != index_.end()) {
+        if (access) *access = Access::hit;
         ++stats_.hits;
         lru_.splice(lru_.begin(), lru_, it->second);
         return it->second->value;
       }
       if (auto it = flights_.find(key); it != flights_.end()) {
+        if (access) *access = Access::coalesced;
         ++stats_.coalesced;
         flight = it->second;
         const auto start = Clock::now();
@@ -52,6 +56,7 @@ class Cache {
         return flight->value;
       }
       ++stats_.misses;
+      if (access) *access = Access::miss;
       flight = std::make_shared<Flight>();
       flights_.emplace(key, flight);
     }
