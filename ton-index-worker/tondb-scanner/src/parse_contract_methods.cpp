@@ -9,10 +9,16 @@ namespace {
 
 constexpr std::size_t kMaxContractMethods = 4096;
 
+using Methods = std::vector<unsigned long long>;
+memo::Cache<td::Bits256, Methods>& methods_cache() {
+  static memo::Cache<td::Bits256, Methods> cache(128 * 1024 * 1024);
+  return cache;
+}
+
 }  // namespace
 
 
-td::Result<std::vector<unsigned long long>> parse_contract_methods(
+td::Result<std::vector<unsigned long long>> parse_contract_methods_uncached(
     td::Ref<vm::Cell> code_cell, const block::ConfigInfo* config) {
   // check if first op is SETCP0
   // check if second op is DICTPUSHCONST
@@ -22,7 +28,10 @@ td::Result<std::vector<unsigned long long>> parse_contract_methods(
       if (code_cell.is_null()) {
         return td::Status::Error("Contract code is missing");
       }
-      vm::CellSlice code(vm::NoVm{}, code_cell);
+      // NoVm's convenience constructor silently produces a null slice on a
+      // load error; asking that slice for its special_type would abort.
+      TRY_RESULT(loaded, code_cell->load_cell());
+      vm::CellSlice code(std::move(loaded));
       if (code.special_type() != vm::Cell::SpecialType::Library) {
         break;
       }
@@ -66,3 +75,15 @@ td::Result<std::vector<unsigned long long>> parse_contract_methods(
     return method_ids;
   });
 }
+
+td::Result<std::vector<unsigned long long>> parse_contract_methods(
+    td::Ref<vm::Cell> code_cell, const block::ConfigInfo* config) {
+  if (code_cell.is_null()) return td::Status::Error("Contract code is missing");
+  TRY_RESULT(value, methods_cache().get(td::Bits256(code_cell->get_hash().bits()),
+      [&] { return parse_contract_methods_uncached(code_cell, config); },
+      [](const Methods& methods) { return methods.capacity() * sizeof(Methods::value_type); }));
+  return *value;  // Copy outside the cache lock; callers own their method list.
+}
+
+memo::Stats contract_methods_cache_stats() { return methods_cache().stats(); }
+std::string contract_methods_cache_report() { return methods_cache().report("indexer.cache.contract_methods"); }

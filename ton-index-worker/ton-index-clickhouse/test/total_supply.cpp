@@ -562,7 +562,7 @@ void check_jetton_history() {
     parsed.blocks_[2].transactions[0].account_state_hash_before = malformed->get_hash().bits();
     CHECK(account_history::collect_states(10, parsed).is_error());
 
-    // Library-backed wallet code is checked from the same MC configuration.
+    // A cold library-backed wallet code is resolved from this MC configuration.
     auto library_code = test_library_reference(state.code);
     auto library_before = test_active_account(address, library_code);
     reader->add(library_before);
@@ -576,12 +576,15 @@ void check_jetton_history() {
     auto library_unknown = account_history::collect_states(10, parsed).move_as_ok().jetton_wallets;
     CHECK(library_unknown.size() == 1 && !library_unknown[0].existing.has_value());
     CHECK(reader->reads.empty());
-    // Unresolved code cannot prove eligibility. It is not a negative observation.
+    // Known code metadata survives library disappearance: an active wallet with
+    // no successful getter remains unknown; a known frozen wallet is absent.
     parsed.mc_block_.config_ = test_smc_config(1788307200);
-    CHECK(account_history::collect_states(10, parsed).move_as_ok().jetton_wallets.empty());
+    auto known_library = account_history::collect_states(10, parsed).move_as_ok().jetton_wallets;
+    CHECK(known_library.size() == 1 && !known_library[0].existing.has_value());
     CHECK(reader->reads.empty());
     parsed.blocks_[1].transactions[0].end_status = schema::AccountStatus::frozen;
-    CHECK(account_history::collect_states(10, parsed).move_as_ok().jetton_wallets.empty());
+    known_library = account_history::collect_states(10, parsed).move_as_ok().jetton_wallets;
+    CHECK(known_library.size() == 1 && known_library[0].existing == false);
     CHECK(reader->reads == std::vector<std::string>{library_before->get_hash().as_slice().str()});
 }
 
@@ -693,7 +696,8 @@ void check_nft_history() {
     parsed->mc_block_.config_ = test_smc_config(1788307200, {boundary_code});
     CHECK(collect().nft_items[0].existing == false && reader->reads.size() == 1);
     parsed->mc_block_.config_ = test_smc_config(1788307200);
-    CHECK(collect().nft_items.empty());
+    auto known_library = collect();
+    CHECK(known_library.nft_items.size() == 1 && known_library.nft_items[0].existing == false);
 }
 
 }  // namespace

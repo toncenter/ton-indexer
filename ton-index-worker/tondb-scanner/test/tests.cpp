@@ -70,9 +70,11 @@ TEST(TonDbScanner, contract_methods_resolve_libraries) {
     auto methods = parse_contract_methods(wallet_ref, config.get()).move_as_ok();
     ASSERT_EQ(methods.size(), 1u);
     ASSERT_EQ(methods[0], 97026ULL);
-    ASSERT_TRUE(parse_contract_methods(wallet_ref).is_error());
+    // Once known, code metadata survives a missing library in another config.
+    ASSERT_TRUE(parse_contract_methods(wallet_ref).is_ok());
     auto missing_config = test_smc_config(1700000000);
-    ASSERT_TRUE(parse_contract_methods(wallet_ref, missing_config.get()).is_error());
+    ASSERT_TRUE(parse_contract_methods(wallet_ref, missing_config.get()).is_ok());
+    ASSERT_TRUE(parse_contract_methods_uncached(wallet_ref, missing_config.get()).is_error());
     auto address = block::StdAddress(0, td::Bits256::zero());
     auto data = vm::CellBuilder().finalize();
     auto missing = JettonWalletDetectorR::detect(address, ordinary_ref, data, {}, config);
