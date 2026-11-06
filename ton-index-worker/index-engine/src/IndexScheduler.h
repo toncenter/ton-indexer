@@ -15,6 +15,7 @@
 #include "DataParser.h"
 #include "smc-interfaces/InterfacesDetector.h"
 #include "Otel.h"
+#include "smc-interfaces/ParentAccountCache.h"
 
 using Detector = InterfacesDetector<JettonWalletDetectorR, JettonMasterDetectorR,
                                       NftItemDetectorR, NftCollectionDetectorR,
@@ -34,6 +35,7 @@ private:
   td::actor::ActorId<InsertManagerInterface> insert_manager_;
   td::actor::ActorId<ParseManager> parse_manager_;
   td::actor::ActorOwn<TraceAssembler> trace_assembler_;
+  std::shared_ptr<ParentAccountCache> parents_ = std::make_shared<ParentAccountCache>();
   std::shared_ptr<td::Destructor> watcher_;
 
   std::string working_dir_;

@@ -23,6 +23,8 @@ add_library(tondb-scanner STATIC
     src/smc-interfaces/Multisig.h
     src/smc-interfaces/FetchAccountFromShard.cpp
     src/smc-interfaces/FetchAccountFromShard.h
+    src/smc-interfaces/ParentAccountCache.cpp
+    src/smc-interfaces/ParentCellCache.cpp
     src/smc-interfaces/Vesting.cpp
     src/smc-interfaces/NominatorPool.cpp
     src/smc-interfaces/Telemint.cpp
@@ -70,7 +72,7 @@ add_executable(test-elector-rounds EXCLUDE_FROM_ALL test/elector-round-results.c
 target_link_libraries(test-elector-rounds PRIVATE tondb-scanner)
 add_test(NAME gramstat_elector_rounds COMMAND test-elector-rounds)
 
-add_executable(test-memoized-parsers EXCLUDE_FROM_ALL test/memoized-parsers.cpp)
+add_executable(test-memoized-parsers EXCLUDE_FROM_ALL test/memoized-parsers.cpp test/parent-cache.cpp)
 target_link_libraries(test-memoized-parsers PRIVATE tondb-scanner)
 target_compile_definitions(test-memoized-parsers PRIVATE
     ELECTOR_CACHE_FIXTURE="${CMAKE_CURRENT_SOURCE_DIR}/test/fixtures/elector-code.b64")

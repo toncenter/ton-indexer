@@ -3,6 +3,7 @@
 #include "DataParser.h"
 #include "Statistics.h"
 #include "safe-parse.h"
+#include "ParentAccountCache.h"
 
 namespace {
 
@@ -71,14 +72,23 @@ size_t account_bytes(const schema::AccountState& state) {
 }  // namespace
 
 struct AccountLookupContext::Impl {
-    const AllShardStates roots;
+  const AllShardStates roots;
+  std::shared_ptr<ParentAccountCache> parents;
+  std::shared_ptr<const ParentAccountView> view;
+  std::shared_ptr<vm::CellDbReader> reader;
     // Header/decoded-value budget plus an entry cap. Lazy code/data references
     // live only as long as this MC's already-retained shard-state snapshot.
     memo::Cache<block::StdAddress, schema::AccountState> cache{4 * 1024 * 1024, 1024};
     explicit Impl(AllShardStates value) : roots(std::move(value)) {}
 };
 
-AccountLookupContext::AccountLookupContext(AllShardStates roots) : impl_(std::make_unique<Impl>(std::move(roots))) {}
+AccountLookupContext::AccountLookupContext(AllShardStates roots, std::shared_ptr<ParentAccountCache> parents,
+    std::shared_ptr<const ParentAccountView> view, std::shared_ptr<vm::CellDbReader> reader)
+    : impl_(std::make_unique<Impl>(std::move(roots))) {
+  impl_->parents = std::move(parents);
+  impl_->view = std::move(view);
+  impl_->reader = std::move(reader);
+}
 AccountLookupContext::~AccountLookupContext() {
     g_statistics.record_count(LOOKUP_ACCOUNT_EVICTION, impl_->cache.stats().evictions);
 }
@@ -95,8 +105,26 @@ bool AccountLookupContext::matches(const AllShardStates& roots) const {
 }
 
 td::Result<schema::AccountState> AccountLookupContext::lookup(const block::StdAddress& address) {
-    memo::Access access;
-    auto result = impl_->cache.get(address, [&] { return lookup_uncached(impl_->roots, address); }, account_bytes, &access);
+  memo::Access access;
+  auto result = impl_->cache.get(address, [&]() -> td::Result<schema::AccountState> {
+    auto load = [&] { return lookup_uncached(impl_->roots, address); };
+    if (!impl_->parents || !impl_->view || !impl_->reader) return load();
+    // AccountState.timestamp describes the containing shard snapshot, not the
+    // parent's last transaction. Rebind it even when code/data are unchanged.
+    auto time = safe_parse::guard("Parent shard timestamp", [&]() -> td::Result<uint32_t> {
+      auto prefix = ton::extract_addr_prefix(address.workchain, address.addr);
+      for (const auto& root : impl_->roots) {
+        block::gen::ShardStateUnsplit::Record state;
+        if (!tlb::unpack_cell(root, state)) return td::Status::Error("Invalid parent shard state");
+        if (ton::shard_contains(ton::ShardIdFull(block::ShardId(state.shard_id)), prefix)) return state.gen_utime;
+      }
+      return td::Status::Error("Parent shard not found");
+    });
+    if (time.is_error()) return load();
+    TRY_RESULT(value, impl_->parents->lookup(*impl_->view, address, impl_->reader, load));
+    value.timestamp = time.move_as_ok();
+    return value;
+  }, account_bytes, &access);
     g_statistics.record_count(access == memo::Access::hit ? LOOKUP_ACCOUNT_HIT :
         access == memo::Access::miss ? LOOKUP_ACCOUNT_MISS : LOOKUP_ACCOUNT_COALESCED);
     TRY_RESULT(value, std::move(result));

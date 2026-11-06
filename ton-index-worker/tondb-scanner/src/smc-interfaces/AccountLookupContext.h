@@ -4,6 +4,9 @@
 #include "MemoCache.h"
 
 namespace schema { struct AccountState; }
+namespace vm { class CellDbReader; }
+class ParentAccountCache;
+struct ParentAccountView;
 
 // Owned by one block's detector group, never shared across different snapshots.
 // The implementation retains immutable shard roots and successful account
@@ -11,7 +14,9 @@ namespace schema { struct AccountState; }
 // circular header dependency.
 class AccountLookupContext {
  public:
-  explicit AccountLookupContext(std::vector<td::Ref<vm::Cell>> roots);
+  explicit AccountLookupContext(std::vector<td::Ref<vm::Cell>> roots,
+      std::shared_ptr<ParentAccountCache> parents = {}, std::shared_ptr<const ParentAccountView> view = {},
+      std::shared_ptr<vm::CellDbReader> reader = {});
   ~AccountLookupContext();
 
   bool matches(const std::vector<td::Ref<vm::Cell>>& roots) const;

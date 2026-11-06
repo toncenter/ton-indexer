@@ -13,7 +13,7 @@ void BlockInterfaceProcessor::start_up() {
   for (const auto &shard_state : block_->mc_block_.shard_blocks_) {
     shard_states.push_back(shard_state.block_state);
   }
-  auto lookup = std::make_shared<AccountLookupContext>(shard_states);
+  auto lookup = std::make_shared<AccountLookupContext>(shard_states, parents_, parent_view_, block_->cell_db_reader_);
 
   auto P = td::PromiseCreator::lambda(
       [&, SelfId = actor_id(this)](td::Result<td::Unit> res) mutable {

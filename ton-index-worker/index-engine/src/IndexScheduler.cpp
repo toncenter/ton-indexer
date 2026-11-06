@@ -96,8 +96,8 @@ void IndexScheduler::alarm() {
         next_print_stats_ = td::Timestamp::in(stats_timeout_);
     }
     if (next_statistics_flush_.is_in_past()) {
-        ton::delay_action([working_dir = this->working_dir_]() {
-            auto stats = g_statistics.generate_report_and_reset();
+        ton::delay_action([working_dir = this->working_dir_, parents = parents_]() {
+            auto stats = g_statistics.generate_report_and_reset() + parents->report();
             auto path = working_dir + "/" + "stats.txt";
             auto status = td::atomic_write_file(path, std::move(stats));
             if (status.is_error()) {
@@ -516,7 +516,11 @@ void IndexScheduler::seqno_traces_assembled(std::uint32_t mc_seqno, ParsedBlockP
         }
         td::actor::send_closure(SelfId, &IndexScheduler::seqno_interfaces_processed, mc_seqno, R.move_as_ok());
     });
-    td::actor::create_actor<BlockInterfaceProcessor>("BlockInterfaceProcessor", std::move(parsed_block), std::move(P)).release();
+    // TraceAssembler already emits the canonical MC sequence in order. Publish
+    // cheap parent updates here; detector actors remain independent/parallel.
+    auto parent_view = std::make_shared<const ParentAccountView>(parents_->observe(mc_seqno, *parsed_block));
+    td::actor::create_actor<BlockInterfaceProcessor>("BlockInterfaceProcessor", std::move(parsed_block), std::move(P),
+                                                    parents_, std::move(parent_view)).release();
 }
 
 void IndexScheduler::seqno_interfaces_processed(std::uint32_t mc_seqno, ParsedBlockPtr parsed_block) {

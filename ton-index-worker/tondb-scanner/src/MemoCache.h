@@ -14,6 +14,7 @@
 namespace memo {
 
 enum class Access { hit, miss, coalesced };
+enum class Policy { lru, segmented };
 
 struct Stats {
   uint64_t hits = 0, misses = 0, coalesced = 0, evictions = 0;
@@ -31,8 +32,70 @@ class Cache {
  public:
   using Ref = std::shared_ptr<const Value>;
 
-  explicit Cache(size_t max_bytes, size_t max_entries = std::numeric_limits<size_t>::max())
-      : max_bytes_(max_bytes), max_entries_(max_entries) {}
+  explicit Cache(size_t max_bytes, size_t max_entries = std::numeric_limits<size_t>::max(),
+                 Policy policy = Policy::lru)
+      : max_bytes_(max_bytes), max_entries_(max_entries), policy_(policy) {}
+
+  // Predicates/updates execute under the cache lock: no I/O or actor work.
+  template<class Predicate>
+  Ref find(const Key& key, Predicate&& predicate) {
+    std::lock_guard lock(mutex_);
+    auto it = index_.find(key);
+    if (it == index_.end() || !predicate(*it->second->value)) {
+      ++stats_.misses;
+      return {};
+    }
+    ++stats_.hits;
+    touch(it->second);
+    return it->second->value;
+  }
+
+  template<class DynamicBytes>
+  void put(const Key& key, Ref value, DynamicBytes&& dynamic_bytes) {
+    auto charge = entry_overhead() + dynamic_bytes(*value);
+    std::list<Node> retired;
+    Index retired_index;
+    std::lock_guard lock(mutex_);
+    cancel_flight(key);
+    publish(key, std::move(value), charge, retired, retired_index);
+  }
+
+  template<class Update, class DynamicBytes>
+  void update(const Key& key, Update&& update, DynamicBytes&& dynamic_bytes) {
+    std::list<Node> retired;
+    Index retired_index;
+    std::lock_guard lock(mutex_);
+    auto it = index_.find(key);
+    if (it == index_.end()) return;
+    auto value = update(*it->second->value);
+    cancel_flight(key);
+    if (!value) {
+      retire(it, retired);
+    } else {
+      auto charge = entry_overhead() + dynamic_bytes(*value);
+      publish(key, std::move(value), charge, retired, retired_index);
+    }
+  }
+
+  void erase(const Key& key) {
+    std::list<Node> retired;
+    std::lock_guard lock(mutex_);
+    cancel_flight(key);
+    auto it = index_.find(key);
+    if (it != index_.end()) retire(it, retired);
+  }
+
+  void clear() {
+    std::list<Node> retired;
+    Index retired_index;
+    std::lock_guard lock(mutex_);
+    for (auto& [_, flight] : flights_) flight->cancelled = true;
+    flights_.clear();
+    retired.splice(retired.end(), lru_);
+    retired.splice(retired.end(), protected_);
+    index_.swap(retired_index);
+    bytes_ = protected_bytes_ = 0;
+  }
 
   template<class Load, class DynamicBytes>
   td::Result<Ref> get(const Key& key, Load&& load, DynamicBytes&& dynamic_bytes, Access* access = nullptr) {
@@ -42,7 +105,7 @@ class Cache {
       if (auto it = index_.find(key); it != index_.end()) {
         if (access) *access = Access::hit;
         ++stats_.hits;
-        lru_.splice(lru_.begin(), lru_, it->second);
+        touch(it->second);
         return it->second->value;
       }
       if (auto it = flights_.find(key); it != flights_.end()) {
@@ -70,28 +133,11 @@ class Cache {
       std::lock_guard lock(mutex_);
       if (result.is_ok()) {
         flight->value = result.ok();
-        if (charge > max_bytes_ || max_entries_ == 0) {
-          ++stats_.oversized;
-        } else {
+        if (!flight->cancelled) {
           // A cache allocation failure must not strand followers or turn a
           // successfully computed value into a parsing failure.
           try {
-            lru_.push_front(Node{key, result.ok(), charge});
-            try {
-              index_.emplace(key, lru_.begin());
-            } catch (...) {
-              lru_.pop_front();
-              throw;
-            }
-            bytes_ += charge;
-            while (!lru_.empty() && (resident_bytes() > max_bytes_ || lru_.size() > max_entries_)) {
-              auto last = std::prev(lru_.end());
-              bytes_ -= last->bytes;
-              index_.erase(last->key);
-              retired.splice(retired.end(), lru_, last);
-              ++stats_.evictions;
-            }
-            if (index_.empty() && resident_bytes() > max_bytes_) index_.swap(retired_index);
+            publish(key, result.ok(), charge, retired, retired_index);
           } catch (const std::bad_alloc&) {
             ++stats_.bypasses;
           }
@@ -100,7 +146,8 @@ class Cache {
         flight->error = result.error().clone();
       }
       flight->done = true;
-      flights_.erase(key);
+      auto it = flights_.find(key);
+      if (it != flights_.end() && it->second == flight) flights_.erase(it);
     }
     flight->ready.notify_all();
     return result;
@@ -156,6 +203,7 @@ class Cache {
   struct Flight {
     std::condition_variable ready;
     bool done = false;
+    bool cancelled = false;
     Ref value;
     td::Status error;
   };
@@ -163,8 +211,79 @@ class Cache {
     Key key;
     Ref value;
     size_t bytes;
+    bool protected_entry = false;
   };
   using Index = std::unordered_map<Key, typename std::list<Node>::iterator, Hash>;
+
+  void cancel_flight(const Key& key) {
+    auto it = flights_.find(key);
+    if (it != flights_.end()) {
+      it->second->cancelled = true;
+      flights_.erase(it);
+    }
+  }
+  void trim_protected() {
+    const auto limit = max_bytes_ - max_bytes_ / 5;
+    while (!protected_.empty() && protected_bytes_ > limit) {
+      auto it = std::prev(protected_.end());
+      protected_bytes_ -= it->bytes;
+      it->protected_entry = false;
+      lru_.splice(lru_.begin(), protected_, it);
+    }
+  }
+  void touch(typename std::list<Node>::iterator it) {
+    if (policy_ == Policy::lru) {
+      lru_.splice(lru_.begin(), lru_, it);
+    } else if (it->protected_entry) {
+      protected_.splice(protected_.begin(), protected_, it);
+    } else {
+      it->protected_entry = true;
+      protected_bytes_ += it->bytes;
+      protected_.splice(protected_.begin(), lru_, it);
+      trim_protected();
+    }
+  }
+  void retire(typename Index::iterator it, std::list<Node>& retired) {
+    auto node = it->second;
+    bytes_ -= node->bytes;
+    if (node->protected_entry) protected_bytes_ -= node->bytes;
+    retired.splice(retired.end(), node->protected_entry ? protected_ : lru_, node);
+    index_.erase(it);
+  }
+  void publish(const Key& key, Ref value, size_t charge, std::list<Node>& retired, Index& retired_index) {
+    auto existing = index_.find(key);
+    if (charge > max_bytes_ || max_entries_ == 0) {
+      if (existing != index_.end()) retire(existing, retired);
+      ++stats_.oversized;
+      return;
+    }
+    if (existing != index_.end()) {
+      // Replace without making transaction-driven updates count as accesses.
+      auto node = existing->second;
+      retired.push_back(Node{key, node->value, node->bytes});
+      bytes_ -= node->bytes;
+      if (node->protected_entry) protected_bytes_ -= node->bytes;
+      node->value = std::move(value);
+      node->bytes = charge;
+      if (node->protected_entry) protected_bytes_ += charge;
+    } else {
+      lru_.push_front(Node{key, std::move(value), charge});
+      try {
+        index_.emplace(key, lru_.begin());
+      } catch (...) {
+        retired.splice(retired.end(), lru_, lru_.begin());
+        throw;
+      }
+    }
+    bytes_ += charge;
+    trim_protected();
+    while (!index_.empty() && (resident_bytes() > max_bytes_ || index_.size() > max_entries_)) {
+      auto node = lru_.empty() ? std::prev(protected_.end()) : std::prev(lru_.end());
+      retire(index_.find(node->key), retired);
+      ++stats_.evictions;
+    }
+    if (index_.empty() && resident_bytes() > max_bytes_) index_.swap(retired_index);
+  }
 
   static uint64_t micros(Clock::time_point start) {
     return std::chrono::duration_cast<std::chrono::microseconds>(Clock::now() - start).count();
@@ -203,13 +322,16 @@ class Cache {
   }
 
   const size_t max_bytes_, max_entries_;
+  const Policy policy_;
   mutable std::mutex mutex_;
   std::list<Node> lru_;
+  std::list<Node> protected_;
   Index index_;
   // Transient entries are bounded by synchronous caller concurrency, and are
   // removed on success AND failure. They never retain negative cache entries.
   std::unordered_map<Key, std::shared_ptr<Flight>, Hash> flights_;
   size_t bytes_ = 0;
+  size_t protected_bytes_ = 0;
   Stats stats_, reported_;
 };
 

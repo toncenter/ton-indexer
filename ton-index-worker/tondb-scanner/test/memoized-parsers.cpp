@@ -425,6 +425,8 @@ void check_trigger_counters() {
 
 }  // namespace
 
+void check_parent_cache();
+
 int main() {
   SET_VERBOSITY_LEVEL(verbosity_INFO);
   vm::init_op_cp0();
@@ -433,6 +435,7 @@ int main() {
   check_coalescing(true);
   check_methods();
   check_account_lookup();
+  check_parent_cache();
   check_elections();
   check_trigger_counters();
   std::cout << "Memoized parsers: bounded LRU, concurrent coalescing, retries, metadata and historical Elector parity: OK\n";

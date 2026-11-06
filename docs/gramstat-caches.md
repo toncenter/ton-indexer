@@ -1,6 +1,7 @@
 # Inter-block parsing caches
 
-The indexer's shared scanner library keeps two inter-block, bounded LRU caches.
+The indexer's shared scanner library keeps bounded caches for methods, elections,
+and parent accounts/cells.
 They work across parallel MCs and across the ClickHouse/PostgreSQL pipelines.
 The keys are content identities, not the most recently processed MC. Retries and
 out-of-order blocks therefore cannot reuse a different state's value.
@@ -163,3 +164,75 @@ selector that implements an NFT getter outside its dictionary. It also checks
 that two wallets sharing a master in one MC execute only one parent lookup.
 `gramstat_caches` covers lookup concurrency, transient read retries, context
 release, byte/entry eviction and out-of-order/different snapshot identities.
+
+## Inter-block parent states and warmed cells
+
+The indexing scheduler owns a **512 MiB** parent-cache budget, shared by all its
+parallel MC detector groups. It updates cached parents immediately after the
+existing ordered TraceAssembler stage. There is no new actor barrier or waiting
+for another MC: incompatible snapshots use the existing per-MC lookup path.
+
+Every unique transaction account is checked, including accounts whose final-state
+read failed. Existing entries are updated from already parsed final account
+states. The state must match the last transaction's LT and post-state hash;
+missing/incomplete states, deletion, freezing and uninitialized states invalidate
+the entry. Updates perform no CellDB reads and do not promote cache popularity.
+Only a detector's demand lookup admits a new parent.
+
+Each address retains one latest state and its `valid_from` MC. The cache also
+tracks the continuously observed MC head and verifies predecessor block hashes.
+Gaps or conflicting identities clear parent entries and start a new epoch;
+older views cannot publish into that epoch. A detector can use an entry only
+inside its confirmed validity interval, and holds its own immutable value while
+other MCs update the cache. Old MCs requiring an overwritten version fall back.
+The account timestamp is rebound to the requested shard snapshot, while getters
+always use the current MC's time, config and libraries.
+
+Cold lookups can finish after later MCs have already been observed. A fixed
+128-MC journal of 8192-bit address Bloom filters checks all intervening changes
+before admission. False positives only deny admission; outside the journal the
+result is returned to its caller but not retained. This also prevents a stale
+load from inserting a parent that was absent from the cache when it changed.
+The journal is bounded and included in the 512 MiB budget.
+
+### Memory and lazy loading
+
+The persistent cache stores detached account headers/root identities and **flat
+immutable cell images by content hash**. Images contain the cell's bits and child
+hash/depth identities, never recursive `Cell` references or CellDB readers.
+Consequently a later getter cannot grow an unaccounted retained graph. Each newly
+read cell is a separately charged entry, including its child identities and cache
+container overhead; shared cell content is stored once in this cache.
+
+After fixed overhead and the journal, 1/16 of the budget is for account metadata
+(approximately 32 MiB at the default), and 15/16 for warmed cells (approximately
+480 MiB). Both reuse `MemoCache` with segmented LRU: first-use entries enter the
+probation segment; repeated reads promote them to a protected segment capped at
+80% of that cache's byte budget. Updates preserve the segment/recency. A scan of
+one-off parents/cells therefore preferentially evicts probation entries.
+
+Each caller receives lazy cell references using **its own** CellDB reader.
+Reading a reference gets the image from the shared cell cache, or loads exactly
+that cell on a miss, and reconstructs a VM cell with lazy child references. The
+caller's materialized graph reuses loaded cells during execution, as ordinary
+ExtCells do. Unvisited subtrees are never prefetched. Library-reference code
+remains a reference and resolves against the caller's current libraries.
+
+The budget covers retained cache data, not process RSS: active detector groups
+still hold their ordinary per-MC snapshots, materialized VM cells and in-flight
+loads. Neither detached parent entries nor warmed cell images pin an old reader.
+
+Metrics are appended to the scheduler's minute report:
+
+- `indexer.cache.parents.*`: hits/misses/evictions and retained metadata bytes;
+- `.update`, `.invalidate`, `.reset`, `.version_bypass`, `.stale_publish`:
+  interval counts; `.verified_mc`: current confirmed head;
+- `.total_bytes`: retained metadata, cell images, journal and fixed overhead;
+- `indexer.cache.parent_cells.*`: warmed-cell hits/misses/coalescing, read errors,
+  evictions and bytes (the generic cache's count, excluding its fixed object).
+
+`gramstat_caches` covers updates, old/future MCs, gaps/forks/retries, late-load
+publication, missing latest states, SLRU scan resistance, byte eviction, lazy
+subtree loading, reader release and NOW/library changes. `gramstat_native` runs
+two jetton wallets against one parent over three MCs and checks equivalent
+detector results, one parent lookup, and no repeated CellDB reads after warmup.

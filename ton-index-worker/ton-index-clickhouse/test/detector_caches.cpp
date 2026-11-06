@@ -2,6 +2,7 @@
 #include "Statistics.h"
 #include "smc-interfaces/AccountLookupContext.h"
 #include "../../tondb-scanner/test/smc-fixture.h"
+#include "../../tondb-scanner/test/cell-reader.h"
 #include "td/actor/TestScheduler.h"
 #include "vm/cp0.h"
 
@@ -102,7 +103,7 @@ td::Ref<vm::Cell> wallet_code(const block::StdAddress& owner, const block::StdAd
     return test_method_dispatcher(97026, result);
 }
 
-void check_shared_block_lookup() {
+void check_shared_block_lookup(bool inter_block = false) {
     auto parsed = std::make_shared<ParsedBlock>();
     parsed->mc_block_.config_ = test_smc_config(1700000000);
     const auto master = block::StdAddress(0, td::Bits256::ones());
@@ -112,6 +113,10 @@ void check_shared_block_lookup() {
     schema::BlockDataState shard{};
     shard.block_state = test_shard_with_account(master, master_code);
     parsed->mc_block_.shard_blocks_.push_back(shard);
+    auto reader = std::make_shared<TestCellDbReader>();
+    reader->add(shard.block_state);
+    parsed->cell_db_reader_ = reader;
+    auto parents = inter_block ? std::make_shared<ParentAccountCache>() : nullptr;
     for (int i = 1; i <= 2; ++i) {
         auto key = td::Bits256::zero();
         (key.bits() + 224).store_uint(i, 32);
@@ -126,9 +131,16 @@ void check_shared_block_lookup() {
         parsed->account_states_.push_back(account);
     }
     g_statistics.generate_report_and_reset();
-    bool finished = false;
-    td::actor::TestScheduler scheduler;
-    scheduler.run([&]() -> td::actor::Task<> {
+    unsigned first_reads = 0;
+    for (unsigned mc = 100; mc < (inter_block ? 103U : 101U); ++mc) {
+      // Fresh per-MC context each time, with unchanged master state.
+      auto id = td::Bits256::zero(), prev = td::Bits256::zero();
+      (id.bits() + 224).store_uint(mc, 32);
+      (prev.bits() + 224).store_uint(mc - 1, 32);
+      auto view = parents ? std::make_shared<const ParentAccountView>(parents->advance(mc, id, prev, {})) : nullptr;
+      bool finished = false;
+      td::actor::TestScheduler scheduler;
+      scheduler.run([&]() -> td::actor::Task<> {
         td::actor::create_actor<BlockInterfaceProcessor>("shared_master", parsed,
             td::PromiseCreator::lambda([&](td::Result<ParsedBlockPtr> result) {
                 auto block = result.move_as_ok();
@@ -139,13 +151,21 @@ void check_shared_block_lookup() {
                     CHECK(value.balance->to_long() == 42 && value.owner == account.account && value.jetton == master);
                 }
                 finished = true;
-            })).release();
+            }), parents, view).release();
         while (!finished) co_await scheduler.wait_sync_work();
         co_return td::Unit{};
-    });
+      });
+      if (mc == 100) first_reads = reader->reads;
+      else CHECK(reader->reads == first_reads); // parent getters reused warmed images
+    }
     auto report = g_statistics.generate_report_and_reset();
-    count_is(report, "indexer.lookup_account.cache.miss", 1);
-    count_is(report, "indexer.lookup_account.cache.hit", 1);
+    count_is(report, "indexer.lookup_account.cache.miss", inter_block ? 3 : 1);
+    count_is(report, "indexer.lookup_account.cache.hit", inter_block ? 3 : 1);
+    CHECK(report.find("indexer.lookup_account.micros") != std::string::npos);
+    if (inter_block) {
+      CHECK(parents->state_stats().misses == 1 && parents->state_stats().hits == 2);
+      CHECK(parents->cell_stats().computations == first_reads);
+    }
     count_is(report, "indexer.lookup_account.error", 0);
 }
 
@@ -154,4 +174,5 @@ void check_shared_block_lookup() {
 void check_detector_caches() {
     check_filter();
     check_shared_block_lookup();
+    check_shared_block_lookup(true);
 }
