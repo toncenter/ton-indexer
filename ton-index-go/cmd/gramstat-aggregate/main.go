@@ -41,6 +41,7 @@ func run(log *slog.Logger) error {
 		fmt.Print(gramstat.DailySchema)
 		fmt.Print(gramstat.DailyMigration)
 		fmt.Print(gramstat.StarsSchema)
+		fmt.Print(gramstat.ChainSchema)
 		fmt.Print(validators.Schema)
 		return nil
 	}

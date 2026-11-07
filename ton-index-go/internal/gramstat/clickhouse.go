@@ -119,7 +119,11 @@ func (c *ClickHouse) requestContent(ctx context.Context, query string, params ur
 	values.Set("query", query)
 	// Buffer errors before sending HTTP 200; in particular, an insert is synchronous.
 	values.Set("wait_end_of_query", "1")
-	values.Set("async_insert", "0")
+	// A strict read-only role cannot change insert settings. Read clients never
+	// insert; write requests still require synchronous acknowledgement.
+	if values.Get("readonly") != "1" {
+		values.Set("async_insert", "0")
+	}
 	u.RawQuery = values.Encode()
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, u.String(), bytes.NewReader(body))
 	if err != nil {
