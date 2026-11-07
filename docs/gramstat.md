@@ -32,6 +32,9 @@ unreadable auxiliaries, NULL versus stored zero, and malformed/truncated headers
   before global version 17 this is the legacy cumulative accounting value; after
   activation the network's global-balance calculator validates the value. The
   indexer neither corrects legacy values nor subtracts burning a second time.
+  **For the supply graph**, apply the [mainnet chart contract](gramstat-supply-chart.md):
+  before MC **103190382**, subtract the full accumulated MC `burned` through the
+  selected block; from that MC onward, use `global_balance` directly.
 * **`out_msg_queue_size`**: the optional `OutMsgQueueExtra.out_queue_size` counter
   for that particular MC/shard post-state. Present zero is **0**; absence is
   **NULL**, including empty legacy queues. There is no fallback scan, incremental
@@ -121,38 +124,26 @@ upsert/`ReplacingMergeTree` to delete stale rows.
 
 ## Hourly and daily charts
 
-ClickHouse:
+The [supply-chart implementation contract](gramstat-supply-chart.md) specifies
+the exact mainnet formula, completeness checks, validation evidence and graph
+annotations. Derive the corrected per-MC value before hourly/daily sampling:
 
-```sql
-SELECT
-    toStartOfInterval(toDateTime(gen_utime, 'UTC'), INTERVAL 1 HOUR, 'UTC') AS bucket,
-    argMax(global_balance, tuple(gen_utime, seqno)) AS total
-FROM blocks FINAL
-WHERE workchain = -1 AND global_balance IS NOT NULL
-  AND gen_utime >= 1788220800  -- 2026-09-01 00:00:00 UTC
-  AND gen_utime <  1790812800  -- 2026-10-01 00:00:00 UTC
-GROUP BY bucket
-ORDER BY bucket;
+```text
+MC < 103190382:  total_supply = global_balance - cumulative_MC_burned
+MC >= 103190382: total_supply = global_balance
 ```
 
-PostgreSQL:
+The burn prefix includes the selected block and all prior burning, even outside
+the displayed interval. Use deduplicated MC rows and retain exact integer amounts;
+missing required blocks/fields make the point unavailable. Then take the last
+snapshot in each UTC hour/day by `(gen_utime, seqno)`, preserving a missing final
+value rather than silently selecting an earlier one. Supply snapshots are not
+summed across time. Current intervals are provisional.
 
-```sql
-SELECT DISTINCT ON (bucket)
-    date_trunc('hour', to_timestamp(gen_utime), 'UTC') AS bucket,
-    global_balance AS total
-FROM blocks
-WHERE workchain = -1 AND global_balance IS NOT NULL
-  AND gen_utime >= 1788220800  -- 2026-09-01 00:00:00 UTC
-  AND gen_utime <  1790812800  -- 2026-10-01 00:00:00 UTC
-ORDER BY bucket, gen_utime DESC, seqno DESC;
-```
-
-For daily points, use `INTERVAL 1 DAY` or `'day'`. Each point is the last available
-stored value in its UTC interval, with `seqno` breaking equal-second ties. Supply
-snapshots are not summed across time. Current or incompletely indexed intervals
-are provisional; missing intervals remain absent. Materialized aggregates can
-be added and backfilled later without changing the indexer.
+The **burn-start vertical line** belongs at **MC 30410593**,
+**2023-06-17 06:33:26 UTC** (`1686983606`). The **v17 accounting line** belongs at
+**MC 103190382**, **2026-11-03 21:25:08 UTC** (`1793741108`); the preceding key
+block 103190381 published the new configuration but still used the old rules.
 
 Queue series use `blocks.out_msg_queue_size` for each shard separately. For a
 network snapshot at MC N, join the shard tips in `shard_state` to `blocks` and
