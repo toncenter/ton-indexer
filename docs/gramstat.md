@@ -58,6 +58,25 @@ Earlier versions sampled every 150 MC. Existing denser snapshots remain valid:
 the 1500-MC grid is a subset, and resume requires supply only at the current grid
 points. Old extra rows are retained; missing off-grid rows are not filled with zero.
 
+On high-thread-count glibc deployments, released snapshot allocations can remain
+resident in many malloc arenas. During a full-history run with 96 CPU workers,
+read-only allocator inspection found 107 arenas and at least 25.4 GiB free inside
+them while RSS was at the 40-GiB soft limit. The tested service settings were:
+
+```ini
+[Service]
+Environment=MALLOC_ARENA_MAX=16
+Environment=MALLOC_TRIM_THRESHOLD_=131072
+```
+
+Together with one active snapshot, these settings kept RSS within 10.15–12.25 GiB
+during the subsequent one-hour historical measurement, with no memory-high/OOM
+events. This is a measured interval, not a guarantee for all historical states.
+Setting the trim threshold explicitly also disables glibc's dynamic mmap/trim
+threshold adjustment; see [mallopt(3)](https://man7.org/linux/man-pages/man3/mallopt.3.html).
+Track cgroup `memory.current`, `memory.events` and `memory.pressure` alongside
+ordinary-MC and supply progress when changing concurrency.
+
 All amounts are exact integer nanoTON:
 
 ```text
