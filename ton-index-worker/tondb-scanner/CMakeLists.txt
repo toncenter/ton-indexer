@@ -75,6 +75,7 @@ add_test(NAME gramstat_elector_rounds COMMAND test-elector-rounds)
 add_executable(test-memoized-parsers EXCLUDE_FROM_ALL test/memoized-parsers.cpp test/parent-cache.cpp)
 target_link_libraries(test-memoized-parsers PRIVATE tondb-scanner)
 target_compile_definitions(test-memoized-parsers PRIVATE
-    ELECTOR_CACHE_FIXTURE="${CMAKE_CURRENT_SOURCE_DIR}/test/fixtures/elector-code.b64")
+    ELECTOR_CACHE_FIXTURE="${CMAKE_CURRENT_SOURCE_DIR}/test/fixtures/elector-code.b64"
+    ELECTOR_LEGACY_CACHE_FIXTURE="${CMAKE_CURRENT_SOURCE_DIR}/test/fixtures/elector-code-2020.b64")
 add_test(NAME gramstat_caches COMMAND test-memoized-parsers)
 set_tests_properties(gramstat_caches PROPERTIES TIMEOUT 60)

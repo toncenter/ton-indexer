@@ -5,8 +5,8 @@
 
 namespace elector {
 
-// Memoizes only the audited Elector implementation. Unknown code continues to
-// execute against its full historical environment on every call.
+// Memoizes only the exact audited selector and getter/CALLREF closure. Other
+// code executes against its full historical environment on every call.
 td::Result<std::optional<schema::ValidatorElection>> parse_election(
     const schema::AccountState& state, const std::shared_ptr<block::ConfigInfo>& config,
     uint32_t now, uint32_t mc_seqno);

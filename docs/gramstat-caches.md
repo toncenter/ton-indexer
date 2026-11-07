@@ -42,8 +42,16 @@ result, including the successful absence of an active election. Its key is:
 Elector code hash + TVM global version + optional cur_elect cell hash
 ```
 
-This subtree key is enabled only for the audited deployed Elector code
-`Yhf4csmfr8uHDywRo2L1kzm+lQlfcNALnP8vbc1p090=`. The complete dispatcher/getter
+This subtree key is enabled only for an **exact selector and getter closure**:
+an ordinary 80-bit/one-reference code cell containing SETCP0 / 19 DICTPUSHCONST /
+DICTIGETJMPZ / THROWARG 11, with no extra instructions or continuation; method
+86698's entire cell graph must hash to
+`4YQSc9XqovH2ggyt2+7Gd6h6ecwftLK8/2vXIdL/RHA=`.
+This matches the original audited deployed code
+`Yhf4csmfr8uHDywRo2L1kzm+lQlfcNALnP8vbc1p090=` and historical versions
+`ru0Xh4xjMGnjqPUkty8uJC1IoKWFCo0fbEUI/o/EgVc=` (MC 3400000) and
+`5IiS+ovkOVSikj1mj/no1okxyC2NyAvhyISLiuj+Nmo=` (MC 3422397), whose other methods differ.
+The complete dispatcher/getter
 closure reads only c4's first dictionary reference and that election's contents.
 It does not read NOW, the address, config, randomness or libraries. The fixture
 and audit description are in `tondb-scanner/test/fixtures/`.
@@ -53,9 +61,12 @@ this value. New participants, increased stakes, changed ADNL/max-factor,
 election scalar fields/flags, and removal of the election do change its key.
 Reading the `cur_elect` reference hash does not walk its participants.
 
-**Unknown code bypasses the cache.** Merely including a new code hash in a key
-would not prove that a new getter is independent of time/config. Unreadable keys
-also fall back to the original VM path rather than being cached as absence.
+**Other selectors/getter closures bypass the cache.** Merely including a new code
+hash in a key would not prove independence of time/config. Library-reference code
+also bypasses it: config can remove a library without changing the reference hash.
+Unreadable keys fall back to the original VM path rather than being cached as absence.
+Admission decisions are cached by full code hash in a separate **64-entry/64-KiB**
+metadata cache (`indexer.cache.elector_code`); inspection errors are not cached.
 
 The cache retains at most **16 states and 8 MiB**, counting participant vector
 capacity, strings, integer allocations and container overhead. It stores no
@@ -101,9 +112,23 @@ logs/high-cardinality metric labels are not required.
 `test-memoized-parsers` / CTest `gramstat_caches` exercises LRU byte/entry bounds,
 empty results, unsupported code churn, concurrent single-flight success and
 failure, unrelated-key progress, library disappearance/appearance, read-error
-retries, and cached/uncached parity on the actual Elector bytecode. It also tests
+retries, and cached/uncached parity on both actual Elector bytecodes. It also tests
 in-round changes, unrelated storage/time changes, source MC rebinding, VM/code
 changes, historical ordering and the missing-intermediate-state trigger counters.
+The test asserts both full-code hashes and the identical getter closure, then
+runs the complete election-cache suite on each fixture, including 380-member
+concurrent requests, input perturbations and read-failure retries.
+Admission tests also change an unrelated method (cache still applies), replace
+the getter with a NOW-dependent body under the exact selector (bypass), prepend
+selector instructions (bypass), and remove a code library after a successful call
+(the next call fails normally instead of reusing stale success).
+
+A read-only NodeDB probe on 2026-11-07 verified exact cached/uncached field parity
+at mainnet MC **3400000, 3407832, 3422397, 3437018, 10000000 and 100334250**,
+covering all three observed code hashes, TVM versions 2/15, absent elections and
+112/113/114/376 participants. Each snapshot computed once and then hit the cache
+with a changed timestamp/source MC. This is a targeted correctness check, not a
+full-history data audit or a throughput benchmark.
 
 For an end-to-end performance comparison, use the same MC range, resources and
 writer configuration, with fresh destination databases or explicit forced replay.

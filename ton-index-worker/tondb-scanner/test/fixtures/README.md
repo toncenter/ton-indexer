@@ -12,4 +12,18 @@ with TON's `Disasm.fif`. They read only c4's first dictionary reference
 (`cur_elect`), unpack its scalar fields, and enumerate the members dictionary.
 There are no time, address, config, random or library accesses in that closure.
 The top-level dispatcher is SETCP0 / DICTPUSHCONST / DICTIGETJMPZ / THROWARG.
-The cache recognizes this exact code hash; other Elector versions bypass it.
+The cache recognizes only the exact audited selector and method/CALLREF graph;
+other selectors and getter closures bypass it. Its parsed-result key still includes
+the full code hash, partitioning otherwise identical getters across code versions.
+
+`elector-code-2020.b64` was extracted read-only from mainnet NodeDB at MC 3400000
+on 2026-11-07. Its representation hash is
+`ru0Xh4xjMGnjqPUkty8uJC1IoKWFCo0fbEUI/o/EgVc=`. The selector matches the above
+pattern. Method 86698's entire reachable cell graph is byte-identical to that in
+the first fixture: its representation hash is
+`4YQSc9XqovH2ggyt2+7Gd6h6ecwftLK8/2vXIdL/RHA=` (528 bits and one direct reference).
+Together with the exact 80-bit/one-reference dispatcher check, that transfers the
+audited getter's c4-only dependency proof to versions with changes in unrelated
+methods. It does not generalize to arbitrary dispatchers or older list-only ABIs.
+Tests assert these identities and run the same cache/uncached-VM parity cases
+on both real bytecodes.

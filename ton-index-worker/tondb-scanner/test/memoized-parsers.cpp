@@ -235,13 +235,15 @@ void check_account_lookup() {
   CHECK(bounded.stats().bytes <= 4 * 1024 * 1024);
 }
 
-td::Ref<vm::Cell> elector_code() {
-  std::ifstream in(ELECTOR_CACHE_FIXTURE);
+td::Ref<vm::Cell> elector_code(bool legacy = false) {
+  std::ifstream in(legacy ? ELECTOR_LEGACY_CACHE_FIXTURE : ELECTOR_CACHE_FIXTURE);
   CHECK(in.good());
   std::string encoded, part;
   while (in >> part) encoded += part;
   auto code = vm::std_boc_deserialize(td::base64_decode(encoded).move_as_ok()).move_as_ok();
-  CHECK(td::base64_encode(code->get_hash().as_slice()) == "Yhf4csmfr8uHDywRo2L1kzm+lQlfcNALnP8vbc1p090=");
+  CHECK(td::base64_encode(code->get_hash().as_slice()) == (legacy
+      ? "ru0Xh4xjMGnjqPUkty8uJC1IoKWFCo0fbEUI/o/EgVc="
+      : "Yhf4csmfr8uHDywRo2L1kzm+lQlfcNALnP8vbc1p090="));
   return code;
 }
 
@@ -302,8 +304,19 @@ void equal(const std::optional<schema::ValidatorElection>& a,
   }
 }
 
-void check_elections() {
-  auto code = elector_code();
+void check_elections(bool legacy = false) {
+  auto code = elector_code(legacy);
+  if (legacy) {
+    auto getter_hash = [](td::Ref<vm::Cell> code) {
+      vm::Dictionary methods(vm::load_cell_slice(code).prefetch_ref(), 19);
+      auto body = methods.lookup(td::BitArray<19>(86698));
+      CHECK(body.not_null());
+      auto cell = vm::CellBuilder().append_cellslice(*body).finalize();
+      return td::base64_encode(cell->get_hash().as_slice());
+    };
+    CHECK(getter_hash(code) == "4YQSc9XqovH2ggyt2+7Gd6h6ecwftLK8/2vXIdL/RHA=");
+    CHECK(getter_hash(code) == getter_hash(elector_code()));
+  }
   auto config = test_smc_config(100);
   auto a = election(1000, members(3));
   auto before = elector::election_cache_stats();
@@ -401,6 +414,62 @@ void check_elections() {
   CHECK(elector::election_cache_stats().computations == before.computations + 1);
 }
 
+void check_election_admission() {
+  auto code = elector_code();
+  auto config = test_smc_config(100);
+  auto current = election(7000, members(3));
+  // A change outside the audited getter must not disable its valid subtree key.
+  vm::Dictionary methods(vm::load_cell_slice(code).prefetch_ref(), 19);
+  CHECK(methods.lookup(td::BitArray<19>(99999)).is_null());
+  CHECK(methods.set(td::BitArray<19>(99999), vm::load_cell_slice_ref(
+      vm::CellBuilder().store_long(0x3070, 16).finalize())));
+  auto evolved = vm::CellBuilder().store_long(0xff00, 16).store_long(0xf4a413, 24)
+      .store_ref(methods.get_root_cell()).store_long(0xf4bcf2c80bULL, 40).finalize();
+  CHECK(evolved->get_hash() != code->get_hash());
+  auto before = elector::election_cache_stats();
+  for (auto mc : {10U, 20U}) {
+    auto s = state(evolved, current, mc);
+    equal(elector::parse_election(s, config, mc, mc).move_as_ok(),
+          elector::parse_election_uncached(s, config, mc, mc).move_as_ok());
+  }
+  CHECK(elector::election_cache_stats().computations == before.computations + 1);
+  CHECK(elector::election_cache_stats().hits == before.hits + 1);
+
+  // Even with the exact selector, a different getter may read NOW. Its body
+  // hash must be rejected; otherwise identical c4 would hide the time change.
+  auto timed_body = vm::CellBuilder().store_long(0xf823, 16).store_long(0x7070706d7070LL, 48).finalize();
+  CHECK(methods.set(td::BitArray<19>(86698), vm::load_cell_slice_ref(timed_body)));
+  auto timed = vm::CellBuilder().store_long(0xff00, 16).store_long(0xf4a413, 24)
+      .store_ref(methods.get_root_cell()).store_long(0xf4bcf2c80bULL, 40).finalize();
+  before = elector::election_cache_stats();
+  for (auto now : {100U, 200U}) {
+    auto result = elector::parse_election(state(timed, current), config, now, 25).move_as_ok();
+    CHECK(result && result->election_id == now);
+  }
+  CHECK(elector::election_cache_stats().bypasses == before.bypasses + 2);
+
+  // Identical getter cells are insufficient if selector code precedes them:
+  // even a harmless NOP prefix must bypass the exact-dispatcher whitelist.
+  auto prefixed = vm::CellBuilder().store_long(0, 8).append_cellslice(vm::load_cell_slice(code)).finalize();
+  before = elector::election_cache_stats();
+  for (auto now : {100U, 200U}) {
+    auto s = state(prefixed, current);
+    equal(elector::parse_election(s, config, now, 30).move_as_ok(),
+          elector::parse_election_uncached(s, config, now, 30).move_as_ok());
+  }
+  CHECK(elector::election_cache_stats().bypasses == before.bypasses + 2);
+
+  // A library reference can disappear from config. Do not reuse the successful
+  // parsed result when the same code-reference hash no longer resolves.
+  auto reference = state(test_library_reference(code), current);
+  auto with_library = test_smc_config(100, {code});
+  before = elector::election_cache_stats();
+  equal(elector::parse_election(reference, with_library, 100, 40).move_as_ok(),
+        elector::parse_election_uncached(reference, with_library, 100, 40).move_as_ok());
+  CHECK(elector::parse_election(reference, config, 100, 40).is_error());
+  CHECK(elector::election_cache_stats().bypasses == before.bypasses + 2);
+}
+
 void check_trigger_counters() {
   g_statistics.generate_report_and_reset();
   auto parsed = std::make_shared<ParsedBlock>();
@@ -437,6 +506,8 @@ int main() {
   check_account_lookup();
   check_parent_cache();
   check_elections();
+  check_elections(true);
+  check_election_admission();
   check_trigger_counters();
   std::cout << "Memoized parsers: bounded LRU, concurrent coalescing, retries, metadata and historical Elector parity: OK\n";
 }

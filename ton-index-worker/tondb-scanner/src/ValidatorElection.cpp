@@ -3,6 +3,7 @@
 #include "ElectorRoundResults.h"
 #include "Statistics.h"
 #include "td/utils/base64.h"
+#include "vm/dict.h"
 
 namespace elector {
 namespace {
@@ -28,23 +29,52 @@ memo::Cache<Key, Election, KeyHash>& cache() {
   return instance;
 }
 
+memo::Cache<td::Bits256, bool>& code_cache() {
+  static memo::Cache<td::Bits256, bool> instance(64 * 1024, 64);
+  return instance;
+}
+
+td::Result<bool> audited_getter(td::Ref<vm::Cell> code) {
+  return safe_parse::guard("Elector getter audit", [&]() -> td::Result<bool> {
+    TRY_RESULT(loaded, code->load_cell());
+    vm::CellSlice cs(std::move(loaded));
+    // Exact context-independent selector: no prefix/suffix instructions or
+    // implicit continuation may alter c4 before the audited body is entered.
+    // Library-reference code is deliberately excluded: its availability can
+    // change with config even though the reference's hash stays the same.
+    if (cs.special_type() != vm::Cell::SpecialType::Ordinary || cs.size() != 80 || cs.size_refs() != 1 ||
+        cs.fetch_ulong(16) != 0xff00 || cs.fetch_ulong(14) != 0x3d29 || cs.fetch_ulong(10) != 19) {
+      return false;
+    }
+    auto dict = cs.fetch_ref();
+    if (cs.fetch_ulong(40) != 0xf4bcf2c80bULL) return false;
+    vm::Dictionary methods(dict, 19);
+    auto body = methods.lookup(td::BitArray<19>(86698));
+    if (body.is_null()) return false;
+    static const td::Bits256 known_getter = [] {
+      td::Bits256 hash;
+      hash.as_slice().copy_from(td::base64_decode("4YQSc9XqovH2ggyt2+7Gd6h6ecwftLK8/2vXIdL/RHA=").move_as_ok());
+      return hash;
+    }();
+    auto cell = vm::CellBuilder().append_cellslice(*body).finalize();
+    return td::Bits256(cell->get_hash().bits()) == known_getter;
+  });
+}
+
 td::Result<std::optional<Key>> cache_key(
     const schema::AccountState& state, const std::shared_ptr<block::ConfigInfo>& config) {
   return safe_parse::guard("Elector election cache key", [&]() -> td::Result<std::optional<Key>> {
     if (state.code.is_null() || state.data.is_null() || !config) return std::optional<Key>{};
-    // Audited deployed bytecode (fixture: test/fixtures/elector-code.b64).
+    // Audited getter bytecode (fixtures: elector-code{,-2020}.b64).
     // Dispatcher: SETCP0; DICTPUSHCONST; DICTIGETJMPZ; THROWARG.
     // Method 86698 reads c4's first HashmapE reference, unpacks cur_elect and
     // walks members. Its entire CALLREF closure uses no c7/config/time/libraries.
-    // Including an arbitrary code hash in a key would NOT establish that fact
-    // for a future upgrade; unrecognized code must bypass this optimization.
-    static const td::Bits256 known_code = [] {
-      td::Bits256 hash;
-      hash.as_slice().copy_from(td::base64_decode("Yhf4csmfr8uHDywRo2L1kzm+lQlfcNALnP8vbc1p090=").move_as_ok());
-      return hash;
-    }();
+    // Admission checks the exact selector AND getter/CALLREF closure, so other
+    // contract methods may evolve without disabling this unchanged pure getter.
     td::Bits256 code_hash(state.code->get_hash().bits());
-    if (code_hash != known_code) return std::optional<Key>{};
+    TRY_RESULT(eligible, code_cache().get(code_hash, [&] { return audited_getter(state.code); },
+                                         [](bool) { return size_t{0}; }));
+    if (!*eligible) return std::optional<Key>{};
     TRY_RESULT(loaded, state.data->load_cell());
     vm::CellSlice data(std::move(loaded));
     if (data.special_type() != vm::Cell::SpecialType::Ordinary) return std::optional<Key>{};
@@ -157,6 +187,8 @@ td::Result<Election> parse_election_uncached(const schema::AccountState& state,
 }
 
 memo::Stats election_cache_stats() { return cache().stats(); }
-std::string election_cache_report() { return cache().report("indexer.cache.elector_election"); }
+std::string election_cache_report() {
+  return cache().report("indexer.cache.elector_election") + code_cache().report("indexer.cache.elector_code");
+}
 
 }  // namespace elector
