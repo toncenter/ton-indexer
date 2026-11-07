@@ -348,9 +348,11 @@ public:
 inline void configure_block_aggregates_upsert(PopulateTableStream& stream) {
     // Replays fill the aggregates without rewriting the block's other fields.
     stream.setConflictDoUpdate({"workchain", "shard", "seqno", "mc_block_seqno"},
-                               {"transaction_fees", "import_fees", "created", "burned"},
+                               {"transaction_fees", "import_fees", "created", "burned", "global_balance", "out_msg_queue_size"},
                                "blocks.transaction_fees IS DISTINCT FROM EXCLUDED.transaction_fees OR "
                                "blocks.import_fees IS DISTINCT FROM EXCLUDED.import_fees OR "
                                "blocks.created IS DISTINCT FROM EXCLUDED.created OR "
-                               "blocks.burned IS DISTINCT FROM EXCLUDED.burned");
+                               "blocks.burned IS DISTINCT FROM EXCLUDED.burned OR "
+                               "blocks.global_balance IS DISTINCT FROM EXCLUDED.global_balance OR "
+                               "blocks.out_msg_queue_size IS DISTINCT FROM EXCLUDED.out_msg_queue_size");
 }

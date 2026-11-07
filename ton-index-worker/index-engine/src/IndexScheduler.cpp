@@ -1,7 +1,5 @@
 #include "IndexScheduler.h"
 #include "BlockInterfacesDetector.h"
-#include "TotalSupply.h"
-#include "GramstatSampling.h"
 #include "AccountDeltas.h"
 #include "Deployments.h"
 #include "AccountStateHistory.h"
@@ -36,12 +34,6 @@ std::int64_t processing_lag_ms(std::int32_t gen_utime) {
 
 void IndexScheduler::start_up() {
     trace_assembler_ = td::actor::create_actor<TraceAssembler>("trace_assembler", working_dir_ + "/trace_assembler", max_queue_.mc_blocks_);
-}
-
-void IndexScheduler::set_max_supply_inflight(std::uint32_t limit, std::uint32_t pending) {
-    CHECK(processing_seqnos_.empty() && inserting_seqnos_.empty());
-    max_supply_inflight_ = limit;
-    max_supply_pending_ = pending;
 }
 
 std::string get_time_string(double seconds) {
@@ -432,10 +424,6 @@ void IndexScheduler::schedule_seqno(std::uint32_t mc_seqno) {
     LOG(DEBUG) << "Scheduled seqno " << mc_seqno;
 
     processing_seqnos_.insert(mc_seqno);
-    if (max_supply_inflight_ && collect_gramstat_ && should_insert_seqno(mc_seqno) &&
-        gramstat::should_calculate_total_supply(mc_seqno)) {
-        supply_inflight_.insert(mc_seqno);
-    }
     timers_[mc_seqno] = td::Timer();
     start_seqno_otel_trace(mc_seqno, is_in_sync_);
     start_seqno_otel_stage(mc_seqno, "fetch_seqno");
@@ -589,72 +577,8 @@ void IndexScheduler::seqno_actions_processed(std::uint32_t mc_seqno, ParsedBlock
             return;
         }
         parsed_block->deployments_ = deployments.move_as_ok();
-        if (!gramstat::should_calculate_total_supply(mc_seqno)) {
-            parsed_block->total_supply_.reset();
-            finish_seqno_otel_stage(mc_seqno);
-            insert_seqno(mc_seqno, std::move(parsed_block));
-            return;
-        }
-        if (max_supply_inflight_) {
-            CHECK(supply_inflight_.count(mc_seqno));
-            CHECK(supply_pending_.emplace(mc_seqno, std::move(parsed_block)).second);
-            start_pending_supply();
-        } else {
-            calculate_supply(mc_seqno, std::move(parsed_block));
-        }
-        return;
+        finish_seqno_otel_stage(mc_seqno);
     }
-    insert_seqno(mc_seqno, std::move(parsed_block));
-}
-
-void IndexScheduler::start_pending_supply() {
-    while (!supply_pending_.empty() && supply_running_.size() < max_supply_inflight_) {
-        auto it = supply_pending_.begin();
-        const auto seqno = it->first;
-        auto parsed = std::move(it->second);
-        supply_pending_.erase(it);
-        CHECK(supply_running_.insert(seqno).second);
-        calculate_supply(seqno, std::move(parsed));
-    }
-}
-
-void IndexScheduler::calculate_supply(std::uint32_t mc_seqno, ParsedBlockPtr parsed_block) {
-    LOG(INFO) << "Starting total supply for seqno " << mc_seqno
-              << ": running=" << supply_running_.size() << " pending=" << supply_pending_.size();
-    auto P = td::PromiseCreator::lambda(
-        [SelfId = actor_id(this), mc_seqno, parsed_block](td::Result<schema::TotalSupply> R) mutable {
-            td::actor::send_closure(SelfId, &IndexScheduler::seqno_supply_processed,
-                                   mc_seqno, std::move(parsed_block), std::move(R));
-        });
-    auto load_state = [scanner = db_scanner_](ton::BlockIdExt id)
-        -> td::actor::Task<td::Ref<ton::validator::ShardState>> {
-        co_return co_await td::actor::ask(scanner, &DbScanner::fetch_state_by_id, id);
-    };
-    td::connect(std::move(P), gramstat::calculate_total_supply(parsed_block->mc_block_, std::move(load_state)));
-}
-
-void IndexScheduler::seqno_supply_processed(std::uint32_t mc_seqno, ParsedBlockPtr parsed_block,
-                                           td::Result<schema::TotalSupply> result) {
-    if (result.is_ok()) {
-        const auto* mc_block = find_masterchain_block(*parsed_block);
-        if (!mc_block || mc_block->workchain != -1 || result.ok().mc_seqno != mc_seqno ||
-            result.ok().gen_utime != static_cast<std::uint32_t>(mc_block->gen_utime)) {
-            result = td::Status::Error("Total supply snapshot does not match the parsed masterchain block");
-        }
-    }
-    if (result.is_error()) {
-        auto error = result.move_as_error();
-        LOG(ERROR) << "Failed to calculate total supply for seqno " << mc_seqno << ": " << error;
-        // Traces for this MC were already assembled. Retry this independent
-        // calculation on the same immutable snapshot, retaining its resource
-        // slot, rather than feeding an old MC into TraceAssembler again.
-        ton::delay_action([self = actor_id(this), mc_seqno, parsed_block = std::move(parsed_block)]() mutable {
-            td::actor::send_closure(self, &IndexScheduler::calculate_supply, mc_seqno, std::move(parsed_block));
-        }, td::Timestamp::in(1.0));
-        return;
-    }
-    parsed_block->total_supply_ = result.move_as_ok();
-    finish_seqno_otel_stage(mc_seqno);
     insert_seqno(mc_seqno, std::move(parsed_block));
 }
 
@@ -697,7 +621,6 @@ void IndexScheduler::seqno_processed_without_insert(std::uint32_t mc_seqno, cons
     finish_seqno_otel_trace(mc_seqno);
     note_indexed_block_utime(block_gen_utime);
     processing_seqnos_.erase(mc_seqno);
-    supply_inflight_.erase(mc_seqno);
     indexed_seqnos_.insert(mc_seqno);
     if (mc_seqno > static_cast<std::uint32_t>(last_indexed_seqno_)) {
         last_indexed_seqno_ = static_cast<std::int32_t>(mc_seqno);
@@ -737,7 +660,6 @@ void IndexScheduler::maybe_finish_bounded_range() {
         return;
     }
     if (last_known_seqno_ < to_seqno_ || !queued_seqnos_.empty() || !processing_seqnos_.empty() || !inserting_seqnos_.empty()
-        || !supply_inflight_.empty() || !supply_pending_.empty() || !supply_running_.empty()
         || cur_queue_state_.blocks_ != 0) {
         return;
     }
@@ -762,10 +684,6 @@ void IndexScheduler::print_stats() {
        << cur_queue_state_.txs_ << "t, "
        << cur_queue_state_.msgs_ << "m, "
        << cur_queue_state_.traces_ << "T]";
-    if (max_supply_inflight_) {
-        sb << "\tS[" << supply_running_.size() << "/" << max_supply_inflight_
-           << " pending=" << supply_pending_.size() << " reserved=" << supply_inflight_.size() << "]";
-    }
     if (last_indexed_block_utime_ > 0) {
         sb << "\tlag " << td::StringBuilder::FixedDouble(td::Clocks::system() - last_indexed_block_utime_, 1) << "s";
     }
@@ -810,8 +728,6 @@ void IndexScheduler::seqno_inserted(std::uint32_t mc_seqno, std::int32_t block_g
     finish_seqno_otel_trace(mc_seqno);
     note_indexed_block_utime(block_gen_utime);
     inserting_seqnos_.erase(mc_seqno);
-    const bool released_supply = supply_inflight_.erase(mc_seqno) > 0;
-    supply_running_.erase(mc_seqno);
     indexed_seqnos_.insert(mc_seqno);
     if (mc_seqno > last_indexed_seqno_) {
         last_indexed_seqno_ = mc_seqno;
@@ -819,11 +735,7 @@ void IndexScheduler::seqno_inserted(std::uint32_t mc_seqno, std::int32_t block_g
     advance_contiguous_indexed_seqno();
     g_statistics.record_time(PROCESS_SEQNO, timers_[mc_seqno].elapsed() * 1e3);
     timers_.erase(mc_seqno);
-    if (released_supply) {
-        start_pending_supply();
-        schedule_next_seqnos();
-    }
-    else maybe_finish_bounded_range();
+    maybe_finish_bounded_range();
 }
 
 void IndexScheduler::advance_contiguous_indexed_seqno() {
@@ -839,27 +751,13 @@ void IndexScheduler::get_contiguous_indexed_seqno(td::Promise<std::int32_t> prom
 void IndexScheduler::handle_seqno_failure(std::uint32_t mc_seqno, std::string error_type, td::Status error, bool silent) {
     fail_seqno_otel_trace(mc_seqno, error_type, error, silent);
     inserting_seqnos_.erase(mc_seqno);
-    supply_inflight_.erase(mc_seqno);
-    supply_running_.erase(mc_seqno);
-    supply_pending_.erase(mc_seqno);
     reschedule_seqno(mc_seqno, silent);
-    start_pending_supply();
 }
 
 void IndexScheduler::schedule_next_seqnos() {
     LOG(DEBUG) << "Scheduling next seqnos. Current tasks: " << processing_seqnos_.size();
     while (!queued_seqnos_.empty() && (processing_seqnos_.size() < max_active_tasks_)) {
         std::uint32_t seqno = queued_seqnos_.front();
-        // Hold the slot through insert acknowledgement: the parsed block still
-        // owns state roots (and their materialized queue cells) while queued to write.
-        // A bounded lookahead admits pending samples without starting their
-        // heavy calculation, so ordinary MCs after them can still be indexed.
-        // Reservations happen BEFORE fetch, including samples not yet parsed.
-        if (max_supply_inflight_ && collect_gramstat_ && should_insert_seqno(seqno) &&
-            gramstat::should_calculate_total_supply(seqno) &&
-            supply_inflight_.size() >= std::uint64_t(max_supply_inflight_) + max_supply_pending_) {
-            break;
-        }
         queued_seqnos_.pop_front();
         schedule_seqno(seqno);
     }

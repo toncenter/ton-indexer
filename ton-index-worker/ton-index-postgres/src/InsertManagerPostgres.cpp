@@ -3134,7 +3134,6 @@ void InsertBatchPostgres::commit_prepared_batch() {
   nft_history::postgres::insert_states(txn, insert_tasks_);
   elector::postgres::insert_round_results(txn, insert_tasks_);
   if (collect_gramstat_) {
-    gramstat::postgres::insert_total_supply(txn, insert_tasks_);
     gramstat::postgres::insert_deployments(txn, insert_tasks_);
     gramstat::postgres::insert_account_deltas(txn, insert_tasks_);
   }
@@ -3345,7 +3344,7 @@ void InsertBatchPostgres::insert_blocks(pqxx::work &txn, bool with_copy) {
     "global_id", "version", "after_merge", "before_split", "after_split", "want_merge", "want_split", "key_block",
     "vert_seqno_incr", "flags", "gen_utime", "start_lt", "end_lt", "validator_list_hash_short", "gen_catchain_seqno",
     "min_ref_mc_seqno", "prev_key_block_seqno", "vert_seqno", "master_ref_seqno", "rand_seed", "created_by", "tx_count", "prev_blocks",
-    "transaction_fees", "import_fees", "created", "burned"
+    "transaction_fees", "import_fees", "created", "burned", "global_balance", "out_msg_queue_size"
   };
   PopulateTableStream stream(txn, "blocks", columns, 1000, with_copy);
   if (!with_copy) {
@@ -3388,7 +3387,9 @@ void InsertBatchPostgres::insert_blocks(pqxx::work &txn, bool with_copy) {
         block.transaction_fees,
         block.import_fees,
         block.created,
-        block.burned
+        block.burned,
+        block.global_balance,
+        block.out_msg_queue_size
       );
       stream.insert_row(std::move(tuple));
     }
@@ -4522,7 +4523,7 @@ void InsertManagerPostgres::start_up() {
       pqxx::work txn(c);
       gramstat::postgres::ensure_schema(txn);
       txn.commit();
-      LOG(INFO) << "Gramstat enabled: writing total_supply, deployments and account_deltas";
+      LOG(INFO) << "Gramstat enabled: writing deployments and account_deltas";
     } catch (const std::exception& e) {
       LOG(ERROR) << "Error preparing Gramstat schema: " << e.what();
       std::_Exit(2);

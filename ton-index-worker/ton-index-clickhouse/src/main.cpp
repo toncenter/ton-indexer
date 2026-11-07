@@ -45,8 +45,6 @@ int main(int argc, char *argv[]) {
 
   std::uint32_t max_active_tasks = 7;
   std::uint32_t max_insert_actors = 12;
-  td::uint32 max_supply_inflight = 0;
-  td::uint32 max_supply_pending = 0;
   
   std::int32_t max_queue_size{-1};
   std::int32_t max_batch_size{-1};
@@ -71,7 +69,7 @@ int main(int argc, char *argv[]) {
   p.add_option('\0', "ch", "Clickhouse connection string",  [&](td::Slice value) {
     credential.set_conn_str(value.str());
   });
-  p.add_option('\0', "gramstat", "Collect Gramstat metrics (total supply, account deltas, deployments)", [&] {
+  p.add_option('\0', "gramstat", "Collect Gramstat metrics (account deltas, deployments)", [&] {
     gramstat = true;
   });
   p.add_checked_option('\0', "gramstat-db", "ClickHouse database for Gramstat metrics (default: gramstat)", [&](td::Slice value) {
@@ -79,16 +77,6 @@ int main(int argc, char *argv[]) {
       return td::Status::Error("--gramstat-db must match [A-Za-z_][A-Za-z0-9_]*");
     }
     gramstat_db = value.str();
-    return td::Status::OK();
-  });
-  p.add_checked_option('\0', "max-supply-inflight", "Maximum concurrent sampled supply MCs through insert acknowledgement (0: unlimited)", [&](td::Slice value) {
-    TRY_RESULT(limit, td::to_integer_safe<td::uint32>(value));
-    max_supply_inflight = limit;
-    return td::Status::OK();
-  });
-  p.add_checked_option('\0', "max-supply-pending", "Additional sampled MCs allowed to wait while ordinary indexing continues (default: 0; requires --max-supply-inflight)", [&](td::Slice value) {
-    TRY_RESULT(limit, td::to_integer_safe<td::uint32>(value));
-    max_supply_pending = limit;
     return td::Status::OK();
   });
   p.add_checked_option('f', "from", "Masterchain seqno to start indexing from", [&](td::Slice fname) { 
@@ -259,10 +247,6 @@ int main(int argc, char *argv[]) {
     LOG(ERROR) << "failed to parse options: " << S.move_as_error();
     std::_Exit(2);
   }
-  if (max_supply_pending && !max_supply_inflight) {
-    LOG(ERROR) << "--max-supply-pending requires a nonzero --max-supply-inflight";
-    std::_Exit(2);
-  }
   if (working_dir.size() == 0) {
     LOG(ERROR) << "Please specify working directory with -W or --working-dir";
     std::_Exit(2);
@@ -313,7 +297,6 @@ int main(int argc, char *argv[]) {
     td::actor::send_closure(insert_manager_, &InsertManagerClickhouse::print_info);
   });
   scheduler.run_in_context([&] {
-    td::actor::send_closure(index_scheduler_, &IndexScheduler::set_max_supply_inflight, max_supply_inflight, max_supply_pending);
     td::actor::send_closure(index_scheduler_, &IndexScheduler::run);
   });
   

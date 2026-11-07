@@ -1,10 +1,8 @@
 # Gramstat: total supply, accounts, deployments and block flows
 
 Both `ton-index-clickhouse` and `ton-index-postgres` support `--gramstat`.
-The shared `collect_gramstat` switch enables the Gramstat stage in the existing
-`IndexScheduler` pipeline. It collects total supply in `gramstat.total_supply`
-**every 1500 masterchain blocks** (`mc_seqno % 1500 == 0`) and account-status
-changes in `gramstat.account_deltas` on **every indexed masterchain block**.
+The shared `collect_gramstat` switch enables account-status changes in
+`gramstat.account_deltas` on **every indexed masterchain block**.
 `gramstat.deployments` stores individual successful deployment events for all
 contract types.
 
@@ -17,75 +15,26 @@ The separate [Go aggregator](gramstat-aggregate.md) refreshes daily jetton/NFT
 activity, swaps, selected liquid-staking deposits and `.ton` mints from PostgreSQL actions into ClickHouse
 `gramstat.daily_metrics`. It runs hourly and supports independent future handlers.
 
-## Calculation
+## Stored block metrics
 
-`index-engine/src/TotalSupply.cpp` calls TON's
-`calculate_global_balance_at_anchor()` using the MC post-state and its top shard
-states from `ParsedBlock::mc_block_`. Auxiliary historical MC states needed for
-`processed_upto`, and seqno-zero shard tips, are loaded through the same
-`DbScanner` and secondary RootDb.
+Every indexed block carries two directly read post-state metrics, independently
+of `--gramstat`. `ParseQuery::parse_block_state_metrics` reads the already-loaded
+`BlockDataState::block_state`; it never enumerates queue dictionaries, reads
+message bodies, calculates dispatch balances or loads auxiliary historical states.
 
-Only MCs on the fixed 1500-block grid invoke this calculation. Other MCs skip it
-entirely and have no new supply row; their account deltas and deployments are
-still collected. Each selected snapshot is a full, independent calculation, so
-different MCs remain parallel. The grid is independent of `--from`, batch sizes
-and restarts; skipped MCs are not filled with zero or a carried-forward balance.
+* **`global_balance`**: `McStateExtra.global_balance.grams`, an exact integer in
+  nanoTON, on masterchain blocks only. Historical values are preserved as stored:
+  before global version 17 this is the legacy cumulative accounting value; after
+  activation the network's global-balance calculator validates the value. The
+  indexer neither corrects legacy values nor subtracts burning a second time.
+* **`out_msg_queue_size`**: the optional `OutMsgQueueExtra.out_queue_size` counter
+  for that particular MC/shard post-state. Present zero is **0**; absence is
+  **NULL**, including empty legacy queues. There is no fallback scan, incremental
+  reconstruction or special split/merge work. Dispatch queues are not measured.
 
-For historical intervals with many shards and large message queues, the
-ClickHouse binary supports `--max-supply-inflight N` (`0`, the default, is
-unlimited). A sampled MC reserves a slot before fetching and releases it after
-insertion acknowledgement or pre-calculation failure. By default, scheduling
-waits at the next sampled MC when the limit is reached.
-
-`--max-supply-pending M` (default `0`, requires a nonzero active limit) admits up
-to M additional sampled MCs before pausing at a further sampling boundary.
-For example, `--max-supply-inflight 1 --max-supply-pending 1` runs one calculation
-and reserves one pending snapshot, allowing ordinary MCs after the pending sample
-to be indexed too. Reservations count even before fetch/parse completes, so
-out-of-order processing cannot exceed the configured bound. Pending samples keep
-their parsed block and state roots but do not run the expensive supply-state
-preparation. They still count against `--max-active-tasks`.
-
-An active slot is held through insertion acknowledgement; a failed supply
-calculation retries on the same immutable snapshot after a delay, without sending
-that MC back through the ordered TraceAssembler. No completion marker is written
-for that sampled MC until its supply succeeds. Later ordinary MCs can be written,
-but restart resumes at the earliest incomplete MC, and bounded runs wait for all
-reserved samples to finish. The log shows `S[running/limit pending=P reserved=R]`.
-A single snapshot can still be large; this limits overlap, not its intrinsic size.
-
-Earlier versions sampled every 150 MC. Existing denser snapshots remain valid:
-the 1500-MC grid is a subset, and resume requires supply only at the current grid
-points. Old extra rows are retained; missing off-grid rows are not filled with zero.
-
-On high-thread-count glibc deployments, released snapshot allocations can remain
-resident in many malloc arenas. During a full-history run with 96 CPU workers,
-read-only allocator inspection found 107 arenas and at least 25.4 GiB free inside
-them while RSS was at the 40-GiB soft limit. The tested service settings were:
-
-```ini
-[Service]
-Environment=MALLOC_ARENA_MAX=16
-Environment=MALLOC_TRIM_THRESHOLD_=131072
-```
-
-Together with one active snapshot, these settings kept RSS within 10.15–12.25 GiB
-during the subsequent one-hour historical measurement, with no memory-high/OOM
-events. This is a measured interval, not a guarantee for all historical states.
-Setting the trim threshold explicitly also disables glibc's dynamic mmap/trim
-threshold adjustment; see [mallopt(3)](https://man7.org/linux/man-pages/man3/mallopt.3.html).
-Track cgroup `memory.current`, `memory.events` and `memory.pressure` alongside
-ordinary-MC and supply progress when changing concurrency.
-
-All amounts are exact integer nanoTON:
-
-```text
-total = accounts + dispatch_queue + unprocessed_messages + unrecovered_validator_fees
-```
-
-The native method excludes already-processed messages from outgoing queue
-balances. Its diagnostic `burned` field is not subtracted again. Missing inputs
-or calculation failures cause a retry rather than a partial or zero snapshot.
+Malformed state metadata is a parse error, not a zero balance or an absent counter.
+The sampling grid, separate supply calculator, supply-specific retry/scheduling
+queues and `--max-supply-inflight` / `--max-supply-pending` options have been removed.
 
 ## Storage
 
@@ -94,22 +43,16 @@ to one network and its ordinary `blocks` dataset. Block hashes remain in `blocks
 
 | Column | ClickHouse type | PostgreSQL type | Meaning |
 | --- | --- | --- | --- |
-| `mc_seqno` | `UInt32` | `bigint` | Masterchain block sequence number |
-| `gen_utime` | `DateTime('UTC')` | `bigint` | Block generation time; Unix seconds in PostgreSQL |
-| `total` | `Decimal(38,0)` | `numeric(38,0)` | Total supply |
-| `accounts` | `Decimal(38,0)` | `numeric(38,0)` | Account balances |
-| `dispatch_queue` | `Decimal(38,0)` | `numeric(38,0)` | Funds in the dispatch queue |
-| `unprocessed_messages` | `Decimal(38,0)` | `numeric(38,0)` | Funds in unprocessed outgoing messages |
-| `unrecovered_validator_fees` | `Decimal(38,0)` | `numeric(38,0)` | Unrecovered validator fees |
+| `blocks.global_balance` | `Nullable(Decimal(38,0))` | nullable `numeric(38,0)` | Stored network balance; MC only |
+| `blocks.out_msg_queue_size` | `Nullable(UInt64)` | nullable `bigint` | Stored uint48 message count; MC and shards |
 
-**ClickHouse:** `ReplacingMergeTree`, monthly `toYYYYMM(gen_utime)` partitions,
-`ORDER BY (gen_utime, mc_seqno)`. Identical retries converge to one logical row;
-use `FINAL` for deduplicated raw listings/counts before background merges.
-The chart queries below tolerate identical duplicates without `FINAL`.
+The fields share the ordinary block write, key and replay behavior. PostgreSQL
+stores them with blocks even when account-state writes go to Kvrocks. Existing
+rows receive NULL columns; normal resume does not reindex them to fill these fields.
 
-**PostgreSQL:** primary key on `mc_seqno`, index on `(gen_utime, mc_seqno)`.
-Snapshots use batched `INSERT ... ON CONFLICT DO NOTHING` and commit in the same
-transaction as blocks, including when account-state writes go to Kvrocks.
+The former calculated `gramstat.total_supply` table is no longer created, written
+or consulted by the indexer. Existing calculated rows can be retained as a legacy
+archive; they must not be mixed with the new stored-balance series.
 
 ## Running and backfill
 
@@ -122,23 +65,26 @@ PostgreSQL leader and standby workers.
 
 Use `--gramstat --from N --to M` for historical backfill; both bounds are
 inclusive. Bounded replay skips an MC only when its block and account deltas
-exist, **plus its supply snapshot if `mc_seqno % 1500 == 0`**. ClickHouse normal
+exist. ClickHouse normal
 resume uses the same condition because the inserts are not atomic. PostgreSQL
 normal resume uses `_ton_indexer_progress`; new blocks and metrics are committed atomically, while
 pre-existing history needs an explicit bounded backfill. Standbys use the same
-sampling-aware condition before acknowledging a leader's batch. For independent
+completion condition before acknowledging a leader's batch. For independent
 PostgreSQL backfill use `--no-leader --pg-no-copy`. Missing metrics are repaired without
 `--force`; use `--force` to recompute already-present account deltas.
 
-Existing per-MC supply history remains valid and is retained. No schema migration
-is needed for sparse snapshots. Deploy the same sampling policy on all writers
-and standbys; older binaries still require a supply row on every MC.
+ClickHouse adds the two block columns at startup. PostgreSQL migration **1.3.2**
+includes them; installations already at 1.3.2 apply it with
+`--rerun-last-migration --no-create-indexes`. Upgrade writers and standby workers
+together. Remove obsolete supply-limit flags from service launchers. Continue
+from the existing checkpoint; historical block-field backfill is opt-in with
+`--force`, not part of this upgrade.
 
 ### Isolated ClickHouse runs
 
 `--ch` selects the ordinary index database, including `blocks`, account states,
 token histories and `validator_round_results`. `--gramstat-db NAME` selects the
-database for `total_supply`, `account_deltas` and `deployments` (default: `gramstat`).
+database for `account_deltas` and `deployments` (default: `gramstat`).
 It applies to schema creation, inserts, resume and bounded-backfill checks.
 Enable collection with `--gramstat`; the database option alone does not enable it.
 Names must match `[A-Za-z_][A-Za-z0-9_]*`.
@@ -174,11 +120,12 @@ ClickHouse:
 
 ```sql
 SELECT
-    toStartOfInterval(gen_utime, INTERVAL 1 HOUR, 'UTC') AS bucket,
-    argMax(total, tuple(gen_utime, mc_seqno)) AS total
-FROM gramstat.total_supply
-WHERE gen_utime >= toDateTime('2026-09-01 00:00:00', 'UTC')
-  AND gen_utime <  toDateTime('2026-10-01 00:00:00', 'UTC')
+    toStartOfInterval(toDateTime(gen_utime, 'UTC'), INTERVAL 1 HOUR, 'UTC') AS bucket,
+    argMax(global_balance, tuple(gen_utime, seqno)) AS total
+FROM blocks FINAL
+WHERE workchain = -1 AND global_balance IS NOT NULL
+  AND gen_utime >= 1788220800  -- 2026-09-01 00:00:00 UTC
+  AND gen_utime <  1790812800  -- 2026-10-01 00:00:00 UTC
 GROUP BY bucket
 ORDER BY bucket;
 ```
@@ -188,18 +135,24 @@ PostgreSQL:
 ```sql
 SELECT DISTINCT ON (bucket)
     date_trunc('hour', to_timestamp(gen_utime), 'UTC') AS bucket,
-    total
-FROM gramstat.total_supply
-WHERE gen_utime >= 1788220800  -- 2026-09-01 00:00:00 UTC
+    global_balance AS total
+FROM blocks
+WHERE workchain = -1 AND global_balance IS NOT NULL
+  AND gen_utime >= 1788220800  -- 2026-09-01 00:00:00 UTC
   AND gen_utime <  1790812800  -- 2026-10-01 00:00:00 UTC
-ORDER BY bucket, gen_utime DESC, mc_seqno DESC;
+ORDER BY bucket, gen_utime DESC, seqno DESC;
 ```
 
 For daily points, use `INTERVAL 1 DAY` or `'day'`. Each point is the last available
-snapshot in its UTC interval, with `mc_seqno` breaking equal-second ties. Supply
+stored value in its UTC interval, with `seqno` breaking equal-second ties. Supply
 snapshots are not summed across time. Current or incompletely indexed intervals
 are provisional; missing intervals remain absent. Materialized aggregates can
 be added and backfilled later without changing the indexer.
+
+Queue series use `blocks.out_msg_queue_size` for each shard separately. For a
+network snapshot at MC N, join the shard tips in `shard_state` to `blocks` and
+include the MC's own queue. Do not sum all blocks in a time bucket, or treat a
+partial sum with missing counters as a complete network queue size.
 
 ## Historical Accounts
 

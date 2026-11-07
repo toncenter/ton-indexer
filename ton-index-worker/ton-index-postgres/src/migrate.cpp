@@ -1615,7 +1615,9 @@ void run_1_3_2_migrations(const std::string& connection_string, bool dry_run) {
       "ADD COLUMN IF NOT EXISTS transaction_fees numeric(38, 0), "
       "ADD COLUMN IF NOT EXISTS import_fees numeric(38, 0), "
       "ADD COLUMN IF NOT EXISTS created numeric(38, 0), "
-      "ADD COLUMN IF NOT EXISTS burned numeric(38, 0);\n") +
+      "ADD COLUMN IF NOT EXISTS burned numeric(38, 0), "
+      "ADD COLUMN IF NOT EXISTS global_balance numeric(38, 0), "
+      "ADD COLUMN IF NOT EXISTS out_msg_queue_size bigint;\n") +
       gramstat::postgres::SCHEMA_SQL + jetton_history::postgres::SCHEMA_SQL +
       nft_history::postgres::SCHEMA_SQL +
       elector::postgres::SCHEMA_SQL +

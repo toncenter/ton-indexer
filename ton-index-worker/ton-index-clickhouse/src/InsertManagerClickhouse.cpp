@@ -1,6 +1,5 @@
 #include "InsertManagerClickhouse.h"
 #include "GramstatStorage.h"
-#include "GramstatSampling.h"
 #include "TokenStatesStorage.h"
 #include "ValidatorRoundResultsStorage.h"
 #include "ValidatorStorage.h"
@@ -41,7 +40,6 @@ private:
     void insert_account_states(clickhouse::Client& client);
     void insert_shard_state(clickhouse::Client& client);
     void insert_blocks(clickhouse::Client& client);
-    void insert_total_supply(clickhouse::Client& client);
     void insert_deployments(clickhouse::Client& client);
     void insert_account_deltas(clickhouse::Client& client);
 };
@@ -104,7 +102,9 @@ void InsertManagerClickhouse::start_up() {
                     << "transaction_fees Nullable(Decimal(38, 0)), "
                     << "import_fees Nullable(Decimal(38, 0)), "
                     << "created Nullable(Decimal(38, 0)), "
-                    << "burned Nullable(Decimal(38, 0))"
+                    << "burned Nullable(Decimal(38, 0)), "
+                    << "global_balance Nullable(Decimal(38, 0)), "
+                    << "out_msg_queue_size Nullable(UInt64)"
                     << ") ENGINE ReplacingMergeTree PRIMARY KEY(workchain, shard, seqno) ORDER BY (workchain, shard, seqno);\n";
             client.Execute(builder.as_cslice().str());
             // Existing rows remain NULL until explicitly replayed with --force.
@@ -112,7 +112,9 @@ void InsertManagerClickhouse::start_up() {
                            "ADD COLUMN IF NOT EXISTS transaction_fees Nullable(Decimal(38, 0)), "
                            "ADD COLUMN IF NOT EXISTS import_fees Nullable(Decimal(38, 0)), "
                            "ADD COLUMN IF NOT EXISTS created Nullable(Decimal(38, 0)), "
-                           "ADD COLUMN IF NOT EXISTS burned Nullable(Decimal(38, 0))");
+                           "ADD COLUMN IF NOT EXISTS burned Nullable(Decimal(38, 0)), "
+                           "ADD COLUMN IF NOT EXISTS global_balance Nullable(Decimal(38, 0)), "
+                           "ADD COLUMN IF NOT EXISTS out_msg_queue_size Nullable(UInt64)");
             LOG(INFO) << "Table blocks created";
         }
         {
@@ -565,7 +567,6 @@ void InsertBatchClickhouse::start_up() {
         validator_storage::insert(client, insert_tasks_);
         insert_blocks(client);
         if (collect_gramstat_) {
-            insert_total_supply(client);
             // Deltas are the completion marker even for MCs with zero deployments.
             insert_deployments(client);
             insert_account_deltas(client);
@@ -585,24 +586,6 @@ void InsertBatchClickhouse::start_up() {
         promise_.set_error(td::Status::Error(ErrorCode::DB_ERROR, PSLICE() << "Error inserting batch to Clickhouse: " << e.what()));
     }
     stop();
-}
-
-void InsertBatchClickhouse::insert_total_supply(clickhouse::Client& client) {
-    std::vector<schema::TotalSupply> snapshots;
-    snapshots.reserve(insert_tasks_.size());
-    for (const auto& task : insert_tasks_) {
-        const auto& supply = task.parsed_block_->total_supply_;
-        if (!supply && !gramstat::should_calculate_total_supply(task.mc_seqno_)) {
-            continue;
-        }
-        if (!supply || supply->mc_seqno != task.mc_seqno_) {
-            throw std::runtime_error("Missing or mismatched total supply snapshot in insert batch");
-        }
-        snapshots.push_back(*supply);
-    }
-    if (!snapshots.empty()) {
-        client.Insert(gramstat::table_name(gramstat_db_, "total_supply"), gramstat::total_supply_block(snapshots));
-    }
 }
 
 void InsertBatchClickhouse::insert_deployments(clickhouse::Client& client) {
@@ -629,10 +612,7 @@ void InsertBatchClickhouse::insert_account_deltas(clickhouse::Client& client) {
     deltas.reserve(insert_tasks_.size());
     for (const auto& task : insert_tasks_) {
         const auto& delta = task.parsed_block_->account_deltas_;
-        const auto& supply = task.parsed_block_->total_supply_;
-        if (!delta || delta->mc_seqno != task.mc_seqno_ ||
-            (!supply && gramstat::should_calculate_total_supply(task.mc_seqno_)) ||
-            (supply && (supply->mc_seqno != delta->mc_seqno || supply->gen_utime != delta->gen_utime))) {
+        if (!delta || delta->mc_seqno != task.mc_seqno_) {
             throw std::runtime_error("Missing or mismatched account deltas in ClickHouse batch");
         }
         deltas.push_back(*delta);
@@ -723,6 +703,9 @@ void InsertBatchClickhouse::insert_blocks(clickhouse::Client &client){
     auto created_col = std::make_shared<ColumnDecimal>(38, 0);
     auto burned_col = std::make_shared<ColumnDecimal>(38, 0);
     auto aggregate_nulls = std::make_shared<ColumnUInt8>();
+    auto global_balance_col = std::make_shared<ColumnDecimal>(38, 0);
+    auto global_balance_nulls = std::make_shared<ColumnUInt8>();
+    auto out_msg_queue_size_col = std::make_shared<ColumnNullableT<ColumnUInt64>>();
 
     for(const auto& task_ : insert_tasks_) {
         for(const auto& blk_ :task_.parsed_block_->blocks_) {
@@ -790,6 +773,9 @@ void InsertBatchClickhouse::insert_blocks(clickhouse::Client &client){
             created_col->Append(blk_.created->to_dec_string());
             burned_col->Append(blk_.burned->to_dec_string());
             aggregate_nulls->Append(0);
+            global_balance_col->Append(blk_.global_balance.is_null() ? "0" : blk_.global_balance->to_dec_string());
+            global_balance_nulls->Append(blk_.global_balance.is_null());
+            out_msg_queue_size_col->Append(blk_.out_msg_queue_size);
         }
     }
     block.AppendColumn("workchain", workchain_col);
@@ -826,6 +812,8 @@ void InsertBatchClickhouse::insert_blocks(clickhouse::Client &client){
     block.AppendColumn("import_fees", std::make_shared<ColumnNullable>(import_fees_col, aggregate_nulls));
     block.AppendColumn("created", std::make_shared<ColumnNullable>(created_col, aggregate_nulls));
     block.AppendColumn("burned", std::make_shared<ColumnNullable>(burned_col, aggregate_nulls));
+    block.AppendColumn("global_balance", std::make_shared<ColumnNullable>(global_balance_col, global_balance_nulls));
+    block.AppendColumn("out_msg_queue_size", out_msg_queue_size_col);
 
     client.Insert("blocks", block);
 }

@@ -42,6 +42,7 @@ td::Status ParseQuery::parse_impl() {
     auto schema_block = parse_block(block_ds.block_data->root_cell(), block_ds.block_data->block_id(), blk, info, extra, mc_block);
     TRY_STATUS(parse_block_fees(extra, schema_block));
     TRY_STATUS(parse_block_value_flow(blk.value_flow, schema_block));
+    TRY_STATUS(parse_block_state_metrics(block_ds.block_state, schema_block));
     if (!mc_block) {
         mc_block = schema_block;
     }
@@ -82,6 +83,46 @@ td::Status ParseQuery::parse_impl() {
   result->mc_block_ = mc_block_;
   result->cell_db_reader_ = cell_db_reader_;
   return td::Status::OK();
+}
+
+td::Status ParseQuery::parse_block_state_metrics(td::Ref<vm::Cell> state_root, schema::Block& result) {
+  result.global_balance.clear();
+  result.out_msg_queue_size.reset();
+  if (state_root.is_null()) return td::Status::Error("Missing block post-state");
+  try {
+    block::gen::ShardStateUnsplit::Record state;
+    if (!tlb::unpack_cell(state_root, state) || state.seq_no != result.seqno || state.gen_utime != result.gen_utime) {
+      return td::Status::Error("Invalid or mismatched block post-state");
+    }
+    if (result.workchain == ton::masterchainId) {
+      block::gen::McStateExtra::Record extra;
+      block::CurrencyCollection balance;
+      if (state.custom->size_refs() != 1 || !tlb::unpack_cell(state.custom->prefetch_ref(), extra) ||
+          !balance.unpack(extra.global_balance) ||
+          balance.grams.is_null() || !balance.grams->is_valid() || balance.grams->sgn() < 0) {
+        return td::Status::Error("Invalid stored masterchain global balance");
+      }
+      result.global_balance = std::move(balance.grams);
+    }
+    block::gen::OutMsgQueueInfo::Record info;
+    if (!tlb::unpack_cell(state.out_msg_queue_info, info)) {
+      return td::Status::Error("Invalid OutMsgQueueInfo");
+    }
+    // Read only optional metadata, never the out/dispatch dictionary contents.
+    // An absent counter stays NULL even when the legacy queue happens to be empty.
+    if (info.extra.write().fetch_long(1)) {
+      block::gen::OutMsgQueueExtra::Record extra;
+      if (!tlb::csr_unpack(info.extra, extra)) return td::Status::Error("Invalid OutMsgQueueExtra");
+      if (extra.out_queue_size.write().fetch_long(1)) {
+        result.out_msg_queue_size = extra.out_queue_size->prefetch_ulong(48);
+      }
+    }
+    return td::Status::OK();
+  } catch (const vm::VmError& error) {
+    return td::Status::Error(PSLICE() << "Failed to parse stored block metrics: " << error.get_msg());
+  } catch (const vm::VmVirtError& error) {
+    return td::Status::Error(PSLICE() << "Failed to load stored block metrics: " << error.get_msg());
+  }
 }
 
 td::Status ParseQuery::parse_block_fees(const block::gen::BlockExtra::Record& extra, schema::Block& result) {

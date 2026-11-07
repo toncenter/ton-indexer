@@ -279,6 +279,11 @@ struct Block {
   td::RefInt256 created;
   td::RefInt256 burned;
 
+  // Stored post-state metrics: global_balance is masterchain-only (nanotons).
+  // Absent queue counters stay unknown; no queue traversal or supply calculation.
+  td::RefInt256 global_balance;
+  std::optional<std::uint64_t> out_msg_queue_size;
+
   std::vector<Transaction> transactions;
   std::vector<BlockReference> prev_blocks;
 };
@@ -881,17 +886,6 @@ struct MasterchainBlockDataState {
   std::shared_ptr<block::ConfigInfo> config_;
 };
 
-// One masterchain post-state snapshot. All monetary amounts are exact nanotons.
-struct TotalSupply {
-  std::uint32_t mc_seqno;
-  std::uint32_t gen_utime;
-  td::RefInt256 total;
-  td::RefInt256 accounts;
-  td::RefInt256 dispatch_queue;
-  td::RefInt256 unprocessed_messages;
-  td::RefInt256 unrecovered_validator_fees;
-};
-
 // Net account-status changes in the MC and its newly included shard blocks.
 struct AccountDeltas {
   std::uint32_t mc_seqno;
@@ -948,7 +942,6 @@ struct ParsedBlock {
   schema::MasterchainBlockDataState mc_block_;
   std::shared_ptr<vm::CellDbReader> cell_db_reader_;  // for loading previous states
 
-  std::optional<schema::TotalSupply> total_supply_;
   std::optional<schema::AccountDeltas> account_deltas_;
   // nullopt = not calculated; an empty vector = successfully calculated zero events.
   std::optional<std::vector<schema::Deployment>> deployments_;

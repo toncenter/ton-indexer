@@ -1,5 +1,4 @@
 #include "GramstatStorage.h"
-#include "GramstatSampling.h"
 
 #include <algorithm>
 #include <stdexcept>
@@ -28,23 +27,10 @@ std::string table_name(const std::string& database, const std::string& table) {
 
 std::vector<std::string> schema_queries(const std::string& database) {
     // Use the same qualified names for DDL, inserts and resume checks.
-    auto supply = table_name(database, "total_supply");
     auto deltas = table_name(database, "account_deltas");
     auto deployments = table_name(database, "deployments");
     return {
         "CREATE DATABASE IF NOT EXISTS `" + database + "`",
-        "CREATE TABLE IF NOT EXISTS " + supply + R"SQL( (
-    mc_seqno UInt32,
-    gen_utime DateTime('UTC'),
-    total Decimal(38, 0),
-    accounts Decimal(38, 0),
-    dispatch_queue Decimal(38, 0),
-    unprocessed_messages Decimal(38, 0),
-    unrecovered_validator_fees Decimal(38, 0)
-) ENGINE = ReplacingMergeTree
-PARTITION BY toYYYYMM(gen_utime)
-ORDER BY (gen_utime, mc_seqno)
-)SQL",
         "CREATE TABLE IF NOT EXISTS " + deltas + R"SQL( (
     mc_seqno UInt32,
     gen_utime DateTime('UTC'),
@@ -67,45 +53,6 @@ ORDER BY (gen_utime, mc_seqno)
 PARTITION BY toYYYYMM(gen_utime)
 ORDER BY (account, lt, tx_hash)
 )SQL"};
-}
-
-clickhouse::Block total_supply_block(const std::vector<schema::TotalSupply>& snapshots) {
-    using namespace clickhouse;
-    auto seqno = std::make_shared<ColumnUInt32>();
-    auto time = std::make_shared<ColumnDateTime>("UTC");
-    auto total = std::make_shared<ColumnDecimal>(38, 0);
-    auto accounts = std::make_shared<ColumnDecimal>(38, 0);
-    auto dispatch = std::make_shared<ColumnDecimal>(38, 0);
-    auto messages = std::make_shared<ColumnDecimal>(38, 0);
-    auto fees = std::make_shared<ColumnDecimal>(38, 0);
-    auto append_amount = [](ColumnDecimal& column, const td::RefInt256& amount) {
-        if (amount.is_null() || !amount->is_valid() || amount->sgn() < 0) {
-            throw std::runtime_error("Invalid total supply amount");
-        }
-        auto decimal = amount->to_dec_string();
-        if (decimal.size() > 38) {
-            throw std::runtime_error("Total supply amount exceeds Decimal(38, 0)");
-        }
-        column.Append(decimal);
-    };
-    for (const auto& snapshot : snapshots) {
-        seqno->Append(snapshot.mc_seqno);
-        time->AppendRaw(snapshot.gen_utime);
-        append_amount(*total, snapshot.total);
-        append_amount(*accounts, snapshot.accounts);
-        append_amount(*dispatch, snapshot.dispatch_queue);
-        append_amount(*messages, snapshot.unprocessed_messages);
-        append_amount(*fees, snapshot.unrecovered_validator_fees);
-    }
-    Block block;
-    block.AppendColumn("mc_seqno", seqno);
-    block.AppendColumn("gen_utime", time);
-    block.AppendColumn("total", total);
-    block.AppendColumn("accounts", accounts);
-    block.AppendColumn("dispatch_queue", dispatch);
-    block.AppendColumn("unprocessed_messages", messages);
-    block.AppendColumn("unrecovered_validator_fees", fees);
-    return block;
 }
 
 clickhouse::Block account_deltas_block(const std::vector<schema::AccountDeltas>& deltas) {
@@ -175,9 +122,6 @@ std::string completed_seqnos_query(bool collect_gramstat, std::int32_t from_seqn
     };
     std::string sql = "SELECT DISTINCT seqno FROM blocks WHERE workchain = -1" + range("seqno");
     if (collect_gramstat) {
-        sql += " AND (seqno % " + std::to_string(TOTAL_SUPPLY_INTERVAL) +
-               " != 0 OR toUInt32(seqno) IN (SELECT mc_seqno FROM " + table_name(database, "total_supply") + " WHERE 1" +
-               range("mc_seqno") + "))";
         sql += " AND toUInt32(seqno) IN (SELECT mc_seqno FROM " + table_name(database, "account_deltas") + " WHERE 1" +
                range("mc_seqno") + ")";
     }

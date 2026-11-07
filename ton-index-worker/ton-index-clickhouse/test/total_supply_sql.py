@@ -113,39 +113,37 @@ def check_database_isolation(binary, clickhouse):
         return subprocess.check_output([binary, option, *args], text=True)
 
     pilot = "gramstat_pilot_metrics"
-    supply, deltas, deployments = [exported("--table", pilot, table)
-                                   for table in ("total_supply", "account_deltas", "deployments")]
+    deltas, deployments = [exported("--table", pilot, table)
+                          for table in ("account_deltas", "deployments")]
     completed = exported("--completed-query", pilot, "1500", "3000")
     sql = exported("--schema") + exported("--schema", pilot) + """
 CREATE DATABASE gramstat_pilot_raw;
 USE gramstat_pilot_raw;
 CREATE TABLE blocks (workchain Int32, seqno Int32) ENGINE=Memory;
 INSERT INTO blocks VALUES (-1,1500),(-1,3000);
-INSERT INTO gramstat.total_supply VALUES (1500,'2026-09-01',123,123,0,0,0);
 INSERT INTO gramstat.account_deltas VALUES (1500,'2026-09-01',1,0,0);
 """
     # Existing default metrics must not make the pilot skip an unprocessed MC.
     sql += f"SELECT groupArray(seqno) FROM ({completed} ORDER BY seqno);\n"
     sql += f"""
-INSERT INTO {supply} VALUES (3000,'2026-09-01',456,456,0,0,0);
 INSERT INTO {deployments} VALUES (3000,'2026-09-01','0:A',1,'hash',NULL,0);
 SELECT groupArray(seqno) FROM ({completed} ORDER BY seqno);
 INSERT INTO {deltas} VALUES (3000,'2026-09-01',0,1,0);
 SELECT groupArray(seqno) FROM ({completed} ORDER BY seqno);
-SELECT total FROM gramstat.total_supply FINAL;
+SELECT delta_uninit FROM gramstat.account_deltas FINAL;
 SELECT count() FROM gramstat.deployments FINAL;
-SELECT total FROM {supply} FINAL;
+SELECT delta_active FROM {deltas} FINAL;
 SELECT count() FROM {deployments} FINAL;
 """
     with tempfile.TemporaryDirectory(prefix="gramstat-isolation-") as directory:
         result = subprocess.run([clickhouse, "local", "--path", directory, "--multiquery"],
                                 input=sql, text=True, capture_output=True, timeout=90)
         assert result.returncode == 0, result.stdout + result.stderr
-    assert result.stdout.strip().splitlines() == ["[]", "[]", "[3000]", "123", "0", "456", "1"], result.stdout
+    assert result.stdout.strip().splitlines() == ["[]", "[]", "[3000]", "1", "0", "1", "1"], result.stdout
     print("ClickHouse custom database: isolated schema, insert targets and resume checks: OK")
 
 
-def check_sampled_supply(binary, clickhouse):
+def check_legacy_resume(binary, clickhouse):
     def completed(start, end):
         query = subprocess.check_output(
             [binary, "--completed-query", "gramstat", str(start), str(end)], text=True)
@@ -160,35 +158,28 @@ INSERT INTO gramstat.account_deltas VALUES
     (1650,'2026-09-01',0,0,0),(1800,'2026-09-01',0,0,0),
     (2999,'2026-09-01',0,0,0),(3000,'2026-09-01',0,0,0),(3001,'2026-09-01',0,0,0),
     (4500,'2026-09-01',0,0,0),(6000,'2026-09-01',0,0,0),(9000,'2026-09-01',0,0,0);
-INSERT INTO gramstat.total_supply VALUES
-    (3000,'2026-09-01',123,123,0,0,0),
-    (1800,'2026-09-01',123,123,0,0,0), -- retained old 150-MC sample; 1650 needs none now
-    (4501,'2026-09-01',123,123,0,0,0), -- legacy dense history, but missing deltas
-    (6000,'2026-09-01',123,123,0,0,0), -- shard-only block
-    (9000,'2026-09-01',123,123,0,0,0); -- missing block
 """
-    # Delayed sampled MCs stay incomplete even when later ordinary MCs are written.
-    # Off-grid old 150-MC points are valid with or without their extra snapshot.
+    # No supply table exists. Former sampling points and NULL block metrics must
+    # not cause historical replay when continuing an existing dataset.
     sql += completed(1499, 9000)
     sql += """
-INSERT INTO gramstat.total_supply VALUES
-    (1500,'2026-09-01',456,456,0,0,0),(1500,'2026-09-01',456,456,0,0,0),
-    (4500,'2026-09-01',789,789,0,0,0);
+ALTER TABLE blocks ADD COLUMN global_balance Nullable(Decimal(38,0)),
+                    ADD COLUMN out_msg_queue_size Nullable(UInt64);
 """
     sql += completed(1499, 9000)
     sql += "INSERT INTO gramstat.account_deltas VALUES (4501,'2026-09-01',0,0,0);\n"
     sql += completed(1499, 9000)
-    sql += completed(1501, 2999)  # resumed interval with no sampling points
-    sql += completed(1500, 3000)  # inclusive sampling boundaries
+    sql += completed(1501, 2999)
+    sql += completed(1500, 3000)
     with tempfile.TemporaryDirectory(prefix="gramstat-sampled-") as directory:
         result = subprocess.run([clickhouse, "local", "--path", directory, "--multiquery"],
                                 input=sql, text=True, capture_output=True, timeout=90)
         assert result.returncode == 0, result.stdout + result.stderr
     assert result.stdout.strip().splitlines() == [
-        "[1499,1501,1650,1800,2999,3000,3001]", "[1499,1500,1501,1650,1800,2999,3000,3001,4500]",
+        "[1499,1500,1501,1650,1800,2999,3000,3001,4500]", "[1499,1500,1501,1650,1800,2999,3000,3001,4500]",
         "[1499,1500,1501,1650,1800,2999,3000,3001,4500,4501]", "[1501,1650,1800,2999]", "[1500,1501,1650,1800,2999,3000]",
     ], result.stdout
-    print("ClickHouse sampled supply: sparse resume, boundary repair and legacy history: OK")
+    print("ClickHouse resume: old NULL metrics and former supply boundaries do not trigger replay: OK")
 
 
 def main():
@@ -197,7 +188,7 @@ def main():
     check_nft_history(binary, clickhouse)
     check_round_results(binary, clickhouse)
     check_database_isolation(binary, clickhouse)
-    check_sampled_supply(binary, clickhouse)
+    check_legacy_resume(binary, clickhouse)
     check_validators(binary, clickhouse)
 
     def exported(option):
@@ -223,23 +214,24 @@ def main():
                 .replace("{to_day:Date}", "toDate('2026-09-03')"))
 
     sql = schema + """
-CREATE TABLE blocks (workchain Int32, shard Int64, seqno Int32)
+CREATE TABLE blocks (workchain Int32, shard Int64, seqno Int32, gen_utime UInt32 DEFAULT 0,
+    global_balance Nullable(Decimal(38,0)), out_msg_queue_size Nullable(UInt64))
 ENGINE = ReplacingMergeTree ORDER BY (workchain, shard, seqno);
-INSERT INTO blocks VALUES (-1, -9223372036854775808, 100),
+INSERT INTO blocks (workchain,shard,seqno) VALUES (-1, -9223372036854775808, 100),
     (-1, -9223372036854775808, 101), (-1, -9223372036854775808, 101),
     (-1, -9223372036854775808, 102), (0, -9223372036854775808, 103),
     (-1, -9223372036854775808, 105), (-1, -9223372036854775808, 106);
 
 -- Out of order, duplicate replay, same-second MCs, missing hour, UTC midnight
 -- and month boundaries. The large totals must survive exact decimal storage.
-INSERT INTO gramstat.total_supply VALUES
-    (101, '2026-09-01 00:59:59', 100000000000000000102, 100000000000000000001, 23, 31, 47),
-    (100, '2026-09-01 00:59:59', 100000000000000000101, 100000000000000000000, 23, 31, 47),
-    (101, '2026-09-01 00:59:59', 100000000000000000102, 100000000000000000001, 23, 31, 47),
-    (103, '2026-09-01 02:00:00', 100000000000000000104, 100000000000000000003, 23, 31, 47),
-    (104, '2026-09-02 00:00:00', 100000000000000000105, 100000000000000000004, 23, 31, 47),
-    (105, '2026-10-01 00:00:00', 100000000000000000106, 100000000000000000005, 23, 31, 47),
-    (106, '2026-10-01 01:00:00', 100000000000000000107, 100000000000000000006, 23, 31, 47);
+INSERT INTO blocks VALUES
+    (-1,-9223372036854775808,101,1788224399,100000000000000000102,NULL),
+    (-1,-9223372036854775808,100,1788224399,100000000000000000101,NULL),
+    (-1,-9223372036854775808,101,1788224399,100000000000000000102,NULL),
+    (-1,-9223372036854775808,103,1788228000,100000000000000000104,0),
+    (-1,-9223372036854775808,104,1788307200,100000000000000000105,123),
+    (-1,-9223372036854775808,105,1790812800,100000000000000000106,281474976710655),
+    (-1,-9223372036854775808,106,1790816400,100000000000000000107,1);
 INSERT INTO gramstat.account_deltas VALUES
     (100, '2026-09-01 00:59:59', 0, 0, 0),
     (101, '2026-09-01 00:59:59', -1, 1, 0),
@@ -249,36 +241,36 @@ INSERT INTO gramstat.account_deltas VALUES
     (105, '2026-10-01 00:00:00', 0, 0, 0);
 """
     hourly = """
-SELECT toStartOfInterval(gen_utime, INTERVAL 1 HOUR, 'UTC') AS bucket,
-       argMax(total, tuple(gen_utime, mc_seqno))
-FROM gramstat.total_supply
-WHERE gen_utime >= toDateTime('2026-09-01', 'UTC')
-  AND gen_utime < toDateTime('2026-09-02', 'UTC')
+SELECT toStartOfInterval(toDateTime(gen_utime,'UTC'), INTERVAL 1 HOUR, 'UTC') AS bucket,
+       argMax(global_balance, tuple(gen_utime, seqno))
+FROM blocks FINAL
+WHERE workchain=-1 AND global_balance IS NOT NULL
+   AND gen_utime >= 1788220800 AND gen_utime < 1788307200
 GROUP BY bucket ORDER BY bucket;
 """
     sql += f"SELECT groupArray(seqno) FROM ({completed} ORDER BY seqno);\n"
     sql += f"SELECT groupArray(seqno) FROM ({legacy} ORDER BY seqno);\n"
     sql += hourly
     sql += """
-SELECT toStartOfInterval(gen_utime, INTERVAL 1 DAY, 'UTC') AS bucket,
-       argMax(tuple(total, accounts, dispatch_queue, unprocessed_messages, unrecovered_validator_fees),
-              tuple(gen_utime, mc_seqno))
-FROM gramstat.total_supply
-WHERE gen_utime >= toDateTime('2026-09-01', 'UTC')
-  AND gen_utime < toDateTime('2026-10-01', 'UTC')
+SELECT toStartOfInterval(toDateTime(gen_utime,'UTC'), INTERVAL 1 DAY, 'UTC') AS bucket,
+       argMax(tuple(global_balance, out_msg_queue_size), tuple(gen_utime, seqno))
+FROM blocks FINAL
+WHERE workchain=-1 AND global_balance IS NOT NULL
+   AND gen_utime >= 1788220800 AND gen_utime < 1790812800
 GROUP BY bucket ORDER BY bucket;
-OPTIMIZE TABLE gramstat.total_supply FINAL;
-SELECT count() FROM gramstat.total_supply;
+OPTIMIZE TABLE blocks FINAL;
+SELECT countIf(global_balance IS NOT NULL) FROM blocks;
+SELECT out_msg_queue_size FROM blocks WHERE workchain=-1 AND seqno=105;
 """
     sql += hourly
-    # Simulate repairing a block whose supply insert failed before restart.
+    # Filling an old block's stored metric does not substitute for its deltas.
     sql += """
-INSERT INTO gramstat.total_supply VALUES
-    (102, '2026-09-01 01:00:00', 100000000000000000103, 100000000000000000002, 23, 31, 47);
+INSERT INTO blocks VALUES
+    (-1,-9223372036854775808,102,1788224400,100000000000000000103,NULL);
 """
     sql += f"SELECT groupArray(seqno) FROM ({completed} ORDER BY seqno);\n"
 
-    # Supply was repaired, but deltas are still missing: the MC remains incomplete.
+    # Account deltas are still missing: the MC remains incomplete.
     sql += "INSERT INTO gramstat.account_deltas VALUES (102, '2026-09-01 01:00:00', 0, 0, 0);\n"
     sql += f"SELECT groupArray(seqno) FROM ({completed} ORDER BY seqno);\n"
     sql += """
@@ -304,10 +296,7 @@ INSERT INTO gramstat.account_deltas VALUES
     # and zero-event MCs also become complete only after their delta is inserted.
     deployment_completed = completed.replace("100", "200").replace("105", "201")
     sql += f"""
-INSERT INTO blocks VALUES (-1, -9223372036854775808, 200), (-1, -9223372036854775808, 201);
-INSERT INTO gramstat.total_supply VALUES
-    (200, '2026-09-01 00:00:00', 101, 0, 23, 31, 47),
-    (201, '2026-09-01 00:00:01', 101, 0, 23, 31, 47);
+INSERT INTO blocks (workchain,shard,seqno) VALUES (-1, -9223372036854775808, 200), (-1, -9223372036854775808, 201);
 INSERT INTO gramstat.deployments VALUES (200, '2026-09-01 00:00:00', '0:A', 1, '{code1}', '{code2}', 0);
 SELECT groupArray(seqno) FROM ({deployment_completed} ORDER BY seqno);
 INSERT INTO gramstat.deployments VALUES (200, '2026-09-01 00:00:00', '0:A', 1, '{code1}', '{code2}', 0);
@@ -369,17 +358,18 @@ ENGINE = Memory;
         )
         assert result.returncode == 0, result.stderr
     expected = [
-        "[100,101,105]",  # dense legacy history: excludes missing deltas, shard-only and missing MC rows
-        "[100,101,102,105]",
+        "[100,101,103,104,105]",  # excludes missing deltas
+        "[100,101,102,103,104,105]",
         "2026-09-01 00:00:00\t100000000000000000102",
         "2026-09-01 02:00:00\t100000000000000000104",
-        "2026-09-01 00:00:00\t(100000000000000000104,100000000000000000003,23,31,47)",
-        "2026-09-02 00:00:00\t(100000000000000000105,100000000000000000004,23,31,47)",
+        "2026-09-01 00:00:00\t(100000000000000000104,0)",
+        "2026-09-02 00:00:00\t(100000000000000000105,123)",
         "6",
+        "281474976710655",
         "2026-09-01 00:00:00\t100000000000000000102",
         "2026-09-01 02:00:00\t100000000000000000104",
-        "[100,101,105]",  # supply repaired, account deltas still absent
-        "[100,101,102,105]",
+        "[100,101,103,104,105]",  # account deltas still absent
+        "[100,101,102,103,104,105]",
         "2026-09-01\t8\t22\t2\t32",
         "2026-09-02\t9\t22\t1\t32",
         "2026-09-02\t9\t22\t1\t32",

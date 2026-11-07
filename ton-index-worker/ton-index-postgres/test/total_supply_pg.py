@@ -81,7 +81,9 @@ def main():
                 run(migrate, "--pg", connection, "--no-create-indexes", *extra)
                 assert sql("SELECT major || '.' || minor || '.' || patch FROM ton_db_version") == "1.3.2"
                 assert sql("SELECT count(*) FROM gramstat.account_deltas") == "0"
-                assert sql("SELECT count(*) FROM gramstat.total_supply") == "4"
+                assert sql("SELECT to_regclass('gramstat.total_supply') IS NULL") == "t"
+                assert sql("SELECT count(*) FROM information_schema.columns WHERE table_schema='public' "
+                           "AND table_name='blocks' AND column_name IN ('global_balance','out_msg_queue_size')") == "2"
                 assert sql("SELECT count(*) FROM gramstat.deployments") == "0"
                 assert sql("SELECT count(*) FROM pg_indexes WHERE schemaname='gramstat' AND tablename='deployments'") == "4"
                 assert sql("SELECT count(*) FROM jetton_wallet_states") == "4"
