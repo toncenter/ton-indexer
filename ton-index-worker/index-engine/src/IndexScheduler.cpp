@@ -38,6 +38,11 @@ void IndexScheduler::start_up() {
     trace_assembler_ = td::actor::create_actor<TraceAssembler>("trace_assembler", working_dir_ + "/trace_assembler", max_queue_.mc_blocks_);
 }
 
+void IndexScheduler::set_max_supply_inflight(std::uint32_t limit) {
+    CHECK(processing_seqnos_.empty() && inserting_seqnos_.empty());
+    max_supply_inflight_ = limit;
+}
+
 std::string get_time_string(double seconds) {
     int days = int(seconds / (60 * 60 * 24));
     int hours = int(seconds / (60 * 60)) % 24;
@@ -426,6 +431,10 @@ void IndexScheduler::schedule_seqno(std::uint32_t mc_seqno) {
     LOG(DEBUG) << "Scheduled seqno " << mc_seqno;
 
     processing_seqnos_.insert(mc_seqno);
+    if (max_supply_inflight_ && collect_gramstat_ && should_insert_seqno(mc_seqno) &&
+        gramstat::should_calculate_total_supply(mc_seqno)) {
+        supply_inflight_.insert(mc_seqno);
+    }
     timers_[mc_seqno] = td::Timer();
     start_seqno_otel_trace(mc_seqno, is_in_sync_);
     start_seqno_otel_stage(mc_seqno, "fetch_seqno");
@@ -659,6 +668,7 @@ void IndexScheduler::seqno_processed_without_insert(std::uint32_t mc_seqno, cons
     finish_seqno_otel_trace(mc_seqno);
     note_indexed_block_utime(block_gen_utime);
     processing_seqnos_.erase(mc_seqno);
+    supply_inflight_.erase(mc_seqno);
     indexed_seqnos_.insert(mc_seqno);
     if (mc_seqno > static_cast<std::uint32_t>(last_indexed_seqno_)) {
         last_indexed_seqno_ = static_cast<std::int32_t>(mc_seqno);
@@ -722,6 +732,9 @@ void IndexScheduler::print_stats() {
        << cur_queue_state_.txs_ << "t, "
        << cur_queue_state_.msgs_ << "m, "
        << cur_queue_state_.traces_ << "T]";
+    if (max_supply_inflight_) {
+        sb << "\tS[" << supply_inflight_.size() << "/" << max_supply_inflight_ << "]";
+    }
     if (last_indexed_block_utime_ > 0) {
         sb << "\tlag " << td::StringBuilder::FixedDouble(td::Clocks::system() - last_indexed_block_utime_, 1) << "s";
     }
@@ -766,6 +779,7 @@ void IndexScheduler::seqno_inserted(std::uint32_t mc_seqno, std::int32_t block_g
     finish_seqno_otel_trace(mc_seqno);
     note_indexed_block_utime(block_gen_utime);
     inserting_seqnos_.erase(mc_seqno);
+    const bool released_supply = supply_inflight_.erase(mc_seqno) > 0;
     indexed_seqnos_.insert(mc_seqno);
     if (mc_seqno > last_indexed_seqno_) {
         last_indexed_seqno_ = mc_seqno;
@@ -773,7 +787,8 @@ void IndexScheduler::seqno_inserted(std::uint32_t mc_seqno, std::int32_t block_g
     advance_contiguous_indexed_seqno();
     g_statistics.record_time(PROCESS_SEQNO, timers_[mc_seqno].elapsed() * 1e3);
     timers_.erase(mc_seqno);
-    maybe_finish_bounded_range();
+    if (released_supply) schedule_next_seqnos();
+    else maybe_finish_bounded_range();
 }
 
 void IndexScheduler::advance_contiguous_indexed_seqno() {
@@ -789,6 +804,7 @@ void IndexScheduler::get_contiguous_indexed_seqno(td::Promise<std::int32_t> prom
 void IndexScheduler::handle_seqno_failure(std::uint32_t mc_seqno, std::string error_type, td::Status error, bool silent) {
     fail_seqno_otel_trace(mc_seqno, error_type, error, silent);
     inserting_seqnos_.erase(mc_seqno);
+    supply_inflight_.erase(mc_seqno);
     reschedule_seqno(mc_seqno, silent);
 }
 
@@ -796,6 +812,14 @@ void IndexScheduler::schedule_next_seqnos() {
     LOG(DEBUG) << "Scheduling next seqnos. Current tasks: " << processing_seqnos_.size();
     while (!queued_seqnos_.empty() && (processing_seqnos_.size() < max_active_tasks_)) {
         std::uint32_t seqno = queued_seqnos_.front();
+        // Hold the slot through insert acknowledgement: the parsed block still
+        // owns state roots (and their materialized queue cells) while queued to write.
+        // Wait at the next sampled MC rather than fetching an unbounded set of
+        // heavy snapshots. Earlier ordinary MCs retain normal pipeline parallelism.
+        if (max_supply_inflight_ && collect_gramstat_ && should_insert_seqno(seqno) &&
+            gramstat::should_calculate_total_supply(seqno) && supply_inflight_.size() >= max_supply_inflight_) {
+            break;
+        }
         queued_seqnos_.pop_front();
         schedule_seqno(seqno);
     }

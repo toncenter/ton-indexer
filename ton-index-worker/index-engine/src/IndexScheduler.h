@@ -30,6 +30,8 @@ private:
   std::set<std::uint32_t> inserting_seqnos_;
   std::set<std::uint32_t> indexed_seqnos_;
   std::unordered_set<std::uint32_t> skip_insert_seqnos_;
+  std::unordered_set<std::uint32_t> supply_inflight_;
+  std::uint32_t max_supply_inflight_{0};
 
   td::actor::ActorId<DbScanner> db_scanner_;
   td::actor::ActorId<InsertManagerInterface> insert_manager_;
@@ -97,6 +99,8 @@ public:
   void start_up() override;
   void alarm() override;
   void run();
+  // Startup-only resource limit; 0 keeps the ordinary unrestricted pipeline.
+  void set_max_supply_inflight(std::uint32_t limit);
   void get_contiguous_indexed_seqno(td::Promise<std::int32_t> promise);
 private:
   void advance_contiguous_indexed_seqno();

@@ -4,6 +4,7 @@
 #include "td/utils/logging.h"
 #include "td/utils/check.h"
 #include "td/utils/port/path.h"
+#include "td/utils/misc.h"
 #include <atomic>
 
 #include "crypto/vm/cp0.h"
@@ -44,6 +45,7 @@ int main(int argc, char *argv[]) {
 
   std::uint32_t max_active_tasks = 7;
   std::uint32_t max_insert_actors = 12;
+  td::uint32 max_supply_inflight = 0;
   
   std::int32_t max_queue_size{-1};
   std::int32_t max_batch_size{-1};
@@ -76,6 +78,11 @@ int main(int argc, char *argv[]) {
       return td::Status::Error("--gramstat-db must match [A-Za-z_][A-Za-z0-9_]*");
     }
     gramstat_db = value.str();
+    return td::Status::OK();
+  });
+  p.add_checked_option('\0', "max-supply-inflight", "Maximum concurrent sampled supply MCs through insert acknowledgement (0: unlimited)", [&](td::Slice value) {
+    TRY_RESULT(limit, td::to_integer_safe<td::uint32>(value));
+    max_supply_inflight = limit;
     return td::Status::OK();
   });
   p.add_checked_option('f', "from", "Masterchain seqno to start indexing from", [&](td::Slice fname) { 
@@ -295,7 +302,10 @@ int main(int argc, char *argv[]) {
     td::actor::send_closure(insert_manager_, &InsertManagerClickhouse::set_insert_batch_size, batch_size);
     td::actor::send_closure(insert_manager_, &InsertManagerClickhouse::print_info);
   });
-  scheduler.run_in_context([&] { td::actor::send_closure(index_scheduler_, &IndexScheduler::run); });
+  scheduler.run_in_context([&] {
+    td::actor::send_closure(index_scheduler_, &IndexScheduler::set_max_supply_inflight, max_supply_inflight);
+    td::actor::send_closure(index_scheduler_, &IndexScheduler::run);
+  });
   
   while(!finish_requested->load() && scheduler.run(1)) {
     // do something

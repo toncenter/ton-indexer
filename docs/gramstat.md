@@ -31,6 +31,15 @@ still collected. Each selected snapshot is a full, independent calculation, so
 different MCs remain parallel. The grid is independent of `--from`, batch sizes
 and restarts; skipped MCs are not filled with zero or a carried-forward balance.
 
+For historical intervals with many shards and large message queues, the
+ClickHouse binary supports `--max-supply-inflight N` (`0`, the default, is
+unlimited). A sampled MC reserves a slot before fetching and releases it after
+insertion acknowledgement or failure. When the limit is reached, scheduling
+waits at the next sampled MC; ordinary MCs before it retain normal parallelism.
+This bounds overlapping heavy snapshots without changing the 150-MC sampling
+grid. `--max-supply-inflight 1` is useful when independent snapshots fill memory;
+the progress log shows `S[current/limit]`. A single snapshot can still be large.
+
 All amounts are exact integer nanoTON:
 
 ```text
