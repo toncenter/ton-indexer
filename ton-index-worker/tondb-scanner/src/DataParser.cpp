@@ -90,22 +90,39 @@ td::Status ParseQuery::parse_block_state_metrics(td::Ref<vm::Cell> state_root, s
   result.out_msg_queue_size.reset();
   if (state_root.is_null()) return td::Status::Error("Missing block post-state");
   try {
-    block::gen::ShardStateUnsplit::Record state;
-    if (!tlb::unpack_cell(state_root, state) || state.seq_no != result.seqno || state.gen_utime != result.gen_utime) {
+    // ShardStateUnsplit's generated unpack also loads its inline ^[ ... ]
+    // auxiliary record. None of those fields are needed here: consume only the
+    // root header and references (crypto/block/block.tlb, shard_state#9023afe2).
+    auto state = vm::load_cell_slice(std::move(state_root));
+    unsigned seqno, gen_utime;
+    bool has_custom;
+    td::Ref<vm::Cell> queue_info, custom;
+    if (state.fetch_ulong(32) != block::gen::ShardStateUnsplit::cons_tag[0] ||
+        !state.advance(32 + 104) ||  // global_id, ShardIdent
+        !state.fetch_uint_to(32, seqno) || !state.advance(32) ||  // vert_seq_no
+        !state.fetch_uint_to(32, gen_utime) || !state.advance(64 + 32) ||  // gen_lt, min_ref_mc_seqno
+        !state.fetch_ref_to(queue_info) || !state.advance(1) ||  // before_split
+        !state.advance_refs(2) ||  // accounts and auxiliary record: do not load either
+        !state.fetch_bool_to(has_custom) || (has_custom && !state.fetch_ref_to(custom)) ||
+        !state.empty_ext() || seqno != result.seqno || gen_utime != result.gen_utime) {
       return td::Status::Error("Invalid or mismatched block post-state");
     }
     if (result.workchain == ton::masterchainId) {
-      block::gen::McStateExtra::Record extra;
+      if (custom.is_null()) return td::Status::Error("Missing masterchain state extra");
+      auto extra = vm::load_cell_slice(std::move(custom));
       block::CurrencyCollection balance;
-      if (state.custom->size_refs() != 1 || !tlb::unpack_cell(state.custom->prefetch_ref(), extra) ||
-          !balance.unpack(extra.global_balance) ||
+      // McStateExtra has another auxiliary record (validators/previous blocks).
+      // Skip its reference and the shard/config roots; global_balance is inline.
+      if (extra.fetch_ulong(16) != block::gen::McStateExtra::cons_tag[0] ||
+          !block::gen::t_ShardHashes.skip(extra) || !extra.advance_ext(256, 2) ||  // config + aux ref
+          !balance.fetch_exact(extra) ||
           balance.grams.is_null() || !balance.grams->is_valid() || balance.grams->sgn() < 0) {
         return td::Status::Error("Invalid stored masterchain global balance");
       }
       result.global_balance = std::move(balance.grams);
     }
     block::gen::OutMsgQueueInfo::Record info;
-    if (!tlb::unpack_cell(state.out_msg_queue_info, info)) {
+    if (!tlb::unpack_cell(std::move(queue_info), info)) {
       return td::Status::Error("Invalid OutMsgQueueInfo");
     }
     // Read only optional metadata, never the out/dispatch dictionary contents.

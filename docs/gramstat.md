@@ -18,9 +18,14 @@ activity, swaps, selected liquid-staking deposits and `.ton` mints from PostgreS
 ## Stored block metrics
 
 Every indexed block carries two directly read post-state metrics, independently
-of `--gramstat`. `ParseQuery::parse_block_state_metrics` reads the already-loaded
-`BlockDataState::block_state`; it never enumerates queue dictionaries, reads
-message bodies, calculates dispatch balances or loads auxiliary historical states.
+of `--gramstat`. `ParseQuery::parse_block_state_metrics` reads the
+`BlockDataState::block_state` root and the needed lazily loaded metadata cells;
+it never enumerates queue dictionaries, reads message bodies, calculates dispatch
+balances or loads auxiliary historical states. It skips the `ShardStateUnsplit`
+and `McStateExtra` auxiliary references without loading their contents: the
+generated full-record unpackers would otherwise read unrelated balances,
+libraries, validator information and previous-block metadata. Native tests cover
+unreadable auxiliaries, NULL versus stored zero, and malformed/truncated headers.
 
 * **`global_balance`**: `McStateExtra.global_balance.grams`, an exact integer in
   nanoTON, on masterchain blocks only. Historical values are preserved as stored:
