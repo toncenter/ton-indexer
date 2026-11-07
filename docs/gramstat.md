@@ -3,7 +3,7 @@
 Both `ton-index-clickhouse` and `ton-index-postgres` support `--gramstat`.
 The shared `collect_gramstat` switch enables the Gramstat stage in the existing
 `IndexScheduler` pipeline. It collects total supply in `gramstat.total_supply`
-**every 150 masterchain blocks** (`mc_seqno % 150 == 0`) and account-status
+**every 1500 masterchain blocks** (`mc_seqno % 1500 == 0`) and account-status
 changes in `gramstat.account_deltas` on **every indexed masterchain block**.
 `gramstat.deployments` stores individual successful deployment events for all
 contract types.
@@ -25,7 +25,7 @@ states from `ParsedBlock::mc_block_`. Auxiliary historical MC states needed for
 `processed_upto`, and seqno-zero shard tips, are loaded through the same
 `DbScanner` and secondary RootDb.
 
-Only MCs on the fixed 150-block grid invoke this calculation. Other MCs skip it
+Only MCs on the fixed 1500-block grid invoke this calculation. Other MCs skip it
 entirely and have no new supply row; their account deltas and deployments are
 still collected. Each selected snapshot is a full, independent calculation, so
 different MCs remain parallel. The grid is independent of `--from`, batch sizes
@@ -34,11 +34,29 @@ and restarts; skipped MCs are not filled with zero or a carried-forward balance.
 For historical intervals with many shards and large message queues, the
 ClickHouse binary supports `--max-supply-inflight N` (`0`, the default, is
 unlimited). A sampled MC reserves a slot before fetching and releases it after
-insertion acknowledgement or failure. When the limit is reached, scheduling
-waits at the next sampled MC; ordinary MCs before it retain normal parallelism.
-This bounds overlapping heavy snapshots without changing the 150-MC sampling
-grid. `--max-supply-inflight 1` is useful when independent snapshots fill memory;
-the progress log shows `S[current/limit]`. A single snapshot can still be large.
+insertion acknowledgement or pre-calculation failure. By default, scheduling
+waits at the next sampled MC when the limit is reached.
+
+`--max-supply-pending M` (default `0`, requires a nonzero active limit) admits up
+to M additional sampled MCs before pausing at a further sampling boundary.
+For example, `--max-supply-inflight 1 --max-supply-pending 1` runs one calculation
+and reserves one pending snapshot, allowing ordinary MCs after the pending sample
+to be indexed too. Reservations count even before fetch/parse completes, so
+out-of-order processing cannot exceed the configured bound. Pending samples keep
+their parsed block and state roots but do not run the expensive supply-state
+preparation. They still count against `--max-active-tasks`.
+
+An active slot is held through insertion acknowledgement; a failed supply
+calculation retries on the same immutable snapshot after a delay, without sending
+that MC back through the ordered TraceAssembler. No completion marker is written
+for that sampled MC until its supply succeeds. Later ordinary MCs can be written,
+but restart resumes at the earliest incomplete MC, and bounded runs wait for all
+reserved samples to finish. The log shows `S[running/limit pending=P reserved=R]`.
+A single snapshot can still be large; this limits overlap, not its intrinsic size.
+
+Earlier versions sampled every 150 MC. Existing denser snapshots remain valid:
+the 1500-MC grid is a subset, and resume requires supply only at the current grid
+points. Old extra rows are retained; missing off-grid rows are not filled with zero.
 
 All amounts are exact integer nanoTON:
 
@@ -85,7 +103,7 @@ PostgreSQL leader and standby workers.
 
 Use `--gramstat --from N --to M` for historical backfill; both bounds are
 inclusive. Bounded replay skips an MC only when its block and account deltas
-exist, **plus its supply snapshot if `mc_seqno % 150 == 0`**. ClickHouse normal
+exist, **plus its supply snapshot if `mc_seqno % 1500 == 0`**. ClickHouse normal
 resume uses the same condition because the inserts are not atomic. PostgreSQL
 normal resume uses `_ton_indexer_progress`; new blocks and metrics are committed atomically, while
 pre-existing history needs an explicit bounded backfill. Standbys use the same

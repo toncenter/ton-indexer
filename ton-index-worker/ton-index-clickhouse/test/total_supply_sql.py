@@ -115,22 +115,22 @@ def check_database_isolation(binary, clickhouse):
     pilot = "gramstat_pilot_metrics"
     supply, deltas, deployments = [exported("--table", pilot, table)
                                    for table in ("total_supply", "account_deltas", "deployments")]
-    completed = exported("--completed-query", pilot, "150", "300")
+    completed = exported("--completed-query", pilot, "1500", "3000")
     sql = exported("--schema") + exported("--schema", pilot) + """
 CREATE DATABASE gramstat_pilot_raw;
 USE gramstat_pilot_raw;
 CREATE TABLE blocks (workchain Int32, seqno Int32) ENGINE=Memory;
-INSERT INTO blocks VALUES (-1,150),(-1,300);
-INSERT INTO gramstat.total_supply VALUES (150,'2026-09-01',123,123,0,0,0);
-INSERT INTO gramstat.account_deltas VALUES (150,'2026-09-01',1,0,0);
+INSERT INTO blocks VALUES (-1,1500),(-1,3000);
+INSERT INTO gramstat.total_supply VALUES (1500,'2026-09-01',123,123,0,0,0);
+INSERT INTO gramstat.account_deltas VALUES (1500,'2026-09-01',1,0,0);
 """
     # Existing default metrics must not make the pilot skip an unprocessed MC.
     sql += f"SELECT groupArray(seqno) FROM ({completed} ORDER BY seqno);\n"
     sql += f"""
-INSERT INTO {supply} VALUES (300,'2026-09-01',456,456,0,0,0);
-INSERT INTO {deployments} VALUES (300,'2026-09-01','0:A',1,'hash',NULL,0);
+INSERT INTO {supply} VALUES (3000,'2026-09-01',456,456,0,0,0);
+INSERT INTO {deployments} VALUES (3000,'2026-09-01','0:A',1,'hash',NULL,0);
 SELECT groupArray(seqno) FROM ({completed} ORDER BY seqno);
-INSERT INTO {deltas} VALUES (300,'2026-09-01',0,1,0);
+INSERT INTO {deltas} VALUES (3000,'2026-09-01',0,1,0);
 SELECT groupArray(seqno) FROM ({completed} ORDER BY seqno);
 SELECT total FROM gramstat.total_supply FINAL;
 SELECT count() FROM gramstat.deployments FINAL;
@@ -141,7 +141,7 @@ SELECT count() FROM {deployments} FINAL;
         result = subprocess.run([clickhouse, "local", "--path", directory, "--multiquery"],
                                 input=sql, text=True, capture_output=True, timeout=90)
         assert result.returncode == 0, result.stdout + result.stderr
-    assert result.stdout.strip().splitlines() == ["[]", "[]", "[300]", "123", "0", "456", "1"], result.stdout
+    assert result.stdout.strip().splitlines() == ["[]", "[]", "[3000]", "123", "0", "456", "1"], result.stdout
     print("ClickHouse custom database: isolated schema, insert targets and resume checks: OK")
 
 
@@ -154,36 +154,39 @@ def check_sampled_supply(binary, clickhouse):
     sql = subprocess.check_output([binary, "--schema"], text=True) + """
 CREATE TABLE blocks (workchain Int32, seqno Int32) ENGINE=Memory;
 INSERT INTO blocks VALUES
-    (-1,149),(-1,150),(-1,151),(-1,299),(-1,300),(-1,301),(-1,450),(-1,451),(0,600);
+    (-1,1499),(-1,1500),(-1,1501),(-1,1650),(-1,1800),(-1,2999),(-1,3000),(-1,3001),(-1,4500),(-1,4501),(0,6000);
 INSERT INTO gramstat.account_deltas VALUES
-    (149,'2026-09-01',0,0,0),(150,'2026-09-01',0,0,0),(151,'2026-09-01',0,0,0),
-    (299,'2026-09-01',0,0,0),(300,'2026-09-01',0,0,0),(301,'2026-09-01',0,0,0),
-    (450,'2026-09-01',0,0,0),(600,'2026-09-01',0,0,0),(900,'2026-09-01',0,0,0);
+    (1499,'2026-09-01',0,0,0),(1500,'2026-09-01',0,0,0),(1501,'2026-09-01',0,0,0),
+    (1650,'2026-09-01',0,0,0),(1800,'2026-09-01',0,0,0),
+    (2999,'2026-09-01',0,0,0),(3000,'2026-09-01',0,0,0),(3001,'2026-09-01',0,0,0),
+    (4500,'2026-09-01',0,0,0),(6000,'2026-09-01',0,0,0),(9000,'2026-09-01',0,0,0);
 INSERT INTO gramstat.total_supply VALUES
-    (300,'2026-09-01',123,123,0,0,0),
-    (451,'2026-09-01',123,123,0,0,0), -- legacy dense history, but missing deltas
-    (600,'2026-09-01',123,123,0,0,0), -- shard-only block
-    (900,'2026-09-01',123,123,0,0,0); -- missing block
+    (3000,'2026-09-01',123,123,0,0,0),
+    (1800,'2026-09-01',123,123,0,0,0), -- retained old 150-MC sample; 1650 needs none now
+    (4501,'2026-09-01',123,123,0,0,0), -- legacy dense history, but missing deltas
+    (6000,'2026-09-01',123,123,0,0,0), -- shard-only block
+    (9000,'2026-09-01',123,123,0,0,0); -- missing block
 """
-    # Non-sampled MCs are complete without supply. Selected MCs 150/450 need repair.
-    sql += completed(149, 900)
+    # Delayed sampled MCs stay incomplete even when later ordinary MCs are written.
+    # Off-grid old 150-MC points are valid with or without their extra snapshot.
+    sql += completed(1499, 9000)
     sql += """
 INSERT INTO gramstat.total_supply VALUES
-    (150,'2026-09-01',456,456,0,0,0),(150,'2026-09-01',456,456,0,0,0),
-    (450,'2026-09-01',789,789,0,0,0);
+    (1500,'2026-09-01',456,456,0,0,0),(1500,'2026-09-01',456,456,0,0,0),
+    (4500,'2026-09-01',789,789,0,0,0);
 """
-    sql += completed(149, 900)
-    sql += "INSERT INTO gramstat.account_deltas VALUES (451,'2026-09-01',0,0,0);\n"
-    sql += completed(149, 900)
-    sql += completed(151, 299)  # resumed interval with no sampling points
-    sql += completed(150, 300)  # inclusive sampling boundaries
+    sql += completed(1499, 9000)
+    sql += "INSERT INTO gramstat.account_deltas VALUES (4501,'2026-09-01',0,0,0);\n"
+    sql += completed(1499, 9000)
+    sql += completed(1501, 2999)  # resumed interval with no sampling points
+    sql += completed(1500, 3000)  # inclusive sampling boundaries
     with tempfile.TemporaryDirectory(prefix="gramstat-sampled-") as directory:
         result = subprocess.run([clickhouse, "local", "--path", directory, "--multiquery"],
                                 input=sql, text=True, capture_output=True, timeout=90)
         assert result.returncode == 0, result.stdout + result.stderr
     assert result.stdout.strip().splitlines() == [
-        "[149,151,299,300,301]", "[149,150,151,299,300,301,450]",
-        "[149,150,151,299,300,301,450,451]", "[151,299]", "[150,151,299,300]",
+        "[1499,1501,1650,1800,2999,3000,3001]", "[1499,1500,1501,1650,1800,2999,3000,3001,4500]",
+        "[1499,1500,1501,1650,1800,2999,3000,3001,4500,4501]", "[1501,1650,1800,2999]", "[1500,1501,1650,1800,2999,3000]",
     ], result.stdout
     print("ClickHouse sampled supply: sparse resume, boundary repair and legacy history: OK")
 

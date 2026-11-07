@@ -212,32 +212,32 @@ void check_sampled_supply(pqxx::connection& connection, pqxx::connection& observ
     const auto previous_supply = count(observer, "gramstat.total_supply");
     const auto previous_deltas = count(observer, "gramstat.account_deltas");
     const auto completed = std::string("SELECT count(*) FROM blocks WHERE workchain = -1 "
-                                       "AND seqno BETWEEN 149 AND 301") +
+                                       "AND seqno BETWEEN 1499 AND 3001") +
                            gramstat::postgres::completed_block_condition(true);
     std::vector<InsertTaskStruct> tasks;
-    for (auto seqno : {301U, 149U, 150U, 151U, 299U, 300U}) {
+    for (auto seqno : {3001U, 1499U, 1500U, 1501U, 2999U, 3000U}) {
         auto item = task(seqno, 1788220800, "100000000000000000102");
-        if (seqno != 150 && seqno != 300) item.parsed_block_->total_supply_.reset();
+        if (seqno != 1500 && seqno != 3000) item.parsed_block_->total_supply_.reset();
         tasks.push_back(std::move(item));
     }
     {
         pqxx::work txn(connection);
-        txn.exec0("INSERT INTO blocks VALUES (-1,149),(-1,150),(-1,151),(-1,299),(-1,300),(-1,301)");
+        txn.exec0("INSERT INTO blocks VALUES (-1,1499),(-1,1500),(-1,1501),(-1,2999),(-1,3000),(-1,3001)");
         for (int retry = 0; retry < 2; ++retry) {
             gramstat::postgres::insert_total_supply(txn, tasks);
             gramstat::postgres::insert_deployments(txn, tasks);
             gramstat::postgres::insert_account_deltas(txn, tasks);
         }
-        CHECK(txn.query_value<int>("SELECT count(*) FROM gramstat.total_supply WHERE mc_seqno BETWEEN 149 AND 301") == 2);
-        CHECK(txn.query_value<int>("SELECT count(*) FROM gramstat.account_deltas WHERE mc_seqno BETWEEN 149 AND 301") == 6);
+        CHECK(txn.query_value<int>("SELECT count(*) FROM gramstat.total_supply WHERE mc_seqno BETWEEN 1499 AND 3001") == 2);
+        CHECK(txn.query_value<int>("SELECT count(*) FROM gramstat.account_deltas WHERE mc_seqno BETWEEN 1499 AND 3001") == 6);
         CHECK(txn.query_value<int>(completed) == 6);
         CHECK(count(observer, "gramstat.total_supply") == previous_supply);
 
-        txn.exec0("DELETE FROM gramstat.total_supply WHERE mc_seqno=150");
+        txn.exec0("DELETE FROM gramstat.total_supply WHERE mc_seqno=1500");
         CHECK(txn.query_value<int>(completed) == 5);
         gramstat::postgres::insert_total_supply(txn, tasks);
         CHECK(txn.query_value<int>(completed) == 6);
-        txn.exec0("DELETE FROM gramstat.account_deltas WHERE mc_seqno=149");
+        txn.exec0("DELETE FROM gramstat.account_deltas WHERE mc_seqno=1499");
         CHECK(txn.query_value<int>(completed) == 5);  // deltas remain mandatory off-grid
         gramstat::postgres::insert_account_deltas(txn, tasks);
         CHECK(txn.query_value<int>(completed) == 6);
@@ -264,9 +264,9 @@ void check_sampled_supply(pqxx::connection& connection, pqxx::connection& observ
 
     for (int failure = 0; failure < 3; ++failure) {
         std::vector<InsertTaskStruct> bad;
-        auto item = task(failure == 0 ? 450 : 451, 1788220800, "100000000000000000102");
+        auto item = task(failure == 0 ? 4500 : 4501, 1788220800, "100000000000000000102");
         if (failure == 1) {
-            item.parsed_block_->total_supply_->mc_seqno = 450;
+            item.parsed_block_->total_supply_->mc_seqno = 4500;
         } else {
             item.parsed_block_->total_supply_.reset();
             if (failure == 2) item.parsed_block_->account_deltas_.reset();
@@ -415,12 +415,12 @@ FROM (
     // An application-level missing snapshot and a database write failure must
     // both roll back the block insert, not leave an apparently completed MC.
     std::vector<InsertTaskStruct> bad;
-    bad.push_back(task(450, 1788307201, "100000000000000000106"));
+    bad.push_back(task(4500, 1788307201, "100000000000000000106"));
     bad[0].parsed_block_->total_supply_.reset();
     bool rejected = false;
     try {
         pqxx::work txn(connection);
-        txn.exec0("INSERT INTO blocks VALUES (-1, 450)");
+        txn.exec0("INSERT INTO blocks VALUES (-1, 4500)");
         gramstat::postgres::insert_total_supply(txn, bad);
         txn.commit();
     } catch (const std::runtime_error&) {

@@ -1,4 +1,5 @@
 #pragma once
+#include <map>
 #include <memory>
 #include <optional>
 #include <queue>
@@ -32,6 +33,11 @@ private:
   std::unordered_set<std::uint32_t> skip_insert_seqnos_;
   std::unordered_set<std::uint32_t> supply_inflight_;
   std::uint32_t max_supply_inflight_{0};
+  std::uint32_t max_supply_pending_{0};
+  // Reservations include samples still fetching/parsing. Only running samples
+  // may materialize full supply state graphs; keep that slot through DB ack.
+  std::unordered_set<std::uint32_t> supply_running_;
+  std::map<std::uint32_t, ParsedBlockPtr> supply_pending_;
 
   td::actor::ActorId<DbScanner> db_scanner_;
   td::actor::ActorId<InsertManagerInterface> insert_manager_;
@@ -99,8 +105,8 @@ public:
   void start_up() override;
   void alarm() override;
   void run();
-  // Startup-only resource limit; 0 keeps the ordinary unrestricted pipeline.
-  void set_max_supply_inflight(std::uint32_t limit);
+  // Startup-only resource limits; 0 active keeps the unrestricted pipeline.
+  void set_max_supply_inflight(std::uint32_t limit, std::uint32_t pending = 0);
   void get_contiguous_indexed_seqno(td::Promise<std::int32_t> promise);
 private:
   void advance_contiguous_indexed_seqno();
@@ -114,6 +120,8 @@ private:
   void seqno_interfaces_processed(std::uint32_t mc_seqno, ParsedBlockPtr parsed_block);
   void seqno_actions_processed(std::uint32_t mc_seqno, ParsedBlockPtr parsed_block);
   void seqno_supply_processed(std::uint32_t mc_seqno, ParsedBlockPtr parsed_block, td::Result<schema::TotalSupply> result);
+  void start_pending_supply();
+  void calculate_supply(std::uint32_t mc_seqno, ParsedBlockPtr parsed_block);
   void insert_seqno(std::uint32_t mc_seqno, ParsedBlockPtr parsed_block);
   void seqno_queued_to_insert(std::uint32_t mc_seqno, QueueState status);
   void set_seqno_otel_attribute(std::uint32_t mc_seqno, const std::string& key,
