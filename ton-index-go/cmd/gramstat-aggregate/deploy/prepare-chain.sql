@@ -1,4 +1,4 @@
--- Run explicitly with a writer role after auditing a complete bounded replay.
+-- Aggregator-owned preparation: run with a writer role after auditing a complete bounded replay.
 -- Date bounds are exclusive at the top; both edge days remain conservative partials
 -- because shard block timestamps can straddle the including-MC range boundaries.
 INSERT INTO gramstat.chain_daily

@@ -157,6 +157,24 @@ values in place, other handlers continue, and the process exits nonzero.
 
 ## Scheduled runs (systemd)
 
+### Prepared chain intervals and consumer API
+
+`gramstat.chain_daily` holds compact daily flow totals and the last sampled supply
+snapshot from an explicitly audited bounded replay. Its DDL is included in
+`gramstat-aggregate --print-schema`. Preparation is currently manual, using
+[`deploy/prepare-chain.sql`](../ton-index-go/cmd/gramstat-aggregate/deploy/prepare-chain.sql)
+with writer credentials and parameters `raw`, `metrics`, `from`, `to`, `mc_from`,
+`mc_to`, `source`. UTC `to` is exclusive. The first and last day are conservatively
+partial because shard block timestamps can straddle the including-MC bounds.
+Replays replace daily rows; missing monetary inputs remain NULL.
+
+The API and UI belong to the standalone **[1IxI1/gramstat](https://github.com/1IxI1/gramstat)**
+application. They read these prepared tables with SELECT-only credentials and
+have no code dependency on the indexer. Production DDL, data preparation and the
+hourly aggregation job remain here. The API is not part of the TON Center API product.
+
+### Hourly deployment
+
 The example units in `ton-index-go/cmd/gramstat-aggregate/deploy/` expect the binary
 at `/opt/gramstat/bin/gramstat-aggregate`, a root-only environment file at
 `/etc/gramstat-aggregate.env`, and a service user named `gramstat`. Adjust these
