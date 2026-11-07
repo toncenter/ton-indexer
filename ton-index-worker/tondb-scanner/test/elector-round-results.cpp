@@ -1,5 +1,6 @@
 #include "ElectorRoundResults.h"
 #include "DataParser.h"
+#include "parse_contract_methods.h"
 #include "smc-fixture.h"
 #include "common/checksum.h"
 #include "emulator/transaction-emulator.h"
@@ -58,9 +59,18 @@ td::Ref<vm::Cell> code(int behavior = 0) {
         .store_long(0xd74c + ref, 16).store_long(0xd0, 8).store_long(0xed1e, 16).store_long(0xd9, 8).finalize();
   };
   std::string ids = "past_election_ids", amounts = "past_elections";
-  return test_methods_dispatcher({{0, transition}, {0x7fffe, transition},
-      {unsigned((td::crc16(ids) & 0xffff) | 0x10000), getter(1)},
-      {unsigned((td::crc16(amounts) & 0xffff) | 0x10000), getter(2)}});
+  std::vector<std::pair<unsigned, td::Ref<vm::Cell>>> methods{{0, transition}, {0x7fffe, transition}};
+  if (behavior != 3 && behavior != 4) methods.emplace_back(unsigned((td::crc16(ids) & 0xffff) | 0x10000), getter(1));
+  if (behavior != 3) methods.emplace_back(unsigned((td::crc16(amounts) & 0xffff) | 0x10000), getter(2));
+  auto result = test_methods_dispatcher(methods);
+  if (behavior == 3 || behavior == 4) {
+    // The deployed genesis Elector uses DICTIGETJMP, not DICTIGETJMPZ.
+    // A missing zero-argument getter reaches THROWARG with an empty stack (exit 2).
+    return vm::CellBuilder().store_long(0xff00, 16).store_long(0xf4a413, 24)
+        .store_ref(vm::load_cell_slice(result).prefetch_ref())
+        .store_long(0xf4a0, 16).store_long(0xf2c80b, 24).finalize();
+  }
+  return result;
 }
 
 void push_small(vm::CellBuilder& b, int n) { b.store_long(0x80, 8).store_long(n, 8); }
@@ -259,6 +269,23 @@ void check_collector() {
   auto no_ids = vm::CellBuilder().store_ref(end).store_ref(bad_getter).store_ref(bad_getter).finalize();
   Fixture failed_getter(no_ids, {T::tr_tick});
   CHECK(elector::collect_round_results(failed_getter.parsed).is_error());
+
+  Fixture unsupported(data({{1, "100", "20"}}, end), {T::tr_tick}, 3);
+  auto legacy_state = ParseQuery::parse_account(unsupported.states.front(), NOW, td::Bits256::zero(), 0).move_as_ok();
+  auto metadata = get_contract_method_info(legacy_state.code, unsupported.parsed.mc_block_.config_.get()).move_as_ok();
+  CHECK(metadata->exhaustive);
+  CHECK(elector::run_get_method(legacy_state, unsupported.parsed.mc_block_.config_, "past_election_ids", {}, NOW)
+      .move_as_error().to_string().find("exit code 2") != std::string::npos);
+  stats = {};
+  CHECK(elector::collect_round_results(unsupported.parsed, &stats).move_as_ok().empty());
+  CHECK(stats.unsupported_blocks == 1 && stats.id_getters == 0 && stats.amount_getters == 0);
+
+  Fixture legacy_ids(data({{1, "100", "20"}}, end), {T::tr_tick}, 4);
+  stats = {};
+  auto legacy_rows = elector::collect_round_results(legacy_ids.parsed, &stats).move_as_ok();
+  CHECK(legacy_rows.size() == 1 && legacy_rows[0].total_stake->to_dec_string() == "100" &&
+        legacy_rows[0].bonuses->to_dec_string() == "20");
+  CHECK(stats.legacy_id_getters == 2 && stats.unsupported_blocks == 0 && stats.id_getters == 0);
 }
 
 void check_amounts() {

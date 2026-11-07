@@ -63,12 +63,20 @@ td::Result<ContractMethodInfo> inspect_methods(
     }
     auto methods_dict_cell = cs.fetch_ref();
     ContractMethodInfo result;
-    // DICTIGETJMPZ followed by unconditional THROW 11 or THROWARG 11,
+    // DICTIGETJMP[Z] followed by unconditional THROW 11 or THROWARG 11,
     // with no trailing bits/references/implicit continuation. Unknown tails
     // may implement additional methods and must retain the full detector path.
+    // Legacy DICTIGETJMP discards a missing key, so THROWARG may itself exit 2
+    // with an empty getter stack; it still cannot implement an absent method.
     if (cs.size_refs() == 0) {
-      if (cs.size() == 32) result.exhaustive = cs.prefetch_ulong(32) == 0xf4bcf20bULL;
-      if (cs.size() == 40) result.exhaustive = cs.prefetch_ulong(40) == 0xf4bcf2c80bULL;
+      if (cs.size() == 32) {
+        auto tail = cs.prefetch_ulong(32);
+        result.exhaustive = tail == 0xf4bcf20bULL || tail == 0xf4a0f20bULL;
+      }
+      if (cs.size() == 40) {
+        auto tail = cs.prefetch_ulong(40);
+        result.exhaustive = tail == 0xf4bcf2c80bULL || tail == 0xf4a0f2c80bULL;
+      }
     }
     TRY_STATUS(safe_parse::for_each_dict_entry(methods_dict_cell, methods_dict_key_len, kMaxContractMethods,
         [&](td::ConstBitPtr key, int key_len, td::Ref<vm::CellSlice>) -> td::Status {

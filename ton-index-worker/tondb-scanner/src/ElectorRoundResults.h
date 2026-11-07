@@ -24,6 +24,8 @@ struct CollectionStats {
   unsigned id_getters = 0;
   unsigned amount_getters = 0;
   unsigned replayed_transactions = 0;
+  unsigned unsupported_blocks = 0;
+  unsigned legacy_id_getters = 0;
 };
 
 td::Result<std::vector<schema::ValidatorRoundResult>> collect_round_results(

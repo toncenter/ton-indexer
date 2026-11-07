@@ -1,6 +1,9 @@
 #include "ElectorRoundResults.h"
 
 #include "DataParser.h"
+#include "Statistics.h"
+#include "parse_contract_methods.h"
+#include "common/checksum.h"
 #include "emulator/transaction-emulator.h"
 #include "safe-parse.h"
 #include "smc-interfaces/execute-smc.h"
@@ -31,11 +34,21 @@ td::Result<std::vector<vm::StackEntry>> run_get_method(
   // list_complaints may serialize hundreds of complaints with a full voter set.
   args.set_limits(vm::GasLimits{1'000'000'000});
   auto result = smc.run_get_method(args);
-  if (!result.success) return td::Status::Error(method + " failed");
+  if (!result.success) {
+    return td::Status::Error(PSLICE() << method << " failed, exit code " << result.code
+                                    << (result.missing_library ? ", missing library" : ""));
+  }
   return result.stack->extract_contents();
 }
 
 namespace {
+
+bool proven_absent(const schema::AccountState& state, const std::shared_ptr<block::ConfigInfo>& config,
+                   td::Slice method) {
+  auto info = get_contract_method_info(state.code, config.get());
+  // A failed inspection or custom selector says nothing about method absence.
+  return info.is_ok() && info.ok()->exhaustive && !info.ok()->has((td::crc16(method) & 0xffff) | 0x10000);
+}
 
 td::Result<td::RefInt256> nonnegative(const vm::StackEntry& entry, unsigned bits) {
   auto value = entry.as_int();
@@ -192,6 +205,19 @@ class Collector {
     if (auto it = ids_.find(boundary_hash(i)); it != ids_.end()) return it->second;
     TRY_RESULT(root, state_at(i));
     TRY_RESULT(state, parsed_state(i, root));
+    if (proven_absent(state, parsed_.mc_block_.config_, "past_election_ids")) {
+      // Some historical contracts expose amounts but not the later lightweight
+      // ID getter. Use their existing ABI, retaining all amount validation.
+      ++stats_.legacy_id_getters;
+      ++stats_.amount_getters;
+      g_statistics.record_count(ELECTOR_ROUND_LEGACY_IDS);
+      TRY_RESULT(stack, run_get_method(state, parsed_.mc_block_.config_, "past_elections", {}, state.timestamp));
+      TRY_RESULT(amounts, parse_round_amounts(stack));
+      std::set<uint32_t> ids;
+      for (const auto& amount : amounts) ids.insert(amount.election_id);
+      ids_[boundary_hash(i)] = ids;
+      return ids;
+    }
     ++stats_.id_getters;
     TRY_RESULT(stack, run_get_method(state, parsed_.mc_block_.config_, "past_election_ids", {}, state.timestamp));
     TRY_RESULT(ids, parse_ids(stack));
@@ -218,6 +244,14 @@ class Collector {
     TRY_RESULT(before, parsed_state(0, first));
     TRY_RESULT(after, parsed_state(txs_.size(), last));
     if (before.data.not_null() && after.data.not_null() && before.data->get_hash() == after.data->get_hash()) return rows;
+    if (proven_absent(before, parsed_.mc_block_.config_, "past_elections") ||
+        proven_absent(after, parsed_.mc_block_.config_, "past_elections")) {
+      // Early Elector deployments lack the reward getter. This is unsupported
+      // coverage, not an observed zero reward or a successful empty getter.
+      ++stats_.unsupported_blocks;
+      g_statistics.record_count(ELECTOR_ROUND_UNSUPPORTED);
+      return rows;
+    }
     TRY_RESULT(before_ids, ids_at(0));
     TRY_RESULT(after_ids, ids_at(txs_.size()));
     std::set<uint32_t> removed;

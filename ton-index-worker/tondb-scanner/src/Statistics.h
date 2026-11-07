@@ -112,6 +112,8 @@ enum Ticker : uint32_t {
   LOOKUP_ACCOUNT_EVICTION,
   LOOKUP_ACCOUNT_BYPASS,
   LOOKUP_ACCOUNT_ERROR,
+  ELECTOR_ROUND_UNSUPPORTED,
+  ELECTOR_ROUND_LEGACY_IDS,
   TICKERS_COUNT
 };
 
@@ -174,7 +176,9 @@ const std::unordered_map<uint32_t, std::string_view> ticker_names = {
     {LOOKUP_ACCOUNT_COALESCED, "indexer.lookup_account.cache.coalesced"},
     {LOOKUP_ACCOUNT_EVICTION, "indexer.lookup_account.cache.eviction"},
     {LOOKUP_ACCOUNT_BYPASS, "indexer.lookup_account.cache.bypass"},
-    {LOOKUP_ACCOUNT_ERROR, "indexer.lookup_account.error"}
+    {LOOKUP_ACCOUNT_ERROR, "indexer.lookup_account.error"},
+    {ELECTOR_ROUND_UNSUPPORTED, "indexer.elector.round.unsupported"},
+    {ELECTOR_ROUND_LEGACY_IDS, "indexer.elector.round.ids_fallback"}
 };
 const std::unordered_map<uint32_t, std::string_view> histogram_names = {
     {PROCESS_SEQNO, "indexer.index.seqno.millis"},

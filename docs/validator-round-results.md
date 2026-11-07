@@ -45,8 +45,8 @@ stakes before joining results. See [ClickHouse validator tables](validator-click
 for keys, nullable enrichment and read queries.
 
 Join cycles to results by `election_id`. A missing result means the release has
-not been indexed; it does not mean zero stake or zero rewards. An open round has
-no final result yet.
+not been collected (including unsupported early Elector code); it does not mean
+zero stake or zero rewards. An open round has no final result yet.
 
 ## Collection
 
@@ -66,6 +66,25 @@ from the preceding masterchain state and the block's original random seed.
 The getter results contain frozen-position and complaint dictionaries as cell
 references. Reading the two election totals does not enumerate these dictionaries.
 Both nested and flattened historical `past_elections` tuple formats are supported.
+
+### Early Elector compatibility
+
+The genesis-era Elector (observed at mainnet MC 3, code hash
+`KChkFhK1xB/jayvThVwtJkFi7b8of6LPohBS7X6U8Q4=`) has neither round getter.
+Its `DICTIGETJMP; THROWARG 11` dispatcher can report stack-underflow exit code 2
+for a missing zero-argument getter. Method absence is therefore established from
+the recognized exhaustive dispatcher, not guessed from a VM exit code.
+
+If `past_elections` is provably absent at either block boundary, the collector
+leaves results absent and increments `indexer.elector.round.unsupported`.
+If only `past_election_ids` is provably absent, it derives IDs from the validated
+`past_elections` result (`indexer.elector.round.ids_fallback`). These counters are
+reporting-interval counts in `stats.txt`.
+
+Custom/unrecognized selectors and failed code inspection do not prove absence.
+Failures of declared getters still fail collection, with the VM exit code included
+in the error. This compatibility path never substitutes zero amounts or treats a
+read/configuration error as a successfully observed empty election set.
 
 Failure to read or reconstruct a required state fails block processing so the
 scheduler can retry. Results are assembled before any are submitted to storage.

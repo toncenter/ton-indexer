@@ -113,9 +113,11 @@ and a new profile. The previous CPU profile alone does not measure the new speed
 ## Detector routing and shared parent lookups
 
 The method cache also records whether it recognized an **exhaustive dispatcher**:
-SETCP0 / DICTPUSHCONST / DICTIGETJMPZ / unconditional THROW 11 or THROWARG 11,
+SETCP0 / DICTPUSHCONST / DICTIGETJMP[Z] / unconditional THROW 11 or THROWARG 11,
 with no trailing bits or references. A parsed dictionary with a different tail
 remains useful metadata but cannot prove that other methods are absent.
+The legacy non-Z dispatcher discards a missing key, so its THROWARG can exit 2
+on an empty getter stack; an absent method still cannot return successfully.
 
 `InterfacesDetector` consults this shared metadata before creating detector
 actors. For an exhaustive dispatcher it skips probes whose primary getter is
