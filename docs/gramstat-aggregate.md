@@ -193,6 +193,32 @@ grant readers SELECT on it and the required raw block columns. API short-window
 reads start from an hour's first MC, add intra-hour burning to its opening prefix,
 and apply the requested time filter only after calculating the prefix.
 
+### Annualized net inflation (fixed trailing 24 hours)
+
+After checkpoints, `chain` writes `gramstat.inflation_hourly`. At each closed UTC
+hour boundary `t`, it sums all deduplicated blocks' `created` and `burned` over
+`[t-24h,t)`, then computes:
+
+```text
+annualized_percent = (minted_24h_nanoton - burned_24h_nanoton)
+                     / supply_nanoton * 365 * 100
+```
+
+Supply is the corrected last MC balance before `t`, with its timestamp and MC
+retained. This is a linear annualized rate, not compounded yield or realized
+year-over-year growth. It can be negative. Exact monetary inputs are stored as
+Decimal(38,0); the percentage is Decimal(38,12), calculated using Decimal256
+division. The API retains the exact inputs for reproducibility.
+
+The rolling window uses an actual 23-hour preceding time range plus the current
+hour, not merely the preceding 24 rows. It requires 24 present hourly records,
+known flow fields, exclusion of the initial partial source hour, and positive
+known Supply. The current unclosed hour is not published; other incomplete
+windows retain NULL. Hourly inputs and rates are recomputed as indexing advances.
+Chart resolution/date filtering is downstream and cannot reset or resize the
+24-hour calculation window. Apply the additional DDL with `--print-schema`, grant
+the writer SELECT/INSERT on `gramstat.inflation_hourly`, and readers SELECT.
+
 ### Legacy bounded chain intervals
 
 `gramstat.chain_daily` holds compact daily flow totals and the last sampled supply

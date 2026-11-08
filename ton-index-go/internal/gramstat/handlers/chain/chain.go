@@ -22,6 +22,9 @@ var dailySQL string
 //go:embed hourly.sql
 var hourlySQL string
 
+//go:embed inflation.sql
+var inflationSQL string
+
 //go:embed schema.sql
 var Schema string
 
@@ -77,6 +80,9 @@ func (h *Handler) Run(ctx context.Context, req gramstat.Request) error {
 	}
 	// Checkpoints cover the full verified prefix, even for a date-limited daily refresh.
 	if _, err = h.CH.Query(ctx, "INSERT INTO gramstat.supply_hourly "+hourlySQL, p); err != nil {
+		return err
+	}
+	if _, err = h.CH.Query(ctx, "INSERT INTO gramstat.inflation_hourly "+inflationSQL, p); err != nil {
 		return err
 	}
 	if h.Log != nil {
