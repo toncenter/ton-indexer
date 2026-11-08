@@ -114,6 +114,11 @@ enum Ticker : uint32_t {
   LOOKUP_ACCOUNT_ERROR,
   ELECTOR_ROUND_UNSUPPORTED,
   ELECTOR_ROUND_LEGACY_IDS,
+  STATE_UPDATE_HIT,
+  STATE_UPDATE_MISS,
+  STATE_UPDATE_CELLS,
+  STATE_UPDATE_OVERSIZED,
+  STATE_UPDATE_ERROR,
   TICKERS_COUNT
 };
 
@@ -128,6 +133,7 @@ enum Histogram : uint32_t {
   PARSE_TRANSACTION,
   PARSE_ACCOUNT_STATE,
   PARSE_CONFIG,
+  BUILD_STATE_UPDATE,
   
   TRACE_ASSEMBLER_GC_STATE,
   TRACE_ASSEMBLER_SAVE_STATE,
@@ -178,7 +184,12 @@ const std::unordered_map<uint32_t, std::string_view> ticker_names = {
     {LOOKUP_ACCOUNT_BYPASS, "indexer.lookup_account.cache.bypass"},
     {LOOKUP_ACCOUNT_ERROR, "indexer.lookup_account.error"},
     {ELECTOR_ROUND_UNSUPPORTED, "indexer.elector.round.unsupported"},
-    {ELECTOR_ROUND_LEGACY_IDS, "indexer.elector.round.ids_fallback"}
+    {ELECTOR_ROUND_LEGACY_IDS, "indexer.elector.round.ids_fallback"},
+    {STATE_UPDATE_HIT, "indexer.state_update.hit"},
+    {STATE_UPDATE_MISS, "indexer.state_update.miss"},
+    {STATE_UPDATE_CELLS, "indexer.state_update.cells"},
+    {STATE_UPDATE_OVERSIZED, "indexer.state_update.oversized"},
+    {STATE_UPDATE_ERROR, "indexer.state_update.error"}
 };
 const std::unordered_map<uint32_t, std::string_view> histogram_names = {
     {PROCESS_SEQNO, "indexer.index.seqno.millis"},
@@ -189,6 +200,7 @@ const std::unordered_map<uint32_t, std::string_view> histogram_names = {
     {PARSE_TRANSACTION, "indexer.parse.transaction.micros"},
     {PARSE_ACCOUNT_STATE, "indexer.parse.account_state.micros"},
     {PARSE_CONFIG, "indexer.parse.config.micros"},
+    {BUILD_STATE_UPDATE, "indexer.state_update.build.micros"},
     {TRACE_ASSEMBLER_GC_STATE, "indexer.traceassembler.gc_state.micros"},
     {TRACE_ASSEMBLER_SAVE_STATE, "indexer.traceassembler.save_state.micros"},
     {TRACE_ASSEMBLER_PROCESS_BLOCK, "indexer.traceassembler.process_block.micros"},

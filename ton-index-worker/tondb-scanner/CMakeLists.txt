@@ -6,6 +6,7 @@ add_library(tondb-scanner STATIC
     src/DbScanner.cpp
     src/DbEventListener.cpp
     src/DataParser.cpp
+    src/StateUpdateReader.cpp
     src/TraceAssembler.cpp
     src/queue_state.cpp
     src/ElectorRoundResults.cpp
@@ -79,3 +80,8 @@ target_compile_definitions(test-memoized-parsers PRIVATE
     ELECTOR_LEGACY_CACHE_FIXTURE="${CMAKE_CURRENT_SOURCE_DIR}/test/fixtures/elector-code-2020.b64")
 add_test(NAME gramstat_caches COMMAND test-memoized-parsers)
 set_tests_properties(gramstat_caches PROPERTIES TIMEOUT 60)
+
+add_executable(test-state-update-reader EXCLUDE_FROM_ALL test/state-update-reader.cpp)
+target_link_libraries(test-state-update-reader PRIVATE tondb-scanner)
+add_test(NAME gramstat_state_update COMMAND test-state-update-reader)
+set_tests_properties(gramstat_state_update PROPERTIES TIMEOUT 60)

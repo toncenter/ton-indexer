@@ -40,6 +40,125 @@ This probe excludes sink/trace/action processing and cross-MC parent caching,
 does not compare every getter result field, and shares the host with production.
 Its **1.45x** speedup is not a measurement of full-indexer throughput.
 
+## Account states from block Merkle updates
+
+The shared parser first reads account roots and their new descendants from the
+block's existing `state_update`. `StateUpdateReader` reconstructs the new side
+using the pinned node's Merkle-depth rules, validates the update, and checks its
+root hash/depth against the persisted post-state. Old pruned subtrees become lazy
+references into the same historical CellDB reader. Genuine exotic cells inside
+code/data retain their Merkle semantics. Roots absent from the update use CellDB.
+This applies to both ClickHouse and PostgreSQL, independently of `--gramstat`.
+
+The temporary index is **per shard block**, is skipped when there are no changed
+accounts, and is released immediately after parsing those accounts. It is not
+stored in `ParsedBlock` or the insert queue. Only the extracted account code/data
+graphs survive into the detector pipeline; previous-state/parent lookups retain
+the original CellDB reader. No queue or dispatch dictionary is read from CellDB
+to construct the overlay: only the cells already present in the block are walked.
+
+Construction admits at most **65,536 new cells**, **262,145 traversal visits** and
+**1,024 recursive edges** per shard block. An oversized, invalid or unsupported
+update falls back to the ordinary persisted-state reader, without publishing a
+partial index or dropping accounts. These are transient node/work bounds, not
+byte-accurate RSS limits. There is no shared mutable overlay across blocks.
+
+Statistics: `indexer.state_update.hit|miss` count account-root reads served from
+the overlay or delegated to CellDB; `cells` counts admitted new cells;
+`oversized|error` count bypassed updates. `build.micros` measures construction
+elapsed time, including failed attempts. Lazy old-descendant reads are not
+included in the root hit/miss counters.
+
+A read-only prototype A/B/B/A on 2026-11-08 tested three 128-MC windows beginning
+at **40,670,000 / 40,700,000 / 40,730,000**, with 32-MC warmups, four workers and
+the same 1-GiB CellDB cache. The windows contain **387,323 transactions**;
+**99.42%** of their 275,352 account roots were available in the updates. Mean
+baseline/candidate seconds were **78.14/25.29**, **57.17/21.53**, **124.59/36.72**:
+**3.11x** aggregate speedup, **76.84% fewer read calls**, **67.11% fewer returned
+read bytes**, and **59.69% less CPU**. Reconstruction is included in timing.
+All output digests matched, including every interface field; a separate 12-MC
+check compared **215,107 reconstructed cell records** with CellDB. This prototype
+kept a per-MC index until getters completed; production narrows its lifetime to
+per-block account parsing. The figures exclude sinks/trace/action processing and
+do not establish full-indexer throughput at production concurrency.
+
+CTest `gramstat_state_update` covers lazy fallback and error propagation, index
+lifetime, missing/mismatched/malformed inputs, size limits, mixed bulk reads,
+unchanged roots, shared subgraphs, library references and nested Merkle proofs.
+
+### Full-writer verification status (2026-11-08)
+
+The first complete ClickHouse canary at **40730000..40730127** wrote **197,670
+transactions / 2,290 blocks** with both executables. Its literal, all-column
+`FINAL` comparison **failed**; the read-only digest match above must not be
+reported as equality of all stored tables. The scoped reader-regression checks
+below subsequently passed with the explicitly identified existing defects.
+
+The initial differences are:
+
+- 128 MC `blocks` rows differ only in the order of `shards`; sorted tuples agree.
+  The scanner collects shard results in asynchronous completion order.
+- 763 transaction rows differ only in `account_state_timestamp` and/or
+  `account_state_last_trans_lt`. All have the same `account_none` post-state hash.
+  The existing writer joins account metadata by hash across an entire insert
+  batch, although `account_none` has the same hash for different addresses.
+  An independent check against each account's final transaction and its shard
+  block already finds **695 incorrect metadata rows in the old executable**
+  (802 in the candidate); every incorrect pair matches other accounts instead.
+  Faster processing changes timed batching, so this bug can change stored values
+  without any change to parsed account cells.
+- One `nft_items` and one `nft_transfers` `FINAL` row select different identities
+  under equal replacement keys/versions. Existing keys omit the item address and
+  transaction hash respectively; different NFTs/events can collide.
+
+All remaining tables, including account deltas, deployments and
+`latest_account_states` (with code/data BoCs), matched in this range. Several
+validator tables were empty, so their equality does not establish coverage.
+Repeating the **unchanged old executable** reproduced differences in these same
+four tables: 128 reordered shard lists and 660 shared-`account_none` metadata
+rows, plus the two NFT replacement choices. The early **3400000..3400015** range
+matched except for 16 shard-list permutations (419 blocks / 80 transactions).
+At **103190374..103190389**, across v17 activation, **every FINAL table matched**
+(34 blocks / 416 transactions, including 2 validator cycles and 756 members).
+
+Disabling background merges alone does not preserve incoming NFT rows:
+ClickHouse's default `optimize_on_insert=1` can replace equal keys inside each
+incoming part. The regression check therefore captures native-writer INSERT
+rows through materialized views into plain `MergeTree`, before source-engine
+replacement. NFT events must match with every field and multiplicity; latest
+NFT rows must match by their actual address with every field and version.
+
+The operator selected a **reader-only release**, leaving these existing writer
+and schema defects as a separate task. A valid reader-regression result is not
+literal equality of all FINAL tables and does not certify or repair those old
+defects. Shard permutations and only the two metadata fields on the known
+`account_none` hash are explicit exceptions, backed by the unchanged-binary A/A;
+other stored fields, including monetary values and NULLs, remain exact checks.
+The original failed comparison is retained separately from subsequent evidence.
+
+The pre-engine capture completed with **all 1,960 NFT item rows and all 439 NFT
+transfer rows exactly equal**, including every field and multiplicity. Latest
+full rows for all **1,266 actual NFT addresses** also matched without version
+ties. The legacy replacement keys reduced those to 621 items / 436 transfers;
+every originally differing FINAL row was present in both input captures.
+
+A longer **40730000..40734095** canary ran the complete candidate with **96 CPU
+workers, 4 IO workers, 128 active MC tasks and 20 insert actors**, writing all
+**4,096 MC blocks/deltas and 5,495,143 transactions**. It exited successfully with
+no pipeline failures; sampled reader counts were **3,806,140 hits / 20,736 misses**,
+zero oversized/error bypasses. Peak RSS was **15.53 GiB**, with no memory-high,
+memory-max or OOM events. The 192.45-second wall duration includes startup and
+runs alongside production; it is a bounded concurrency/memory check, not a
+long-term memory plateau or a production-throughput speedup measurement.
+
+These specific legacy ClickHouse defects do not feed the current Gramstat chain
+metrics (blocks/account deltas), the actions aggregator's NFT transfer counts
+(PostgreSQL `public.actions`), or the separately collected NFT ownership/existence
+history (`nft_item_states`, keyed by actual account and MC). That history matched
+in the canaries. Direct counts from legacy CH `nft_items`/`nft_transfers` can still
+undercount because replacement loses distinct identities; they are not an
+interchangeable source for those statistics.
+
 ## Contract methods
 
 `parse_contract_methods` caches successful method lists by the **original account

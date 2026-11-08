@@ -9,6 +9,7 @@
 #include "validator/interfaces/shard.h"
 #include "convert-utils.h"
 #include "Statistics.h"
+#include "StateUpdateReader.h"
 
 using namespace ton::validator; //TODO: remove this
 
@@ -63,7 +64,25 @@ td::Status ParseQuery::parse_impl() {
     g_statistics.record_time(PARSE_TRANSACTION, transactions_timer.elapsed() * 1e6, schema_block.transactions.size());
 
     td::Timer acc_states_timer;
-    TRY_RESULT(account_states_fast, parse_account_states_new(schema_block.workchain, schema_block.gen_utime, account_states_to_get));
+    std::unique_ptr<StateUpdateReader> update_reader;
+    if (!account_states_to_get.empty()) {
+      td::Timer update_timer;
+      auto reader = StateUpdateReader::create(blk.state_update, block_ds.block_state, cell_db_reader_);
+      g_statistics.record_time(BUILD_STATE_UPDATE, update_timer.elapsed() * 1e6);
+      if (reader.is_ok()) {
+        update_reader = reader.move_as_ok();
+        g_statistics.record_count(STATE_UPDATE_CELLS, update_reader->size());
+      } else {
+        // This is an optional read optimization. Oversized or unsupported updates
+        // retain the original historical CellDB path, never an incomplete state.
+        g_statistics.record_count(reader.error().code() == StateUpdateReader::LIMIT_EXCEEDED
+            ? STATE_UPDATE_OVERSIZED : STATE_UPDATE_ERROR);
+        LOG(DEBUG) << "State update reader bypass: " << reader.error();
+      }
+    }
+    TRY_RESULT(account_states_fast, parse_account_states_new(schema_block.workchain, schema_block.gen_utime,
+        account_states_to_get, update_reader ? static_cast<vm::CellDbReader&>(*update_reader) : *cell_db_reader_));
+    update_reader.reset(); // Do not retain whole update indexes in parsed/insert queues.
     g_statistics.record_time(PARSE_ACCOUNT_STATE, acc_states_timer.elapsed() * 1e6, account_states_fast.size());
     
     for (auto &acc : account_states_fast) {
@@ -808,11 +827,11 @@ td::Result<std::vector<schema::Transaction>> ParseQuery::parse_transactions(cons
   return res;
 }
 
-td::Result<std::vector<schema::AccountState>> ParseQuery::parse_account_states_new(ton::WorkchainId workchain_id, uint32_t gen_utime, std::map<td::Bits256, AccountStateShort> &account_states) {
+td::Result<std::vector<schema::AccountState>> ParseQuery::parse_account_states_new(ton::WorkchainId workchain_id, uint32_t gen_utime, std::map<td::Bits256, AccountStateShort> &account_states, vm::CellDbReader& reader) {
   std::vector<schema::AccountState> res;
   res.reserve(account_states.size());
   for (auto &[addr, state_short] : account_states) {
-    auto account_cell_r = cell_db_reader_->load_cell(state_short.account_cell_hash.as_slice());
+    auto account_cell_r = reader.load_cell(state_short.account_cell_hash.as_slice());
     if (account_cell_r.is_error()) {
       LOG(ERROR) << "Failed to load account state cell " << state_short.account_cell_hash.to_hex();
       continue;
