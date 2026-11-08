@@ -19,6 +19,12 @@ import (
 //go:embed daily.sql
 var dailySQL string
 
+//go:embed hourly.sql
+var hourlySQL string
+
+//go:embed schema.sql
+var Schema string
+
 type Store interface {
 	Query(context.Context, string, url.Values) ([]byte, error)
 	InsertJSON(context.Context, string, []byte) error
@@ -67,6 +73,10 @@ func (h *Handler) Run(ctx context.Context, req gramstat.Request) error {
 		return nil
 	}
 	if err = h.CH.InsertJSON(ctx, "gramstat.chain_daily_full", rows); err != nil {
+		return err
+	}
+	// Checkpoints cover the full verified prefix, even for a date-limited daily refresh.
+	if _, err = h.CH.Query(ctx, "INSERT INTO gramstat.supply_hourly "+hourlySQL, p); err != nil {
 		return err
 	}
 	if h.Log != nil {

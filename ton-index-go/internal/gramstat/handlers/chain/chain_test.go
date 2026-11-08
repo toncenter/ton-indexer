@@ -69,6 +69,22 @@ INSERT INTO metrics.account_deltas SELECT toUInt32(seqno),toDateTime(gen_utime,'
 				}
 				return
 			}
+			run("ALTER TABLE raw.blocks ADD COLUMN shard Int64 DEFAULT -9223372036854775808; CREATE DATABASE gramstat;" + Schema)
+			hourly := strings.ReplaceAll(strings.ReplaceAll(hourlySQL, "103190382", "7"), "30410593", "5")
+			run("INSERT INTO gramstat.supply_hourly " + hourly)
+			check := run("SELECT toString(opening_burn) AS opening,toString(cumulative_burn) AS closing,toString(supply_nanoton) AS supply FROM gramstat.supply_hourly FINAL ORDER BY hour FORMAT JSON")
+			var checkpoints struct {
+				Data []struct{ Opening, Closing, Supply *string }
+			}
+			if e := json.Unmarshal(check, &checkpoints); e != nil {
+				t.Fatal(e)
+			}
+			if len(checkpoints.Data) != 4 || checkpoints.Data[0].Opening == nil || *checkpoints.Data[0].Opening != "0" {
+				t.Fatal(string(check))
+			}
+			if tc.name == "dedup_and_burn_boundary" && (*checkpoints.Data[2].Opening != "5" || *checkpoints.Data[2].Supply != "5000000000000000301") {
+				t.Fatal(string(check))
+			}
 			if err != nil {
 				t.Fatal(err)
 			}

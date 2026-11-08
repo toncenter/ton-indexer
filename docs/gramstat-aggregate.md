@@ -180,6 +180,19 @@ Rows are replaced by day, not added to prior totals. Source blocks are never
 modified. `gramstat.total_supply` archives are not inputs. Raw source history and
 the API's independently prepared action/validator datasets have separate coverage.
 
+The same handler publishes `gramstat.supply_hourly` after verifying daily MC/delta
+coverage. Each UTC hour contains first/last MC and timestamps, cumulative burning
+strictly before its first MC (`opening_burn`), cumulative burning through its last
+MC, and corrected supply at that exact last MC. NULL burning makes dependent
+prefixes unknown; NULL final balances do not fall back. The final incomplete hour
+is marked partial and replaced on subsequent refreshes. Whole-history preparation
+is limited to two threads and the same query/memory bounds; only the compact
+hourly rows are persisted, not a second per-MC table. Apply `chain.Schema` via
+`--print-schema`, grant the writer SELECT/INSERT on `gramstat.supply_hourly`, and
+grant readers SELECT on it and the required raw block columns. API short-window
+reads start from an hour's first MC, add intra-hour burning to its opening prefix,
+and apply the requested time filter only after calculating the prefix.
+
 ### Legacy bounded chain intervals
 
 `gramstat.chain_daily` holds compact daily flow totals and the last sampled supply
