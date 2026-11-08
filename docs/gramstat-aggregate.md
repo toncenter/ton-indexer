@@ -261,6 +261,10 @@ sudo journalctl -u gramstat-aggregate.service --since today
 
 ## Adding handlers
 
+Wallet preparation and exact minute/hour/day reader queries are documented in
+[gramstat-wallets.md](gramstat-wallets.md). The `wallets` handler also prepares
+per-MC cumulative activations and long-range checkpoints.
+
 Implement `gramstat.Handler` (`Name`, `Run`) and register it in the CLI. Inject
 only the source clients and writer it needs. `Request.AsOf` supplies one stable
 UTC reference; handlers own their refresh policy and may publish a different
