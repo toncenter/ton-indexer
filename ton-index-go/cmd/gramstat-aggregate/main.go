@@ -14,6 +14,7 @@ import (
 
 	"github.com/toncenter/ton-indexer/ton-index-go/internal/gramstat"
 	"github.com/toncenter/ton-indexer/ton-index-go/internal/gramstat/handlers/actions"
+	"github.com/toncenter/ton-indexer/ton-index-go/internal/gramstat/handlers/chain"
 	"github.com/toncenter/ton-indexer/ton-index-go/internal/gramstat/handlers/validators"
 )
 
@@ -42,11 +43,13 @@ func run(log *slog.Logger) error {
 		fmt.Print(gramstat.DailyMigration)
 		fmt.Print(gramstat.StarsSchema)
 		fmt.Print(gramstat.ChainSchema)
+		fmt.Print(strings.Replace(gramstat.ChainSchema, "gramstat.chain_daily", "gramstat.chain_daily_full", 1))
 		fmt.Print(validators.Schema)
 		return nil
 	}
 	if *list {
 		fmt.Println("actions: " + strings.Join(actions.Metrics, ", "))
+		fmt.Println("chain: full-history block flows and burn-corrected daily supply")
 		fmt.Println("validators: elected #34 count and roster by round")
 		fmt.Println("validator_geo: session-stats locations, countries and coverage by round")
 		return nil
@@ -74,6 +77,7 @@ func run(log *slog.Logger) error {
 		return err
 	}
 	registry := []gramstat.Handler{
+		&chain.Handler{CH: ch, RawDB: os.Getenv("GRAMSTAT_CHAIN_RAW_DB"), MetricsDB: os.Getenv("GRAMSTAT_CHAIN_METRICS_DB"), Log: log},
 		&actions.Handler{Source: actions.Postgres{DSN: os.Getenv("GRAMSTAT_PG_DSN")}, Sink: ch, Log: log},
 		&validators.Handler{Source: validators.Postgres{DSN: os.Getenv("GRAMSTAT_PG_DSN")},
 			Verifier: validators.ConfigRPC{URL: strings.TrimRight(os.Getenv("GRAMSTAT_CONFIG_URL"), "/"), APIKey: os.Getenv("GRAMSTAT_CONFIG_API_KEY")},

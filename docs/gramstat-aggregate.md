@@ -159,6 +159,29 @@ values in place, other handlers continue, and the process exits nonzero.
 
 ### Prepared chain intervals and consumer API
 
+The `chain` handler prepares `gramstat.chain_daily_full` from a continuously
+indexed mainnet history. Configure `GRAMSTAT_CHAIN_RAW_DB` (blocks) and
+`GRAMSTAT_CHAIN_METRICS_DB` (account deltas), then include `chain` in `--handlers`.
+The writer needs SELECT on those two source tables and SELECT/INSERT on
+`gramstat.chain_daily_full`. Apply `--print-schema` before enabling the handler.
+
+Every refresh scans deduplicated blocks once (two threads, 90-second query limit,
+2-GiB memory limit) and aggregates daily rows. A 1000-MC settling margin is followed
+by a complete MC/delta-prefix check from MC 3. Missing or unordered coverage aborts
+publication. The compact daily burn-prefix window is evaluated over the whole
+history before any requested date filtering. The latest `(gen_utime, seqno)` MC
+must also be the day's greatest MC, and successive day prefixes must be contiguous.
+This makes the daily cumulative burn exactly the prefix at the selected snapshot.
+See [supply chart semantics](gramstat-supply-chart.md) for the v17 cutoff and the
+verified pre-burning zero baseline. NULL final balances never fall back to earlier
+observations. The first and last two indexed days are conservatively partial.
+
+Rows are replaced by day, not added to prior totals. Source blocks are never
+modified. `gramstat.total_supply` archives are not inputs. Raw source history and
+the API's independently prepared action/validator datasets have separate coverage.
+
+### Legacy bounded chain intervals
+
 `gramstat.chain_daily` holds compact daily flow totals and the last sampled supply
 snapshot from an explicitly audited bounded replay. Its DDL is included in
 `gramstat-aggregate --print-schema`. Preparation is currently manual, using
