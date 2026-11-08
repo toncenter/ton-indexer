@@ -192,7 +192,12 @@ Kvrocks mode.
 
 ### Daily Accounts queries
 
-The accepted baseline is zero before MC 1. Absolute counts therefore require a
+For the published full-history chart, use the [verified opening-state Accounts
+handler](gramstat-accounts-chart.md): MC 2 contains seven active system accounts,
+and the stored delta prefix starts at MC 3. The following zero-opening examples
+describe the earlier transaction-delta convention and omit those initial accounts.
+
+The legacy baseline is zero before MC 1. Those counts therefore require a
 complete prefix from MC 1. A replay of a later interval alone gives changes over
 that interval, not absolute Accounts. Initial zerostate accounts are neglected.
 

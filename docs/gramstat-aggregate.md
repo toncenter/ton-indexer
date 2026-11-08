@@ -159,6 +159,9 @@ values in place, other handlers continue, and the process exits nonzero.
 
 ### Prepared chain intervals and consumer API
 
+Existing-account counts are prepared by the independent `accounts` handler;
+see [Accounts chart and verified baseline](gramstat-accounts-chart.md).
+
 The `chain` handler prepares `gramstat.chain_daily_full` from a continuously
 indexed mainnet history. Configure `GRAMSTAT_CHAIN_RAW_DB` (blocks) and
 `GRAMSTAT_CHAIN_METRICS_DB` (account deltas), then include `chain` in `--handlers`.
