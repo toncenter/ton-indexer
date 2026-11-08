@@ -45,8 +45,26 @@ holding every address in one global hash table. Background merges and ordered
 `minMerge` reads resolve the minima. The states make repeated/partially acknowledged inserts idempotent; no raw
 `FINAL` is needed for these minima or for grouped sending addresses.
 
-Each day processes messages in six-hour LT-bounded chunks across all shards,
-with a 2 GiB query memory limit and external aggregation above 300 MB.
+Before processing days, the handler publishes one immutable scalar lookup for
+the selected MC endpoint. It resolves the first-deployment states once, then
+prepares sparse per-MC cumulative counts and daily activation counts. Subsequent
+days reuse this snapshot; interrupted builds cannot expose partial lookups.
+
+Each day processes messages in one LT-bounded scan across all shards,
+with a 2 GiB query memory limit and external aggregation above 300 MB. A compact
+distinct-sender subquery restricts the lookup. Eligibility is checked on each
+actual message; the exact set handles duplicates without constructing a large
+sender/minute intermediate. Daily totals no longer rescan all lifetime states.
+If a busy day exceeds the memory or execution-time limit, the handler bisects
+the interval on minute boundaries and retries smaller LT-bounded windows. Any
+states emitted by a failed attempt remain harmless: exact union removes duplicate
+addresses. A failure even at one minute leaves the day unpublished. The large
+sender set on 2024-08-27 exercised this path during the historical backfill.
+
+`wallet_counts` includes an interval-first `by_interval` projection so long-range
+daily reads skip neighboring minute/hour rows while retaining strict API limits.
+For a pre-existing table, add this projection and materialize it before serving
+full-history reads; new inserts maintain it automatically.
 Minute states feed **full address strings** to `uniqExact(String)`, without a
 custom 64-bit address hash or approximate sketch. Hour/day states merge minute sets; cached scalar counts
 serve ordinary graph requests without reading the sets. First deployments are
@@ -76,6 +94,15 @@ advancing this manifest, and prove that no later-included shard block can add a
 transaction before `complete_before`. Account-delta continuity alone cannot prove
 that sparse message/deployment writers have finished. The handler independently
 checks one deduplicated MC block and account delta for every MC in the manifest.
+For the native ClickHouse writer, `InsertBatchClickhouse::start_up` inserts
+transactions, messages, blocks and deployments **before** account deltas. Since
+commit `b4a0685` (before the full-history run), those deltas are explicitly the
+completion marker, including MCs without deployments. With this writer lineage
+verified, a continuous deduplicated delta prefix proves completion of these
+earlier writes. The safe transaction-time horizon is the minimum timestamp of
+all shard tips in `shard_state` at that endpoint, matched against `blocks`, not
+the masterchain timestamp alone.
+
 The source manifest publisher is separate from this handler; no unverified
 watermark is automatically promoted to a verified one.
 
@@ -167,3 +194,33 @@ in the first MC of the following day. Ending the source at the day's last MC los
 six distinct active wallets. The source manifest's transaction-time horizon,
 rather than MC calendar date, is therefore essential. A regression fixture covers
 this distinction for both daily activity and daily versus cumulative activations.
+
+### Preparation optimization
+
+Query-log profiling of the original 62.6-second run found 37.9 seconds in two
+full lifetime-state aggregations and 23.6 seconds in four activity joins; the
+rollups themselves needed less than a second. The immutable scalar lookup and
+cached activation totals remove that repeated lifetime work. Building the lookup
+and both activation summaries took 28.5 seconds **once** for the whole prefix.
+With the snapshot ready, the same 2024-10-13 day took **7.44 seconds**. Three
+additional days (October 10–12) took **23.15 seconds total**. All 1,440 minute
+counts, hour/day unions and the final cumulative MC value still matched the
+independent raw queries. Interactive readers and their schema are unchanged.
+
+### Beginning-of-history validation
+
+Archived `getBlockTransactionsExt` responses for mainnet MC 1 and 2 were decoded
+with `@ton/core`, and each transaction cell hash checked against the returned
+transaction ID. MC 1 contains nine transactions; MC 2 contains eleven. All are
+`active → active` or `nonexist → nonexist`: neither block contains a deployment.
+The [verified MC 2 account baseline](accounts-baseline.json) proves that the
+basechain is still its empty zerostate. Thus no qualifying wallet deployments
+are omitted before the native full-history run's MC 3 boundary.
+
+Block root hashes (base64):
+
+* MC 1: `8GYhhrigd8CwZGrRT59iulLDcgiTYuvOAzFJxugc0Ts=`
+* MC 2: `4bzgnFItQjTVEMYL9c/VHshMJttG9gDIXCzsMQdjKSU=`
+
+This validation concerns the **current first qualifying deployment definition**,
+not the older first-ever-active or execution-code definitions.

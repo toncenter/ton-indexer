@@ -15,6 +15,27 @@ CREATE TABLE IF NOT EXISTS gramstat.wallet_progress (
  source_id String, registry String, through_mc UInt32
 ) ENGINE=MergeTree ORDER BY (source_id, registry, through_mc);
 
+-- Immutable, scalar lookup for one complete first-deployment prefix. Build once
+-- per backfill snapshot, not once per day/chunk. UUID publication makes retries
+-- safe without FINAL or GROUP BY over the full address history on every read.
+CREATE TABLE IF NOT EXISTS gramstat.wallet_first_lookup (
+ source_id String, registry String, lookup_id UUID, account String,
+ first_lt UInt64, first_mc UInt32, first_utime UInt32
+) ENGINE=MergeTree ORDER BY (source_id, registry, lookup_id, account);
+
+CREATE TABLE IF NOT EXISTS gramstat.wallet_first_mc (
+ source_id String, registry String, lookup_id UUID,
+ mc_seqno UInt32, activations UInt64, activated UInt64
+) ENGINE=MergeTree ORDER BY (source_id, registry, lookup_id, mc_seqno);
+
+CREATE TABLE IF NOT EXISTS gramstat.wallet_first_daily (
+ source_id String, registry String, lookup_id UUID, day Date, activations UInt64
+) ENGINE=MergeTree ORDER BY (source_id, registry, lookup_id, day);
+
+CREATE TABLE IF NOT EXISTS gramstat.wallet_lookup_versions (
+ source_id String, registry String, through_mc UInt32, lookup_id UUID
+) ENGINE=MergeTree ORDER BY (source_id, registry, through_mc, lookup_id);
+
 -- A run is invisible until wallet_days is written. Partial insert failures and
 -- retries cannot change an already published day or double its distinct counts.
 CREATE TABLE IF NOT EXISTS gramstat.wallet_activity (
@@ -25,7 +46,8 @@ ORDER BY (source_id, registry, day, run_id, step, bucket);
 
 CREATE TABLE IF NOT EXISTS gramstat.wallet_counts (
  source_id String, registry String, day Date, run_id UUID,
- step UInt32, bucket UInt32, active UInt64
+ step UInt32, bucket UInt32, active UInt64,
+ PROJECTION by_interval (SELECT * ORDER BY (source_id, registry, step, day, run_id, bucket))
 ) ENGINE=MergeTree PARTITION BY toYYYYMM(day)
 ORDER BY (source_id, registry, day, run_id, step, bucket);
 

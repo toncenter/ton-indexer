@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"net/url"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/toncenter/ton-indexer/ton-index-go/internal/gramstat"
@@ -20,6 +21,15 @@ var Schema string
 
 //go:embed first.sql
 var firstSQL string
+
+//go:embed lookup.sql
+var lookupSQL string
+
+//go:embed lookup_mc.sql
+var lookupMCSQL string
+
+//go:embed lookup_daily.sql
+var lookupDailySQL string
 
 //go:embed minutes.sql
 var minutesSQL string
@@ -186,6 +196,90 @@ func window(req gramstat.Request, before uint32) (time.Time, time.Time, error) {
 
 func set(p url.Values, k string, n uint64) { p.Set("param_"+k, strconv.FormatUint(n, 10)) }
 
+func newID() (string, error) {
+	id := [16]byte{}
+	if _, err := rand.Read(id[:]); err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("%x-%x-%x-%x-%x", id[:4], id[4:6], id[6:8], id[8:10], id[10:]), nil
+}
+
+func (h *Handler) ensureLookup(ctx context.Context, p url.Values) error {
+	if p.Get("param_lookup") != "" {
+		return nil
+	}
+	var ready struct {
+		Data []struct {
+			ID string `json:"lookup_id"`
+		} `json:"data"`
+	}
+	if err := h.query(ctx, `SELECT toString(lookup_id) AS lookup_id FROM {sink:Identifier}.wallet_lookup_versions
+ WHERE source_id={source:String} AND registry={registry:String} AND through_mc={end:UInt32}
+ ORDER BY lookup_id LIMIT 1 FORMAT JSON`, p, &ready); err != nil {
+		return err
+	}
+	if len(ready.Data) > 0 {
+		p.Set("param_lookup", ready.Data[0].ID)
+		return nil
+	}
+	id, err := newID()
+	if err != nil {
+		return err
+	}
+	p.Set("param_lookup", id)
+	for _, q := range []string{lookupSQL, lookupMCSQL, lookupDailySQL,
+		`INSERT INTO {sink:Identifier}.wallet_lookup_versions SELECT {source:String},{registry:String},{end:UInt32},{lookup:UUID}`} {
+		if err := h.query(ctx, q, p, nil); err != nil {
+			p.Del("param_lookup")
+			return fmt.Errorf("prepare lookup snapshot: %w", err)
+		}
+	}
+	if h.Log != nil {
+		h.Log.Info("wallet lookup prepared", "through_mc", p.Get("param_end"))
+	}
+	return nil
+}
+
+func (h *Handler) activity(ctx context.Context, p url.Values, from, to uint64, lo, hi string) error {
+	set(p, "from", from)
+	set(p, "to", to)
+	p.Set("param_lo", lo)
+	p.Set("param_hi", hi)
+	err := h.query(ctx, minutesSQL, p, nil)
+	if err == nil {
+		return nil
+	}
+	// Failed inserts may have emitted partial states. Retrying smaller aligned
+	// windows in the same run remains exact: all downstream counts merge sets.
+	if to-from <= 60 || !(strings.Contains(err.Error(), "Code: 241.") || strings.Contains(err.Error(), "Code: 159.")) {
+		return err
+	}
+	middle := from + ((to-from)/120)*60
+	if h.Log != nil {
+		h.Log.Warn("splitting wallet activity window", "from", from, "to", to)
+	}
+	for _, span := range [][2]uint64{{from, middle}, {middle, to}} {
+		set(p, "from", span[0])
+		set(p, "to", span[1])
+		var bounds struct {
+			N  uint64 `json:"n,string"`
+			Lo string `json:"lo"`
+			Hi string `json:"hi"`
+		}
+		if e := h.query(ctx, `SELECT toString(count()) AS n,toString(min(start_lt)) AS lo,toString(max(end_lt)) AS hi
+ FROM {raw:Identifier}.blocks WHERE gen_utime >= {from:UInt32} AND gen_utime < {to:UInt32}
+ AND mc_block_seqno BETWEEN {first:UInt32} AND {end:UInt32} FORMAT JSONEachRow`, p, &bounds); e != nil {
+			return e
+		}
+		if bounds.N > 0 {
+			if e := h.activity(ctx, p, span[0], span[1], bounds.Lo, bounds.Hi); e != nil {
+				return e
+			}
+		}
+	}
+	return nil
+}
+
 func (h *Handler) day(ctx context.Context, p url.Values, s source, d time.Time) error {
 	p.Set("param_day", d.Format(time.DateOnly))
 	set(p, "verified", uint64(s.Verified))
@@ -203,11 +297,14 @@ func (h *Handler) day(ctx context.Context, p url.Values, s source, d time.Time) 
 	if existing.N > 0 {
 		return nil
 	}
-	id := [16]byte{}
-	if _, err := rand.Read(id[:]); err != nil {
+	if err := h.ensureLookup(ctx, p); err != nil {
 		return err
 	}
-	p.Set("param_run", fmt.Sprintf("%x-%x-%x-%x-%x", id[:4], id[4:6], id[6:8], id[8:10], id[10:]))
+	id, err := newID()
+	if err != nil {
+		return err
+	}
+	p.Set("param_run", id)
 	p.Set("param_day", d.Format(time.DateOnly))
 	set(p, "day_from", uint64(d.Unix()))
 	set(p, "day_to", uint64(d.AddDate(0, 0, 1).Unix()))
@@ -220,7 +317,7 @@ func (h *Handler) day(ctx context.Context, p url.Values, s source, d time.Time) 
 	}
 	// Blocks bound transaction LTs, across all shards, not just masterchain LTs.
 	// The manifest horizon must ensure no future included block has tx.now < to.
-	if err := h.query(ctx, `SELECT intDiv(toUInt32(gen_utime),21600)*21600 AS chunk,
+	if err := h.query(ctx, `SELECT intDiv(toUInt32(gen_utime),86400)*86400 AS chunk,
  toString(min(start_lt)) AS lo,toString(max(end_lt)) AS hi
  FROM {raw:Identifier}.blocks
  WHERE gen_utime >= {day_from:UInt32} AND gen_utime < {day_to:UInt32}
@@ -229,11 +326,7 @@ func (h *Handler) day(ctx context.Context, p url.Values, s source, d time.Time) 
 		return err
 	}
 	for _, chunk := range chunks.Data {
-		set(p, "from", uint64(chunk.Start))
-		set(p, "to", uint64(chunk.Start)+21600)
-		p.Set("param_lo", chunk.Lo)
-		p.Set("param_hi", chunk.Hi)
-		if err := h.query(ctx, minutesSQL, p, nil); err != nil {
+		if err := h.activity(ctx, p, uint64(chunk.Start), uint64(chunk.Start)+86400, chunk.Lo, chunk.Hi); err != nil {
 			return err
 		}
 	}
@@ -275,11 +368,13 @@ func (h *Handler) day(ctx context.Context, p url.Values, s source, d time.Time) 
 		Opening     string `json:"opening"`
 		Activations string `json:"activations"`
 	}
-	if err := h.query(ctx, `SELECT toString(countIf(initial.2 < {opening_before:UInt64})) AS opening,
- toString(countIf(initial.3 >= {day_from:UInt32} AND initial.3 < {day_to:UInt32})) AS activations
- FROM (SELECT minMerge(first) AS initial FROM {sink:Identifier}.wallet_first
- WHERE source_id={source:String} AND registry={registry:String} GROUP BY account)
- WHERE initial.2 <= {end:UInt32} FORMAT JSONEachRow`, p, &totals); err != nil {
+	if err := h.query(ctx, `SELECT
+ toString(ifNull((SELECT activated FROM {sink:Identifier}.wallet_first_mc
+ WHERE source_id={source:String} AND registry={registry:String} AND lookup_id={lookup:UUID}
+ AND mc_seqno < {opening_before:UInt64} ORDER BY mc_seqno DESC LIMIT 1),toUInt64(0))) AS opening,
+ (SELECT toString(sum(activations)) FROM {sink:Identifier}.wallet_first_daily
+ WHERE source_id={source:String} AND registry={registry:String} AND lookup_id={lookup:UUID}
+ AND day=toDate({day:String})) AS activations FORMAT JSONEachRow`, p, &totals); err != nil {
 		return err
 	}
 	p.Set("param_opening", totals.Opening)

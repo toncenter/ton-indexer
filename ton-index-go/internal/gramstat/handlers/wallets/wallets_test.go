@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/url"
 	"os/exec"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -16,9 +17,26 @@ import (
 type localStore struct {
 	binary, path string
 	fail         string
+	memoryRetry  bool
+	splits       int
 }
 
 func (s *localStore) Query(ctx context.Context, q string, p url.Values) ([]byte, error) {
+	if s.memoryRetry && strings.Contains(q, "WITH senders AS") {
+		a, _ := strconv.ParseUint(p.Get("param_from"), 10, 64)
+		b, _ := strconv.ParseUint(p.Get("param_to"), 10, 64)
+		if b-a > 43200 {
+			s.splits++
+			// Simulate an error after states have already reached the table.
+			s.memoryRetry = false
+			_, err := s.Query(ctx, q, p)
+			s.memoryRetry = true
+			if err != nil {
+				return nil, err
+			}
+			return nil, fmt.Errorf("Code: 241. MEMORY_LIMIT_EXCEEDED")
+		}
+	}
 	if s.fail != "" && strings.Contains(q, s.fail) {
 		return nil, fmt.Errorf("injected insert failure")
 	}
@@ -109,7 +127,16 @@ func TestExactPublicationAndRetry(t *testing.T) {
 	h := &Handler{CH: s, SourceID: "fixture"}
 	day := time.Date(2024, 10, 13, 0, 0, 0, 0, time.UTC)
 	req := gramstat.Request{From: day, To: day.Add(24 * time.Hour)}
+	s.fail = "wallet_first_daily\n"
+	if err = h.Run(ctx, req); err == nil {
+		t.Fatal("expected incomplete lookup failure")
+	}
+	s.fail = ""
+	if got := string(run("SELECT count() FROM gramstat.wallet_lookup_versions", nil)); got != "0\n" {
+		t.Fatal("partial lookup published", got)
+	}
 	s.fail = "wallet_counts\n"
+	s.memoryRetry = true
 	if err = h.Run(ctx, req); err == nil {
 		t.Fatal("expected failed publication")
 	}
@@ -121,6 +148,12 @@ func TestExactPublicationAndRetry(t *testing.T) {
 		if err = h.Run(ctx, req); err != nil {
 			t.Fatal(err)
 		}
+	}
+	if got := string(run("SELECT count() FROM gramstat.wallet_lookup_versions", nil)); got != "1\n" {
+		t.Fatal("completed lookup was rebuilt during retry", got)
+	}
+	if s.splits == 0 {
+		t.Fatal("memory fallback was not exercised")
 	}
 	p := url.Values{"param_sink": {"gramstat"}, "param_source": {"fixture"}, "param_registry": {Registry}, "param_from": {"1728777600"}, "param_to": {"1728864000"}, "param_step": {"60"}}
 	var result struct {
