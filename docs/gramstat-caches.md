@@ -6,6 +6,40 @@ They work across parallel MCs and across the ClickHouse/PostgreSQL pipelines.
 The keys are content identities, not the most recently processed MC. Retries and
 out-of-order blocks therefore cannot reuse a different state's value.
 
+## CellDB RocksDB block cache
+
+Both indexer binaries accept `--celldb-cache-size <bytes>` to set the shared
+scanner's **CellDB-only** block-cache budget, for example
+`--celldb-cache-size 1073741824` for 1 GiB. This applies independently of
+`--gramstat`. Omission or `0` preserves upstream defaults; it does not disable
+caching. Values are unsigned decimal bytes (suffixes such as `1G` are rejected).
+
+With the pinned TON/RocksDB revision and the scanner's default V1 CellDB options,
+the implicit cache is **32 MiB AutoHyperClockCache**. A positive explicit budget
+uses TON's `RocksDb::create_cache`, currently **LRU**. Therefore a default-versus-
+explicit comparison changes both capacity and policy; use an explicit 32-MiB
+control when measuring the effect of capacity. Existing partitioned SST filters
+and indexes can use the block cache even when top-level metadata caching is off.
+
+This is separate from the parsed-account/parent caches below, ZFS ARC, archive
+database caches and allocator overhead, and is not a process RSS limit. For
+large historical reads, inspect `<--working-dir>/secondary_logs/celldb_stats.txt`
+(interval filter/index/data hits, misses and bytes inserted), physical-device IO,
+and memory pressure. Compare identical MC ranges and logical outputs; a change
+in transactions per MC makes raw MC/s comparisons misleading.
+
+A bounded read-only mainnet comparison on 2026-11-08 used MC
+**37300000..37300511**, a 128-MC warmup, four workers/four in-flight MCs, and
+default/32-MiB-LRU/1-GiB-LRU arms repeated in reverse order. Fetching, parsing,
+getters, account deltas and deployments processed **862 blocks / 46,962 tx** per
+arm. The two-run aggregate rates were **7.22 / 5.93 / 10.45 MC/s**, respectively.
+The 1-GiB cache reduced read syscall count by **59.8%** and userspace read volume
+by **57.2%** versus default; all six content digests agreed (block IDs/metrics,
+tx/state hashes, balances, interface kinds/methods, deployment IDs and deltas).
+This probe excludes sink/trace/action processing and cross-MC parent caching,
+does not compare every getter result field, and shares the host with production.
+Its **1.45x** speedup is not a measurement of full-indexer throughput.
+
 ## Contract methods
 
 `parse_contract_methods` caches successful method lists by the **original account
