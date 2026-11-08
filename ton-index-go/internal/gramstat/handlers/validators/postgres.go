@@ -115,14 +115,15 @@ FROM public.validator_cycle_members WHERE utime_since=ANY($1::integer[]) ORDER B
 	for i := range rounds {
 		r := &rounds[i]
 		// This is an activation candidate, not proof by timestamp. Config #34 is
-		// separately decoded and compared before any round is published.
+		// separately decoded and compared before any round is published. Network
+		// pauses can delay this block by hours; search the round, not only 5 minutes.
 		var key bool
 		var previous int64
 		err = tx.QueryRow(ctx, `SELECT b.seqno,b.gen_utime,b.root_hash::text,b.file_hash::text,b.key_block,p.gen_utime
 FROM (SELECT seqno,gen_utime,root_hash,file_hash,key_block FROM public.blocks
-      WHERE workchain=-1 AND gen_utime >= $1 AND gen_utime < $1+300
+      WHERE workchain=-1 AND gen_utime >= $1 AND gen_utime < $2
       ORDER BY gen_utime,seqno LIMIT 1) b
-JOIN public.blocks p ON p.workchain=-1 AND p.seqno=b.seqno-1 LIMIT 1`, int64(r.Since)).Scan(&r.AnchorMC, &r.AnchorTime, &r.AnchorRoot, &r.AnchorFile, &key, &previous)
+JOIN public.blocks p ON p.workchain=-1 AND p.seqno=b.seqno-1 LIMIT 1`, int64(r.Since), int64(r.Until)).Scan(&r.AnchorMC, &r.AnchorTime, &r.AnchorRoot, &r.AnchorFile, &key, &previous)
 		if err == pgx.ErrNoRows {
 			r.AnchorMC = 0
 			continue

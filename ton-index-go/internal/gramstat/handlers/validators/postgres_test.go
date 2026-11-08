@@ -92,4 +92,15 @@ INSERT INTO validator_cycles VALUES(100,200,2,1,9007199254741000,12),(300,400,2,
 	if rows[0].AnchorMC != 0 || rows[0].Through != 150 || rows[0].Partial != 1 {
 		t.Fatalf("bad boundary accepted or partial lost: %+v", rows)
 	}
+	// A real network pause must not be mistaken for a missing activation block.
+	if _, err = fixture.Exec(ctx, `UPDATE validator_cycles SET utime_until=2000 WHERE utime_since=100;
+UPDATE blocks SET gen_utime=600,key_block=true WHERE seqno=10;
+UPDATE blocks SET gen_utime=601 WHERE seqno=11;
+UPDATE blocks SET gen_utime=2100 WHERE seqno=12;`); err != nil {
+		t.Fatal(err)
+	}
+	rows, err = source.Collect(ctx, time.Unix(100, 0), time.Unix(250, 0), time.Time{}, nil)
+	if err != nil || len(rows) != 1 || rows[0].AnchorMC != 10 || rows[0].AnchorTime != 600 {
+		t.Fatalf("delayed activation lost: %+v %v", rows, err)
+	}
 }
