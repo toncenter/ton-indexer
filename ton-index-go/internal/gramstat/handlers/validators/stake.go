@@ -18,32 +18,38 @@ import (
 	"github.com/toncenter/ton-indexer/ton-index-go/internal/gramstat"
 )
 
-const StakeVersion = "stake-v2"
+const StakeVersion = "stake-v3"
 
 //go:embed stake_schema.sql
 var StakeSchema string
 
 type StakeRound struct {
-	Since         uint32  `json:"utime_since"`
-	Until         uint32  `json:"utime_until"`
-	ElectionID    *uint32 `json:"election_id"`
-	Submitted     *string `json:"submitted_nanogram"`
-	Selected      *string `json:"selected_nanogram"`
-	Remaining     *string `json:"remaining_nanogram"`
-	Reward        *string `json:"reward_nanogram"`
-	ElectionMC    *uint32 `json:"election_source_mc_seqno"`
-	CycleMC       uint32  `json:"cycle_source_mc_seqno"`
-	UnfreezeMC    *uint32 `json:"unfreeze_mc_seqno"`
-	UnfreezeTime  *uint32 `json:"unfreeze_utime"`
-	UnfreezeHash  *string `json:"unfreeze_tx_hash"`
-	ResultHash    *string `json:"result_vset_hash"`
-	ConfigHash    string  `json:"config34_hash"`
-	RosterDigest  string  `json:"roster_digest"`
-	ResultsSource string  `json:"results_source"`
-	Status        string  `json:"status"`
-	SnapshotHash  string  `json:"snapshot_hash"`
-	Version       string  `json:"calc_version"`
-	CalculatedAt  string  `json:"calculated_at"`
+	Since           uint32  `json:"utime_since"`
+	Until           uint32  `json:"utime_until"`
+	ElectionID      *uint32 `json:"election_id"`
+	Submitted       *string `json:"submitted_nanogram"`
+	Selected        *string `json:"selected_nanogram"`
+	Remaining       *string `json:"remaining_nanogram"`
+	Reward          *string `json:"reward_nanogram"`
+	APR             *string `json:"apr_percent"`
+	APRCycleSeconds *uint32 `json:"apr_cycle_seconds"`
+	APRNextUntil    *uint32 `json:"apr_next_utime_until"`
+	APRNextHash     *string `json:"apr_next_config34_hash"`
+	APRNextDigest   *string `json:"apr_next_roster_digest"`
+	APRStatus       string  `json:"apr_status"`
+	ElectionMC      *uint32 `json:"election_source_mc_seqno"`
+	CycleMC         uint32  `json:"cycle_source_mc_seqno"`
+	UnfreezeMC      *uint32 `json:"unfreeze_mc_seqno"`
+	UnfreezeTime    *uint32 `json:"unfreeze_utime"`
+	UnfreezeHash    *string `json:"unfreeze_tx_hash"`
+	ResultHash      *string `json:"result_vset_hash"`
+	ConfigHash      string  `json:"config34_hash"`
+	RosterDigest    string  `json:"roster_digest"`
+	ResultsSource   string  `json:"results_source"`
+	Status          string  `json:"status"`
+	SnapshotHash    string  `json:"snapshot_hash"`
+	Version         string  `json:"calc_version"`
+	CalculatedAt    string  `json:"calculated_at"`
 }
 
 type StakeResult struct {
@@ -111,7 +117,7 @@ func (h *StakeHandler) Run(ctx context.Context, req gramstat.Request) error {
 	}
 	var ready []StakeRound
 	var failures []error
-	var submitted, selected, remaining, unverified int
+	var submitted, selected, remaining, apr, unverified int
 	for _, in := range inputs {
 		proof, ok := verified[in.Since]
 		if !ok || proof.Version != Version || proof.Until != in.Until || proof.Hash == "" {
@@ -137,6 +143,11 @@ func (h *StakeHandler) Run(ctx context.Context, req gramstat.Request) error {
 		if row.Remaining != nil {
 			remaining++
 		}
+		prepareAPR(&row, proof, verified[row.Until], req.AsOf)
+		sealStake(&row, req.AsOf)
+		if row.APR != nil {
+			apr++
+		}
 		if stored[row.Since] != row.SnapshotHash {
 			ready = append(ready, row)
 		}
@@ -144,7 +155,7 @@ func (h *StakeHandler) Run(ctx context.Context, req gramstat.Request) error {
 	if err = h.Sink.WriteStake(ctx, ready); err != nil {
 		return err
 	}
-	h.Log.Info("validator stake published", "changed", len(ready), "submitted", submitted, "selected", selected, "remaining", remaining, "unverified", unverified, "invalid", len(failures))
+	h.Log.Info("validator stake published", "changed", len(ready), "submitted", submitted, "selected", selected, "remaining", remaining, "apr", apr, "unverified", unverified, "invalid", len(failures))
 	return errors.Join(failures...)
 }
 
@@ -210,12 +221,17 @@ func prepareStake(in StakeInput, proof Coverage, result *StakeResult, db string,
 	if problem != nil {
 		r.Status = "invalid_source"
 	}
-	// Hash the payload, not the refresh clock; unchanged hourly runs write nothing.
+	sealStake(&r, now)
+	return r, problem
+}
+
+func sealStake(r *StakeRound, now time.Time) {
+	// Hash the payload, not the refresh clock or the previous hash.
+	r.SnapshotHash, r.CalculatedAt = "", ""
 	data, _ := json.Marshal(r)
 	hash := sha256.Sum256(data)
 	r.SnapshotHash = hex.EncodeToString(hash[:])
 	r.CalculatedAt = timestamp(now)
-	return r, problem
 }
 
 var stakeDatabase = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)

@@ -67,7 +67,7 @@ func run(log *slog.Logger) error {
 		fmt.Println("wallets: exact minute/hour/day activity and per-MC first activations")
 		fmt.Println("validators: elected #34 count and roster by round")
 		fmt.Println("validator_geo: session-stats locations, countries and coverage by round")
-		fmt.Println("validator_stake: submitted, selected and remaining principal by verified round")
+		fmt.Println("validator_stake: principal, rewards and two-round staking APR by verified round")
 		return nil
 	}
 	if *timeout <= 0 {

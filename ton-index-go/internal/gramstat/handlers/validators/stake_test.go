@@ -67,11 +67,12 @@ func TestStakeExactPrincipalAndProvenance(t *testing.T) {
 }
 
 type stakeFixture struct {
-	inputs  []StakeInput
-	results map[uint32]StakeResult
-	hashes  map[uint32]string
-	written []StakeRound
-	from    time.Time
+	inputs   []StakeInput
+	results  map[uint32]StakeResult
+	hashes   map[uint32]string
+	written  []StakeRound
+	from     time.Time
+	coverage map[uint32]Coverage
 }
 
 func (s *stakeFixture) CollectStake(_ context.Context, from, _ time.Time) ([]StakeInput, error) {
@@ -79,6 +80,9 @@ func (s *stakeFixture) CollectStake(_ context.Context, from, _ time.Time) ([]Sta
 	return s.inputs, nil
 }
 func (s *stakeFixture) Coverage(context.Context, bool) (map[uint32]Coverage, error) {
+	if s.coverage != nil {
+		return s.coverage, nil
+	}
 	return map[uint32]Coverage{100: {Since: 100, Until: 200, Hash: strings.Repeat("a", 64), Version: Version}}, nil
 }
 func (s *stakeFixture) StakeResults(context.Context, string, time.Time) (map[uint32]StakeResult, error) {

@@ -35,6 +35,46 @@ zero rewards, zero principal, or necessarily an unfinished round.
 
 ## Operation
 
+### Two-round staking APR (`stake-v3`)
+
+The same hourly `validator_stake` handler also prepares:
+
+```text
+apr_percent = reward_nanogram / selected_nanogram
+              * (365 * 86400) / apr_cycle_seconds * 100
+apr_cycle_seconds = next.utime_until - current.utime_since
+```
+
+The next verified round must start exactly at the current round's end. Both
+intervals must be closed and fully covered, with verified config/roster proofs.
+Do not double a single historical interval or skip a missing/ambiguous round.
+Ordinary mainnet intervals are 65,536 s each (18 h, 12 min, 16 s), giving a
+131,072 s capital cycle (36 h, 24 min, 32 s). This is an effective capital-use
+cycle, not a measurement of continuous Elector custody. Use the stored verified
+intervals for historical changes; unresolved historical rounds remain gaps.
+
+The current election must have a positive Selected amount and a verified released
+Reward. A successor does not need its own release result. Missing amounts, zero
+denominators, unfinished intervals and absent successors produce NULL, with an
+`apr_status` explaining the missing prerequisite. Known zero rewards produce zero.
+Amounts remain integer nanoGRAM; Go `big.Int`/`big.Rat` avoids float conversion.
+Only the final percentage is rounded half away from zero to 12 decimal places,
+stored as `Nullable(Decimal(76,12))` (enough for the full source amount domain).
+
+This is simple annualized reward/Selected, with no compounding, pool fee deduction
+or principal-loss subtraction. Remaining after penalties determines reward
+allocation, not this chart's denominator. It is a network aggregate, not a claim
+that a penalized validator or a pool depositor realizes this exact rate.
+
+`apr_next_utime_until`, `apr_next_config34_hash`, `apr_next_roster_digest` record
+the successor proof. These fields and the APR status/value participate in the
+snapshot hash. All-history hourly reconciliation repairs late rewards, corrected
+intervals and removed successors without rewriting unchanged rows. Coverage is
+read for all rounds even when an explicit input date range ends before the next
+round. Apply the additional idempotent ALTER in `--print-schema` before upgrading.
+
+### Running
+
 Apply the DDL emitted by `--print-schema` as the destination administrator.
 Grant the aggregate role SELECT/INSERT on `gramstat.validator_stake_rounds`,
 SELECT on the configured source's `validator_round_results`, and its existing
