@@ -31,8 +31,7 @@ async def get_nft_offer(address: str) -> NftOfferData | None:
     return parse_nft_offer(address, data)
 
 
-async def _nft_offer_data(offer_address: str, offer: NftOfferData, transfer: TonTransferBlock | None,
-                          fine: TonTransferBlock | None) -> dict:
+async def _nft_offer_data(offer_address: str, offer: NftOfferData, transfer: TonTransferBlock | None) -> dict:
     nft = await context.interface_repository.get().get_nft_item(offer.nft.to_str(is_user_friendly=False).upper())
     return {
         'source': AccountId(offer.buyer),
@@ -41,8 +40,6 @@ async def _nft_offer_data(offer_address: str, offer: NftOfferData, transfer: Ton
         'nft_address': AccountId(offer.nft),
         'nft_collection': AccountId(nft.collection_address) if nft is not None and nft.collection_address else None,
         'nft_index': nft.index if nft is not None else None,
-        'royalty_amount': Amount(fine.value) if fine is not None else None,
-        'royalty_address': fine.data['destination'] if fine is not None else None,
     }
 
 
@@ -61,11 +58,14 @@ class NftOfferCancelMatcher(BlockMatcher):
         if offer is None or AccountId(msg.source) != AccountId(offer.buyer):
             return []
         transfers = _transfers(block)
-        # When the royalty address is the buyer, only creation order distinguishes fine from refund.
-        fine = transfers[0] if len(transfers) > 1 else None
+        # When the fee address is the buyer, only creation order distinguishes fee from refund.
+        fee = transfers[0] if len(transfers) > 1 else None
         refund = transfers[-1] if transfers and transfers[-1].data['destination'] == AccountId(offer.buyer) else None
-        new_block = NftOfferBlock('nft_offer_cancel', await _nft_offer_data(msg.destination, offer, refund, fine))
-        # An unpaid fine aborts the action phase and emits no messages.
+        data = await _nft_offer_data(msg.destination, offer, refund)
+        data['fee_amount'] = Amount(fee.value) if fee is not None else None
+        data['fee_address'] = fee.data['destination'] if fee is not None else None
+        new_block = NftOfferBlock('nft_offer_cancel', data)
+        # An unpaid fee aborts the action phase and emits no messages.
         new_block.failed = block.event_nodes[0].get_tx().aborted
         new_block.merge_blocks([block] + other_blocks + ([refund] if refund is not None else []))
         return [new_block]
@@ -88,7 +88,7 @@ class NftOfferExternalCancelMatcher(BlockMatcher):
             return []
         expired = block.event_nodes[0].get_tx().now >= offer.expires_at
         btype = 'nft_offer_expire' if expired else 'nft_offer_signed_cancel'
-        new_block = NftOfferBlock(btype, await _nft_offer_data(msg.destination, offer, refund, None))
+        new_block = NftOfferBlock(btype, await _nft_offer_data(msg.destination, offer, refund))
         new_block.merge_blocks([block] + other_blocks + [refund])
         return [new_block]
 
@@ -108,10 +108,10 @@ class NftOfferCreateMatcher(BlockMatcher):
         offer = parse_nft_offer_state_init(msg.destination, msg.init_state.body)
         if offer is None or AccountId(msg.source) != AccountId(offer.buyer):
             return []
-        data = await _nft_offer_data(msg.destination, offer, block, None)
+        data = await _nft_offer_data(msg.destination, offer, block)
         data['full_price'] = Amount(offer.price)
-        data['royalty_amount'] = Amount(offer.price * offer.royalty_bps // 10000)
-        data['royalty_address'] = AccountId(offer.royalty_address)
+        data['fee_amount'] = Amount(offer.fee_amount)
+        data['fee_address'] = AccountId(offer.fee_address)
         new_block = NftOfferBlock('nft_offer_create', data)
         new_block.failed = msg.transaction.aborted
         new_block.merge_blocks([block] + other_blocks)
@@ -143,21 +143,22 @@ class NftOfferAcceptMatcher(BlockMatcher):
         payout, rest = transfers
         if payout.data['source'] != offer_address or rest.data['source'] != offer_address:
             return []
-        if payout.data['destination'] != seller or rest.data['destination'] != AccountId(offer.royalty_address):
+        if payout.data['destination'] != seller or rest.data['destination'] != AccountId(offer.fee_address):
             return []
         nft = block.data['nft']
         new_block = NftOfferBlock('nft_offer_accept', {
             'source': seller,
             'destination': AccountId(offer.recipient),
+            'buyer': AccountId(offer.buyer),
             'offer': offer_address,
             'amount': Amount(payout.value),
             'nft_address': nft['address'],
             'nft_collection': nft['collection']['address'] if nft['collection'] else None,
             'nft_index': nft['index'],
             'query_id': block.data['query_id'],
-            'price': Amount(offer.price + offer.price * offer.royalty_bps // 10000),
-            'royalty_amount': Amount(rest.value),
-            'royalty_address': AccountId(offer.royalty_address),
+            'price': Amount(offer.price),
+            'fee_amount': Amount(offer.fee_amount),
+            'fee_address': AccountId(offer.fee_address),
         })
         # The onward transfer is non-bounceable, so rejection leaves the NFT with the offer.
         new_block.failed = onward.failed

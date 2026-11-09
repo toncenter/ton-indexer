@@ -23,8 +23,8 @@ class NftOfferData:
     buyer: Address
     recipient: Address
     seller: Address
-    royalty_address: Address
-    royalty_bps: int
+    fee_address: Address
+    fee_bps: int
 
     def __init__(self, slice: Slice):
         config = slice.load_ref().to_slice()
@@ -39,9 +39,13 @@ class NftOfferData:
         self.buyer = parties.load_address()
         self.recipient = parties.load_address()
         self.seller = parties.load_address()
-        royalty = config.load_ref().to_slice()
-        self.royalty_address = royalty.load_address()
-        self.royalty_bps = royalty.load_uint(16)
+        fee = config.load_ref().to_slice()
+        self.fee_address = fee.load_address()
+        self.fee_bps = fee.load_uint(16)
+
+    @property
+    def fee_amount(self) -> int:
+        return self.price * self.fee_bps // 10000
 
 
 def is_nft_offer(address: Address, data: Cell) -> bool:

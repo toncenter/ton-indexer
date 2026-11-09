@@ -23,8 +23,8 @@ matcher nft_offer_create {
         nft_collection:  account(nft.collection_address)
         nft_index:       nft.index
         full_price:      amount(offer.price)
-        royalty_amount:  amount(offer.royalty_amount)
-        royalty_address: offer.royalty_address
+        fee_amount:      amount(offer.fee_amount)
+        fee_address:     offer.fee_address
     }
 }
 
@@ -32,9 +32,9 @@ matcher nft_offer_cancel {
     produces nft_offer_cancel
     entry    @cancel
 
-    # The fine precedes the refund even when both go to the buyer.
+    # The fee precedes the refund even when both go to the buyer.
     op NftOfferCancelByBuyer @cancel
-      -> { peek btype ton_transfer @fine
+      -> { peek btype ton_transfer @fee
          ; btype ton_transfer @refund where (.destination == cancel.data.source) }
 
     let offer = lookup nft_offer(cancel.msg.destination)
@@ -47,12 +47,12 @@ matcher nft_offer_cancel {
         nft_address:     offer.nft
         nft_collection:  account(nft.collection_address)
         nft_index:       nft.index
-        royalty_amount:  amount(fine.msg.value)
-        royalty_address: account(fine.msg.destination)
+        fee_amount:      amount(fee.msg.value)
+        fee_address:     account(fee.msg.destination)
     }
 }
 
-matcher nft_offer_cancel_without_fine {
+matcher nft_offer_cancel_without_fee {
     produces nft_offer_cancel
     entry    @cancel
 
@@ -62,7 +62,7 @@ matcher nft_offer_cancel_without_fine {
     let offer = lookup nft_offer(cancel.msg.destination)
     let nft   = lookup nft_item(offer.nft)
     reject when offer == null or account(cancel.msg.source) != offer.buyer
-    # An unpaid fine aborts the action phase and emits no messages.
+    # An unpaid fee aborts the action phase and emits no messages.
     failed when (cancel.msg.transaction.aborted ?? false)
     out {
         source:         offer.buyer
@@ -71,6 +71,8 @@ matcher nft_offer_cancel_without_fine {
         nft_address:    offer.nft
         nft_collection: account(nft.collection_address)
         nft_index:      nft.index
+        fee_amount:     null
+        fee_address:    null
     }
 }
 
@@ -109,7 +111,7 @@ matcher nft_offer_accept {
     produces nft_offer_accept
     entry    @accept
 
-    # The offer pays the seller first and sends the rest of its balance to the royalty address last.
+    # The offer pays the seller first and sends the rest of its balance to the fee address last.
     btype nft_transfer @accept
       -> { btype ton_transfer @payout where (.destination == accept.data.prev_owner)
          ; btype nft_transfer @onward
@@ -120,7 +122,7 @@ matcher nft_offer_accept {
     # A fake NFT named in the offer can report any previous owner.
     reject when account(accept.data.prev_owner) != offer.seller
     reject when account(onward.data.new_owner) != offer.recipient
-    reject when account(rest.msg.destination) != offer.royalty_address
+    reject when account(rest.msg.destination) != offer.fee_address
     # An NFT with its own code can imitate these outgoing messages.
     let offer_address = account(accept.data.new_owner)
     reject when account(payout.msg.source) != offer_address or account(rest.msg.source) != offer_address
@@ -130,14 +132,15 @@ matcher nft_offer_accept {
     out {
         source:          offer.seller
         destination:     offer.recipient
+        buyer:           offer.buyer
         offer:           account(accept.data.new_owner)
         amount:          amount(payout.msg.value)
         nft_address:     offer.nft
         nft_collection:  account(accept.data.nft.collection.address)
         nft_index:       accept.data.nft.index
         query_id:        accept.data.query_id
-        price:           amount(offer.price + offer.royalty_amount)
-        royalty_amount:  amount(rest.msg.value)
-        royalty_address: offer.royalty_address
+        price:           amount(offer.price)
+        fee_amount:      amount(offer.fee_amount)
+        fee_address:     offer.fee_address
     }
 }

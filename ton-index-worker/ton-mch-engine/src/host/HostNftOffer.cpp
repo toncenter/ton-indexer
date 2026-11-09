@@ -86,11 +86,11 @@ td::Result<Value> parse(const td::Bits256 &address, const td::Ref<vm::Cell> &dat
   TRY_RESULT(buyer, load_account(parties));
   TRY_RESULT(recipient, load_account(parties));
   TRY_RESULT(seller, load_account(parties));
-  TRY_RESULT(royalty, cell_slice(config.prefetch_ref(1)));
-  TRY_RESULT(royalty_address, load_account(royalty));
-  unsigned long long royalty_bps = 0;
-  if (!royalty.fetch_uint_to(16, royalty_bps)) {
-    return td::Status::Error("nft_offer: royalty underflow");
+  TRY_RESULT(fee, cell_slice(config.prefetch_ref(1)));
+  TRY_RESULT(fee_address, load_account(fee));
+  unsigned long long fee_bps = 0;
+  if (!fee.fetch_uint_to(16, fee_bps)) {
+    return td::Status::Error("nft_offer: fee underflow");
   }
   Value::Fields f;
   f.emplace_back("nft", std::move(nft));
@@ -99,9 +99,9 @@ td::Result<Value> parse(const td::Bits256 &address, const td::Ref<vm::Cell> &dat
   f.emplace_back("buyer", std::move(buyer));
   f.emplace_back("recipient", std::move(recipient));
   f.emplace_back("seller", std::move(seller));
-  f.emplace_back("royalty_address", std::move(royalty_address));
-  auto royalty_amount = td::muldiv(price, td::make_refint(royalty_bps), td::make_refint(10000));
-  f.emplace_back("royalty_amount", Value::make_int(royalty_amount));
+  f.emplace_back("fee_address", std::move(fee_address));
+  auto fee_amount = td::muldiv(price, td::make_refint(fee_bps), td::make_refint(10000));
+  f.emplace_back("fee_amount", Value::make_int(fee_amount));
   return Value::make_obj(std::move(f));
 }
 
