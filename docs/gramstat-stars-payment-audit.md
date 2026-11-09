@@ -136,6 +136,41 @@ Missing reference prices must remain explicit unknown coverage, not zero purchas
 
 ## Sources and query notes
 
+### Historical USDT price spot-check (2026-11-09)
+
+After implementing the agreed fixed USDT floor, checked **29 successful USDT
+actions** from seven separate UTC dates. These samples were selected by recipient,
+asset and Stars label, **without a price filter**. Account-index reads were bounded
+to one day's trace-end timestamps and joined to actions by primary key; `LIMIT 5`
+bounded the samples, not a whole-history scan. This sampling does not prove the
+price on every day or off-chain delivery.
+
+**27 of 29 samples equal exactly 0.015 USDT per declared Star**, including:
+
+| UTC timestamp | Declared Stars | Paid USDT | Trace ID |
+| --- | ---: | ---: | --- |
+| 2026-04-28 15:58:44 | 100 | 1.5 | `aoKM28Cf9ABSMAxq6gR67b5idTgLqt6n3yFgL8xfox4=` |
+| 2026-05-11 06:26:57 | 20,000 | 300 | `w13mCIIAf9TjZOjsFBOnMZ6PiSXxVEK8QXnIoxQ4ZN8=` |
+| 2026-06-15 00:00:51 | 1,500 | 22.5 | `H8a4VlcHmbbvrEuNVM6LhxDVluRjAWiIBROxYnUFQMA=` |
+| 2026-07-15 00:00:05 | 92 | 1.38 | `l/WAv7LPuN6R6fl6847av4El3Kjje1YZWHtNIchLl10=` |
+| 2026-09-15 00:00:06 | 1,000 | 15 | `G1J64qK49SNzzKLMvaUljojmTbVRP/gmr6Kd1HRdzQA=` |
+| 2026-11-08 00:00:09 | 500 | 7.5 | `xJrYxn7tmI2O7trwpnJEdDGRUGiS0hvfM/VPDV0TW0U=` |
+
+The two exceptions were kept visible rather than discarded from the evidence:
+
+- 2024-11-15 17:03:43: **0.000028 USDT** with a claim of **80 Stars**
+  (`2FxqbkJoylUUH206b/jQlPXukiy0X+UvuqJ9TE9c+2k=`); rejected by the floor.
+- 2026-04-28 15:11:41: **1.5 USDT** with a claim of **50 Stars**, or 0.03/Star
+  (`DNTMuODxNAL5xQrFB4Xpgf96QauSgU4QlBcj0CVOgxc=`); passes the lower-bound filter.
+
+Prepared raw distributions show only one labelled USDT payment in November 2024,
+three in April 2026, and sustained volume starting May 11, 2026. No labelled USDT
+payments in 2025 are present for this pinned recipient. Therefore the sample
+supports the 0.015 reference across observed regular USDT activity, but does not
+establish a universal historical dollar tariff before that activity began.
+
+### Query references
+
 - [TON: Internal messages — Bounces](https://docs.ton.org/llms/foundations/messages/internal/content.md)
   explains failed-message bounce mechanics; it does not define Fragment business refunds.
 - [Fragment: Buy Telegram Stars](https://fragment.com/stars/buy) lists 50 Stars
