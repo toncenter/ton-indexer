@@ -4,7 +4,9 @@ import (
 	"context"
 	_ "embed"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -18,7 +20,10 @@ import (
 //go:embed daily.sql
 var dailySQL string
 
-type Postgres struct{ DSN string }
+type Postgres struct {
+	DSN              string
+	StatementTimeout time.Duration
+}
 
 func (p Postgres) Collect(ctx context.Context, from, to time.Time) (snapshot Snapshot, err error) {
 	if p.DSN == "" {
@@ -35,7 +40,17 @@ func (p Postgres) Collect(ctx context.Context, from, to time.Time) (snapshot Sna
 	cfg.ConnConfig.DefaultQueryExecMode = pgx.QueryExecModeExec
 	cfg.ConnConfig.RuntimeParams["application_name"] = "gramstat-aggregate"
 	cfg.ConnConfig.RuntimeParams["default_transaction_read_only"] = "on"
-	cfg.ConnConfig.RuntimeParams["statement_timeout"] = "300000"
+	statementTimeout := p.StatementTimeout
+	if statementTimeout == 0 {
+		statementTimeout = 5 * time.Minute
+	}
+	if statementTimeout < time.Millisecond {
+		return snapshot, fmt.Errorf("actions statement timeout must be positive")
+	}
+	cfg.ConnConfig.RuntimeParams["statement_timeout"] = strconv.FormatInt(statementTimeout.Milliseconds(), 10)
+	// Backfills scan once, without parallel workers competing with the indexer.
+	cfg.ConnConfig.RuntimeParams["max_parallel_workers_per_gather"] = "0"
+	cfg.ConnConfig.RuntimeParams["work_mem"] = "64MB"
 	cfg.ConnConfig.RuntimeParams["lock_timeout"] = "5000"
 	cfg.ConnConfig.RuntimeParams["timezone"] = "UTC"
 	cfg.ConnConfig.RuntimeParams["jit"] = "off"
@@ -54,7 +69,20 @@ func (p Postgres) Collect(ctx context.Context, from, to time.Time) (snapshot Sna
 	if err = tx.QueryRow(ctx, `SELECT seqno FROM public.blocks
 WHERE workchain = -1 AND gen_utime < $1
 ORDER BY gen_utime DESC, seqno DESC LIMIT 1`, from.Unix()).Scan(&lower); err != nil {
-		return snapshot, fmt.Errorf("MC before range: %w", err)
+		if !errors.Is(err, pgx.ErrNoRows) {
+			return snapshot, fmt.Errorf("MC before range: %w", err)
+		}
+		// The first chain day has no preceding MC. Only accept the verified
+		// genesis anchor, not a truncated database or dates before genesis.
+		var firstMC, firstTime int64
+		if err = tx.QueryRow(ctx, `SELECT seqno,gen_utime FROM public.blocks
+WHERE workchain=-1 ORDER BY seqno ASC LIMIT 1`).Scan(&firstMC, &firstTime); err != nil {
+			return snapshot, fmt.Errorf("first MC: %w", err)
+		}
+		if firstMC != 1 || !time.Unix(firstTime, 0).UTC().Truncate(24*time.Hour).Equal(from) {
+			return snapshot, fmt.Errorf("source has no verified opening MC for requested day")
+		}
+		lower = 0
 	}
 	if err = tx.QueryRow(ctx, `SELECT trace_mc_seqno_end FROM public.actions
 ORDER BY trace_mc_seqno_end DESC LIMIT 1`).Scan(&upper); err != nil {

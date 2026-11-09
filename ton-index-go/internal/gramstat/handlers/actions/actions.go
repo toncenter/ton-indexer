@@ -61,6 +61,8 @@ type Handler struct {
 	Source Source
 	Sink   Sink
 	Log    *slog.Logger
+	// ChunkDays permits a single source scan for an explicit historical backfill.
+	ChunkDays int
 }
 
 func (*Handler) Name() string { return "actions" }
@@ -77,12 +79,20 @@ func (h *Handler) Run(ctx context.Context, req gramstat.Request) error {
 		}
 		from = gramstat.CatchUpStart(from, gramstat.Day(req.AsOf), Metrics, stored)
 	}
+	chunkDays := h.ChunkDays
+	if chunkDays == 0 {
+		chunkDays = 7
+	}
+	if chunkDays < 1 || chunkDays > 3660 || (chunkDays > 7 && req.From.IsZero()) {
+		return fmt.Errorf("actions chunk days must be 1..3660; large chunks require explicit dates")
+	}
 	for start := from; start.Before(to); {
-		end := start.AddDate(0, 0, 7)
+		end := start.AddDate(0, 0, chunkDays)
 		if end.After(to) {
 			end = to
 		}
 		started := time.Now()
+		h.Log.Info("actions collecting", "from", start, "to", end)
 		snapshot, err := h.Source.Collect(ctx, start, end)
 		if err != nil {
 			return fmt.Errorf("collect %s..%s: %w", start.Format(time.RFC3339), end.Format(time.RFC3339), err)

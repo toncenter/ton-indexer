@@ -131,3 +131,26 @@ func TestSourceFailureDoesNotPublish(t *testing.T) {
 		t.Fatalf("failed calculation published: %v, %d", err, sink.writes)
 	}
 }
+
+type windowSource struct{ calls int }
+
+func (s *windowSource) Collect(_ context.Context, from, to time.Time) (Snapshot, error) {
+	s.calls++
+	return Snapshot{Through: to, CalculatedAt: to, SourceMC: 100}, nil
+}
+
+func TestHistoricalBackfillScansOnce(t *testing.T) {
+	source, sink := &windowSource{}, &testSink{}
+	h := Handler{Source: source, Sink: sink, Log: slog.New(slog.NewTextHandler(io.Discard, nil)), ChunkDays: 3660}
+	req := gramstat.Request{From: time.Date(2019, 11, 15, 0, 0, 0, 0, time.UTC), To: time.Date(2026, 10, 21, 0, 0, 0, 0, time.UTC), AsOf: time.Date(2026, 11, 9, 0, 0, 0, 0, time.UTC), LookbackDays: 3}
+	if err := h.Run(context.Background(), req); err != nil {
+		t.Fatal(err)
+	}
+	if source.calls != 1 || sink.writes != 2 {
+		t.Fatalf("calls=%d writes=%d", source.calls, sink.writes)
+	}
+	req.From, req.To = time.Time{}, time.Time{}
+	if err := h.Run(context.Background(), req); err == nil {
+		t.Fatal("large automatic scan accepted")
+	}
+}

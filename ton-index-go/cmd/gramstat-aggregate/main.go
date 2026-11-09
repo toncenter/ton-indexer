@@ -34,6 +34,8 @@ func run(log *slog.Logger) error {
 	to := flag.String("to", "", "exclusive UTC end date, YYYY-MM-DD (requires --from)")
 	lookback := flag.Int("lookback-days", 3, "closed days to refresh, in addition to today")
 	timeout := flag.Duration("timeout", 20*time.Minute, "timeout per handler, including catch-up")
+	actionsChunkDays := flag.Int("actions-chunk-days", 7, "actions days per source scan (1..3660; large chunks require explicit dates)")
+	actionsStatementTimeout := flag.Duration("actions-statement-timeout", 5*time.Minute, "actions PostgreSQL statement timeout")
 	schema := flag.Bool("print-schema", false, "print ClickHouse DDL and exit (apply once as an administrator)")
 	list := flag.Bool("list-handlers", false, "list available handlers and exit")
 	flag.Parse()
@@ -87,7 +89,7 @@ func run(log *slog.Logger) error {
 		&wallets.Handler{CH: ch, SourceID: os.Getenv("GRAMSTAT_WALLETS_SOURCE_ID"), SinkDB: os.Getenv("GRAMSTAT_WALLETS_SINK_DB"), FollowNative: os.Getenv("GRAMSTAT_WALLETS_FOLLOW_NATIVE") == "1", Log: log},
 		&accounts.Handler{CH: ch, MetricsDB: os.Getenv("GRAMSTAT_CHAIN_METRICS_DB"), Log: log},
 		&chain.Handler{CH: ch, RawDB: os.Getenv("GRAMSTAT_CHAIN_RAW_DB"), MetricsDB: os.Getenv("GRAMSTAT_CHAIN_METRICS_DB"), Log: log},
-		&actions.Handler{Source: actions.Postgres{DSN: os.Getenv("GRAMSTAT_PG_DSN")}, Sink: ch, Log: log},
+		&actions.Handler{Source: actions.Postgres{DSN: os.Getenv("GRAMSTAT_PG_DSN"), StatementTimeout: *actionsStatementTimeout}, Sink: ch, Log: log, ChunkDays: *actionsChunkDays},
 		&validators.Handler{Source: validators.Postgres{DSN: os.Getenv("GRAMSTAT_PG_DSN")},
 			Verifier: validators.ConfigRPC{URL: strings.TrimRight(os.Getenv("GRAMSTAT_CONFIG_URL"), "/"), APIKey: os.Getenv("GRAMSTAT_CONFIG_API_KEY")},
 			Sink:     validators.Store{CH: ch}, Log: log},

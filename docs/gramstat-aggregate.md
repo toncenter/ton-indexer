@@ -30,6 +30,24 @@ dates override automatic catch-up. Ranges are processed in chunks of at most sev
 days; `--timeout` limits each handler (default 20 minutes). PostgreSQL statements
 have a five-minute timeout and run in a read-only, repeatable-read transaction.
 
+For the initial whole-history actions backfill, use one source scan instead of
+repeating a scan to the latest action MC for every seven-day chunk:
+
+```bash
+gramstat-aggregate --handlers actions --from 2019-11-15 --to 2026-10-21 \
+  --actions-chunk-days 3660 --actions-statement-timeout 24h --timeout 25h
+```
+
+The end date should be the start of already prepared recent history. This is a
+long-running PostgreSQL read, not an indexer replay. No source tables or indexes
+are modified. It uses one backend, no parallel scan workers, and 64 MiB work_mem;
+large distinct/group sorts may spill to database temporary storage. It publishes
+only after the complete source query succeeds. The genesis day is accepted only
+with a verified first-MC=1 anchor; an absent opening history is not zero-filled.
+Large chunks require explicit dates and do not change the hourly seven-day policy.
+Use a dedicated historical-run lock for a disjoint old range so the normal hourly
+job can continue refreshing recent days and the other independent handlers.
+
 ## Metrics and source query
 
 | Metric | Definition |
