@@ -56,6 +56,7 @@ func run(log *slog.Logger) error {
 	}
 	if *list {
 		fmt.Println("actions: " + strings.Join(actions.Metrics, ", "))
+		fmt.Println("actions_monthly: exact calendar-month unique jetton/NFT senders, receivers and swap users")
 		fmt.Println("chain: full-history block flows and burn-corrected daily supply")
 		fmt.Println("accounts: existing accounts from a verified opening state and complete deltas")
 		fmt.Println("wallets: exact minute/hour/day activity and per-MC first activations")
@@ -90,6 +91,7 @@ func run(log *slog.Logger) error {
 		&accounts.Handler{CH: ch, MetricsDB: os.Getenv("GRAMSTAT_CHAIN_METRICS_DB"), Log: log},
 		&chain.Handler{CH: ch, RawDB: os.Getenv("GRAMSTAT_CHAIN_RAW_DB"), MetricsDB: os.Getenv("GRAMSTAT_CHAIN_METRICS_DB"), Log: log},
 		&actions.Handler{Source: actions.Postgres{DSN: os.Getenv("GRAMSTAT_PG_DSN"), StatementTimeout: *actionsStatementTimeout}, Sink: ch, Log: log, ChunkDays: *actionsChunkDays},
+		&actions.MonthlyHandler{Source: actions.Postgres{DSN: os.Getenv("GRAMSTAT_PG_DSN"), StatementTimeout: *actionsStatementTimeout}, Sink: ch, Log: log},
 		&validators.Handler{Source: validators.Postgres{DSN: os.Getenv("GRAMSTAT_PG_DSN")},
 			Verifier: validators.ConfigRPC{URL: strings.TrimRight(os.Getenv("GRAMSTAT_CONFIG_URL"), "/"), APIKey: os.Getenv("GRAMSTAT_CONFIG_API_KEY")},
 			Sink:     validators.Store{CH: ch}, Log: log},

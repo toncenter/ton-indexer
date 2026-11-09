@@ -128,6 +128,13 @@ INSERT INTO actions(trace_mc_seqno_end,start_utime,type,success,destination,stak
 	if _, err := dailyRows(from, from.Add(48*time.Hour), s); err != nil {
 		t.Fatal(err)
 	}
+	monthly, err := source.CollectMonthly(ctx, from, from.Add(48*time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(monthly.Days) != 1 || monthly.Days[0].JettonSenders != 2 || monthly.Days[0].JettonReceivers != 2 || monthly.Days[0].NFTSenders != 1 || monthly.Days[0].NFTReceivers != 2 || monthly.Days[0].SwapUsers != 2 {
+		t.Fatalf("monthly uniques counted daily duplicates: %+v", monthly)
+	}
 	// Add payments after checking the pre-existing metrics. Repeated actions by
 	// one sender (including nested/batched payments) must count individually.
 	comments := []string{"50 Telegram Stars \n\nRef#a", "50.0 Telegram Stars", "00050.000 Telegram Stars",

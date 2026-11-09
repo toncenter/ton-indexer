@@ -1,0 +1,10 @@
+[Unit]
+Description=Refresh calendar-month Activity every UTC hour
+
+[Timer]
+OnCalendar=*-*-* *:20:00 UTC
+Persistent=true
+Unit=gramstat-activity-monthly.service
+
+[Install]
+WantedBy=timers.target

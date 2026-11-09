@@ -54,6 +54,27 @@ service can retain its existing connection. A transport failure publishes no row
 
 ## Metrics and source query
 
+### Monthly unique Activity
+
+The independent `actions_monthly` handler prepares exact calendar-month unique
+jetton/NFT senders and receivers and swap users. It queries source addresses
+directly with COUNT(DISTINCT); daily unique counts are never added together.
+It writes five `monthly_<metric>` rows to the existing `daily_metrics` table,
+using the month's first date as `day`. The separate metric names keep daily
+publication and catch-up untouched. No additional table grants are needed.
+Default refresh covers the previous and current UTC calendar months. Explicit
+ranges must start at a month boundary (or genesis) and end at a month boundary
+or tomorrow UTC. Genesis and current incomplete months are marked partial.
+Historical runs can use `--actions-statement-timeout 24h --timeout 25h` and the
+same dedicated history lock, serializing them behind the daily-history scan.
+The dedicated `gramstat-activity-monthly.timer` runs at minute 20 each UTC hour,
+using the direct-connection environment and `/opt/gramstat/bin/gramstat-aggregate-monthly`.
+It has a separate lock so historical preparation and the existing hourly handlers
+can proceed independently; publication timestamps keep newer snapshots authoritative.
+Additive monthly counts,
+amounts and Stars quantities are composed from complete sets of prepared daily
+rows by Gramstat; missing inputs and unknown Stars quantities remain unknown.
+
 | Metric | Definition |
 | --- | --- |
 | `jetton_senders` | Distinct non-null owner `source` addresses in successful `jetton_transfer` actions |

@@ -26,6 +26,14 @@ type Postgres struct {
 }
 
 func (p Postgres) Collect(ctx context.Context, from, to time.Time) (snapshot Snapshot, err error) {
+	return p.collect(ctx, from, to, dailySQL)
+}
+
+func (p Postgres) CollectMonthly(ctx context.Context, from, to time.Time) (Snapshot, error) {
+	return p.collect(ctx, from, to, monthlySQL)
+}
+
+func (p Postgres) collect(ctx context.Context, from, to time.Time, query string) (snapshot Snapshot, err error) {
 	if p.DSN == "" {
 		return snapshot, fmt.Errorf("GRAMSTAT_PG_DSN is required for actions")
 	}
@@ -106,7 +114,7 @@ WHERE workchain = -1 AND seqno = $1 LIMIT 1`, upper).Scan(&sourceTime); err != n
 	if err = tx.QueryRow(ctx, `SELECT transaction_timestamp()`).Scan(&snapshot.CalculatedAt); err != nil {
 		return snapshot, err
 	}
-	rows, err := tx.Query(ctx, dailySQL, lower, upper, from.Unix(), snapshot.Through.Unix())
+	rows, err := tx.Query(ctx, query, lower, upper, from.Unix(), snapshot.Through.Unix())
 	if err != nil {
 		return snapshot, err
 	}
