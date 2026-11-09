@@ -52,7 +52,7 @@ func (h *MonthlyHandler) Run(ctx context.Context, req gramstat.Request) error {
 		from = monthStart(req.AsOf).AddDate(0, -1, 0)
 	}
 	genesis := time.Date(2019, 11, 15, 0, 0, 0, 0, time.UTC)
-	if (!from.Equal(monthStart(from)) && !from.Equal(genesis)) || (!to.Equal(monthStart(to)) && !to.Equal(gramstat.Day(req.AsOf).AddDate(0, 0, 1))) {
+	if (!from.Equal(monthStart(from)) && !from.Equal(genesis)) || (!req.To.IsZero() && !req.To.Equal(monthStart(req.To)) && !req.To.Equal(gramstat.Day(req.AsOf).AddDate(0, 0, 1))) {
 		return fmt.Errorf("monthly actions require complete calendar boundaries, genesis, or tomorrow UTC")
 	}
 	h.Log.Info("monthly actions collecting", "from", from, "to", to)
