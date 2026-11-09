@@ -18,6 +18,9 @@ published; the first 29 history days and windows spanning holes remain missing.
 Certified empty windows produce zero. Source epochs make certified days immutable,
 so retries may safely repeat an exact result. API reads scalar counts, never states.
 The ordinary hourly handler and manual catch-up both resume missing monthly days.
+Monthly preparation uses one thread and an 8 GiB query memory cap for exact
+30-day unions, including large aggregate-state storage granules. API reads remain
+small scalar queries with their existing read-only limits.
 Apply the `wallet_monthly` DDL in `schema.sql` and grant SELECT/INSERT to the
 aggregator and SELECT to the API before deploying this version.
 

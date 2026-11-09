@@ -12,6 +12,17 @@ import (
 var monthlySQL string
 
 func (h *Handler) monthly(ctx context.Context, p url.Values, from, to time.Time) error {
+	// Exact aggregate states can be large even for a single storage granule.
+	// Keep monthly preparation single-threaded and separately bounded; these
+	// settings never affect daily preparation or scalar API reads.
+	monthlyParams := make(url.Values, len(p)+3)
+	for k, v := range p {
+		monthlyParams[k] = append([]string(nil), v...)
+	}
+	p = monthlyParams
+	p.Set("max_threads", "1")
+	p.Set("max_block_size", "1")
+	p.Set("max_memory_usage", "8589934592")
 	p.Set("param_monthly_from", from.Format(time.DateOnly))
 	p.Set("param_monthly_to", to.Format(time.DateOnly))
 	var missing struct {
