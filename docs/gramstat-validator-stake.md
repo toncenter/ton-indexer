@@ -8,11 +8,17 @@ Stake chart, keyed by the nominal start of a verified validation round:
 | Submitted | PostgreSQL `validator_elections.total_stake` | Accepted applications, including unselected candidates and excess capital; only finished, successful elections |
 | Selected | PostgreSQL `validator_cycles.total_stake` | Maximum observed selected principal, retained by the indexer's sticky upsert |
 | Remaining | ClickHouse `validator_round_results.total_stake` | Principal after fines, immediately before release; rewards are excluded |
+| Reward | ClickHouse `validator_round_results.bonuses` | Accumulated election reward before distribution, separate from principal |
 
 These are three stages of the **same election**, joined by its explicit
 `election_id`, not simultaneous balances or a sum of overlapping rounds. All
 amounts are nullable integer nanoGRAM (`Decimal(38,0)`) and remain exact strings
 in Go/JSON. Missing stages stay NULL; a known zero remains zero.
+Reward shares the final result's provenance and coverage. It is not net income
+after fines or the sum of final per-holder credits (rounding and bans can affect
+distribution). The `stake-v2` schema adds nullable `reward_nanogram`; apply the
+idempotent ALTER emitted by `--print-schema` before upgrading the runner. Its
+first run refreshes historical snapshots with the new field.
 
 The collector uses the existing verified config #34 rounds, requires matching
 nominal intervals and an unambiguous election-to-cycle link, and compares the

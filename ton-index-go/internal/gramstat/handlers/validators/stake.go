@@ -18,7 +18,7 @@ import (
 	"github.com/toncenter/ton-indexer/ton-index-go/internal/gramstat"
 )
 
-const StakeVersion = "stake-v1"
+const StakeVersion = "stake-v2"
 
 //go:embed stake_schema.sql
 var StakeSchema string
@@ -30,6 +30,7 @@ type StakeRound struct {
 	Submitted     *string `json:"submitted_nanogram"`
 	Selected      *string `json:"selected_nanogram"`
 	Remaining     *string `json:"remaining_nanogram"`
+	Reward        *string `json:"reward_nanogram"`
 	ElectionMC    *uint32 `json:"election_source_mc_seqno"`
 	CycleMC       uint32  `json:"cycle_source_mc_seqno"`
 	UnfreezeMC    *uint32 `json:"unfreeze_mc_seqno"`
@@ -46,12 +47,13 @@ type StakeRound struct {
 }
 
 type StakeResult struct {
-	ElectionID uint32 `json:"election_id"`
-	Remaining  string `json:"remaining"`
-	VSetHash   string `json:"vset_hash"`
-	MC         uint32 `json:"mc"`
-	Time       uint32 `json:"time"`
-	TxHash     string `json:"tx_hash"`
+	ElectionID uint32  `json:"election_id"`
+	Remaining  string  `json:"remaining"`
+	Reward     *string `json:"reward"`
+	VSetHash   string  `json:"vset_hash"`
+	MC         uint32  `json:"mc"`
+	Time       uint32  `json:"time"`
+	TxHash     string  `json:"tx_hash"`
 }
 
 type StakeSource interface {
@@ -185,13 +187,15 @@ func prepareStake(in StakeInput, proof Coverage, result *StakeResult, db string,
 			problem = fmt.Errorf("invalid submitted/selected principal")
 		} else if result != nil {
 			remaining, e := stakeAmount(&result.Remaining)
+			_, rewardErr := stakeAmount(result.Reward)
 			hash, he := normalizeHash(result.VSetHash)
-			if e != nil || he != nil || !strings.EqualFold(hash, proof.Hash) || result.ElectionID != *in.ElectionID ||
+			if e != nil || rewardErr != nil || he != nil || !strings.EqualFold(hash, proof.Hash) || result.ElectionID != *in.ElectionID ||
 				result.MC == 0 || result.Time < in.Until || int64(result.Time) > now.Unix() || result.TxHash == "" ||
 				(selected != nil && remaining.Cmp(selected) > 0) || (submitted != nil && remaining.Cmp(submitted) > 0) {
 				problem = fmt.Errorf("invalid final principal or result provenance")
 			} else {
 				r.Remaining = &result.Remaining
+				r.Reward = result.Reward
 				r.UnfreezeMC, r.UnfreezeTime, r.UnfreezeHash, r.ResultHash = &result.MC, &result.Time, &result.TxHash, &hash
 			}
 		}
@@ -220,7 +224,7 @@ func (s Store) StakeResults(ctx context.Context, db string, asOf time.Time) (map
 	if !stakeDatabase.MatchString(db) {
 		return nil, fmt.Errorf("GRAMSTAT_STAKE_RESULTS_DB must be a database identifier")
 	}
-	data, err := s.CH.Query(ctx, `SELECT election_id,toString(total_stake) AS remaining,vset_hash,
+	data, err := s.CH.Query(ctx, `SELECT election_id,toString(total_stake) AS remaining,toString(bonuses) AS reward,vset_hash,
         unfreeze_mc_seqno AS mc,toUInt32(unfreeze_utime) AS time,unfreeze_tx_hash AS tx_hash
         FROM `+db+`.validator_round_results FINAL
         WHERE unfreeze_utime<=toDateTime({asof:UInt32})

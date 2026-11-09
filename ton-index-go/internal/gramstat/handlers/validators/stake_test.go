@@ -16,11 +16,14 @@ func stakePtr[T any](v T) *T { return &v }
 func TestStakeExactPrincipalAndProvenance(t *testing.T) {
 	input := StakeInput{Since: 100, Until: 200, ElectionID: stakePtr(uint32(90)), Submitted: stakePtr("900719925474099312345"), Selected: stakePtr("800719925474099312345"), ElectionLinks: 1}
 	proof := Coverage{Hash: strings.Repeat("a", 64)}
-	result := StakeResult{ElectionID: 90, Remaining: "800719925474099312344", VSetHash: strings.Repeat("A", 64), MC: 50, Time: 250, TxHash: "release"}
+	result := StakeResult{ElectionID: 90, Remaining: "800719925474099312344", Reward: stakePtr("900719925474099312345"), VSetHash: strings.Repeat("A", 64), MC: 50, Time: 250, TxHash: "release"}
 	now := time.Unix(300, 0)
 	row, err := prepareStake(input, proof, &result, "raw", now)
 	if err != nil || row.Status != "complete" || *row.Remaining != "800719925474099312344" {
 		t.Fatalf("precision/provenance lost: %+v %v", row, err)
+	}
+	if row.Reward == nil || *row.Reward != "900719925474099312345" {
+		t.Fatal("reward precision lost")
 	}
 	later, err := prepareStake(input, proof, &result, "raw", now.Add(time.Hour))
 	if err != nil || later.SnapshotHash != row.SnapshotHash {
@@ -34,6 +37,7 @@ func TestStakeExactPrincipalAndProvenance(t *testing.T) {
 		{"wrong election", func(r *StakeResult) { r.ElectionID++ }},
 		{"greater than selected", func(r *StakeResult) { r.Remaining = "800719925474099312346" }},
 		{"fractional", func(r *StakeResult) { r.Remaining = "1.5" }},
+		{"negative reward", func(r *StakeResult) { r.Reward = stakePtr("-1") }},
 		{"future release", func(r *StakeResult) { r.Time = 301 }},
 	} {
 		t.Run(test.name, func(t *testing.T) {
@@ -46,12 +50,13 @@ func TestStakeExactPrincipalAndProvenance(t *testing.T) {
 		})
 	}
 	row, err = prepareStake(input, proof, nil, "raw", now)
-	if err != nil || row.Remaining != nil || row.Status != "missing_result" {
+	if err != nil || row.Remaining != nil || row.Reward != nil || row.Status != "missing_result" {
 		t.Fatal("missing is not zero")
 	}
 	result.Remaining = "0"
+	result.Reward = stakePtr("0")
 	row, err = prepareStake(input, proof, &result, "raw", now)
-	if err != nil || row.Remaining == nil || *row.Remaining != "0" {
+	if err != nil || row.Remaining == nil || *row.Remaining != "0" || row.Reward == nil || *row.Reward != "0" {
 		t.Fatal("known zero lost")
 	}
 	input.ElectionLinks = 2
