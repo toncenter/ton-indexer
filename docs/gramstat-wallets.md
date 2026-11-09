@@ -38,6 +38,30 @@ Without dates, only `--lookback-days` closed days (at least one) near the source
 transaction-time horizon are prepared. It does not automatically backfill all
 activity history. Completed days are skipped on subsequent runs.
 
+### Following the native indexer
+
+Set `GRAMSTAT_WALLETS_FOLLOW_NATIVE=1` for a verified source epoch using the native
+delta-last writer. Before each run, the handler takes the latest delta MC minus
+a 1,000-MC settling margin, checks the complete MC/delta prefix, and matches every
+shard tip at that MC to its block. Only then does it advance `wallet_sources` to
+the minimum tip timestamp. Missing tips, gaps or a regressing horizon fail without
+publishing the proposed watermark. The original source ID and proof are retained.
+
+In this mode, running without dates enumerates **every missing closed UTC day**,
+oldest first, rather than just the last few days or days after a maximum date.
+Thus indexer jumps and scheduler downtime cannot leave permanent holes. Explicit
+date requests still select only their requested window. Current incomplete days
+remain unpublished; the latest day is the last complete day at the shard horizon.
+
+Install the supplied `gramstat-wallets.service` and `.timer` from the wallet
+`ton-index-go/cmd/gramstat-aggregate/deploy` directory. The timer runs five minutes after the previous run finishes;
+systemd prevents overlapping instances. `/etc/gramstat-wallets/aggregate.env`
+contains the ordinary ClickHouse settings plus `GRAMSTAT_WALLETS_SOURCE_ID`,
+`GRAMSTAT_WALLETS_SINK_DB=gramstat` and `GRAMSTAT_WALLETS_FOLLOW_NATIVE=1`.
+The env file is root-readable only. The two-hour run budget is resumable: already
+published days are skipped on the next timer run. Keep other manual wallet
+writers stopped while this service is advancing the source epoch.
+
 First-deployment preparation does require the entire preceding deployment history
 on the first run. It then reads only MCs after its persisted progress. The first
 pass streams singleton aggregate states with bounded insert buffers instead of

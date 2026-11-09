@@ -236,6 +236,13 @@ func TestExactPublicationAndRetry(t *testing.T) {
 	if got := string(run("SELECT activations,opening_activated FROM gramstat.wallet_days WHERE day='2024-10-15'", nil)); got != "0\t4\n" {
 		t.Fatal("no-block day lost cumulative baseline", got)
 	}
+	h.FollowNative = true
+	if err := h.Run(ctx, gramstat.Request{LookbackDays: 1}); err != nil {
+		t.Fatal(err)
+	}
+	if got := string(run("SELECT count() FROM gramstat.wallet_days WHERE day='2024-10-14'", nil)); got != "1\n" {
+		t.Fatal("following skipped a hole before the latest published day", got)
+	}
 	run("ALTER TABLE gramstat.wallet_days UPDATE history_verified=0 WHERE 1 SETTINGS mutations_sync=1", nil)
 	p.Set("param_from", "1728777600")
 	p.Set("param_to", "1728864000")

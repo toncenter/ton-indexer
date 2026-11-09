@@ -63,7 +63,9 @@ type Handler struct {
 	CH Store
 	// SinkDB defaults to gramstat; isolated benchmark databases use identical SQL.
 	SinkDB, SourceID string
-	Log              *slog.Logger
+	// Requires a source epoch certified for the native delta-last writer.
+	FollowNative bool
+	Log          *slog.Logger
 }
 
 func (*Handler) Name() string { return "wallets" }
@@ -120,6 +122,11 @@ func (h *Handler) Run(ctx context.Context, req gramstat.Request) error {
 	p.Set("param_metrics", s.Metrics)
 	set(p, "end", uint64(s.End))
 	set(p, "first", uint64(s.First))
+	if h.FollowNative {
+		if err := h.advanceNative(ctx, p, &s); err != nil {
+			return err
+		}
+	}
 	// A manifest certifies deployment/message persistence and the transaction-time
 	// horizon; MC/delta continuity is independently checked here. A settling margin
 	// alone is not a proof that both sparse event tables have finished writing.
@@ -165,8 +172,41 @@ func (h *Handler) Run(ctx context.Context, req gramstat.Request) error {
 	if err != nil {
 		return err
 	}
-	if from.Unix() < int64(s.From) {
+	if from.Unix() < int64(s.From) && !(h.FollowNative && req.From.IsZero()) {
 		return fmt.Errorf("requested days precede complete source coverage")
+	}
+	if h.FollowNative && req.From.IsZero() {
+		// Enumerate all missing closed days, not only a moving lookback window.
+		// This recovers outages and indexer jumps without silently leaving holes.
+		var missing struct {
+			Data []struct {
+				Day string `json:"day"`
+			} `json:"data"`
+		}
+		completeFrom := (uint64(s.From) + 86399) / 86400 * 86400
+		if completeFrom >= uint64(to.Unix()) {
+			return nil
+		}
+		p.Set("param_complete_from", strconv.FormatUint(completeFrom, 10))
+		p.Set("param_closed_to", to.Format(time.DateOnly))
+		if err := h.query(ctx, `SELECT toString(day) AS day FROM (
+ SELECT toDate(toDateTime({complete_from:UInt32},'UTC'))+toUInt32(number) AS day
+ FROM numbers(toUInt64(dateDiff('day',toDate(toDateTime({complete_from:UInt32},'UTC')),{closed_to:Date}))))
+ WHERE day NOT IN (SELECT day FROM {sink:Identifier}.wallet_days
+ WHERE source_id={source:String} AND registry={registry:String} AND history_verified=1)
+ ORDER BY day FORMAT JSON`, p, &missing); err != nil {
+			return err
+		}
+		for _, row := range missing.Data {
+			d, err := time.Parse(time.DateOnly, row.Day)
+			if err != nil {
+				return err
+			}
+			if err = h.day(ctx, p, s, d); err != nil {
+				return fmt.Errorf("wallet day %s: %w", row.Day, err)
+			}
+		}
+		return nil
 	}
 	for d := from; d.Before(to); d = d.AddDate(0, 0, 1) {
 		if err := h.day(ctx, p, s, d); err != nil {

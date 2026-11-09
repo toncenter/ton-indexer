@@ -1,0 +1,13 @@
+[Unit]
+Description=Follow indexed TON history and prepare wallet charts
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+EnvironmentFile=/etc/gramstat-wallets/aggregate.env
+ExecStart=/opt/gramstat-wallets/gramstat-aggregate --handlers wallets --timeout 2h
+TimeoutStartSec=125min
+Nice=10
+MemoryMax=512M
+NoNewPrivileges=yes

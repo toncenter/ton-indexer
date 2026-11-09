@@ -84,7 +84,7 @@ func run(log *slog.Logger) error {
 		return err
 	}
 	registry := []gramstat.Handler{
-		&wallets.Handler{CH: ch, SourceID: os.Getenv("GRAMSTAT_WALLETS_SOURCE_ID"), SinkDB: os.Getenv("GRAMSTAT_WALLETS_SINK_DB"), Log: log},
+		&wallets.Handler{CH: ch, SourceID: os.Getenv("GRAMSTAT_WALLETS_SOURCE_ID"), SinkDB: os.Getenv("GRAMSTAT_WALLETS_SINK_DB"), FollowNative: os.Getenv("GRAMSTAT_WALLETS_FOLLOW_NATIVE") == "1", Log: log},
 		&accounts.Handler{CH: ch, MetricsDB: os.Getenv("GRAMSTAT_CHAIN_METRICS_DB"), Log: log},
 		&chain.Handler{CH: ch, RawDB: os.Getenv("GRAMSTAT_CHAIN_RAW_DB"), MetricsDB: os.Getenv("GRAMSTAT_CHAIN_METRICS_DB"), Log: log},
 		&actions.Handler{Source: actions.Postgres{DSN: os.Getenv("GRAMSTAT_PG_DSN")}, Sink: ch, Log: log},
