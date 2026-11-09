@@ -47,6 +47,10 @@ with a verified first-MC=1 anchor; an absent opening history is not zero-filled.
 Large chunks require explicit dates and do not change the hourly seven-day policy.
 Use a dedicated historical-run lock for a disjoint old range so the normal hourly
 job can continue refreshing recent days and the other independent handlers.
+Use a direct PostgreSQL connection for this job: the production proxy on port
+15432 disconnects silent long-running queries after approximately three minutes.
+Keep the job-specific DSN in a root-only environment file; the regular hourly
+service can retain its existing connection. A transport failure publishes no rows.
 
 ## Metrics and source query
 
