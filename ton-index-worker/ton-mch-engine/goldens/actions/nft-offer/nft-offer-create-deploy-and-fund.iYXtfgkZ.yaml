@@ -45,9 +45,9 @@ actions:
     opcode: null
     nft_listing_data:
       full_price: 1000000000
+      marketplace_fee: 20000000
+      marketplace_fee_address: 0:858AB43F7B45346421AB244722A673483738E00696B20CC8EF706F6CF22591DB
       nft_item_index: "49537395384008057067269537389370493623972960361004178658865782902375040694084"
-      royalty_address: 0:858AB43F7B45346421AB244722A673483738E00696B20CC8EF706F6CF22591DB
-      royalty_amount: 20000000
     tx_hashes:
       - iYXtfgkZz9HLxWXZzgc6bq9pvADiyMGYDa2Obb72Fs4=
       - uNgT/eq+APILUxs1Mh4MBFhNzz+ERGx6pz01VJMHVGw=

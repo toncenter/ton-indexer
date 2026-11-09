@@ -19,8 +19,6 @@ actions:
     opcode: null
     nft_listing_data:
       nft_item_index: "49537395384008057067269537389370493623972960361004178658865782902375040694084"
-      royalty_address: null
-      royalty_amount: null
     tx_hashes:
       - W+LoUd3s3t7t5J6JmWGN3FEpuwTaJ2Qs8MUxIqV76oI=
       - dBheL4eVn//cyuCbmLu7V6Sf9cAiHwUYeLMs+cR8BFY=
