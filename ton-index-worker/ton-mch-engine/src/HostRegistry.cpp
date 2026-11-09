@@ -40,6 +40,7 @@ const std::map<std::string, HostFnEntry> &host_fns() {
       {"getgems_sale_init", {getgems_sale_init, 2}},
       {"getgems_auction_init", {getgems_auction_init, 2}},
       {"auction_bid_data", {auction_bid_data, 1}},
+      {"nft_offer_init", {nft_offer_init, 1}},
       // expectedMyAddress string renderer shared by three matchers.
       {"cocoon_expected_address", {cocoon_expected_address, 1}},
   };

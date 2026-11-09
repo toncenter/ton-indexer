@@ -2,8 +2,11 @@ from pytoniq_core import Slice
 
 from indexer.core.database import Message, Transaction, Trace
 from indexer.events.blocks.messages import JettonNotify, JettonTransfer, StonfiSwapV2, JVaultUnstakeJettons, \
-    JVaultUnstakeRequest, ToncoRouterV3PayTo, ToncoPoolV3FundAccountPayload, ToncoPoolV3SwapPayload
+    JVaultUnstakeRequest, ToncoRouterV3PayTo, ToncoPoolV3FundAccountPayload, ToncoPoolV3SwapPayload, \
+    NftOwnershipAssigned, NftTransfer
 from indexer.events.blocks.messages.externals import extract_payload_from_wallet_message
+from indexer.events.blocks.messages.nft_offer import NftOfferCancel, NftOfferCancelByBuyer, NftOfferData, \
+    parse_nft_offer_state_init
 from indexer.events.interface_repository import ExtraAccountRequest
 
 
@@ -106,6 +109,10 @@ def extract_additional_addresses(tx: Transaction) -> set[str]:
     accounts = set()
     for msg in tx.messages:
         if msg.opcode is None:
+            if msg.source is not None and msg.destination is not None and msg.init_state is not None:
+                offer = parse_nft_offer_state_init(msg.destination, msg.init_state.body)
+                if offer is not None:
+                    accounts.add(offer.nft.to_str(is_user_friendly=False).upper())
             continue
         opcode = msg.opcode & 0xFFFFFFFF
         try:
@@ -156,6 +163,20 @@ def extract_from_jvault_unstake_data(message: Message) -> ExtraAccountRequest:
                                request_type='data_boc',
                                callback=derive_accounts_from_stake_wallet)
 
+def derive_accounts_from_nft_offer(extra_data: dict):
+    try:
+        nft = NftOfferData(Slice.one_from_boc(extra_data['data_boc'])).nft
+        return [], {nft.to_str(is_user_friendly=False).upper()}
+    except Exception:
+        return [], set()
+
+# The payout and balance release distinguish offer acceptance from ordinary NFT and auction transfers.
+def _sends_nft_back(tx: Transaction, nft: str | None) -> bool:
+    out = [m for m in tx.messages if m.direction == 'out']
+    return (nft is not None and sum(m.opcode is None for m in out) == 2
+            and any(m.opcode is not None and m.destination == nft and m.opcode & 0xFFFFFFFF == NftTransfer.opcode
+                    for m in out))
+
 
 def extract_extra_accounts_data_requests(tx: Transaction) -> set[ExtraAccountRequest]:
     requests = set()
@@ -166,6 +187,14 @@ def extract_extra_accounts_data_requests(tx: Transaction) -> set[ExtraAccountReq
         try:
             if opcode in [JVaultUnstakeJettons.opcode, JVaultUnstakeRequest.opcode] and msg.destination is not None:
                 requests.add(extract_from_jvault_unstake_data(msg))
+            is_offer_cancel = ((opcode == NftOfferCancelByBuyer.opcode and msg.source is not None)
+                               or (opcode == NftOfferCancel.opcode and msg.source is None))
+            if is_offer_cancel and msg.destination is not None:
+                requests.add(ExtraAccountRequest(account=msg.destination,
+                                                 request_type='data_boc',
+                                                 callback=derive_accounts_from_nft_offer))
+            if opcode == NftOwnershipAssigned.opcode and msg.direction == 'in' and _sends_nft_back(tx, msg.source):
+                requests.add(ExtraAccountRequest(account=msg.destination, request_type='data_boc'))
         except Exception as e:
             pass
     return requests

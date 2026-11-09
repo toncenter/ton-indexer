@@ -56,7 +56,11 @@ var ActionTypeShortcuts = map[string][]string{
 		"dedust_v2_claim_fees", "dedust_v2_claim_reward",
 		"change_wallet_key", "gasless_request",
 	},
-	"latest": {"v5"},
+	"v6": {
+		"v5",
+		"nft_offer_create", "nft_offer_cancel", "nft_offer_expire", "nft_offer_signed_cancel", "nft_offer_accept",
+	},
+	"latest": {"v6"},
 	"staking": {
 		"stake_deposit", "stake_withdrawal", "stake_withdrawal_request",
 	},

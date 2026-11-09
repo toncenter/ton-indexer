@@ -79,6 +79,9 @@ class TestMultisigActions(BaseGenericActionTest):
 class TestChangeWalletKeyActions(BaseGenericActionTest):
     yaml_file = "tg-wallet.yaml"
 
+class TestNftOfferActions(BaseGenericActionTest):
+    yaml_file = "nft-offer.yaml"
+
 class TestGaslessRequestActions(BaseGenericActionTest):
     yaml_file = "gasless.yaml"
 

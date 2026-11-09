@@ -1,0 +1,66 @@
+# nft-offer / NftOffer signed cancel
+# trace: dBheL4eVn__cyuCbmLu7V6Sf9cAiHwUYeLMs-cR8BFY=
+actions:
+  - type: nft_offer_signed_cancel
+    matcher: nft_offer_external_cancel
+    anchor: nft_offer_signed_cancel@115214793000005
+    id: OqYuT1QO7bUvpraj7q2VWnVs/8Qmiyg97G6zePUAX5Y=
+    success: true
+    source: 0:A1D462D9CBBB1CE3237865E24A5429936453A7A9E66F54640679E558F10C6F0E
+    source_secondary: null
+    destination: 0:081093E0B25DAA48AFC5BC0F2CAC0AAAEF515C2872F1E40C1A4AFBD33B88AE81
+    destination_secondary: null
+    asset: 0:43E8F509FCBA8CC3077B542D37D2605CD01BC49FC6AF1A1B846D54D9E1D7350A
+    asset_secondary: 0:ED3C827642ABF8FF1BF7D5A96CEBBDF998646AFF0CD5869DCD3A8E8D2F2AC7CB
+    asset2: null
+    asset2_secondary: null
+    amount: 1039294482
+    value: null
+    opcode: null
+    nft_listing_data:
+      nft_item_index: "49537395384008057067269537389370493623972960361004178658865782902375040694084"
+      royalty_address: null
+      royalty_amount: null
+    tx_hashes:
+      - W+LoUd3s3t7t5J6JmWGN3FEpuwTaJ2Qs8MUxIqV76oI=
+      - dBheL4eVn//cyuCbmLu7V6Sf9cAiHwUYeLMs+cR8BFY=
+    accounts:
+      - 0:081093E0B25DAA48AFC5BC0F2CAC0AAAEF515C2872F1E40C1A4AFBD33B88AE81
+      - 0:A1D462D9CBBB1CE3237865E24A5429936453A7A9E66F54640679E558F10C6F0E
+    start_lt: 115214793000005
+    end_lt: 115214793000007
+    start_utime: 1794101673
+    end_utime: 1794101673
+    mc_seqno_end: 104047031
+  - type: ton_transfer
+    anchor: ton_transfer@115214793000006
+    id: OJ7TXj4Ry0AKvcCXcFTQyYO3o6IHcPaijmCMbD+LhoA=
+    success: true
+    source: 0:081093E0B25DAA48AFC5BC0F2CAC0AAAEF515C2872F1E40C1A4AFBD33B88AE81
+    source_secondary: null
+    destination: 0:A1D462D9CBBB1CE3237865E24A5429936453A7A9E66F54640679E558F10C6F0E
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: 1039294482
+    opcode: null
+    ton_transfer_data:
+      content: null
+      encrypted: false
+    tx_hashes:
+      - W+LoUd3s3t7t5J6JmWGN3FEpuwTaJ2Qs8MUxIqV76oI=
+      - dBheL4eVn//cyuCbmLu7V6Sf9cAiHwUYeLMs+cR8BFY=
+    accounts:
+      - 0:081093E0B25DAA48AFC5BC0F2CAC0AAAEF515C2872F1E40C1A4AFBD33B88AE81
+      - 0:A1D462D9CBBB1CE3237865E24A5429936453A7A9E66F54640679E558F10C6F0E
+    start_lt: 115214793000006
+    end_lt: 115214793000007
+    start_utime: 1794101673
+    end_utime: 1794101673
+    mc_seqno_end: 104047031
+    parent_action_id: OqYuT1QO7bUvpraj7q2VWnVs/8Qmiyg97G6zePUAX5Y=
+    ancestor_type:
+      - nft_offer_signed_cancel

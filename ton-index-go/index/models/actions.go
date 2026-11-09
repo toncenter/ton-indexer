@@ -556,6 +556,43 @@ type ActionDetailsNftPutOnSale struct {
 	Marketplace           *string         `json:"marketplace"`
 }
 
+type ActionDetailsNftOfferCreate struct {
+	Buyer          *AccountAddress `json:"buyer"`
+	Offer          *AccountAddress `json:"offer"`
+	NftItem        *AccountAddress `json:"nft_item"`
+	NftCollection  *AccountAddress `json:"nft_collection"`
+	NftItemIndex   *string         `json:"nft_item_index"`
+	Amount         *string         `json:"amount"`
+	Price          *string         `json:"price"`
+	RoyaltyAmount  *string         `json:"royalty_amount"`
+	RoyaltyAddress *AccountAddress `json:"royalty_address"`
+}
+
+type ActionDetailsNftOfferCancel struct {
+	Buyer          *AccountAddress `json:"buyer"`
+	Offer          *AccountAddress `json:"offer"`
+	NftItem        *AccountAddress `json:"nft_item"`
+	NftCollection  *AccountAddress `json:"nft_collection"`
+	NftItemIndex   *string         `json:"nft_item_index"`
+	RefundAmount   *string         `json:"refund_amount"`
+	RoyaltyAmount  *string         `json:"royalty_amount"`
+	RoyaltyAddress *AccountAddress `json:"royalty_address"`
+}
+
+type ActionDetailsNftOfferAccept struct {
+	Seller         *AccountAddress `json:"seller"`
+	Recipient      *AccountAddress `json:"recipient"`
+	Offer          *AccountAddress `json:"offer"`
+	NftItem        *AccountAddress `json:"nft_item"`
+	NftCollection  *AccountAddress `json:"nft_collection"`
+	NftItemIndex   *string         `json:"nft_item_index"`
+	QueryId        *string         `json:"query_id"`
+	Price          *string         `json:"price"`
+	PayoutAmount   *string         `json:"payout_amount"`
+	RoyaltyAmount  *string         `json:"royalty_amount"`
+	RoyaltyAddress *AccountAddress `json:"royalty_address"`
+}
+
 type ActionDetailsNftPutOnAuction struct {
 	NftCollection         *AccountAddress `json:"nft_collection"`
 	NftItem               *AccountAddress `json:"nft_item"`

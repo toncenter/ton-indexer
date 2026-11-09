@@ -1164,6 +1164,31 @@
    "group": "tonco",
    "name": "Tonco v2 swap USDT -> TON via wGRAM",
    "slug": "tonco-v2-swap-usdt-to-ton-via-wgram"
+  },
+  "iYXtfgkZz9HLxWXZzgc6bq9pvADiyMGYDa2Obb72Fs4=": {
+   "group": "nft-offer",
+   "name": "NftOffer create (deploy and fund)",
+   "slug": "nft-offer-create-deploy-and-fund"
+  },
+  "Vt3cwywuvqFlHaas6McJC9tCNZ40rQzoRLjwssVZIZw=": {
+   "group": "nft-offer",
+   "name": "NftOffer buyer cancel before expiry",
+   "slug": "nft-offer-buyer-cancel-before-expiry"
+  },
+  "1tbAorc5rHKFzfydwMlogBf_snkLkCWoLBfQoBSjD0g=": {
+   "group": "nft-offer",
+   "name": "NftOffer expire",
+   "slug": "nft-offer-expire"
+  },
+  "dBheL4eVn__cyuCbmLu7V6Sf9cAiHwUYeLMs-cR8BFY=": {
+   "group": "nft-offer",
+   "name": "NftOffer signed cancel",
+   "slug": "nft-offer-signed-cancel"
+  },
+  "u7r2tZEari7DVePY7knnZr5UWAkVsV4pzKHeGrV16YA=": {
+   "group": "nft-offer",
+   "name": "NftOffer accept",
+   "slug": "nft-offer-accept"
   }
  }
 }
