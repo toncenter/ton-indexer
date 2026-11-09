@@ -28,6 +28,32 @@ var inflationSQL string
 //go:embed schema.sql
 var Schema string
 
+// The minimum time of every shard tip referenced by the settled MC is an
+// exclusive completeness horizon, including shards lagging behind the MC.
+const horizonSQL = `SELECT
+ (SELECT toUInt32(count()) FROM {raw:Identifier}.shard_state FINAL WHERE mc_seqno={end:UInt32}) AS expected,
+ toUInt32(count()) AS found, toUInt32(min(gen_utime)) AS before,
+ toUInt32(countIf(workchain=-1 AND shard=-9223372036854775808 AND seqno={end:UInt32})) AS masterchain
+ FROM {raw:Identifier}.blocks FINAL
+ WHERE (workchain,shard,seqno) IN (
+ SELECT workchain,shard,seqno FROM {raw:Identifier}.shard_state FINAL WHERE mc_seqno={end:UInt32}) FORMAT JSONEachRow`
+
+func completeBefore(data []byte) (uint32, error) {
+	var tips struct {
+		Expected    uint32 `json:"expected"`
+		Found       uint32 `json:"found"`
+		Before      uint32 `json:"before"`
+		Masterchain uint32 `json:"masterchain"`
+	}
+	if err := json.Unmarshal(data, &tips); err != nil {
+		return 0, err
+	}
+	if tips.Expected < 2 || tips.Found != tips.Expected || tips.Masterchain != 1 || tips.Before == 0 {
+		return 0, fmt.Errorf("incomplete chain shard-tip horizon")
+	}
+	return tips.Before, nil
+}
+
 type Store interface {
 	Query(context.Context, string, url.Values) ([]byte, error)
 	InsertJSON(context.Context, string, []byte) error
@@ -64,6 +90,15 @@ func (h *Handler) Run(ctx context.Context, req gramstat.Request) error {
 	}
 	end := head.Head - 1000
 	p.Set("param_end", strconv.FormatUint(uint64(end), 10))
+	data, err = h.CH.Query(ctx, horizonSQL, p)
+	if err != nil {
+		return err
+	}
+	before, err := completeBefore(data)
+	if err != nil {
+		return err
+	}
+	p.Set("param_complete_before", strconv.FormatUint(uint64(before), 10))
 	data, err = h.CH.Query(ctx, dailySQL, p)
 	if err != nil {
 		return err

@@ -86,6 +86,20 @@ Machine-readable annotation constants:
    derivation. The former `gramstat.total_supply` table is a frozen validation
    archive, not the input series for the new graph.
 
+## Daily completeness
+
+The chain handler keeps the existing settled, contiguous MC/account-delta prefix
+proof. At its endpoint it resolves every `shard_state` tip to a raw block,
+requires all tips and the endpoint MC to be present, and uses their minimum
+`gen_utime` as an exclusive completeness horizon. A UTC day is complete when
+its next midnight is at or before that horizon; the first source day remains
+partial. Missing tips abort publication. This replaces the fixed extra-day
+`partial` buffer and handles shards lagging behind the masterchain.
+
+Validation at MC **104435620**: both referenced tips were present, minimum time
+**1794264797**. Recomputing **2536** daily rows preserved every numeric value
+and all MC/delta proofs; only **2026-11-08** changed from partial to complete.
+
 ## Validation already performed
 
 On **2026-11-07**, the independent full-state calculator matched the stored

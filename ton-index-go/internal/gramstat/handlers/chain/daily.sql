@@ -27,7 +27,7 @@ WITH days AS (
         sum(missing_burn) OVER w AS missing_prefix_burn,
         min(first_mc) OVER w AS prefix_start,
         max(last_mc) OVER w AS prefix_end,
-        min(day) OVER () AS first_day, max(day) OVER () AS last_day
+         min(day) OVER () AS first_day
  FROM days LEFT JOIN deltas USING(day) WHERE mc_count > 0
  WINDOW w AS (ORDER BY day ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)
 )
@@ -39,7 +39,9 @@ SELECT day, toString(transactions) AS transactions,
           missing_prefix_burn > 0, NULL,
           snapshot.1 - cumulative_burn)) AS supply_nanoton,
        toUInt32(snapshot.2) AS supply_utime,
-       toUInt8(day = first_day OR day >= last_day - 1) AS is_partial,
+        -- A UTC day is complete only once every referenced shard has crossed
+        -- its end. Do not reserve an extra calendar day after it is proven.
+        toUInt8(day = first_day OR toUInt32(toDateTime(day + 1, 'UTC')) > {complete_before:UInt32}) AS is_partial,
        toUInt32(3) AS source_mc_from, {end:UInt32} AS source_mc_to,
        'mainnet-full-v1' AS source_id,
        formatDateTime(now64(6), '%Y-%m-%d %H:%i:%S.%f', 'UTC') AS calculated_at,
