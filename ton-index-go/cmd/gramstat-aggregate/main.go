@@ -55,6 +55,7 @@ func run(log *slog.Logger) error {
 		fmt.Print(wallets.Schema)
 		fmt.Print(strings.Replace(gramstat.ChainSchema, "gramstat.chain_daily", "gramstat.chain_daily_full", 1))
 		fmt.Print(validators.Schema)
+		fmt.Print(validators.StakeSchema)
 		return nil
 	}
 	if *list {
@@ -65,6 +66,7 @@ func run(log *slog.Logger) error {
 		fmt.Println("wallets: exact minute/hour/day activity and per-MC first activations")
 		fmt.Println("validators: elected #34 count and roster by round")
 		fmt.Println("validator_geo: session-stats locations, countries and coverage by round")
+		fmt.Println("validator_stake: submitted, selected and remaining principal by verified round")
 		return nil
 	}
 	if *timeout <= 0 {
@@ -103,6 +105,8 @@ func run(log *slog.Logger) error {
 			Sink:     validators.Store{CH: ch}, Log: log},
 		&validators.GeoHandler{Source: validators.SessionStats{URL: os.Getenv("GRAMSTAT_SS_URL"), User: os.Getenv("GRAMSTAT_SS_USER"), Password: os.Getenv("GRAMSTAT_SS_PASSWORD")},
 			Sink: validators.Store{CH: ch}, Log: log},
+		&validators.StakeHandler{Source: validators.Postgres{DSN: os.Getenv("GRAMSTAT_PG_DSN")},
+			Sink: validators.Store{CH: ch}, ResultsDB: os.Getenv("GRAMSTAT_STAKE_RESULTS_DB"), Log: log},
 	}
 	names := strings.Split(*handlers, ",")
 	for i := range names {
