@@ -55,14 +55,13 @@ Thus indexer jumps and scheduler downtime cannot leave permanent holes. Explicit
 date requests still select only their requested window. Current incomplete days
 remain unpublished; the latest day is the last complete day at the shard horizon.
 
-Install the supplied `gramstat-wallets.service` and `.timer` from the wallet
-`ton-index-go/cmd/gramstat-aggregate/deploy` directory. The timer runs five minutes after the previous run finishes;
-systemd prevents overlapping instances. `/etc/gramstat-wallets/aggregate.env`
-contains the ordinary ClickHouse settings plus `GRAMSTAT_WALLETS_SOURCE_ID`,
-`GRAMSTAT_WALLETS_SINK_DB=gramstat` and `GRAMSTAT_WALLETS_FOLLOW_NATIVE=1`.
-The env file is root-readable only. The two-hour run budget is resumable: already
-published days are skipped on the next timer run. Keep other manual wallet
-writers stopped while this service is advancing the source epoch.
+Wallets runs in the **existing** `gramstat-aggregate.service` / hourly timer,
+after the other handlers, under the same user, environment and `flock` lock.
+Add `GRAMSTAT_WALLETS_SOURCE_ID=mainnet-wallets-v1` and
+`GRAMSTAT_WALLETS_FOLLOW_NATIVE=1` to `/etc/gramstat-aggregate.env`.
+There is no separate Wallets scheduler. The ordinary per-handler time budget is
+resumable: already published days are skipped on the next hourly run. An initial
+large backlog may take several runs; other handlers still run first each hour.
 
 First-deployment preparation does require the entire preceding deployment history
 on the first run. It then reads only MCs after its persisted progress. The first
@@ -129,8 +128,9 @@ earlier writes. The safe transaction-time horizon is the minimum timestamp of
 all shard tips in `shard_state` at that endpoint, matched against `blocks`, not
 the masterchain timestamp alone.
 
-The source manifest publisher is separate from this handler; no unverified
-watermark is automatically promoted to a verified one.
+Manual snapshots require an external manifest publisher. Native following updates
+the watermark inside the handler, but never promotes an unverified epoch to a
+verified one.
 
 `history_verified=0` permits isolated diagnostics and benchmarking, but the public
 reader SQL excludes these results. It does not manufacture historical zeros.
