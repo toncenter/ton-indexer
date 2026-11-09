@@ -112,7 +112,16 @@ These are sensitivity results for one day, not a production threshold or proof
 that every remaining payment delivered Stars. The 99 unknown quantities are not
 silently assigned zero or included in the price-qualified subtotal.
 
-## Recommended next rule
+## Adopted rule after this audit
+
+The subsequent implementation uses **calendar UTC hours and a 50% floor for
+GRAM**, with an exact money-weighted median, and a **fixed 0.012 USDT/Star floor**
+(80% of 0.015) for USDT. See [the collector definition](gramstat-stars.md#payment-price-filter-v2)
+for unknown amounts/sizes, sparse hours, rejected counts and calculation version.
+The daily 50/80/90% experiment above remains a historical dry run, not the hourly
+production result.
+
+### Original research recommendation
 
 Use payment-to-quantity consistency with a historical reference price, separated
 by payment asset (and product if their rates differ). GRAM's exchange rate changes,

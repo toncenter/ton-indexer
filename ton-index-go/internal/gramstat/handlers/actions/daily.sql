@@ -1,6 +1,7 @@
 WITH payments AS (
     SELECT (to_timestamp(start_utime) AT TIME ZONE 'UTC')::date AS day,
-           type, source, destination, amount, asset,
+           start_utime / 3600 * 3600 AS hour,
+           type, source, destination, amount, value, asset,
            CASE WHEN type = 'jetton_swap'
                 THEN coalesce(nullif((jetton_swap_data).dex, ''), 'unknown')
            END AS dex,
@@ -33,6 +34,10 @@ WITH payments AS (
            CASE WHEN type IN ('jetton_transfer','nft_transfer') THEN destination END AS destination,
            CASE WHEN liquid_pool IS NOT NULL THEN amount END AS amount,
            dex, liquid_pool, stars_comment,
+           CASE WHEN stars_comment IS NOT NULL THEN hour END AS stars_hour,
+           CASE WHEN stars_comment IS NOT NULL
+                THEN CASE WHEN type = 'ton_transfer' THEN value ELSE amount END
+           END AS stars_paid,
            (type = 'nft_mint' AND asset = '0:B774D95EB20543F186C06B371AB88AD704F7E256130CAF96189368A7D0CB6CCF') AS dns_mint
     FROM payments
 ), daily AS (
@@ -69,7 +74,7 @@ WITH payments AS (
 ), parsed AS MATERIALIZED (
     -- Parse once, and materialize only the actual Stars payments rather than
     -- every transfer, swap and mint in the history.
-    SELECT day, type, stars_comment,
+    SELECT day, type, stars_comment, stars_hour, stars_paid,
         -- Fractional quantities are not integral Stars. Accept the observed .0
         -- notation, but never infer quantities from the TON/USDT payment value.
         regexp_match(stars_comment,
@@ -82,7 +87,7 @@ WITH payments AS (
              END AS stars_quantity
     FROM parsed
 ), star_keys AS (
-    SELECT day, jsonb_build_object(
+    SELECT day, stars_hour, stars_paid, jsonb_build_object(
         'payment_asset', CASE WHEN type = 'ton_transfer' THEN 'TON' ELSE 'USDT' END,
         'product', CASE WHEN stars_comment LIKE '%Prepaid Telegram Stars%' THEN 'prepaid' ELSE 'standard' END,
         'stars_per_purchase', CASE WHEN stars_quantity > 0 AND stars_quantity <= 18446744073709551615
@@ -94,10 +99,14 @@ WITH payments AS (
     ) AS stars_bucket
     FROM quantities
 ), star_counts AS (
-    SELECT day, stars_bucket, count(*) AS purchases FROM star_keys GROUP BY day, stars_bucket
+    -- Lossless compression before transport. Monetary weight is paid * count,
+    -- never declared quantity. Exact rational sorting/filtering happens in Go.
+    SELECT day, stars_hour, stars_paid, stars_bucket, count(*) AS purchases
+    FROM star_keys GROUP BY day, stars_hour, stars_paid, stars_bucket
 ), star_days AS (
     SELECT day, sum(purchases)::bigint AS purchases,
-           jsonb_agg(stars_bucket || jsonb_build_object('purchases', purchases)) AS buckets
+           jsonb_agg(stars_bucket || jsonb_build_object(
+               'hour', stars_hour, 'paid', stars_paid::text, 'purchases', purchases)) AS buckets
     FROM star_counts GROUP BY day
 )
 SELECT d.day, d.jetton_senders, d.jetton_receivers, d.jetton_transfers,

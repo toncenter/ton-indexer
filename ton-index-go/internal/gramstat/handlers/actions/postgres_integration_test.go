@@ -51,7 +51,7 @@ CREATE TYPE jetton_swap_details AS (dex text);
 CREATE TYPE ton_transfer_details AS (content text);
 CREATE TYPE jetton_transfer_details AS (comment text);
 CREATE TABLE actions(trace_mc_seqno_end integer, start_utime bigint, source text, destination text, type text, success boolean, parent_action_id text,
-    amount numeric, asset text, staking_data staking_details, jetton_swap_data jetton_swap_details,
+    amount numeric, value numeric, asset text, staking_data staking_details, jetton_swap_data jetton_swap_details,
     ton_transfer_data ton_transfer_details, jetton_transfer_data jetton_transfer_details);
 INSERT INTO blocks VALUES (-1,99,1792540799), (-1,100,1792544400), (-1,101,1792630800), (-1,102,1792717200);
 INSERT INTO actions(trace_mc_seqno_end,start_utime,source,destination,type,success,parent_action_id) VALUES
@@ -145,8 +145,10 @@ INSERT INTO actions(trace_mc_seqno_end,start_utime,type,success,destination,stak
 	const fragment = "0:852443F8599FE6A5DA34FE43049AC4E0BEB3071BB2BFB56635EA9421287C283A"
 	const usdt = "0:B113A994B5024A16719F69139328EB759596C38A25F59028B146FECDC3621DFE"
 	for _, comment := range comments {
-		_, err = fixture.Exec(ctx, `INSERT INTO actions(trace_mc_seqno_end,start_utime,source,destination,type,success,parent_action_id,ton_transfer_data)
-VALUES(102,$1,'alice',$2,'ton_transfer',true,'batch',ROW($3::text))`, from.Unix()+10, fragment, comment)
+		_, err = fixture.Exec(ctx, `INSERT INTO actions(trace_mc_seqno_end,start_utime,source,destination,type,success,parent_action_id,ton_transfer_data,value)
+VALUES(102,$1,'alice',$2,'ton_transfer',true,'batch',ROW($3::text),
+ CASE WHEN $3='18446744073709551615 Telegram Stars' THEN 18446744073709551615000000
+      WHEN $3='500 Prepaid Telegram Stars' THEN 500000000 ELSE 50000000 END)`, from.Unix()+10, fragment, comment)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -165,17 +167,25 @@ VALUES(102,$1,'alice',$2,'ton_transfer',true,'batch',ROW($3::text))`, from.Unix(
 		{fragment, usdt, "100 Telegram Stars", true, from.Unix() - 1},
 		{fragment, usdt, "100 Telegram Stars", true, from.Add(48 * time.Hour).Unix()},
 	} {
-		_, err = fixture.Exec(ctx, `INSERT INTO actions(trace_mc_seqno_end,start_utime,source,destination,type,success,parent_action_id,asset,jetton_transfer_data)
-VALUES(102,$1,'alice',$2,'jetton_transfer',$3,'batch',$4,ROW($5::text))`, test.utime, test.dest, test.success, test.asset, test.comment)
+		_, err = fixture.Exec(ctx, `INSERT INTO actions(trace_mc_seqno_end,start_utime,source,destination,type,success,parent_action_id,asset,jetton_transfer_data,amount,value)
+VALUES(102,$1,'alice',$2,'jetton_transfer',$3,'batch',$4,ROW($5::text),1500000,1)`, test.utime, test.dest, test.success, test.asset, test.comment)
 		if err != nil {
 			t.Fatal(err)
 		}
+	}
+	// Real payment fields differ: GRAM uses value, USDT uses amount. The spoofed
+	// quantities are excluded even when the other field would have admitted them.
+	_, err = fixture.Exec(ctx, `INSERT INTO actions(trace_mc_seqno_end,start_utime,type,success,destination,asset,ton_transfer_data,jetton_transfer_data,value,amount) VALUES
+ (102,$1,'ton_transfer',true,$2,NULL,ROW('1000000000000000000 Telegram Stars'),NULL,1,1000000000000000000000000),
+ (102,$1,'jetton_transfer',true,$2,$3,NULL,ROW('100 Telegram Stars'),1000000000,1199999)`, from.Unix()+10, fragment, usdt)
+	if err != nil {
+		t.Fatal(err)
 	}
 	s, err = source.Collect(ctx, from, from.Add(48*time.Hour))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if s.Days[0].StarsPurchases != 12 || s.Days[1].StarsPurchases != 0 {
+	if s.Days[0].StarsPurchases != 12 || s.Days[0].StarsRejected != 2 || s.Days[1].StarsPurchases != 0 {
 		t.Fatalf("Stars filter/bounds: %+v", s.Days)
 	}
 	stars, err := starsRows(from, s)
@@ -199,6 +209,34 @@ VALUES(102,$1,'alice',$2,'jetton_transfer',$3,'batch',$4,ROW($5::text))`, test.u
 	}
 	if fifty != 3 || hundred != 2 || prepaid != 1 {
 		t.Fatalf("decimal notation/batch/prepaid buckets: %+v", stars[0].Buckets)
+	}
+	// The Stars-only historical path must reproduce the regular scan, including
+	// late traces. A stale account-index row must not duplicate an action.
+	_, err = fixture.Exec(ctx, `ALTER TABLE actions ADD COLUMN trace_id text;
+ALTER TABLE actions ADD COLUMN action_id text;
+ALTER TABLE actions ADD COLUMN trace_end_lt bigint DEFAULT 42;
+ALTER TABLE actions ADD COLUMN end_lt bigint DEFAULT 41;
+UPDATE actions SET trace_id=ctid::text,action_id=ctid::text;
+CREATE TABLE action_accounts AS SELECT destination AS account,trace_id,action_id,trace_mc_seqno_end,
+ trace_end_lt,end_lt AS action_end_lt,start_utime+86400*10 AS trace_end_utime FROM actions;
+INSERT INTO action_accounts SELECT account,trace_id,action_id,trace_mc_seqno_end,
+ trace_end_lt+1,action_end_lt,trace_end_utime FROM action_accounts LIMIT 1;`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	targetedSource := source
+	targetedSource.StarsOnly = true
+	targeted, err := targetedSource.Collect(ctx, from, from.Add(48*time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	targeted.CalculatedAt = s.CalculatedAt
+	targetedRows, err := starsRows(from, targeted)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(stars, targetedRows) {
+		t.Fatalf("account-index Stars differs: %+v vs %+v", stars, targetedRows)
 	}
 	// EXPLAIN the actual embedded SQL: adding dimensions must not introduce a
 	// second scan of actions. The tiny fixture naturally uses a sequential scan.

@@ -37,10 +37,10 @@ development. PostgreSQL is the source and ClickHouse is the destination.
 
 ## Quantity parsing
 
-**Known limitation:** parseable comment quantities are not payment-validated.
-The [payment/refund audit](gramstat-stars-payment-audit.md) documents spoofed
-quantities, protocol bounces, and a price-based dry run. The current `known`
-status means syntactically recognized, not confirmed delivery of Stars.
+Parseable quantities must pass the payment-price filter below before contributing
+to the known subtotal. The [payment/refund audit](gramstat-stars-payment-audit.md)
+documents spoofed quantities and protocol bounces. `known` still does not confirm
+off-chain delivery of Stars.
 
 The accepted prefix is `N Telegram Stars` or `N Prepaid Telegram Stars`, with
 whitespace after the quantity and a word boundary after `Stars`. `N` is a positive
@@ -52,15 +52,50 @@ An unparsable quantity does not remove the payment from the purchase count:
 
 | `quantity_status` | Meaning |
 | --- | --- |
-| `known` | Positive integral size available |
+| `known` | Positive integral size, with a known payment amount passing the price floor |
 | `missing_or_unrecognized_quantity` | Missing number, fractional size, separators or unsupported comment format |
 | `zero_quantity` | A comment explicitly says zero; not a valid purchase size |
 | `out_of_range` | Quantity exceeds `UInt64` |
+| `missing_payment_amount` | Payment amount unavailable; even a parseable claim is excluded from the known subtotal |
 
 Unknown sizes are `NULL`, never zero. They are grouped by payment asset, product
 and reason. No quantity is guessed from the TON/USDT payment amount. A raw `50`
 and `50.0` belong to the same bucket. The exact parser is in
 [daily.sql](../ton-index-go/internal/gramstat/handlers/actions/daily.sql).
+
+## Payment-price filter (v2)
+
+- **GRAM:** compute `paid / declared Stars` for positive, known-size payments in
+  the same calendar **UTC hour**, weighted by actual paid nanograms (including
+  payment multiplicity). Standard/prepaid share the reference. Choose the first
+  ascending price whose cumulative monetary weight reaches half the total (lower
+  median at an exact tie). Admit `paid >= declared Stars * reference / 2`.
+- **USDT:** use a fixed price of **0.015 USDT/Star** and an **80%** floor:
+  `paid_micro_usdt >= declared Stars * 12000`. No hourly reference or dollar/GRAM
+  exchange rate is involved. This assumes the fixed historical dollar price
+  agreed for this dataset; it is not inferred from today's GRAM quote.
+- GRAM comes from **`actions.value`**, USDT from **`actions.amount`**.
+- Known zero payments are rejected, including zero-paid unknown-size comments.
+  Missing amounts remain unknown. Positive payments with unrecognized quantities
+  remain unknown-size purchases, never contribute to the median or known subtotal,
+  and are **not** claimed to have passed a price check.
+- No minimum liquidity or cross-hour fallback is imposed. A single positive
+  known-size GRAM payment can set its hour's price. This rule makes cheap spoofing
+  expensive in busy hours, but does not establish independent validity in sparse
+  hours. Arbitrary median capture costs roughly the other payments' monetary weight.
+- The current hour is provisional within the partial current-day snapshot; a
+  later refresh recalculates it. Late-completing traces are included through the
+  snapshot's source MC; requested start/end times apply to action start time.
+
+SQL groups identical `(hour, asset, product, quantity/status, paid)` payments before
+transport. Go sorts exact rational prices and compares cross-products using big
+integers: no floats, rounding or inferred Stars quantities. Group weights are
+`paid * purchases`, not Stars quantities or payment counts.
+
+`rejected_purchases` counts only successful labelled payments excluded by this
+filter (underpriced or zero-paid). Failed on-chain actions are excluded earlier
+and are not counted as rejected. `purchases + rejected_purchases` is the original
+successful labelled payment count. Retained unknowns are included in purchases.
 
 ## Storage and refresh
 
@@ -68,6 +103,7 @@ and `50.0` belong to the same bucket. The exact parser is in
 
 - `purchases`: total payment-action count, including unknown sizes.
 - `unknown_purchases`: number of payments with an unknown/invalid quantity.
+- `rejected_purchases`: successful labelled payments excluded by the price filter.
 - `known_stars_total`: exact sum over known quantities only (`Decimal(38,0)`).
 - `stars_total`: full quantity when every size is known, otherwise `NULL`.
 - `buckets`: `(payment_asset, product, stars_per_purchase, quantity_status,
@@ -80,7 +116,7 @@ with `FINAL`. `ReplacingMergeTree(calculated_at)` replaces the entire array, so
 removed sizes, currencies or unknown buckets cannot remain as stale chart entries.
 The view `gramstat.telegram_stars_buckets` expands only the latest snapshots.
 
-The existing `actions` SQL adds a Stars grouping set while retaining **one scan
+The existing `actions` SQL adds grouped Stars payments while retaining **one scan
 through the actions MC index**. It materializes parsed comments to evaluate the
 regex once per candidate, not once per aggregation expression. All existing
 metrics are collected in the same read-only, repeatable-read transaction.
@@ -92,6 +128,15 @@ totals and timestamps for charts. Retries repair interrupted writes. The ordinar
 hourly refresh covers today plus three preceding days and fills missing days in
 established actions history. Older source corrections require explicit dates.
 The current day and source-lagged days retain `is_partial=1`.
+
+Snapshots produced by this filter carry `calc_version='stars-v2-hourly-gram50-usdt80'`.
+The explicit-date `stars` handler rebuilds only Stars distributions and the Stars
+purchase metric. It traverses Fragment's `(account, trace_end_utime, ...)` index
+and joins actions by their complete primary key, rather than scanning unrelated
+actions. Matching both stored LT fields prevents stale account-index entries from
+duplicating corrected actions. It intentionally does not cap trace end time at
+the action window's end, so late traces remain included. For a whole-history
+rebuild, use one range to avoid rereading the late-trace tail for many small chunks.
 
 ## Graph queries
 
@@ -129,12 +174,31 @@ There are no new environment variables, API keys or PostgreSQL migrations.
 
 ```bash
 gramstat-aggregate --handlers actions --from 2026-10-30 --to 2026-11-01
+
+# Stars-only history: already indexed actions; no indexer replay.
+gramstat-aggregate --handlers stars --from 2024-07-12 --to 2026-11-10 \
+  --actions-chunk-days 3660 --actions-statement-timeout 4h --timeout 5h
 ```
 
-The integrated read-only probe reproduced 224,953 payments / 45,021,726 known
+Before the v2 price filter, the integrated read-only probe reproduced 224,953 payments / 45,021,726 known
 Stars for 30 October 2026, and 457,394 payments / 55,151,570 known Stars for
 31 October through 13:00 UTC. Unknown quantities were 1,521 and 3,693 respectively;
 the full Stars total is therefore NULL for both snapshots. Existing daily metrics
 matched their previous results. Local PostgreSQL integration tests cover parsing,
 filters, nested/batched payments, late traces and one source scan; ClickHouse-local
 tests exercise exact integers and replacement/removal of buckets.
+
+V2 validation on 2026-11-09 compared the ordinary MC-index path with the targeted
+account-index path for November 8: identical 136,928 raw payments and 28,991
+hour/price groups; 32,779,343 known Stars, 987 unknown purchases and no rejections.
+All other daily Activity fields matched the previous SQL. Measured SQL times were
+6.814s (old), 4.492s (new regular), and 33.730s (targeted with late-trace tail);
+these are individual warm-cache observations, not a general speedup claim.
+
+For the August 23, 2025 anomaly, the same bounded MC interval used by the audit
+reproduced all 47,587 raw payments and the old known subtotal exactly. The hourly
+filter retained **47,420 payments / 18,327,439 known Stars**, with 96 unknowns;
+167 payments were rejected (164 underpriced known quantities, 3 zero-paid unknown
+quantities). Exact Python `Fraction` and the production Go filter agreed on both
+days. Local integration tests also cover late traces, stale account-index entries,
+amount-field selection, inclusive thresholds, partial periods and one raw scan.

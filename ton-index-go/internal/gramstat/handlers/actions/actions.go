@@ -37,6 +37,7 @@ type DayCounts struct {
 	SwapsByDEX                                           map[string]uint64
 	LiquidStakingByPool                                  map[string]PoolDeposits
 	StarsPurchases                                       uint64
+	StarsRejected                                        uint64
 	StarsBuckets                                         []gramstat.StarsBucket
 }
 
@@ -65,14 +66,25 @@ type Handler struct {
 	Log    *slog.Logger
 	// ChunkDays permits a single source scan for an explicit historical backfill.
 	ChunkDays int
+	// StarsOnly is an explicit historical rebuild; ordinary refresh shares the
+	// existing actions scan. Publish only Stars tables/metrics in this mode.
+	StarsOnly bool
 }
 
-func (*Handler) Name() string { return "actions" }
+func (h *Handler) Name() string {
+	if h.StarsOnly {
+		return "stars"
+	}
+	return "actions"
+}
 
 func (h *Handler) Run(ctx context.Context, req gramstat.Request) error {
 	from, to, err := req.DailyWindow()
 	if err != nil {
 		return err
+	}
+	if h.StarsOnly && req.From.IsZero() {
+		return fmt.Errorf("Stars-only rebuild requires explicit dates")
 	}
 	if req.From.IsZero() {
 		stored, err := h.Sink.StoredDays(ctx, Metrics, gramstat.Day(req.AsOf))
@@ -102,6 +114,15 @@ func (h *Handler) Run(ctx context.Context, req gramstat.Request) error {
 		rows, err := dailyRows(start, end, snapshot)
 		if err != nil {
 			return err
+		}
+		if h.StarsOnly {
+			selected := rows[:0]
+			for _, row := range rows {
+				if row.Metric == "telegram_stars_purchases" {
+					selected = append(selected, row)
+				}
+			}
+			rows = selected
 		}
 		stars, err := starsRows(start, snapshot)
 		if err != nil {

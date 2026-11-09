@@ -19,9 +19,11 @@ func starsRows(from time.Time, snapshot Snapshot) ([]gramstat.DailyStars, error)
 		d := byDay[day.Format(time.DateOnly)]
 		row := gramstat.DailyStars{
 			Day: day.Format(time.DateOnly), Purchases: d.StarsPurchases,
-			Buckets:       append([]gramstat.StarsBucket{}, d.StarsBuckets...),
-			CalculatedAt:  snapshot.CalculatedAt.UTC().Format("2006-01-02 15:04:05.000000"),
-			SourceMCSeqno: snapshot.SourceMC,
+			RejectedPurchases: d.StarsRejected,
+			CalcVersion:       "stars-v2-hourly-gram50-usdt80",
+			Buckets:           append([]gramstat.StarsBucket{}, d.StarsBuckets...),
+			CalculatedAt:      snapshot.CalculatedAt.UTC().Format("2006-01-02 15:04:05.000000"),
+			SourceMCSeqno:     snapshot.SourceMC,
 		}
 		through := day.AddDate(0, 0, 1)
 		if through.After(snapshot.Through) {
@@ -52,7 +54,7 @@ func starsRows(from time.Time, snapshot Snapshot) ([]gramstat.DailyStars, error)
 				total := value.String()
 				b.StarsTotal = &total
 				sum.Add(sum, value)
-			case "missing_or_unrecognized_quantity", "zero_quantity", "out_of_range":
+			case "missing_or_unrecognized_quantity", "zero_quantity", "out_of_range", "missing_payment_amount":
 				if b.StarsPerPurchase != nil {
 					return nil, fmt.Errorf("unknown Stars quantity has a value for %s", row.Day)
 				}

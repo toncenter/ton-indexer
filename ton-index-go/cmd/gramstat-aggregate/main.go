@@ -60,6 +60,7 @@ func run(log *slog.Logger) error {
 	}
 	if *list {
 		fmt.Println("actions: " + strings.Join(actions.Metrics, ", "))
+		fmt.Println("stars: explicit-date Stars-only rebuild through Fragment's account index")
 		fmt.Println("actions_monthly: exact calendar-month unique jetton/NFT senders, receivers and swap users")
 		fmt.Println("chain: full-history block flows and burn-corrected daily supply")
 		fmt.Println("accounts: existing accounts from a verified opening state and complete deltas")
@@ -99,6 +100,7 @@ func run(log *slog.Logger) error {
 		&accounts.Handler{CH: ch, MetricsDB: os.Getenv("GRAMSTAT_CHAIN_METRICS_DB"), Log: log},
 		&chain.Handler{CH: ch, RawDB: os.Getenv("GRAMSTAT_CHAIN_RAW_DB"), MetricsDB: os.Getenv("GRAMSTAT_CHAIN_METRICS_DB"), Log: log},
 		&actions.Handler{Source: actions.Postgres{DSN: os.Getenv("GRAMSTAT_PG_DSN"), StatementTimeout: *actionsStatementTimeout, WorkMemMB: *actionsWorkMem, ParallelWorkers: *actionsWorkers, IncludeMonthly: *actionsMonthly}, Sink: ch, Log: log, ChunkDays: *actionsChunkDays},
+		&actions.Handler{Source: actions.Postgres{DSN: os.Getenv("GRAMSTAT_PG_DSN"), StatementTimeout: *actionsStatementTimeout, WorkMemMB: *actionsWorkMem, ParallelWorkers: *actionsWorkers, StarsOnly: true}, Sink: ch, Log: log, ChunkDays: *actionsChunkDays, StarsOnly: true},
 		&actions.MonthlyHandler{Source: actions.Postgres{DSN: os.Getenv("GRAMSTAT_PG_DSN"), StatementTimeout: *actionsStatementTimeout, WorkMemMB: *actionsWorkMem, ParallelWorkers: *actionsWorkers}, Sink: ch, Log: log},
 		&validators.Handler{Source: validators.Postgres{DSN: os.Getenv("GRAMSTAT_PG_DSN")},
 			Verifier: validators.ConfigRPC{URL: strings.TrimRight(os.Getenv("GRAMSTAT_CONFIG_URL"), "/"), APIKey: os.Getenv("GRAMSTAT_CONFIG_API_KEY")},

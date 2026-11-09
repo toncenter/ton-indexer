@@ -21,16 +21,47 @@ import (
 //go:embed daily.sql
 var dailySQL string
 
+//go:embed stars_source.sql
+var starsSourceSQL string
+
+// The targeted historical rebuild scans only Fragment's account index and
+// looks up actions by their complete primary key. Matching both LT fields also
+// prevents stale account-index entries from duplicating corrected actions.
+// Do not cap trace_end_utime at the requested end: traces may finish much later.
+func starsOnlySQL() string {
+	_, tail, ok := strings.Cut(dailySQL, "parsed AS MATERIALIZED (")
+	if !ok {
+		panic("missing shared Stars parser")
+	}
+	tail, _, ok = strings.Cut(tail, "\nSELECT d.day,")
+	if !ok {
+		panic("missing daily projection")
+	}
+	return strings.TrimSpace(starsSourceSQL) + ", parsed AS MATERIALIZED (" + tail + `
+SELECT day, 0, 0, 0, 0, 0, 0, 0, 0, '{}'::jsonb, 0, '0'::text,
+       '{}'::jsonb, 0, purchases, buckets FROM star_days ORDER BY day`
+}
+
 type Postgres struct {
 	DSN              string
 	StatementTimeout time.Duration
 	WorkMemMB        int
 	ParallelWorkers  int
 	IncludeMonthly   bool
+	StarsOnly        bool
 }
 
 func (p Postgres) Collect(ctx context.Context, from, to time.Time) (snapshot Snapshot, err error) {
+	if !from.Equal(from.UTC().Truncate(24 * time.Hour)) {
+		return snapshot, fmt.Errorf("daily actions require a UTC day boundary")
+	}
 	query := dailySQL
+	if p.StarsOnly {
+		if p.IncludeMonthly {
+			return snapshot, fmt.Errorf("Stars-only collection cannot include monthly activity")
+		}
+		query = starsOnlySQL()
+	}
 	if p.IncludeMonthly {
 		genesis := time.Date(2019, 11, 15, 0, 0, 0, 0, time.UTC)
 		if !from.Equal(monthStart(from)) && !from.Equal(genesis) {
@@ -180,15 +211,18 @@ WHERE workchain = -1 AND seqno = $1 LIMIT 1`, upper).Scan(&sourceTime); err != n
 		d.JettonSenders, d.JettonReceivers, d.JettonTransfers = uint64(senders), uint64(receivers), uint64(transfers)
 		d.NFTSenders, d.NFTReceivers, d.NFTTransfers = uint64(nftSenders), uint64(nftReceivers), uint64(nfts)
 		d.Swaps, d.SwapUsers, d.LiquidStakingDeposits, d.TonDNSMints = uint64(swaps), uint64(users), uint64(deposits), uint64(dnsMints)
-		d.StarsPurchases = uint64(starsPurchases)
 		if err = json.Unmarshal(dexJSON, &d.SwapsByDEX); err != nil {
 			return snapshot, fmt.Errorf("decode DEX breakdown: %w", err)
 		}
 		if err = json.Unmarshal(poolsJSON, &d.LiquidStakingByPool); err != nil {
 			return snapshot, fmt.Errorf("decode liquid staking breakdown: %w", err)
 		}
-		if err = json.Unmarshal(starsJSON, &d.StarsBuckets); err != nil {
+		var payments []starsPaymentGroup
+		if err = json.Unmarshal(starsJSON, &payments); err != nil {
 			return snapshot, fmt.Errorf("decode Stars distribution: %w", err)
+		}
+		if err = filterStarsPayments(&d, uint64(starsPurchases), payments); err != nil {
+			return snapshot, fmt.Errorf("filter Stars payments: %w", err)
 		}
 		switch granularity {
 		case "daily":

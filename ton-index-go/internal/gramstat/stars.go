@@ -24,16 +24,18 @@ type StarsBucket struct {
 // DailyStars replaces the entire distribution, including disappearing sizes.
 // KnownStarsTotal is a subtotal; StarsTotal is NULL if any size is unknown.
 type DailyStars struct {
-	Day              string        `json:"day"`
-	Purchases        uint64        `json:"purchases"`
-	UnknownPurchases uint64        `json:"unknown_purchases"`
-	KnownStarsTotal  string        `json:"known_stars_total"`
-	StarsTotal       *string       `json:"stars_total"`
-	Buckets          []StarsBucket `json:"buckets"`
-	CalculatedAt     string        `json:"calculated_at"`
-	DataThrough      string        `json:"data_through"`
-	SourceMCSeqno    uint32        `json:"source_mc_seqno"`
-	IsPartial        uint8         `json:"is_partial"`
+	Day               string        `json:"day"`
+	Purchases         uint64        `json:"purchases"`
+	UnknownPurchases  uint64        `json:"unknown_purchases"`
+	RejectedPurchases uint64        `json:"rejected_purchases"`
+	KnownStarsTotal   string        `json:"known_stars_total"`
+	StarsTotal        *string       `json:"stars_total"`
+	Buckets           []StarsBucket `json:"buckets"`
+	CalculatedAt      string        `json:"calculated_at"`
+	DataThrough       string        `json:"data_through"`
+	SourceMCSeqno     uint32        `json:"source_mc_seqno"`
+	IsPartial         uint8         `json:"is_partial"`
+	CalcVersion       string        `json:"calc_version,omitempty"`
 }
 
 func (c *ClickHouse) WriteStars(ctx context.Context, rows []DailyStars) error {

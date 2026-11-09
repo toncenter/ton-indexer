@@ -67,6 +67,7 @@ func (s starsSource) Collect(context.Context, time.Time, time.Time) (Snapshot, e
 
 type starsSink struct {
 	calls                []string
+	daily                []gramstat.DailyMetric
 	failStars, failDaily bool
 }
 
@@ -80,12 +81,31 @@ func (s *starsSink) WriteStars(context.Context, []gramstat.DailyStars) error {
 	}
 	return nil
 }
-func (s *starsSink) WriteDaily(context.Context, []gramstat.DailyMetric) error {
+func (s *starsSink) WriteDaily(_ context.Context, rows []gramstat.DailyMetric) error {
 	s.calls = append(s.calls, "daily")
+	s.daily = append(s.daily, rows...)
 	if s.failDaily {
 		return errors.New("insert failed")
 	}
 	return nil
+}
+
+func TestStarsOnlyDoesNotPublishOtherActivity(t *testing.T) {
+	day := time.Date(2026, 10, 30, 0, 0, 0, 0, time.UTC)
+	sink := &starsSink{}
+	h := Handler{StarsOnly: true, Source: starsSource{Snapshot{Through: day.Add(24 * time.Hour), CalculatedAt: day.Add(25 * time.Hour), SourceMC: 123}}, Sink: sink, Log: slog.New(slog.NewTextHandler(io.Discard, nil))}
+	if err := h.Run(context.Background(), gramstat.Request{AsOf: day.Add(48 * time.Hour), LookbackDays: 3}); err == nil {
+		t.Fatal("implicit historical window accepted")
+	}
+	if len(sink.calls) != 0 {
+		t.Fatal("implicit window published data")
+	}
+	if err := h.Run(context.Background(), gramstat.Request{From: day, To: day.Add(24 * time.Hour), AsOf: day.Add(48 * time.Hour), LookbackDays: 3}); err != nil {
+		t.Fatal(err)
+	}
+	if h.Name() != "stars" || len(sink.daily) != 1 || sink.daily[0].Metric != "telegram_stars_purchases" {
+		t.Fatalf("unrelated activity overwritten: %+v", sink.daily)
+	}
 }
 
 func TestStarsCompletionMarkerAfterDistribution(t *testing.T) {

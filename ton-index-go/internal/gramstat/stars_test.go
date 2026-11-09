@@ -44,6 +44,7 @@ func TestStarsClickHouseSnapshots(t *testing.T) {
 	qty := uint64(9007199254740993)
 	total := "27021597764222979"
 	row := DailyStars{Day: "2026-10-30", Purchases: 4, UnknownPurchases: 1, KnownStarsTotal: total,
+		RejectedPurchases: 7, CalcVersion: "stars-v2-hourly-gram50-usdt80",
 		CalculatedAt: "2026-10-31 12:00:00.000000", DataThrough: "2026-10-31 00:00:00", SourceMCSeqno: 123,
 		Buckets: []StarsBucket{{PaymentAsset: "TON", Product: "standard", StarsPerPurchase: &qty, QuantityStatus: "known", Purchases: 3, StarsTotal: &total},
 			{PaymentAsset: "USDT", Product: "prepaid", QuantityStatus: "zero_quantity", Purchases: 1}}}
@@ -55,6 +56,9 @@ func TestStarsClickHouseSnapshots(t *testing.T) {
 	}
 	if got := run("SELECT purchases,known_stars_total,isNull(stars_total) FROM gramstat.telegram_stars_daily FINAL", ""); got != "4\t27021597764222979\t1\n" {
 		t.Fatalf("daily total: %s", got)
+	}
+	if got := run("SELECT rejected_purchases,calc_version FROM gramstat.telegram_stars_daily FINAL", ""); got != "7\tstars-v2-hourly-gram50-usdt80\n" {
+		t.Fatalf("audit/version lost: %s", got)
 	}
 	// A corrected distribution drops an entire currency/size; no stale bucket survives.
 	row.Buckets = row.Buckets[:1]

@@ -16,6 +16,9 @@ CREATE TABLE IF NOT EXISTS gramstat.telegram_stars_daily (
 ) ENGINE = ReplacingMergeTree(calculated_at)
 PARTITION BY toYYYYMM(day) ORDER BY day;
 
+ALTER TABLE gramstat.telegram_stars_daily
+    ADD COLUMN IF NOT EXISTS rejected_purchases UInt64 DEFAULT 0;
+
 CREATE VIEW IF NOT EXISTS gramstat.telegram_stars_buckets AS
 SELECT day, calculated_at, data_through, source_mc_seqno, is_partial,
        bucket.payment_asset AS payment_asset, bucket.product AS product,
