@@ -37,6 +37,11 @@ development. PostgreSQL is the source and ClickHouse is the destination.
 
 ## Quantity parsing
 
+**Known limitation:** parseable comment quantities are not payment-validated.
+The [payment/refund audit](gramstat-stars-payment-audit.md) documents spoofed
+quantities, protocol bounces, and a price-based dry run. The current `known`
+status means syntactically recognized, not confirmed delivery of Stars.
+
 The accepted prefix is `N Telegram Stars` or `N Prepaid Telegram Stars`, with
 whitespace after the quantity and a word boundary after `Stars`. `N` is a positive
 integer fitting `UInt64`. Observed integral decimal notation such as `50.0` or
