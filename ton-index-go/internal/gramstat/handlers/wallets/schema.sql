@@ -51,6 +51,12 @@ CREATE TABLE IF NOT EXISTS gramstat.wallet_monthly (
  runs Array(UUID), calculated_at DateTime64(6,'UTC')
 ) ENGINE=MergeTree ORDER BY (source_id, registry, day, calculated_at);
 
+-- Calendar-month distincts; deliberately separate from historical rolling MAU.
+CREATE TABLE IF NOT EXISTS gramstat.wallet_months (
+ source_id String, registry String, month Date, active UInt64,
+ runs Array(UUID), calculated_at DateTime64(6,'UTC')
+) ENGINE=MergeTree ORDER BY (source_id, registry, month, calculated_at);
+
 CREATE TABLE IF NOT EXISTS gramstat.wallet_counts (
  source_id String, registry String, day Date, run_id UUID,
  step UInt32, bucket UInt32, active UInt64,

@@ -6,22 +6,22 @@
   including MC; hourly and daily checkpoints accelerate long ranges.
 * **Activations per day:** first qualifying deployments by transaction UTC day.
 * **Active wallets:** fixed Hourly / Daily / Monthly tabs. Hourly and Daily count
-  aligned UTC buckets. Monthly is a rolling 30-day exact union, updated daily:
-  the point for day D covers [D−29 days, D+1 day). Daily is the default.
+  aligned UTC buckets. Monthly is one exact union per UTC calendar month,
+  covering [month start, next month start). Daily is the default.
   A wider window is a union, never a sum of smaller counts. Stored minute states
   remain an internal preparation detail.
 
-After daily preparation, the same wallet handler fills missing `wallet_monthly`
-rows from published daily `wallet_activity` states. Each row records the 30
-contributing publication UUIDs. Only windows with all 30 certified days are
-published; the first 29 history days and windows spanning holes remain missing.
+After daily preparation, the same wallet handler fills missing `wallet_months`
+rows from published daily `wallet_activity` states. Each row records all
+contributing publication UUIDs (28–31). Only months with every day certified are
+published; partial initial/current months and months spanning holes remain missing.
 Certified empty windows produce zero. Source epochs make certified days immutable,
 so retries may safely repeat an exact result. API reads scalar counts, never states.
-The ordinary hourly handler and manual catch-up both resume missing monthly days.
+The ordinary hourly handler and manual catch-up both resume missing months.
 Monthly preparation uses one thread and an 8 GiB query memory cap for exact
-30-day unions, including large aggregate-state storage granules. API reads remain
+calendar-month unions, including large aggregate-state storage granules. API reads remain
 small scalar queries with their existing read-only limits.
-Apply the `wallet_monthly` DDL in `schema.sql` and grant SELECT/INSERT to the
+Apply the `wallet_months` DDL in `schema.sql` and grant SELECT/INSERT to the
 aggregator and SELECT to the API before deploying this version.
 
 Definitions are those in [gramstat.md](gramstat.md#deployments-and-wallet-charts).
