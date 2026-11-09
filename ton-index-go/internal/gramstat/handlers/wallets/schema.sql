@@ -44,6 +44,13 @@ CREATE TABLE IF NOT EXISTS gramstat.wallet_activity (
 ) ENGINE=AggregatingMergeTree PARTITION BY toYYYYMM(day)
 ORDER BY (source_id, registry, day, run_id, step, bucket);
 
+-- Only full, certified 30-day windows are published. Source epochs make their
+-- contributing closed days immutable; retries insert the same exact count.
+CREATE TABLE IF NOT EXISTS gramstat.wallet_monthly (
+ source_id String, registry String, day Date, active UInt64,
+ runs Array(UUID), calculated_at DateTime64(6,'UTC')
+) ENGINE=MergeTree ORDER BY (source_id, registry, day, calculated_at);
+
 CREATE TABLE IF NOT EXISTS gramstat.wallet_counts (
  source_id String, registry String, day Date, run_id UUID,
  step UInt32, bucket UInt32, active UInt64,

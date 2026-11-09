@@ -206,14 +206,14 @@ func (h *Handler) Run(ctx context.Context, req gramstat.Request) error {
 				return fmt.Errorf("wallet day %s: %w", row.Day, err)
 			}
 		}
-		return nil
+		return h.monthly(ctx, p, time.Unix(int64(completeFrom), 0).UTC(), to)
 	}
 	for d := from; d.Before(to); d = d.AddDate(0, 0, 1) {
 		if err := h.day(ctx, p, s, d); err != nil {
 			return fmt.Errorf("wallet day %s: %w", d.Format(time.DateOnly), err)
 		}
 	}
-	return nil
+	return h.monthly(ctx, p, from, to)
 }
 
 func window(req gramstat.Request, before uint32) (time.Time, time.Time, error) {

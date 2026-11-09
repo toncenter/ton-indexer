@@ -5,8 +5,21 @@
 * **Activated wallets:** cumulative first qualifying deployments, sampled at each
   including MC; hourly and daily checkpoints accelerate long ranges.
 * **Activations per day:** first qualifying deployments by transaction UTC day.
-* **Active wallets:** exact distinct sending addresses per aligned UTC minute,
-  hour or day. A wider bucket is a union, never a sum of smaller counts.
+* **Active wallets:** fixed Hourly / Daily / Monthly tabs. Hourly and Daily count
+  aligned UTC buckets. Monthly is a rolling 30-day exact union, updated daily:
+  the point for day D covers [D−29 days, D+1 day). Daily is the default.
+  A wider window is a union, never a sum of smaller counts. Stored minute states
+  remain an internal preparation detail.
+
+After daily preparation, the same wallet handler fills missing `wallet_monthly`
+rows from published daily `wallet_activity` states. Each row records the 30
+contributing publication UUIDs. Only windows with all 30 certified days are
+published; the first 29 history days and windows spanning holes remain missing.
+Certified empty windows produce zero. Source epochs make certified days immutable,
+so retries may safely repeat an exact result. API reads scalar counts, never states.
+The ordinary hourly handler and manual catch-up both resume missing monthly days.
+Apply the `wallet_monthly` DDL in `schema.sql` and grant SELECT/INSERT to the
+aggregator and SELECT to the API before deploying this version.
 
 Definitions are those in [gramstat.md](gramstat.md#deployments-and-wallet-charts).
 An earlier non-wallet deployment does not exclude a later qualifying deployment.
