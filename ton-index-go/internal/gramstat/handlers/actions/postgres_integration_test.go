@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -228,6 +229,77 @@ VALUES(102,$1,'alice',$2,'jetton_transfer',$3,'batch',$4,ROW($5::text))`, test.u
 	}
 	if !lagged.Through.Equal(time.Unix(1792717200, 0)) {
 		t.Fatalf("source lag not retained: %v", lagged.Through)
+	}
+	// Combined history must preserve every daily value and calculate monthly
+	// distinct users from the same source, excluding the unfinished trailing month.
+	monthFrom := time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC)
+	monthEnd := time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC)
+	head := monthEnd.Add(24 * time.Hour)
+	_, err = fixture.Exec(ctx, `INSERT INTO blocks VALUES (-1,98,$1),(-1,103,$2)`, monthFrom.Unix()-1, head.Unix())
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = fixture.Exec(ctx, `INSERT INTO actions(trace_mc_seqno_end,start_utime,type,success) VALUES (103,$1,'other',true)`, head.Unix())
+	if err != nil {
+		t.Fatal(err)
+	}
+	combinedSource := source
+	combinedSource.IncludeMonthly = true
+	combined, err := combinedSource.Collect(ctx, monthFrom, head)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ordinary, err := source.Collect(ctx, monthFrom, head)
+	if err != nil {
+		t.Fatal(err)
+	}
+	combined.CalculatedAt = ordinary.CalculatedAt
+	combinedDaily, err := dailyRows(monthFrom, head, combined)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ordinaryDaily, err := dailyRows(monthFrom, head, ordinary)
+	if err != nil {
+		t.Fatal(err)
+	}
+	combinedStars, err := starsRows(monthFrom, combined)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ordinaryStars, err := starsRows(monthFrom, ordinary)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(combinedDaily, ordinaryDaily) || !reflect.DeepEqual(combinedStars, ordinaryStars) {
+		t.Fatal("combined query changed daily counts, money or Stars")
+	}
+	monthly, err = source.CollectMonthly(ctx, monthFrom, monthEnd)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !combined.MonthlyIncluded || len(combined.Months) != 1 || !reflect.DeepEqual(combined.Months, monthly.Days) {
+		t.Fatalf("monthly distinct results differ: %+v vs %+v", combined.Months, monthly.Days)
+	}
+	planRows, err = fixture.Query(ctx, "EXPLAIN "+combinedSQL(), int64(98), int64(103), monthFrom.Unix(), head.Unix())
+	if err != nil {
+		t.Fatal(err)
+	}
+	scans = 0
+	for planRows.Next() {
+		var line string
+		if err := planRows.Scan(&line); err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(line, "Seq Scan on actions") {
+			scans++
+		}
+	}
+	planRows.Close()
+	if err := planRows.Err(); err != nil {
+		t.Fatal(err)
+	}
+	if scans != 1 {
+		t.Fatalf("combined query scans raw source %d times", scans)
 	}
 }
 

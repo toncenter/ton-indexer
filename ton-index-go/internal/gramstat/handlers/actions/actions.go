@@ -41,10 +41,12 @@ type DayCounts struct {
 }
 
 type Snapshot struct {
-	Days         []DayCounts
-	Through      time.Time
-	CalculatedAt time.Time
-	SourceMC     uint32
+	Days            []DayCounts
+	Months          []DayCounts
+	MonthlyIncluded bool
+	Through         time.Time
+	CalculatedAt    time.Time
+	SourceMC        uint32
 }
 
 type Source interface {
@@ -109,6 +111,19 @@ func (h *Handler) Run(ctx context.Context, req gramstat.Request) error {
 		// full distribution first so an interrupted write cannot hide a gap.
 		if err := h.Sink.WriteStars(ctx, stars); err != nil {
 			return fmt.Errorf("publish Stars distributions: %w", err)
+		}
+		if snapshot.MonthlyIncluded && monthStart(snapshot.Through).After(start) {
+			months := snapshot
+			months.Days = snapshot.Months
+			months.Through = monthStart(snapshot.Through)
+			monthly, err := monthlyRows(start, months.Through, months)
+			if err != nil {
+				return err
+			}
+			if err := h.Sink.WriteDaily(ctx, monthly); err != nil {
+				return fmt.Errorf("publish monthly distinct counts: %w", err)
+			}
+			h.Log.Info("combined monthly actions published", "rows", len(monthly), "to", months.Through)
 		}
 		// Publish only after the entire chunk has been read and checked. Retries
 		// replace absolute values, including a corrected decrease or an actual zero.

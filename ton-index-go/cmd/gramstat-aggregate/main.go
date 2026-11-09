@@ -36,6 +36,9 @@ func run(log *slog.Logger) error {
 	timeout := flag.Duration("timeout", 20*time.Minute, "timeout per handler, including catch-up")
 	actionsChunkDays := flag.Int("actions-chunk-days", 7, "actions days per source scan (1..3660; large chunks require explicit dates)")
 	actionsStatementTimeout := flag.Duration("actions-statement-timeout", 5*time.Minute, "actions PostgreSQL statement timeout")
+	actionsWorkMem := flag.Int("actions-work-mem-mb", 64, "actions PostgreSQL memory per sort/hash operation (1..1024 MiB)")
+	actionsWorkers := flag.Int("actions-parallel-workers", 0, "actions PostgreSQL parallel scan workers (0..4)")
+	actionsMonthly := flag.Bool("actions-include-monthly", false, "also prepare complete-month unique addresses in the same historical source scan")
 	schema := flag.Bool("print-schema", false, "print ClickHouse DDL and exit (apply once as an administrator)")
 	list := flag.Bool("list-handlers", false, "list available handlers and exit")
 	flag.Parse()
@@ -82,6 +85,9 @@ func run(log *slog.Logger) error {
 	if _, _, err := req.DailyWindow(); err != nil {
 		return err
 	}
+	if *actionsMonthly && (req.From.IsZero() || *actionsChunkDays != 3660) {
+		return fmt.Errorf("--actions-include-monthly requires explicit dates and --actions-chunk-days 3660")
+	}
 	ch, err := gramstat.NewClickHouse(os.Getenv("GRAMSTAT_CH_URL"), os.Getenv("GRAMSTAT_CH_USER"), os.Getenv("GRAMSTAT_CH_PASSWORD"))
 	if err != nil {
 		return err
@@ -90,8 +96,8 @@ func run(log *slog.Logger) error {
 		&wallets.Handler{CH: ch, SourceID: os.Getenv("GRAMSTAT_WALLETS_SOURCE_ID"), SinkDB: os.Getenv("GRAMSTAT_WALLETS_SINK_DB"), FollowNative: os.Getenv("GRAMSTAT_WALLETS_FOLLOW_NATIVE") == "1", Log: log},
 		&accounts.Handler{CH: ch, MetricsDB: os.Getenv("GRAMSTAT_CHAIN_METRICS_DB"), Log: log},
 		&chain.Handler{CH: ch, RawDB: os.Getenv("GRAMSTAT_CHAIN_RAW_DB"), MetricsDB: os.Getenv("GRAMSTAT_CHAIN_METRICS_DB"), Log: log},
-		&actions.Handler{Source: actions.Postgres{DSN: os.Getenv("GRAMSTAT_PG_DSN"), StatementTimeout: *actionsStatementTimeout}, Sink: ch, Log: log, ChunkDays: *actionsChunkDays},
-		&actions.MonthlyHandler{Source: actions.Postgres{DSN: os.Getenv("GRAMSTAT_PG_DSN"), StatementTimeout: *actionsStatementTimeout}, Sink: ch, Log: log},
+		&actions.Handler{Source: actions.Postgres{DSN: os.Getenv("GRAMSTAT_PG_DSN"), StatementTimeout: *actionsStatementTimeout, WorkMemMB: *actionsWorkMem, ParallelWorkers: *actionsWorkers, IncludeMonthly: *actionsMonthly}, Sink: ch, Log: log, ChunkDays: *actionsChunkDays},
+		&actions.MonthlyHandler{Source: actions.Postgres{DSN: os.Getenv("GRAMSTAT_PG_DSN"), StatementTimeout: *actionsStatementTimeout, WorkMemMB: *actionsWorkMem, ParallelWorkers: *actionsWorkers}, Sink: ch, Log: log},
 		&validators.Handler{Source: validators.Postgres{DSN: os.Getenv("GRAMSTAT_PG_DSN")},
 			Verifier: validators.ConfigRPC{URL: strings.TrimRight(os.Getenv("GRAMSTAT_CONFIG_URL"), "/"), APIKey: os.Getenv("GRAMSTAT_CONFIG_API_KEY")},
 			Sink:     validators.Store{CH: ch}, Log: log},

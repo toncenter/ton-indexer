@@ -25,35 +25,19 @@ WITH payments AS (
       AND (type IN ('jetton_transfer', 'nft_transfer', 'jetton_swap', 'stake_deposit', 'nft_mint')
            OR (type = 'ton_transfer'
                AND destination = '0:852443F8599FE6A5DA34FE43049AC4E0BEB3071BB2BFB56635EA9421287C283A'))
-), parsed AS MATERIALIZED (
-    -- PostgreSQL otherwise inlines the regex into every use of the bucket key.
-    -- Materialize once; all grouping sets still share one indexed actions scan.
-    SELECT *, CASE WHEN stars_comment LIKE '%Telegram Stars%' THEN
-        -- Fractional quantities are not integral Stars. Accept the observed .0
-        -- notation, but never infer quantities from the TON/USDT payment value.
-        regexp_match(stars_comment,
-            '^([0-9]+)(?:[.]0+)?[[:space:]]+(?:Prepaid[[:space:]]+)?Telegram Stars(?:[[:space:]]|$)')
-        END AS stars_parts
+), src AS MATERIALIZED (
+    -- One source-table scan. Keep only columns needed by the independent
+    -- aggregates; in particular, do not retain arbitrary assets or amounts.
+    SELECT day, type,
+           CASE WHEN type IN ('jetton_transfer','nft_transfer','jetton_swap') THEN source END AS source,
+           CASE WHEN type IN ('jetton_transfer','nft_transfer') THEN destination END AS destination,
+           CASE WHEN liquid_pool IS NOT NULL THEN amount END AS amount,
+           dex, liquid_pool, stars_comment,
+           (type = 'nft_mint' AND asset = '0:B774D95EB20543F186C06B371AB88AD704F7E256130CAF96189368A7D0CB6CCF') AS dns_mint
     FROM payments
-), quantities AS (
-    SELECT *, CASE WHEN length(ltrim(stars_parts[1], '0')) <= 20
-                  THEN coalesce(nullif(ltrim(stars_parts[1], '0'), ''), '0')::numeric
-             END AS stars_quantity
-    FROM parsed
-), src AS (
-    SELECT *, CASE WHEN stars_comment LIKE '%Telegram Stars%' THEN jsonb_build_object(
-        'payment_asset', CASE WHEN type = 'ton_transfer' THEN 'TON' ELSE 'USDT' END,
-        'product', CASE WHEN stars_comment LIKE '%Prepaid Telegram Stars%' THEN 'prepaid' ELSE 'standard' END,
-        'stars_per_purchase', CASE WHEN stars_quantity > 0 AND stars_quantity <= 18446744073709551615
-                                   THEN stars_quantity::text END,
-        'quantity_status', CASE WHEN stars_parts IS NULL THEN 'missing_or_unrecognized_quantity'
-                                WHEN stars_quantity = 0 THEN 'zero_quantity'
-                                WHEN stars_quantity IS NULL OR stars_quantity > 18446744073709551615 THEN 'out_of_range'
-                                ELSE 'known' END
-    ) END AS stars_bucket
-    FROM quantities
-), g AS (
-    SELECT day, dex, liquid_pool, stars_bucket, grouping(dex, liquid_pool, stars_bucket) AS kind,
+), daily AS (
+    -- Unique addresses are needed only here, never for DEX/pool/Stars buckets.
+    SELECT day,
            count(DISTINCT source) FILTER (WHERE type = 'jetton_transfer') AS jetton_senders,
            count(DISTINCT destination) FILTER (WHERE type = 'jetton_transfer') AS jetton_receivers,
            count(*) FILTER (WHERE type = 'jetton_transfer') AS jetton_transfers,
@@ -67,32 +51,62 @@ WITH payments AS (
                 THEN NULL
                 ELSE coalesce(sum(amount) FILTER (WHERE liquid_pool IS NOT NULL), 0)
            END AS deposit_nanoton,
-           count(*) FILTER (
-               WHERE type = 'nft_mint'
-                 AND asset = '0:B774D95EB20543F186C06B371AB88AD704F7E256130CAF96189368A7D0CB6CCF'
-            ) AS dns_mints,
-           count(*) FILTER (WHERE stars_bucket IS NOT NULL) AS stars_purchases
-    FROM src
-    GROUP BY GROUPING SETS ((day), (day, dex), (day, liquid_pool), (day, stars_bucket))
+           count(*) FILTER (WHERE dns_mint) AS dns_mints
+    FROM src GROUP BY day
+), dex_counts AS (
+    SELECT day, dex, count(*) AS swaps FROM src
+    WHERE dex IS NOT NULL GROUP BY day, dex
+), dex_days AS (
+    SELECT day, jsonb_object_agg(dex, swaps) AS breakdown FROM dex_counts GROUP BY day
+), pool_counts AS (
+    SELECT day, liquid_pool, count(*) AS deposits,
+           CASE WHEN count(*) FILTER (WHERE amount IS NULL) > 0 THEN NULL ELSE sum(amount) END AS deposit_nanoton
+    FROM src WHERE liquid_pool IS NOT NULL GROUP BY day, liquid_pool
+), pool_days AS (
+    SELECT day, jsonb_object_agg(liquid_pool, jsonb_build_object(
+        'count', deposits, 'amount_nanoton', deposit_nanoton::text)) AS breakdown
+    FROM pool_counts GROUP BY day
+), parsed AS MATERIALIZED (
+    -- Parse once, and materialize only the actual Stars payments rather than
+    -- every transfer, swap and mint in the history.
+    SELECT day, type, stars_comment,
+        -- Fractional quantities are not integral Stars. Accept the observed .0
+        -- notation, but never infer quantities from the TON/USDT payment value.
+        regexp_match(stars_comment,
+            '^([0-9]+)(?:[.]0+)?[[:space:]]+(?:Prepaid[[:space:]]+)?Telegram Stars(?:[[:space:]]|$)')
+        AS stars_parts
+    FROM src WHERE stars_comment LIKE '%Telegram Stars%'
+), quantities AS (
+    SELECT *, CASE WHEN length(ltrim(stars_parts[1], '0')) <= 20
+                  THEN coalesce(nullif(ltrim(stars_parts[1], '0'), ''), '0')::numeric
+             END AS stars_quantity
+    FROM parsed
+), star_keys AS (
+    SELECT day, jsonb_build_object(
+        'payment_asset', CASE WHEN type = 'ton_transfer' THEN 'TON' ELSE 'USDT' END,
+        'product', CASE WHEN stars_comment LIKE '%Prepaid Telegram Stars%' THEN 'prepaid' ELSE 'standard' END,
+        'stars_per_purchase', CASE WHEN stars_quantity > 0 AND stars_quantity <= 18446744073709551615
+                                   THEN stars_quantity::text END,
+        'quantity_status', CASE WHEN stars_parts IS NULL THEN 'missing_or_unrecognized_quantity'
+                                WHEN stars_quantity = 0 THEN 'zero_quantity'
+                                WHEN stars_quantity IS NULL OR stars_quantity > 18446744073709551615 THEN 'out_of_range'
+                                ELSE 'known' END
+    ) AS stars_bucket
+    FROM quantities
+), star_counts AS (
+    SELECT day, stars_bucket, count(*) AS purchases FROM star_keys GROUP BY day, stars_bucket
+), star_days AS (
+    SELECT day, sum(purchases)::bigint AS purchases,
+           jsonb_agg(stars_bucket || jsonb_build_object('purchases', purchases)) AS buckets
+    FROM star_counts GROUP BY day
 )
-SELECT day,
-        max(jetton_senders) FILTER (WHERE kind = 7),
-        max(jetton_receivers) FILTER (WHERE kind = 7),
-        max(jetton_transfers) FILTER (WHERE kind = 7),
-        max(nft_senders) FILTER (WHERE kind = 7),
-        max(nft_receivers) FILTER (WHERE kind = 7),
-        max(nft_transfers) FILTER (WHERE kind = 7),
-        max(swaps) FILTER (WHERE kind = 7),
-        max(swap_users) FILTER (WHERE kind = 7),
-        coalesce(jsonb_object_agg(dex, swaps) FILTER (WHERE kind = 3 AND dex IS NOT NULL), '{}'::jsonb),
-        max(deposits) FILTER (WHERE kind = 7),
-        (max(deposit_nanoton) FILTER (WHERE kind = 7))::text,
-       coalesce(jsonb_object_agg(liquid_pool, jsonb_build_object(
-           'count', deposits, 'amount_nanoton', deposit_nanoton::text
-            )) FILTER (WHERE kind = 5 AND liquid_pool IS NOT NULL), '{}'::jsonb),
-        max(dns_mints) FILTER (WHERE kind = 7),
-        max(stars_purchases) FILTER (WHERE kind = 7),
-        coalesce(jsonb_agg(stars_bucket || jsonb_build_object('purchases', stars_purchases))
-                 FILTER (WHERE kind = 6 AND stars_bucket IS NOT NULL), '[]'::jsonb)
-FROM g
-GROUP BY day ORDER BY day
+SELECT d.day, d.jetton_senders, d.jetton_receivers, d.jetton_transfers,
+       d.nft_senders, d.nft_receivers, d.nft_transfers, d.swaps, d.swap_users,
+       coalesce(x.breakdown, '{}'::jsonb), d.deposits, d.deposit_nanoton::text,
+       coalesce(p.breakdown, '{}'::jsonb), d.dns_mints,
+       coalesce(s.purchases, 0), coalesce(s.buckets, '[]'::jsonb)
+FROM daily d
+LEFT JOIN dex_days x USING (day)
+LEFT JOIN pool_days p USING (day)
+LEFT JOIN star_days s USING (day)
+ORDER BY d.day

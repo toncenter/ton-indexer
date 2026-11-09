@@ -7,14 +7,15 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// One index-bounded scan supplies all metrics and breakdowns. GROUPING SETS
-// computes daily distinct users across all DEXes, not a sum of per-DEX users.
+// One index-bounded scan supplies all metrics and breakdowns. Only daily totals
+// compute distinct users; the small breakdowns use separate additive aggregates.
 // Child actions are included, just as in the original transfer metrics.
 //
 //go:embed daily.sql
@@ -23,17 +24,48 @@ var dailySQL string
 type Postgres struct {
 	DSN              string
 	StatementTimeout time.Duration
+	WorkMemMB        int
+	ParallelWorkers  int
+	IncludeMonthly   bool
 }
 
 func (p Postgres) Collect(ctx context.Context, from, to time.Time) (snapshot Snapshot, err error) {
-	return p.collect(ctx, from, to, dailySQL)
+	query := dailySQL
+	if p.IncludeMonthly {
+		genesis := time.Date(2019, 11, 15, 0, 0, 0, 0, time.UTC)
+		if !from.Equal(monthStart(from)) && !from.Equal(genesis) {
+			return snapshot, fmt.Errorf("combined monthly backfill requires a month boundary or genesis")
+		}
+		query = combinedSQL()
+	}
+	return p.collect(ctx, from, to, query, p.IncludeMonthly)
 }
 
 func (p Postgres) CollectMonthly(ctx context.Context, from, to time.Time) (Snapshot, error) {
-	return p.collect(ctx, from, to, monthlySQL)
+	return p.collect(ctx, from, to, monthlySQL, false)
 }
 
-func (p Postgres) collect(ctx context.Context, from, to time.Time, query string) (snapshot Snapshot, err error) {
+// Reuse the materialized source for full calendar-month uniques, avoiding a
+// second scan of the raw table. An incomplete historical trailing month is
+// excluded; the independent monthly refresh supplies recent months.
+func combinedSQL() string {
+	query := strings.TrimSuffix(strings.TrimSpace(dailySQL), "ORDER BY d.day")
+	query = strings.Replace(query, "SELECT d.day,", "SELECT 'daily' AS granularity, d.day,", 1)
+	return query + `
+UNION ALL
+SELECT 'monthly', date_trunc('month',day)::date,
+ count(DISTINCT source) FILTER (WHERE type='jetton_transfer'),
+ count(DISTINCT destination) FILTER (WHERE type='jetton_transfer'), 0,
+ count(DISTINCT source) FILTER (WHERE type='nft_transfer'),
+ count(DISTINCT destination) FILTER (WHERE type='nft_transfer'), 0, 0,
+ count(DISTINCT source) FILTER (WHERE type='jetton_swap'),
+ '{}'::jsonb, 0, '0'::text, '{}'::jsonb, 0, 0, '[]'::jsonb
+FROM src WHERE day < date_trunc('month',to_timestamp($4) AT TIME ZONE 'UTC')::date
+AND type IN ('jetton_transfer','nft_transfer','jetton_swap')
+GROUP BY 2 ORDER BY 1,2`
+}
+
+func (p Postgres) collect(ctx context.Context, from, to time.Time, query string, combined bool) (snapshot Snapshot, err error) {
 	if p.DSN == "" {
 		return snapshot, fmt.Errorf("GRAMSTAT_PG_DSN is required for actions")
 	}
@@ -56,9 +88,15 @@ func (p Postgres) collect(ctx context.Context, from, to time.Time, query string)
 		return snapshot, fmt.Errorf("actions statement timeout must be positive")
 	}
 	cfg.ConnConfig.RuntimeParams["statement_timeout"] = strconv.FormatInt(statementTimeout.Milliseconds(), 10)
-	// Backfills scan once, without parallel workers competing with the indexer.
-	cfg.ConnConfig.RuntimeParams["max_parallel_workers_per_gather"] = "0"
-	cfg.ConnConfig.RuntimeParams["work_mem"] = "64MB"
+	workMem := p.WorkMemMB
+	if workMem == 0 {
+		workMem = 64
+	}
+	if workMem < 1 || workMem > 1024 || p.ParallelWorkers < 0 || p.ParallelWorkers > 4 {
+		return snapshot, fmt.Errorf("actions work memory must be 1..1024 MiB and parallel workers 0..4")
+	}
+	cfg.ConnConfig.RuntimeParams["max_parallel_workers_per_gather"] = strconv.Itoa(p.ParallelWorkers)
+	cfg.ConnConfig.RuntimeParams["work_mem"] = strconv.Itoa(workMem) + "MB"
 	cfg.ConnConfig.RuntimeParams["lock_timeout"] = "5000"
 	cfg.ConnConfig.RuntimeParams["timezone"] = "UTC"
 	cfg.ConnConfig.RuntimeParams["jit"] = "off"
@@ -111,6 +149,7 @@ WHERE workchain = -1 AND seqno = $1 LIMIT 1`, upper).Scan(&sourceTime); err != n
 		return snapshot, fmt.Errorf("source is behind the requested interval")
 	}
 	snapshot.SourceMC = uint32(upper)
+	snapshot.MonthlyIncluded = combined
 	if err = tx.QueryRow(ctx, `SELECT transaction_timestamp()`).Scan(&snapshot.CalculatedAt); err != nil {
 		return snapshot, err
 	}
@@ -125,8 +164,13 @@ WHERE workchain = -1 AND seqno = $1 LIMIT 1`, upper).Scan(&sourceTime); err != n
 		var swaps, users, deposits, dnsMints int64
 		var dexJSON, poolsJSON, starsJSON []byte
 		var starsPurchases int64
-		if err = rows.Scan(&d.Day, &senders, &receivers, &transfers, &nftSenders, &nftReceivers, &nfts,
-			&swaps, &users, &dexJSON, &deposits, &d.LiquidStakingAmount, &poolsJSON, &dnsMints, &starsPurchases, &starsJSON); err != nil {
+		granularity := "daily"
+		dest := []any{&d.Day, &senders, &receivers, &transfers, &nftSenders, &nftReceivers, &nfts,
+			&swaps, &users, &dexJSON, &deposits, &d.LiquidStakingAmount, &poolsJSON, &dnsMints, &starsPurchases, &starsJSON}
+		if combined {
+			dest = append([]any{&granularity}, dest...)
+		}
+		if err = rows.Scan(dest...); err != nil {
 			return snapshot, err
 		}
 		if senders < 0 || receivers < 0 || transfers < 0 || nftSenders < 0 || nftReceivers < 0 || nfts < 0 ||
@@ -146,7 +190,14 @@ WHERE workchain = -1 AND seqno = $1 LIMIT 1`, upper).Scan(&sourceTime); err != n
 		if err = json.Unmarshal(starsJSON, &d.StarsBuckets); err != nil {
 			return snapshot, fmt.Errorf("decode Stars distribution: %w", err)
 		}
-		snapshot.Days = append(snapshot.Days, d)
+		switch granularity {
+		case "daily":
+			snapshot.Days = append(snapshot.Days, d)
+		case "monthly":
+			snapshot.Months = append(snapshot.Months, d)
+		default:
+			return snapshot, fmt.Errorf("unexpected activity granularity")
+		}
 	}
 	if err = rows.Err(); err != nil {
 		return snapshot, err

@@ -35,16 +35,26 @@ repeating a scan to the latest action MC for every seven-day chunk:
 
 ```bash
 gramstat-aggregate --handlers actions --from 2019-11-15 --to 2026-10-21 \
-  --actions-chunk-days 3660 --actions-statement-timeout 24h --timeout 25h
+  --actions-chunk-days 3660 --actions-include-monthly \
+  --actions-work-mem-mb 256 --actions-parallel-workers 2 \
+  --actions-statement-timeout 24h --timeout 25h
 ```
 
 The end date should be the start of already prepared recent history. This is a
 long-running PostgreSQL read, not an indexer replay. No source tables or indexes
-are modified. It uses one backend, no parallel scan workers, and 64 MiB work_mem;
-large distinct/group sorts may spill to database temporary storage. It publishes
+are modified. Normal runs default to no parallel scan workers and 64 MiB work_mem.
+The explicit backfill settings above permit two scan workers and 256 MiB per
+sort/hash operation (not a total connection memory cap). Limits are 0–4 workers
+and 1–1024 MiB, applied only to this connection, never globally. Large sorts may
+still spill to database temporary storage. It publishes
 only after the complete source query succeeds. The genesis day is accepted only
 with a verified first-MC=1 anchor; an absent opening history is not zero-filled.
 Large chunks require explicit dates and do not change the hourly seven-day policy.
+`--actions-include-monthly` requires explicit dates and a 3660-day chunk. It reuses
+the materialized source for monthly distinct counts instead of scanning the raw
+table again. Only complete trailing months are published; a mid-month historical
+end is left to the independent monthly handler. Genesis is allowed and marked
+partial. Monthly rows are published before the daily catch-up completion marker.
 Use a dedicated historical-run lock for a disjoint old range so the normal hourly
 job can continue refreshing recent days and the other independent handlers.
 Use a direct PostgreSQL connection for this job: the production proxy on port
@@ -131,10 +141,16 @@ quantities per exact purchase size, payment asset and standard/prepaid product.
 It uses PostgreSQL only, with no external API calls.
 
 The embedded [daily.sql](../ton-index-go/internal/gramstat/handlers/actions/daily.sql)
-computes all metrics in one source scan using `GROUPING SETS` for day, DEX,
-pool and Stars bucket. Comment parsing is materialized once to prevent repeated
-regex evaluation after CTE inlining. Additional distinct counts share the scan, with additional aggregation
-CPU/memory. Before aggregation, the handler finds the
+reads the source once and materializes only the required fields. Daily totals
+calculate the five distinct-address counts; DEX, pool and Stars breakdowns have
+separate additive aggregates over only their relevant rows. Unlike the former
+GROUPING SETS query, those breakdowns do not repeat unused distinct-address work
+or sort unrelated transfers into NULL buckets. Only actual Stars comments enter
+the materialized regex parser. On a read-only seven-day production comparison
+(2026-11-01 through 2026-11-08, exclusive), all results matched exactly: old SQL
+took 32.1–35.0 s, new SQL 25.8–25.9 s with identical 64-MiB/zero-worker settings.
+These are measured interval timings, not an ETA for the entire history.
+Before aggregation, the handler finds the
 MC immediately before the interval using `blocks.gen_utime`. It restricts actions
 by the existing **`trace_mc_seqno_end` index**, retaining the exact timestamp filter.
 The upper MC bound is the latest action MC in the same database snapshot, **not**
