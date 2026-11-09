@@ -114,11 +114,42 @@ At MC 31311177, exact nanotons:
 stored global_balance - cumulative burn = full calculator
 ```
 
-**Remaining validation:** reconcile the cumulative-burn correction across
-MC **103190381 -> 103190382** once full-history indexing reaches it, accounting
-for that block's issuance and burning. The cutoff is established from on-chain
-configuration and validator rules; the June–July 2023 comparisons above do not
-claim a completed numerical reconciliation at the v17 transition.
+### v17 transition reconciled, 2026-11-09
+
+The production full-history run passed exact numerical reconciliation at
+**2026-11-09 19:19:32 UTC**. The deduplicated prefix **MC 3..103190381** contains
+all **103190379 masterchain rows**, with **zero missing blocks and zero NULL
+burned values**. Its cumulative burn is **5357419993703996 nanotons**
+(`5357419.993703996 TON`), exactly equal to the correction implied by the v17 seam.
+The first positive burn remains MC 30410593; all earlier recorded burns are zero.
+
+Exact amounts at **103190381 -> 103190382**, in nanotons:
+
+```text
+previous raw global_balance       = 5282989953471870767
+accumulated burn through 103190381 =    5357419993703996
+previous corrected supply         = 5277632533478166771
+current raw global_balance        = 5277632535060363123
+
+current - previous corrected      = 1582196352
+issuance in included MC/shards     = 1700000000
+current MC burned                 =  117803648
+issuance - burned                 = 1582196352
+reconciliation residual           =          0
+```
+
+Thus the corrected chart has no artificial accounting jump at the cutoff.
+All **15 consecutive supply changes** in **MC 103190374..103190389** match
+included-block issuance minus MC burning exactly, before, across and after v17.
+All **34 included MC/shard blocks** match the saved independent baseline canary
+on block identity/hash, MC membership, timestamp, issuance, burn and raw balance;
+all **16 account-delta markers** are persisted with matching MC timestamps.
+
+The prefix check uses `blocks FINAL`, verifies the canonical
+`(workchain, shard, seqno)` key and sole masterchain shard, and checks exact
+count/min/max within the fixed interval. All monetary arithmetic uses exact
+decimal/integer values. This was a read-only verification; raw stored balances
+retain their network values.
 
 ## Evidence and source semantics
 
@@ -131,8 +162,11 @@ claim a completed numerical reconciliation at the v17 transition.
 - Full evidence is retained on the indexer host under `/opt/gramstat-full/`:
   `mainnet-v17-activation.json`,
   `balance-parity-combined-result.json`,
-  `burn-correction-20261107T205327Z-burn-result.json`, and the probe manifests/logs
-  in `balance-parity/`. Calculator TON revision: `31f1bdf1f5d3eb027cc423559203b496036027ad`.
+  `burn-correction-20261107T205327Z-burn-result.json`,
+  `state-update-v17-supply-seam-result.json`, `verify-v17-supply-seam.py`, and the
+  probe manifests/logs in `balance-parity/`. The seam result includes the exact
+  SQL, persisted block rows, prefix-completeness checks and all 15 flow residuals.
+  Calculator TON revision: `31f1bdf1f5d3eb027cc423559203b496036027ad`.
 
 See [Gramstat storage and indexing](gramstat.md) for field definitions and resume
 semantics.
