@@ -44,8 +44,10 @@ Set `GRAMSTAT_WALLETS_FOLLOW_NATIVE=1` for a verified source epoch using the nat
 delta-last writer. Before each run, the handler takes the latest delta MC minus
 a 1,000-MC settling margin, checks the complete MC/delta prefix, and matches every
 shard tip at that MC to its block. Only then does it advance `wallet_sources` to
-the minimum tip timestamp. Missing tips, gaps or a regressing horizon fail without
-publishing the proposed watermark. The original source ID and proof are retained.
+the minimum tip timestamp. If parallel batches leave gaps near the high-water
+mark, a bounded binary search caps advancement at a proven contiguous prefix.
+Missing tips, a damaged previously verified prefix or a regressing horizon fail
+without publishing the proposed watermark. The original source ID and proof are retained.
 
 In this mode, running without dates enumerates **every missing closed UTC day**,
 oldest first, rather than just the last few days or days after a maximum date.

@@ -22,19 +22,54 @@ func (h *Handler) advanceNative(ctx context.Context, p url.Values, s *source) er
 		return nil
 	}
 	end := head.MC - 1000
-	set(p, "end", uint64(end))
-	var proof struct {
-		Deltas uint32 `json:"deltas"`
-		Blocks uint32 `json:"blocks"`
-	}
-	if err := h.query(ctx, `SELECT
+	complete := func(mc uint32) (bool, error) {
+		set(p, "end", uint64(mc))
+		var proof struct {
+			Deltas uint32 `json:"deltas"`
+			Blocks uint32 `json:"blocks"`
+		}
+		err := h.query(ctx, `SELECT
  (SELECT toUInt32(count()) FROM {metrics:Identifier}.account_deltas FINAL WHERE mc_seqno BETWEEN {first:UInt32} AND {end:UInt32}) AS deltas,
  (SELECT toUInt32(count()) FROM {raw:Identifier}.blocks FINAL WHERE workchain=-1 AND shard=-9223372036854775808 AND seqno BETWEEN {first:UInt32} AND {end:UInt32}) AS blocks
- FORMAT JSONEachRow`, p, &proof); err != nil {
+ FORMAT JSONEachRow`, p, &proof)
+		return proof.Deltas == mc-s.First+1 && proof.Blocks == proof.Deltas, err
+	}
+	ok, err := complete(end)
+	if err != nil {
 		return err
 	}
-	if proof.Deltas != end-s.First+1 || proof.Blocks != proof.Deltas {
-		return fmt.Errorf("native wallet prefix incomplete at MC %d", end)
+	if !ok {
+		// Parallel writer batches can finish out of order beyond the nominal
+		// settling margin. Find a proven prefix instead of publishing past a gap
+		// or stalling indefinitely at a moving high-water mark.
+		ok, err = complete(s.End)
+		if err != nil {
+			return err
+		}
+		if !ok {
+			return fmt.Errorf("previously verified native wallet prefix is incomplete")
+		}
+		low, high := s.End, end
+		for low+1 < high {
+			mid := low + (high-low)/2
+			ok, err = complete(mid)
+			if err != nil {
+				return err
+			}
+			if ok {
+				low = mid
+			} else {
+				high = mid
+			}
+		}
+		end = low
+		set(p, "end", uint64(end))
+		if h.Log != nil {
+			h.Log.Info("wallet source capped at contiguous prefix", "through_mc", end, "candidate_mc", head.MC-1000)
+		}
+		if end == s.End {
+			return nil
+		}
 	}
 	var tips struct {
 		Expected uint32 `json:"expected"`
