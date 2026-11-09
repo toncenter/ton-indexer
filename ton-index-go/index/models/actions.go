@@ -556,6 +556,52 @@ type ActionDetailsNftPutOnSale struct {
 	Marketplace           *string         `json:"marketplace"`
 }
 
+type ActionDetailsNftOfferCreate struct {
+	Buyer         *AccountAddress `json:"buyer"`
+	Offer         *AccountAddress `json:"offer"`
+	NftItem       *AccountAddress `json:"nft_item"`
+	NftCollection *AccountAddress `json:"nft_collection"`
+	NftItemIndex  *string         `json:"nft_item_index"`
+	Amount        *string         `json:"amount"`
+	Price         *string         `json:"price"`
+	FeeAmount     *string         `json:"fee_amount"`
+	FeeAddress    *AccountAddress `json:"fee_address"`
+}
+
+type ActionDetailsNftOfferCancel struct {
+	Buyer         *AccountAddress `json:"buyer"`
+	Offer         *AccountAddress `json:"offer"`
+	NftItem       *AccountAddress `json:"nft_item"`
+	NftCollection *AccountAddress `json:"nft_collection"`
+	NftItemIndex  *string         `json:"nft_item_index"`
+	RefundAmount  *string         `json:"refund_amount"`
+	FeeAmount     *string         `json:"fee_amount"`
+	FeeAddress    *AccountAddress `json:"fee_address"`
+}
+
+type ActionDetailsNftOfferRefund struct {
+	Buyer         *AccountAddress `json:"buyer"`
+	Offer         *AccountAddress `json:"offer"`
+	NftItem       *AccountAddress `json:"nft_item"`
+	NftCollection *AccountAddress `json:"nft_collection"`
+	NftItemIndex  *string         `json:"nft_item_index"`
+	RefundAmount  *string         `json:"refund_amount"`
+}
+
+type ActionDetailsNftOfferAccept struct {
+	Buyer         *AccountAddress `json:"buyer"`
+	Seller        *AccountAddress `json:"seller"`
+	Recipient     *AccountAddress `json:"recipient"`
+	Offer         *AccountAddress `json:"offer"`
+	NftItem       *AccountAddress `json:"nft_item"`
+	NftCollection *AccountAddress `json:"nft_collection"`
+	NftItemIndex  *string         `json:"nft_item_index"`
+	QueryId       *string         `json:"query_id"`
+	Price         *string         `json:"price"`
+	FeeAmount     *string         `json:"fee_amount"`
+	FeeAddress    *AccountAddress `json:"fee_address"`
+}
+
 type ActionDetailsNftPutOnAuction struct {
 	NftCollection         *AccountAddress `json:"nft_collection"`
 	NftItem               *AccountAddress `json:"nft_item"`

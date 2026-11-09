@@ -1,0 +1,212 @@
+# nft-offer / NftOffer accept
+# trace: u7r2tZEari7DVePY7knnZr5UWAkVsV4pzKHeGrV16YA=
+actions:
+  - type: nft_offer_accept
+    matcher: nft_offer_accept
+    anchor: nft_offer_accept@115226449000002
+    id: 50baTNzIzaG5vDq3mPchGzBSBDuNZVGZnIFD2tGkZTk=
+    success: true
+    source: 0:A1D462D9CBBB1CE3237865E24A5429936453A7A9E66F54640679E558F10C6F0E
+    source_secondary: 0:5862B34FE8467B4A239B44EE5A808F8D55D8A804BAA673D8BE70F9A6EECA8791
+    destination: 0:6B7C334F35AFA1938B771BD4BD7F9117C96E921153FE9A14D66D058251F77D8D
+    destination_secondary: 0:6B7C334F35AFA1938B771BD4BD7F9117C96E921153FE9A14D66D058251F77D8D
+    asset: 0:43E8F509FCBA8CC3077B542D37D2605CD01BC49FC6AF1A1B846D54D9E1D7350A
+    asset_secondary: 0:ED3C827642ABF8FF1BF7D5A96CEBBDF998646AFF0CD5869DCD3A8E8D2F2AC7CB
+    asset2: null
+    asset2_secondary: null
+    amount: 1000000000
+    value: null
+    opcode: null
+    nft_listing_data:
+      marketplace_fee: 20000000
+      marketplace_fee_address: 0:858AB43F7B45346421AB244722A673483738E00696B20CC8EF706F6CF22591DB
+    nft_transfer_data:
+      nft_item_index: "49537395384008057067269537389370493623972960361004178658865782902375040694084"
+      price: 1000000000
+      query_id: 693270863652642116
+    tx_hashes:
+      - /8iTmQ6KSpx4V/bSm/tZSw18Yyr7GEDw2USuUBxZ30M=
+      - J3oduodq4VqUntNxZgvw38UjPP8P2fobBizUAm//Jj0=
+      - S3s60qBHD1jUVQDbrcIM9HAtdF2FkHimc8yVc1B5j+k=
+      - cGS4AhuuGB5S6nsZFi4Cur3AYq41f1be2MaRjbK58IE=
+      - gm2k7Y9ZK4pf5HtufD1WELcjOcU/zks2KmEkH9znmoo=
+      - pg4oP4pkomiGhJNOq0MOx0mjuLfqIiGQO31V1KLpd7k=
+      - u7r2tZEari7DVePY7knnZr5UWAkVsV4pzKHeGrV16YA=
+    accounts:
+      - 0:5862B34FE8467B4A239B44EE5A808F8D55D8A804BAA673D8BE70F9A6EECA8791
+      - 0:6B7C334F35AFA1938B771BD4BD7F9117C96E921153FE9A14D66D058251F77D8D
+      - 0:858AB43F7B45346421AB244722A673483738E00696B20CC8EF706F6CF22591DB
+      - 0:A1D462D9CBBB1CE3237865E24A5429936453A7A9E66F54640679E558F10C6F0E
+      - 0:ED3C827642ABF8FF1BF7D5A96CEBBDF998646AFF0CD5869DCD3A8E8D2F2AC7CB
+    start_lt: 115226449000002
+    end_lt: 115226449000010
+    start_utime: 1794106331
+    end_utime: 1794106331
+    mc_seqno_end: 104058166
+  - type: nft_transfer
+    matcher: nft_transfer
+    anchor: nft_transfer@115226449000002
+    id: Qe0/7dZh8VKPY1zvdPEC/UlckX4NCNwk+ACm9MYJ8nY=
+    success: true
+    source: 0:A1D462D9CBBB1CE3237865E24A5429936453A7A9E66F54640679E558F10C6F0E
+    source_secondary: null
+    destination: 0:5862B34FE8467B4A239B44EE5A808F8D55D8A804BAA673D8BE70F9A6EECA8791
+    destination_secondary: null
+    asset: 0:43E8F509FCBA8CC3077B542D37D2605CD01BC49FC6AF1A1B846D54D9E1D7350A
+    asset_secondary: 0:ED3C827642ABF8FF1BF7D5A96CEBBDF998646AFF0CD5869DCD3A8E8D2F2AC7CB
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: null
+    opcode: null
+    nft_listing_data:
+      marketplace_fee_address: null
+      royalty_address: null
+    nft_transfer_data:
+      custom_payload: null
+      forward_amount: 7000000
+      forward_payload: cellhash:96A296D224F285C67BEE93C30F8A309157F0DAA35DC5B87E410B78630A09CFC7
+      is_purchase: false
+      marketplace: null
+      marketplace_address: null
+      nft_item_index: "49537395384008057067269537389370493623972960361004178658865782902375040694084"
+      payout_amount: null
+      payout_comment: null
+      payout_comment_encoded: null
+      payout_comment_encrypted: null
+      price: null
+      query_id: 693270863652642116
+      real_prev_owner: null
+      response_destination: 0:A1D462D9CBBB1CE3237865E24A5429936453A7A9E66F54640679E558F10C6F0E
+      royalty_amount: null
+    tx_hashes:
+      - J3oduodq4VqUntNxZgvw38UjPP8P2fobBizUAm//Jj0=
+      - S3s60qBHD1jUVQDbrcIM9HAtdF2FkHimc8yVc1B5j+k=
+      - pg4oP4pkomiGhJNOq0MOx0mjuLfqIiGQO31V1KLpd7k=
+      - u7r2tZEari7DVePY7knnZr5UWAkVsV4pzKHeGrV16YA=
+    accounts:
+      - 0:5862B34FE8467B4A239B44EE5A808F8D55D8A804BAA673D8BE70F9A6EECA8791
+      - 0:A1D462D9CBBB1CE3237865E24A5429936453A7A9E66F54640679E558F10C6F0E
+      - 0:ED3C827642ABF8FF1BF7D5A96CEBBDF998646AFF0CD5869DCD3A8E8D2F2AC7CB
+    start_lt: 115226449000002
+    end_lt: 115226449000006
+    start_utime: 1794106331
+    end_utime: 1794106331
+    mc_seqno_end: 104058166
+    parent_action_id: 50baTNzIzaG5vDq3mPchGzBSBDuNZVGZnIFD2tGkZTk=
+    ancestor_type:
+      - nft_offer_accept
+  - type: nft_transfer
+    matcher: nft_transfer
+    anchor: nft_transfer@115226449000007
+    id: tzmIWs+LexAGzZxrvG76rQoghLdEeFvSJF39qYDKfXY=
+    success: true
+    source: 0:5862B34FE8467B4A239B44EE5A808F8D55D8A804BAA673D8BE70F9A6EECA8791
+    source_secondary: null
+    destination: 0:6B7C334F35AFA1938B771BD4BD7F9117C96E921153FE9A14D66D058251F77D8D
+    destination_secondary: null
+    asset: 0:43E8F509FCBA8CC3077B542D37D2605CD01BC49FC6AF1A1B846D54D9E1D7350A
+    asset_secondary: 0:ED3C827642ABF8FF1BF7D5A96CEBBDF998646AFF0CD5869DCD3A8E8D2F2AC7CB
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: null
+    opcode: null
+    nft_listing_data:
+      marketplace_fee_address: null
+      royalty_address: null
+    nft_transfer_data:
+      custom_payload: null
+      forward_amount: 0
+      forward_payload: cellhash:96A296D224F285C67BEE93C30F8A309157F0DAA35DC5B87E410B78630A09CFC7
+      is_purchase: false
+      marketplace: null
+      marketplace_address: null
+      nft_item_index: "49537395384008057067269537389370493623972960361004178658865782902375040694084"
+      payout_amount: null
+      payout_comment: null
+      payout_comment_encoded: null
+      payout_comment_encrypted: null
+      price: null
+      query_id: 693270863652642116
+      real_prev_owner: null
+      response_destination: 0:858AB43F7B45346421AB244722A673483738E00696B20CC8EF706F6CF22591DB
+      royalty_amount: null
+    tx_hashes:
+      - S3s60qBHD1jUVQDbrcIM9HAtdF2FkHimc8yVc1B5j+k=
+      - cGS4AhuuGB5S6nsZFi4Cur3AYq41f1be2MaRjbK58IE=
+      - gm2k7Y9ZK4pf5HtufD1WELcjOcU/zks2KmEkH9znmoo=
+    accounts:
+      - 0:5862B34FE8467B4A239B44EE5A808F8D55D8A804BAA673D8BE70F9A6EECA8791
+      - 0:6B7C334F35AFA1938B771BD4BD7F9117C96E921153FE9A14D66D058251F77D8D
+      - 0:858AB43F7B45346421AB244722A673483738E00696B20CC8EF706F6CF22591DB
+      - 0:ED3C827642ABF8FF1BF7D5A96CEBBDF998646AFF0CD5869DCD3A8E8D2F2AC7CB
+    start_lt: 115226449000007
+    end_lt: 115226449000010
+    start_utime: 1794106331
+    end_utime: 1794106331
+    mc_seqno_end: 104058166
+    parent_action_id: 50baTNzIzaG5vDq3mPchGzBSBDuNZVGZnIFD2tGkZTk=
+    ancestor_type:
+      - nft_offer_accept
+  - type: ton_transfer
+    anchor: ton_transfer@115226449000006
+    id: bb/MORSJu+90I7upICiLrAZd2UbRqaZUk7+LhklVh8E=
+    success: true
+    source: 0:5862B34FE8467B4A239B44EE5A808F8D55D8A804BAA673D8BE70F9A6EECA8791
+    source_secondary: null
+    destination: 0:A1D462D9CBBB1CE3237865E24A5429936453A7A9E66F54640679E558F10C6F0E
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: 1000000000
+    opcode: null
+    ton_transfer_data:
+      content: null
+      encrypted: false
+    tx_hashes:
+      - /8iTmQ6KSpx4V/bSm/tZSw18Yyr7GEDw2USuUBxZ30M=
+      - S3s60qBHD1jUVQDbrcIM9HAtdF2FkHimc8yVc1B5j+k=
+    accounts:
+      - 0:5862B34FE8467B4A239B44EE5A808F8D55D8A804BAA673D8BE70F9A6EECA8791
+      - 0:A1D462D9CBBB1CE3237865E24A5429936453A7A9E66F54640679E558F10C6F0E
+    start_lt: 115226449000006
+    end_lt: 115226449000007
+    start_utime: 1794106331
+    end_utime: 1794106331
+    mc_seqno_end: 104058166
+    parent_action_id: 50baTNzIzaG5vDq3mPchGzBSBDuNZVGZnIFD2tGkZTk=
+    ancestor_type:
+      - nft_offer_accept
+  - type: ton_transfer
+    anchor: ton_transfer@115226449000008
+    id: E6zti0aNOjoiMJa2gnZsKe/i9dACkQ7G+WfBNrdcXgQ=
+    success: true
+    source: 0:5862B34FE8467B4A239B44EE5A808F8D55D8A804BAA673D8BE70F9A6EECA8791
+    source_secondary: null
+    destination: 0:858AB43F7B45346421AB244722A673483738E00696B20CC8EF706F6CF22591DB
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: 43084431
+    opcode: null
+    ton_transfer_data:
+      content: null
+      encrypted: false
+    tx_hashes:
+      - S3s60qBHD1jUVQDbrcIM9HAtdF2FkHimc8yVc1B5j+k=
+      - r0wvPLmQbIuAfjk0mjE4cWaUPISSaynr0RRFVpSMuUU=
+    accounts:
+      - 0:5862B34FE8467B4A239B44EE5A808F8D55D8A804BAA673D8BE70F9A6EECA8791
+      - 0:858AB43F7B45346421AB244722A673483738E00696B20CC8EF706F6CF22591DB
+    start_lt: 115226449000008
+    end_lt: 115226449000009
+    start_utime: 1794106331
+    end_utime: 1794106331
+    mc_seqno_end: 104058166

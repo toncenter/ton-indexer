@@ -80,6 +80,7 @@ from indexer.events.blocks.layerzero import (
 )
 from indexer.events.blocks.tgbtc import TgBTCDkgLogBlock, TgBTCMintBlock, TgBTCBurnBlock, TgBTCNewKeyBlock
 from indexer.events.blocks.tgwallet import ChangeWalletKeyBlock
+from indexer.events.blocks.nft_offer import NftOfferBlock
 
 logger = logging.getLogger(__name__)
 
@@ -1446,6 +1447,39 @@ def _fill_change_wallet_key_action(block: ChangeWalletKeyBlock, action: Action):
     }
 
 
+def _fill_nft_offer_action(block: NftOfferBlock, action: Action):
+    action.source = _addr(block.data['source'])
+    action.destination = _addr(block.data['destination'])
+    action.amount = _value(block.data['amount'])
+    action.asset = _addr(block.data['nft_collection'])
+    action.asset_secondary = _addr(block.data['nft_address'])
+    action.nft_listing_data = {'nft_item_index': block.data['nft_index']}
+    if 'full_price' in block.data:
+        action.nft_listing_data['full_price'] = _value(block.data['full_price'])
+    if 'fee_amount' in block.data:
+        action.nft_listing_data['marketplace_fee'] = _value(block.data['fee_amount'])
+        action.nft_listing_data['marketplace_fee_address'] = _addr(block.data['fee_address'])
+
+
+def _fill_nft_offer_accept_action(block: NftOfferBlock, action: Action):
+    action.source = _addr(block.data['source'])
+    action.destination = _addr(block.data['destination'])
+    action.source_secondary = _addr(block.data['offer'])
+    action.destination_secondary = _addr(block.data['buyer'])
+    action.amount = _value(block.data['amount'])
+    action.asset = _addr(block.data['nft_collection'])
+    action.asset_secondary = _addr(block.data['nft_address'])
+    action.nft_transfer_data = {
+        'query_id': block.data['query_id'],
+        'nft_item_index': block.data['nft_index'],
+        'price': _value(block.data['price']),
+    }
+    action.nft_listing_data = {
+        'marketplace_fee': _value(block.data['fee_amount']),
+        'marketplace_fee_address': _addr(block.data['fee_address']),
+    }
+
+
 def _fill_gasless_request_action(block: Block, action: Action):
     action.source = _addr(block.data['source'])
     action.destination = _addr(block.data['destination'])
@@ -1631,6 +1665,10 @@ def block_to_action(block: Block, trace_id: str, trace: Trace) -> Action:
             _fill_change_wallet_key_action(block, action)
         case 'gasless_request':
             _fill_gasless_request_action(block, action)
+        case 'nft_offer_create' | 'nft_offer_cancel' | 'nft_offer_expire' | 'nft_offer_signed_cancel':
+            _fill_nft_offer_action(block, action)
+        case 'nft_offer_accept':
+            _fill_nft_offer_accept_action(block, action)
         case 'nft_update_sale':
             _fill_sale_update_action(block, action)
         case _:

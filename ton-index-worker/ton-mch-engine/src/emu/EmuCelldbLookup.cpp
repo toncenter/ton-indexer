@@ -2,6 +2,7 @@
 
 #include "EmuInterfaces.h"
 #include "EmuJvaultChain.h"
+#include "host/HostNftOffer.h"
 
 #include "smc-interfaces/Multisig.h"
 #include "smc-interfaces/NominatorPool.h"
@@ -55,6 +56,7 @@ Value EmuCelldbTier2::resolve(const std::string &kind, const block::StdAddress &
     NftAuction,
     NftSale,
     MultisigOrder,
+    NftOffer,
   };
   static const std::map<std::string, Handler> handlers = {
       {"jvault_assets", Handler::JvaultAssets},
@@ -65,6 +67,7 @@ Value EmuCelldbTier2::resolve(const std::string &kind, const block::StdAddress &
       {"nft_auction", Handler::NftAuction},
       {"nft_sale", Handler::NftSale},
       {"multisig_order", Handler::MultisigOrder},
+      {"nft_offer", Handler::NftOffer},
   };
   auto handler = handlers.find(kind);
   if (handler == handlers.end()) {
@@ -77,6 +80,10 @@ Value EmuCelldbTier2::resolve(const std::string &kind, const block::StdAddress &
   const schema::AccountState *st = account(addr);
   if (st == nullptr) {
     return Value::null();
+  }
+  if (handler->second == Handler::NftOffer) {
+    auto r = parse_nft_offer(addr.addr, st->data);
+    return r.is_ok() ? r.move_as_ok() : Value::null();
   }
 
   // Detectors that execute get-methods require config.
@@ -155,6 +162,7 @@ Value EmuCelldbTier2::resolve(const std::string &kind, const block::StdAddress &
       break;
     }
     case Handler::JvaultAssets:
+    case Handler::NftOffer:
       break;
   }
   if (!iface) {

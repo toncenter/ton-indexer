@@ -1412,6 +1412,41 @@ void fill_sale_update(const Value &d, Action &a) {
   push_account(a, a.asset_secondary);
 }
 
+void fill_nft_offer(const Value &d, Action &a) {
+  a.source = av_addr(dg(d, "source"));
+  a.destination = av_addr(dg(d, "destination"));
+  a.amount = av_amount(dg(d, "amount"));
+  a.asset = av_addr(dg(d, "nft_collection"));
+  a.asset_secondary = av_addr(dg(d, "nft_address"));
+  Value::Fields l;
+  l.emplace_back("nft_item_index", dg(d, "nft_index"));
+  if (has(d, "full_price")) l.emplace_back("full_price", av_amount(dg(d, "full_price")));
+  if (has(d, "fee_amount")) {
+    l.emplace_back("marketplace_fee", av_amount(dg(d, "fee_amount")));
+    l.emplace_back("marketplace_fee_address", av_addr(dg(d, "fee_address")));
+  }
+  a.nft_listing_data = mkdict(std::move(l));
+}
+
+void fill_nft_offer_accept(const Value &d, Action &a) {
+  a.source = av_addr(dg(d, "source"));
+  a.destination = av_addr(dg(d, "destination"));
+  a.source_secondary = av_addr(dg(d, "offer"));
+  a.destination_secondary = av_addr(dg(d, "buyer"));
+  a.amount = av_amount(dg(d, "amount"));
+  a.asset = av_addr(dg(d, "nft_collection"));
+  a.asset_secondary = av_addr(dg(d, "nft_address"));
+  Value::Fields t;
+  t.emplace_back("query_id", dg(d, "query_id"));
+  t.emplace_back("nft_item_index", dg(d, "nft_index"));
+  t.emplace_back("price", av_amount(dg(d, "price")));
+  a.nft_transfer_data = mkdict(std::move(t));
+  Value::Fields l;
+  l.emplace_back("marketplace_fee", av_amount(dg(d, "fee_amount")));
+  l.emplace_back("marketplace_fee_address", av_addr(dg(d, "fee_address")));
+  a.nft_listing_data = mkdict(std::move(l));
+}
+
 void fill_auction_bid(const Value &d, Action &a) {
   a.source = av_addr(dg(d, "bidder"));
   a.destination = av_addr(dg(d, "auction"));
@@ -1600,6 +1635,10 @@ bool fill_action(Block *b, Action &a) {
   else if (t == "auction_outbid") fill_auction_outbid(d, a);
   else if (t == "nft_discovery") fill_nft_discovery(d, a);
   else if (t == "nft_mint") fill_nft_mint(d, a);
+  else if (t == "nft_offer_create" || t == "nft_offer_cancel" || t == "nft_offer_expire" ||
+           t == "nft_offer_signed_cancel")
+    fill_nft_offer(d, a);
+  else if (t == "nft_offer_accept") fill_nft_offer_accept(d, a);
   else return false;
   return true;
 }

@@ -1,7 +1,9 @@
 #include "FixtureLookupSource.h"
 
+#include "host/HostNftOffer.h"
 #include "parse/PSlice.h"  // load_address_py
 
+#include "block/block.h"
 #include "td/utils/base64.h"
 #include "vm/boc.h"
 #include "vm/cellslice.h"
@@ -52,6 +54,7 @@ Value FixtureLookupSource::fetch(const std::string &kind, const std::vector<Valu
     NominatorPool,
     DedustPool,
     JvaultAssets,
+    NftOffer,
   };
   static const std::map<std::string, Handler> handlers = {
       {"jetton_wallet", Handler::JettonWallet},
@@ -62,6 +65,7 @@ Value FixtureLookupSource::fetch(const std::string &kind, const std::vector<Valu
       {"nominator_pool", Handler::NominatorPool},
       {"dedust_pool", Handler::DedustPool},
       {"jvault_assets", Handler::JvaultAssets},
+      {"nft_offer", Handler::NftOffer},
   };
   auto handler = handlers.find(kind);
   if (handler == handlers.end()) {
@@ -226,6 +230,25 @@ Value FixtureLookupSource::fetch(const std::string &kind, const std::vector<Valu
       return Value::null();
     }
     return make_record(Value::make_asset_jetton(jetton->str));
+  }
+    case Handler::NftOffer: {
+    auto it = interfaces_->find(upper_ascii(addr));
+    const Value *extra = it == interfaces_->end() ? nullptr : it->second.field("data_boc");
+    const Value *boc_str = extra == nullptr ? nullptr : extra->field("data_boc");
+    if (boc_str == nullptr || boc_str->t != VType::Str) {
+      return Value::null();
+    }
+    auto r_raw = td::base64_decode(td::Slice(boc_str->str));
+    if (r_raw.is_error()) {
+      return Value::null();
+    }
+    auto r_cell = vm::std_boc_deserialize(r_raw.move_as_ok());
+    auto r_addr = block::StdAddress::parse(td::Slice(addr));
+    if (r_cell.is_error() || r_addr.is_error()) {
+      return Value::null();
+    }
+    auto r = parse_nft_offer(r_addr.ok().addr, r_cell.move_as_ok());
+    return r.is_ok() ? r.move_as_ok() : Value::null();
   }
   }
   return Value::null();

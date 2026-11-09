@@ -37,6 +37,8 @@ EvalResult getgems_sale_init(BuildEnv &env, const std::vector<Value> &args);
 EvalResult getgems_auction_init(BuildEnv &env, const std::vector<Value> &args);
 EvalResult auction_bid_data(BuildEnv &env, const std::vector<Value> &args);
 
+EvalResult nft_offer_init(BuildEnv &env, const std::vector<Value> &args);
+
 // tgBTC (HostTgbtc.cpp): mint host fn, the four shared event-log parse fns (one
 // per event opcode, each shared by a full matcher and its `*_log_only` fallback
 // twin), and the deploy-absorb shaper.
