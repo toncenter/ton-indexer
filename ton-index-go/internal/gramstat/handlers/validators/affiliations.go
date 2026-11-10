@@ -3,7 +3,6 @@ package validators
 import (
 	"context"
 	"crypto/sha256"
-	_ "embed"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
@@ -12,14 +11,15 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
-	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/xssnick/tonutils-go/address"
 	"github.com/xssnick/tonutils-go/tvm/cell"
 )
+
+const AffiliationVersion = "account-identity-v3"
 
 const controllerCodeHash = "dd3ce98db487c7585803933bffba7a57eb4e663099059d08b83db0b4ce060793"
 const hipoCodeHash = "56fb96fc4b9051deecfce8b04ce3c888990ba80fe6bd07154e351506ee9907a0"
@@ -34,6 +34,39 @@ var controllerPools = map[string]string{
 
 const hipoTreasury = "0:8BC991CFE177BC7E9721433EFA3BEFD199485A55CFFD040A06C89AF026B71BCF"
 const whalesPool = "0:744A8C6E183C79AA356DD0FFDB3C80857967452C1995A291E18E07ECD2AFB0B1"
+
+// The deployed Hipo code cell is a library reference, not the expanded library.
+// Its hash is hipoCodeHash. Initial elector is addr_none; proxy_new_stake later
+// replaces that field, leaving treasury, borrower and round_since immutable.
+// HipoFinance/contract@85e7777 contracts/imports/utils.fc:create_loan_address.
+var hipoLoanCode = func() *cell.Cell {
+	b, err := base64.StdEncoding.DecodeString("te6cckEBAQEAIwAIQgLguNIV0gwX1kyPywev5kpDFPDyb3KFUTanvMX2/n9UJlN+qwc=")
+	if err != nil {
+		panic(err)
+	}
+	c, err := cell.FromBOC(b)
+	if err != nil {
+		panic(err)
+	}
+	if hex.EncodeToString(c.Hash()) != hipoCodeHash {
+		panic("invalid Hipo library reference")
+	}
+	return c
+}()
+
+func hipoLoanAddress(pool, borrower string, since uint32) (string, error) {
+	p, err := address.ParseRawAddr(pool)
+	if err != nil || p.Workchain() != 0 {
+		return "", fmt.Errorf("invalid Hipo treasury")
+	}
+	b, err := address.ParseRawAddr(borrower)
+	if err != nil || b.Workchain() != 0 || since == 0 {
+		return "", fmt.Errorf("invalid Hipo borrower/round")
+	}
+	data := cell.BeginCell().MustStoreUInt(0, 2).MustStoreAddr(p).MustStoreAddr(b).MustStoreUInt(uint64(since), 32).EndCell()
+	init := cell.BeginCell().MustStoreUInt(6, 5).MustStoreRef(hipoLoanCode).MustStoreRef(data).EndCell()
+	return "-1:" + strings.ToUpper(hex.EncodeToString(init.Hash())), nil
+}
 
 func officialWhalesProxy(holder string) bool {
 	return holder == "-1:07FDDDF68A769856D336F23554C4E13EE2072505739D51682935A40F27E570B1" || holder == "-1:92CDC50DB0FD94175D29EDC1C42D39A2429DAB2DA4C28051E48670AB1661F0B1"
@@ -56,15 +89,16 @@ type Affiliation struct {
 	ResponseHash      string `json:"response_sha256"`
 	FirstMC           uint32 `json:"first_mc_seqno,omitempty"`
 	FirstResponseHash string `json:"first_response_sha256,omitempty"`
+	Borrower          string `json:"borrower"`
+	LoanSince         uint32 `json:"loan_since"`
+	Version           string `json:"verification_version"`
+	CheckedAt         string `json:"checked_at"`
 }
 
-type AffiliationRegistry struct {
-	CheckedAt string        `json:"checked_at"`
-	Entries   []Affiliation `json:"entries"`
+type AffiliationStore interface {
+	LoadAffiliations(context.Context) ([]Affiliation, error)
+	WriteAffiliations(context.Context, []Affiliation) error
 }
-
-//go:embed locked_affiliations.json
-var affiliationJSON []byte
 
 func affiliationKey(holder, family string) string { return holder + "/" + family }
 
@@ -76,7 +110,9 @@ func protocolFor(a Affiliation) string {
 		}
 	case "hipo_controller":
 		if a.CodeHash == hipoCodeHash && a.Pool == hipoTreasury {
-			return "Hipo"
+			if derived, err := hipoLoanAddress(a.Pool, a.Borrower, a.LoanSince); err == nil && derived == a.Holder {
+				return "Hipo"
+			}
 		}
 	case "whales_proxy":
 		if a.CodeHash == whalesCodeHash && a.Pool == whalesPool && officialWhalesProxy(a.Holder) {
@@ -86,46 +122,25 @@ func protocolFor(a Affiliation) string {
 	return ""
 }
 
-var observedAffiliations = func() map[string]Affiliation {
-	var registry AffiliationRegistry
-	if err := json.Unmarshal(affiliationJSON, &registry); err != nil {
-		panic(err)
-	}
-	out := map[string]Affiliation{}
-	for _, a := range registry.Entries {
-		if rawHolder(a.Holder) != a.Holder || protocolFor(a) == "" || protocolFor(a) != a.Protocol || a.MC == 0 || len(a.ResponseHash) != 64 {
-			panic("invalid verified affiliation registry")
-		}
-		key := affiliationKey(a.Holder, a.Family)
-		if _, exists := out[key]; exists {
-			panic("duplicate verified affiliation")
-		}
-		out[key] = a
-	}
-	return out
-}()
-
-func affiliationFor(holder, family string, resolved map[string]Affiliation) (string, string) {
+func affiliationFor(since uint32, holder, family string, resolved map[string]Affiliation) (string, string) {
 	key := affiliationKey(holder, family)
-	a, ok := observedAffiliations[key]
-	if !ok {
-		a, ok = resolved[key]
-	}
-	if !ok || a.Holder != holder || a.Family != family {
+	a, ok := resolved[key]
+	if !ok || a.Version != AffiliationVersion || a.Holder != holder || a.Family != family || (family == "hipo_controller" && a.LoanSince != since) {
 		return "", ""
 	}
 	name := protocolFor(a)
 	if name == "" {
 		return "", ""
 	}
-	return name, fmt.Sprintf("account-identity-v2:mc=%d:code=%s:response=%s", a.MC, a.CodeHash, a.ResponseHash)
+	return name, fmt.Sprintf("%s:mc=%d:code=%s:response=%s", AffiliationVersion, a.MC, a.CodeHash, a.ResponseHash)
 }
 
 // InspectAffiliation verifies the trusted RPC block identity and known code
 // implementation before decoding its static pool link. No current-state label
 // is silently substituted for the requested historical account state.
 func InspectAffiliation(raw []byte, r Round, holder, family string) (Affiliation, error) {
-	a := Affiliation{Holder: rawHolder(holder), Family: family, Since: r.Since, MC: r.AnchorMC, Root: r.AnchorRoot, File: r.AnchorFile}
+	a := Affiliation{Holder: rawHolder(holder), Family: family, Since: r.Since, MC: r.AnchorMC, Root: r.AnchorRoot, File: r.AnchorFile,
+		Version: AffiliationVersion, CheckedAt: time.Now().UTC().Format("2006-01-02 15:04:05.000000")}
 	if a.Holder == "" || r.AnchorMC == 0 || r.AnchorRoot == "" || r.AnchorFile == "" {
 		return a, fmt.Errorf("missing account/anchor identity")
 	}
@@ -224,14 +239,20 @@ func InspectAffiliation(raw []byte, r Round, holder, family string) (Affiliation
 		if a.Pool, err = addr(s); err != nil {
 			return a, err
 		}
-		if _, err = addr(s); err != nil {
+		if a.Borrower, err = addr(s); err != nil {
 			return a, err
 		}
-		if _, err = s.LoadUInt(32); err != nil {
+		loanSince, err := s.LoadUInt(32)
+		if err != nil {
 			return a, err
 		}
+		a.LoanSince = uint32(loanSince)
 		if s.BitsLeft() != 0 || s.RefsNum() != 0 {
 			return a, fmt.Errorf("unexpected Hipo loan layout")
+		}
+		derived, err := hipoLoanAddress(a.Pool, a.Borrower, a.LoanSince)
+		if err != nil || derived != a.Holder || a.LoanSince != r.Since {
+			return a, fmt.Errorf("Hipo StateInit address or round mismatch")
 		}
 	case "whales_proxy":
 		if a.CodeHash == whalesCodeHash && officialWhalesProxy(a.Holder) {
@@ -244,7 +265,7 @@ func InspectAffiliation(raw []byte, r Round, holder, family string) (Affiliation
 
 type AffiliationResolver struct {
 	RPC       ConfigRPC
-	CachePath string
+	Store     AffiliationStore
 	Log       *slog.Logger
 	cache     map[string]Affiliation
 	attempted map[string]bool
@@ -253,27 +274,24 @@ type AffiliationResolver struct {
 func (r *AffiliationResolver) Resolve(ctx context.Context, rounds []Round, members map[uint32]StakeMembers, attrs Attribution) (map[string]Affiliation, error) {
 	if r.cache == nil {
 		cache := map[string]Affiliation{}
-		if r.CachePath != "" {
-			data, err := os.ReadFile(r.CachePath)
-			if err != nil && !os.IsNotExist(err) {
+		if r.Store != nil {
+			records, err := r.Store.LoadAffiliations(ctx)
+			if err != nil {
 				return nil, err
 			}
-			if err == nil {
-				var records []Affiliation
-				if err = json.Unmarshal(data, &records); err != nil {
+			for _, a := range records {
+				if a.Version != AffiliationVersion {
+					continue
+				}
+				if err := validateAffiliation(a); err != nil {
 					return nil, err
 				}
-				for _, a := range records {
-					if rawHolder(a.Holder) != a.Holder || a.MC == 0 || len(a.ResponseHash) != 64 {
-						return nil, fmt.Errorf("invalid affiliation cache")
-					}
-					cache[affiliationKey(a.Holder, a.Family)] = a
-				}
+				cache[affiliationKey(a.Holder, a.Family)] = a
 			}
 		}
 		r.cache = cache
 	}
-	changed := false
+	var changed []Affiliation
 	if r.attempted == nil {
 		r.attempted = map[string]bool{}
 	}
@@ -287,13 +305,10 @@ func (r *AffiliationResolver) Resolve(ctx context.Context, rounds []Round, membe
 				continue
 			}
 			family := *t.ContractType
-			if family != "liquid_staking_controller" && family != "hipo_controller" {
+			if family != "liquid_staking_controller" && family != "hipo_controller" && !(family == "whales_proxy" && officialWhalesProxy(t.Holder)) {
 				continue
 			}
 			key := affiliationKey(t.Holder, family)
-			if _, ok := observedAffiliations[key]; ok {
-				continue
-			}
 			if _, ok := r.cache[key]; ok {
 				continue
 			}
@@ -311,43 +326,28 @@ func (r *AffiliationResolver) Resolve(ctx context.Context, rounds []Round, membe
 				}
 				continue
 			}
-			r.cache[key] = a
-			changed = true
+			changed = append(changed, a)
 		}
 	}
-	if changed && r.CachePath != "" {
-		var records []Affiliation
-		for _, a := range r.cache {
-			records = append(records, a)
-		}
-		data, err := json.Marshal(records)
-		if err != nil {
+	if len(changed) > 0 && r.Store != nil {
+		if err := r.Store.WriteAffiliations(ctx, changed); err != nil {
 			return nil, err
 		}
-		if err = os.MkdirAll(filepath.Dir(r.CachePath), 0700); err != nil {
-			return nil, err
-		}
-		f, err := os.CreateTemp(filepath.Dir(r.CachePath), ".stake-affiliations-*")
-		if err != nil {
-			return nil, err
-		}
-		defer os.Remove(f.Name())
-		_, err = f.Write(data)
-		if err == nil {
-			err = f.Sync()
-		}
-		closeErr := f.Close()
-		if err != nil {
-			return nil, err
-		}
-		if closeErr != nil {
-			return nil, closeErr
-		}
-		if err = os.Rename(f.Name(), r.CachePath); err != nil {
-			return nil, err
-		}
+	}
+	for _, a := range changed {
+		r.cache[affiliationKey(a.Holder, a.Family)] = a
 	}
 	return r.cache, nil
+}
+
+func validateAffiliation(a Affiliation) error {
+	if a.Version != AffiliationVersion || rawHolder(a.Holder) != a.Holder || a.Holder == "" || a.MC == 0 || len(a.ResponseHash) != 64 || len(a.CodeHash) != 64 || len(a.DataHash) != 64 || a.Root == "" || a.File == "" || protocolFor(a) != a.Protocol {
+		return fmt.Errorf("invalid persisted stake affiliation")
+	}
+	if _, err := time.Parse("2006-01-02 15:04:05.000000", a.CheckedAt); err != nil {
+		return fmt.Errorf("invalid affiliation check time")
+	}
+	return nil
 }
 
 func (r *AffiliationResolver) fetch(ctx context.Context, round Round, holder, family string) (Affiliation, error) {

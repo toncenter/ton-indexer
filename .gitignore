@@ -349,3 +349,6 @@ tmp/
 
 **/ton-mch-engine/generated/
 **/ton-abi/generated/
+
+# Staking observations belong in ClickHouse, not the compiled source tree.
+/ton-index-go/internal/gramstat/handlers/validators/locked_affiliations.json

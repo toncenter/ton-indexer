@@ -325,7 +325,7 @@ func prepareLocked(current, previous StakeInput, rounds map[uint32]Round, member
 			}
 			isTG := x.ISP != nil && *x.ISP == "Telegram Messenger"
 			if x.Family != "" {
-				x.Protocol, x.Evidence = affiliationFor(x.Holder, *x.ContractType, attrs.Affiliations)
+				x.Protocol, x.Evidence = affiliationFor(round.Since, x.Holder, *x.ContractType, attrs.Affiliations)
 				if x.Protocol != "" {
 					r.Official++
 				}

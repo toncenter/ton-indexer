@@ -59,9 +59,10 @@ remainder in Others. `is_partial` describes the current time interval.
 
 ## Confirmed affiliations and exact addresses
 
-The embedded [identity registry](../ton-index-go/internal/gramstat/handlers/validators/locked_affiliations.json)
-contains 98 Tonstakers controllers, 24 Stakee controllers, 952 Hipo loan contracts
-and 2 official wsTON proxies. It was rebuilt from **1,284 historical account-state
+Verification results live in `gramstat.validator_stake_affiliations`, not in
+source-controlled JSON or generated browser modules. The initial import covers
+98 Tonstakers controllers, 24 Stakee controllers, 952 Hipo loan contracts
+and 2 official wsTON proxies, from **1,284 historical account-state
 checks for 1,118 holders**, covering each holder's first and last observed
 participation (one check for a one-round loan). Every response matched the
 requested verified MC seqno, root hash and file hash. The code cell hash and
@@ -80,7 +81,7 @@ contract family cannot inherit a cached affiliation.
 | --- | --- | --- |
 | Tonstakers | `EQCkWxfyhAkim3g2DjKQQg8T5P4g-Q1-K_jErGcDJZ4i-vqR` | Controller static data matches the [official pool](https://tonstakers.com/faq/en/article/official-tonstakers-links) |
 | Stakee | `EQD2_4d91M4TVbEBVyBF8J1UwpMJc361LKVCz6bBlffMW05o` | Same static layout matches the [Stakee pool](https://stakee.com/) |
-| Hipo | `EQCLyZHP4Xe8fpchQz76O-_RmUhaVc_9BAoGyJrwJrcbz2eZ` | Loan data matches the [official treasury](https://github.com/HipoFinance/contract) |
+| Hipo | `EQCLyZHP4Xe8fpchQz76O-_RmUhaVc_9BAoGyJrwJrcbz2eZ` | Reconstructed initial state with the official treasury hashes to the actual holder address |
 | Whales wsTON | `EQB0SoxuGDx5qjVt0P_bPICFeWdFLBmVopHhjgfs0q-wsTON` | Two proxies from the [official liquid-pool page](https://tonwhales.com/staking/liquid) |
 
 Reviewed on-chain holder code hashes:
@@ -95,10 +96,30 @@ Schemas: [standard controller and immutable identity](https://github.com/ton-blo
 [controller storage](https://github.com/ton-blockchain/liquid-staking-contract/blob/1f4e9badbed52a4cf80cc58e4bb36ed375c6c8e7/contracts/controller.func),
 [Hipo loan storage](https://github.com/HipoFinance/contract/blob/85e7777861f20c3b4e1a0a564943375eaa72a76d/contracts/loan.fc).
 These are trusted historical RPC checks, not independently verified Merkle proofs.
-The registry records original response digests and MC identities. The generator
-`go run ./cmd/gramstat-stake-registry --capture capture.jsonl --registry ... --ui ...`
-rechecks the captured states and produces both the embedded registry and the
-browser module from the same records.
+The observation table records original response digests and MC identities.
+`go run ./cmd/gramstat-stake-registry --capture capture.jsonl` rechecks every
+captured state without writing anything; add `--publish` to import the verified
+observations using `GRAMSTAT_CH_*`. It generates no source files.
+
+### Hipo address derivation
+
+For the reviewed loan code, the original data cell is exactly
+`addr_none + treasury:MsgAddressInt + borrower:MsgAddressInt + round_since:uint32`.
+Compose a normal StateInit with that data, the reviewed **library-reference code
+cell**, no special/split-depth fields and an empty libraries dictionary. Its hash
+is the account ID in workchain `-1`. See Hipo's
+[create_loan_address](https://github.com/HipoFinance/contract/blob/85e7777861f20c3b4e1a0a564943375eaa72a76d/contracts/imports/utils.fc#L221-L259)
+and [get_loan_address](https://github.com/HipoFinance/contract/blob/85e7777861f20c3b4e1a0a564943375eaa72a76d/contracts/treasury.fc#L3114-L3125).
+The current data contains the Elector address instead of `addr_none`; hashing
+that current state or expanding the library reference produces the wrong address.
+
+The aggregator reads borrower and round from the anchored account state, checks
+the code hash, reconstructs StateInit and compares the derived address to the
+actual elected holder. The stored loan round must match the classified round.
+All **952 historical loans** matched. A new borrower needs no whitelist entry;
+only the small treasury/code definitions belong in source control. Stored
+observations avoid repeated archive RPC reads, and Hipo derivation is rechecked
+when an observation is used. Unknown code versions remain unconfirmed until reviewed.
 
 Twenty Bemo-labelled holders and 22 other Whales proxies remain unconfirmed;
 their elected positions still qualify for the corresponding `-like` family.
@@ -128,17 +149,19 @@ attribution is unavailable, not a zero historical pool balance.
 gramstat-aggregate --handlers validator_stake_locked --from 2026-11-09 --to 2026-11-11
 ```
 
-Apply `locked_schema.sql` once, grant `SELECT, INSERT` on the new table to the
-aggregation role and `SELECT` to the API role. Run after `validators` and
+Apply `locked_schema.sql` and `affiliations_schema.sql` once, grant `SELECT, INSERT`
+on both tables to the aggregation role and `SELECT` to the API role. Run after `validators` and
 `validator_geo`. The independent `gramstat-stake-locked` service/timer uses
 the existing aggregate environment and lock; its binary is deployed separately.
-New standard controllers and Hipo loans are checked automatically at their
-verified round's MC anchor. Successful identity observations are cached atomically
-in `--stake-affiliation-cache` (default
-`/var/lib/gramstat-aggregate/stake-affiliations.json`). Missing RPC data or an
-unreviewed code hash keeps the affiliation unconfirmed. The API calculation
-contract remains `stake-locked-v1`; this correction changes names within the
-pool subtotal, not the selected-principal or Telegram calculations.
+New standard controllers, Hipo loans and the two known wsTON proxies are checked
+automatically at their verified round's MC anchor. Successful observations are
+written synchronously to the observation table and reused on subsequent runs.
+The old `--stake-affiliation-cache` file option is removed. Verification version
+`account-identity-v3` requires the Hipo StateInit check; older observations are
+not silently reused. Missing RPC data or an unreviewed code hash keeps affiliation
+unconfirmed. The chart calculation contract remains `stake-locked-v1`.
+The read-only API groups the prepared observation table for its on-demand
+`/api/v1/staking-contracts` endpoint, including holder lists and verification dates.
 
 Pilot: the recent pair reconciled 724 positions exactly to
 `1293534592018375276` nanograms. Broad pool types contributed

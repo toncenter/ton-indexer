@@ -39,7 +39,6 @@ func run(log *slog.Logger) error {
 	actionsWorkMem := flag.Int("actions-work-mem-mb", 64, "actions PostgreSQL memory per sort/hash operation (1..1024 MiB)")
 	actionsWorkers := flag.Int("actions-parallel-workers", 0, "actions PostgreSQL parallel scan workers (0..4)")
 	actionsMonthly := flag.Bool("actions-include-monthly", false, "also prepare complete-month unique addresses in the same historical source scan")
-	affiliationCache := flag.String("stake-affiliation-cache", "/var/lib/gramstat-aggregate/stake-affiliations.json", "persistent verified holder/pool cache for locked stake")
 	schema := flag.Bool("print-schema", false, "print ClickHouse DDL and exit (apply once as an administrator)")
 	list := flag.Bool("list-handlers", false, "list available handlers and exit")
 	flag.Parse()
@@ -59,6 +58,7 @@ func run(log *slog.Logger) error {
 		fmt.Print(validators.StakeSchema)
 		fmt.Print(validators.StakeChangesSchema)
 		fmt.Print(validators.LockedSchema)
+		fmt.Print(validators.AffiliationSchema)
 		return nil
 	}
 	if *list {
@@ -118,7 +118,7 @@ func run(log *slog.Logger) error {
 			Sink: validators.Store{CH: ch}, ResultsDB: os.Getenv("GRAMSTAT_STAKE_RESULTS_DB"), Log: log},
 		&validators.LockedHandler{Source: validators.Postgres{DSN: os.Getenv("GRAMSTAT_PG_DSN")},
 			Attribution: validators.SessionStats{URL: os.Getenv("GRAMSTAT_SS_URL"), User: os.Getenv("GRAMSTAT_SS_USER"), Password: os.Getenv("GRAMSTAT_SS_PASSWORD")},
-			Resolver:    &validators.AffiliationResolver{RPC: validators.ConfigRPC{URL: os.Getenv("GRAMSTAT_CONFIG_URL"), APIKey: os.Getenv("GRAMSTAT_CONFIG_API_KEY")}, CachePath: *affiliationCache, Log: log},
+			Resolver:    &validators.AffiliationResolver{RPC: validators.ConfigRPC{URL: os.Getenv("GRAMSTAT_CONFIG_URL"), APIKey: os.Getenv("GRAMSTAT_CONFIG_API_KEY")}, Store: validators.Store{CH: ch}, Log: log},
 			Sink:        validators.Store{CH: ch}, Log: log},
 	}
 	names := strings.Split(*handlers, ",")

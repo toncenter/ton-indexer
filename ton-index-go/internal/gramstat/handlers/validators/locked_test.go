@@ -134,8 +134,13 @@ func TestLockedGapsMissingSourcesAndOverlap(t *testing.T) {
 }
 
 func TestLockedAffiliationFollowsHolderAcrossRounds(t *testing.T) {
-	holder := rawHolder("Ef8S77rXFmgqImDq0Om9jiyFEXVX6nAgPiqstBOhGKMxVyk6")
+	anchor, holder, family, body := affiliationFixture(t, "stakee")
+	identity, err := InspectAffiliation(body, anchor, holder, family)
+	if err != nil {
+		t.Fatal(err)
+	}
 	in, rounds, members, geos, attrs := lockedFixture()
+	attrs.Affiliations = map[string]Affiliation{affiliationKey(holder, family): identity}
 	for since, round := range rounds {
 		key := round.Members[0].Pubkey
 		pos := members[since].Positions[key]
@@ -150,7 +155,7 @@ func TestLockedAffiliationFollowsHolderAcrossRounds(t *testing.T) {
 	if r.Official != 2 || r.Breakdown["Stakee"] != *r.Pools || r.Breakdown["Tonstakers-like"] != "" {
 		t.Fatalf("identity changed at a round boundary: %+v", r)
 	}
-	if name, _ := affiliationFor(holder, "whales_proxy", nil); name != "" {
+	if name, _ := affiliationFor(in[0].Since, holder, "whales_proxy", attrs.Affiliations); name != "" {
 		t.Fatal("wrong implementation accepted")
 	}
 }
