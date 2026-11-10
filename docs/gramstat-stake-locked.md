@@ -59,30 +59,49 @@ remainder in Others. `is_partial` describes the current time interval.
 
 ## Confirmed affiliations and exact addresses
 
-The embedded [address registry](../ton-index-go/internal/gramstat/handlers/validators/locked_affiliations.csv)
-contains 24 Tonstakers controllers, 4 Stakee controllers, 2 Hipo loan contracts
-and the 2 official wsTON proxies documented in the 2026-10-17 source capture.
-Only one wsTON proxy was elected in that captured active round.
-This evidence is applied **only to round 1792233224**: a live getter observed
-then does not establish historic or future affiliation. Other rounds remain
-eligible by family and get `-like` labels until additional dated evidence is
-published. A single-nominator contract is not relabelled merely because its
-address appears in a registry for a different implementation.
+The embedded [identity registry](../ton-index-go/internal/gramstat/handlers/validators/locked_affiliations.json)
+contains 98 Tonstakers controllers, 24 Stakee controllers, 952 Hipo loan contracts
+and 2 official wsTON proxies. It was rebuilt from **1,284 historical account-state
+checks for 1,118 holders**, covering each holder's first and last observed
+participation (one check for a one-round loan). Every response matched the
+requested verified MC seqno, root hash and file hash. The code cell hash and
+static data layout were checked before associating a controller with its pool
+or a loan with its treasury. No checked holder changed parent pool or code hash
+between its two observations.
+
+The old restriction to round `1792233224` was an implementation error: it made
+all named protocols appear only around the date of the original one-off audit.
+Affiliation now follows the verified **holder address and code family**, not
+that audit's date. The reviewed standard controller stores the pool in static
+identity data; the Hipo loan stores an immutable treasury. A different source
+contract family cannot inherit a cached affiliation.
 
 | Protocol | Parent pool / treasury | Evidence |
 | --- | --- | --- |
-| Tonstakers | `EQCkWxfyhAkim3g2DjKQQg8T5P4g-Q1-K_jErGcDJZ4i-vqR` | `get_validator_controller_data`, stack[12] matches the [official pool](https://tonstakers.com/faq/en/article/official-tonstakers-links) |
-| Stakee | `EQD2_4d91M4TVbEBVyBF8J1UwpMJc361LKVCz6bBlffMW05o` | Same getter matches the [Stakee pool](https://stakee.com/) |
-| Hipo | `EQCLyZHP4Xe8fpchQz76O-_RmUhaVc_9BAoGyJrwJrcbz2eZ` | `get_loan_state`, stack[1] matches the [official treasury](https://github.com/HipoFinance/contract) |
+| Tonstakers | `EQCkWxfyhAkim3g2DjKQQg8T5P4g-Q1-K_jErGcDJZ4i-vqR` | Controller static data matches the [official pool](https://tonstakers.com/faq/en/article/official-tonstakers-links) |
+| Stakee | `EQD2_4d91M4TVbEBVyBF8J1UwpMJc361LKVCz6bBlffMW05o` | Same static layout matches the [Stakee pool](https://stakee.com/) |
+| Hipo | `EQCLyZHP4Xe8fpchQz76O-_RmUhaVc_9BAoGyJrwJrcbz2eZ` | Loan data matches the [official treasury](https://github.com/HipoFinance/contract) |
 | Whales wsTON | `EQB0SoxuGDx5qjVt0P_bPICFeWdFLBmVopHhjgfs0q-wsTON` | Two proxies from the [official liquid-pool page](https://tonwhales.com/staking/liquid) |
 
-Saved evidence SHA256: standard-controller mapping
-`76488bca9ef545abcd1a3e61e9a6003adc06cf4b634ff1a81de27cf29c10fb0e`;
-the two Hipo getter responses
-`428e3a848b08076ec8cafc4a5acc447f15f6337ec752ed428acb4e5c11b227fe` and
-`182697e0af95ba7f7d0daf5ba65ad21665aa68990e47fcc113b7ee91232af6fc`.
-Historical Hipo loans and Bemo-labelled holders do not need official-pool
-verification to qualify by family, but their affiliation remains unverified.
+Reviewed on-chain holder code hashes:
+
+| Family | Code cell hash, hex |
+| --- | --- |
+| Standard liquid-staking controller | `dd3ce98db487c7585803933bffba7a57eb4e663099059d08b83db0b4ce060793` |
+| Hipo loan | `56fb96fc4b9051deecfce8b04ce3c888990ba80fe6bd07154e351506ee9907a0` |
+| Whales proxy | `6097b64a3b9db526a6b26497afeae3f224a8f639d37b6534d46df21fe0589c21` |
+
+Schemas: [standard controller and immutable identity](https://github.com/ton-blockchain/liquid-staking-contract/blob/1f4e9badbed52a4cf80cc58e4bb36ed375c6c8e7/docs/controller.md),
+[controller storage](https://github.com/ton-blockchain/liquid-staking-contract/blob/1f4e9badbed52a4cf80cc58e4bb36ed375c6c8e7/contracts/controller.func),
+[Hipo loan storage](https://github.com/HipoFinance/contract/blob/85e7777861f20c3b4e1a0a564943375eaa72a76d/contracts/loan.fc).
+These are trusted historical RPC checks, not independently verified Merkle proofs.
+The registry records original response digests and MC identities. The generator
+`go run ./cmd/gramstat-stake-registry --capture capture.jsonl --registry ... --ui ...`
+rechecks the captured states and produces both the embedded registry and the
+browser module from the same records.
+
+Twenty Bemo-labelled holders and 22 other Whales proxies remain unconfirmed;
+their elected positions still qualify for the corresponding `-like` family.
 
 ## Storage and refresh
 
@@ -105,6 +124,13 @@ Apply `locked_schema.sql` once, grant `SELECT, INSERT` on the new table to the
 aggregation role and `SELECT` to the API role. Run after `validators` and
 `validator_geo`. The independent `gramstat-stake-locked` service/timer uses
 the existing aggregate environment and lock; its binary is deployed separately.
+New standard controllers and Hipo loans are checked automatically at their
+verified round's MC anchor. Successful identity observations are cached atomically
+in `--stake-affiliation-cache` (default
+`/var/lib/gramstat-aggregate/stake-affiliations.json`). Missing RPC data or an
+unreviewed code hash keeps the affiliation unconfirmed. The API calculation
+contract remains `stake-locked-v1`; this correction changes names within the
+pool subtotal, not the selected-principal or Telegram calculations.
 
 Pilot: the recent pair reconciled 724 positions exactly to
 `1293534592018375276` nanograms. Broad pool types contributed
@@ -157,12 +183,14 @@ The independent Total line remains available when category attribution is missin
 Category labels describe the dated evidence in the aggregate; they do not prove
 that a contract without a confirmed affiliation is unofficial.
 
-> Stakes remain locked after a validation round ends, so validators need separate funds for consecutive rounds. To show the total capital committed to staking, this chart adds the selected stakes of the current and previous rounds, treating each stake as locked for two full rounds.
+> Stakes remain locked after a validation round ends, so validators need separate funds for consecutive rounds. To show the **total capital committed to staking**, this chart adds the selected stakes of the current and previous rounds, treating each stake as locked for two full rounds.
 
-> Liquid Staking is broken down by protocol and contract type. Protocol names indicate confirmed affiliation; the “-like” suffix indicates a recognized staking contract type whose protocol affiliation has not been confirmed. Amounts include validators’ own collateral.
+> Liquid Staking is broken down by protocol and contract type. Protocol names indicate confirmed affiliation; the “-like” suffix indicates a recognized staking contract type whose protocol affiliation has not *yet* been confirmed. Amounts include validators’ own collateral.
 
 > Others is the total stake selected by the Elector across both rounds, minus the amounts attributed to Telegram and Liquid Staking.
 
-Link text: **Included contracts and attribution rules**. The wider Whales
+The **Verified staking contracts** button opens an in-page registry, like Wallet
+codes, with pool/treasury addresses, checked holder code hashes and expandable
+holder addresses. There is no external Markdown link. The wider Whales
 family includes conventional pools. Historical `bemo_nominator` positions are
 displayed as Bemo-like unless a dated protocol affiliation has been confirmed.

@@ -133,22 +133,24 @@ func TestLockedGapsMissingSourcesAndOverlap(t *testing.T) {
 	}
 }
 
-func TestLockedAffiliationDoesNotLeakAcrossRounds(t *testing.T) {
-	if len(observedAffiliations) != 32 {
-		t.Fatal("registry incomplete")
-	}
+func TestLockedAffiliationFollowsHolderAcrossRounds(t *testing.T) {
 	holder := rawHolder("Ef8S77rXFmgqImDq0Om9jiyFEXVX6nAgPiqstBOhGKMxVyk6")
-	for _, since := range []uint32{1792167688, 1792233224, 1792298760} {
-		name, evidence := affiliationFor(since, holder, "liquid_staking_controller")
-		if since == 1792233224 {
-			if name != "Stakee" || evidence == "" {
-				t.Fatal("observed proof missing")
-			}
-		} else if name != "" || evidence != "" {
-			t.Fatal("live getter extrapolated historically")
-		}
+	in, rounds, members, geos, attrs := lockedFixture()
+	for since, round := range rounds {
+		key := round.Members[0].Pubkey
+		pos := members[since].Positions[key]
+		pos.Holder = holder
+		members[since].Positions[key] = pos
+		typ := attrs.Types[[2]uint32{since, 0}]
+		typ.Holder = holder
+		typ.ContractType = stakePtr("liquid_staking_controller")
+		attrs.Types[[2]uint32{since, 0}] = typ
 	}
-	if name, _ := affiliationFor(1792233224, holder, "whales_proxy"); name != "" {
+	r := prepareLocked(in[1], in[0], rounds, members, geos, attrs, time.Unix(400, 0))
+	if r.Official != 2 || r.Breakdown["Stakee"] != *r.Pools || r.Breakdown["Tonstakers-like"] != "" {
+		t.Fatalf("identity changed at a round boundary: %+v", r)
+	}
+	if name, _ := affiliationFor(holder, "whales_proxy", nil); name != "" {
 		t.Fatal("wrong implementation accepted")
 	}
 }

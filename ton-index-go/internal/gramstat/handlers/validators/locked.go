@@ -108,6 +108,7 @@ type LockedSink interface {
 type LockedHandler struct {
 	Source      LockedSource
 	Attribution AttributionSource
+	Resolver    *AffiliationResolver
 	Sink        LockedSink
 	Log         *slog.Logger
 }
@@ -203,6 +204,12 @@ func (h *LockedHandler) Run(ctx context.Context, req gramstat.Request) error {
 			return err
 		}
 		attrs.Telegram = telegram
+		if h.Resolver != nil {
+			attrs.Affiliations, err = h.Resolver.Resolve(ctx, rounds, members, attrs)
+			if err != nil {
+				return err
+			}
+		}
 		byRound := map[uint32]Round{}
 		for _, r := range rounds {
 			byRound[r.Since] = r
@@ -318,7 +325,7 @@ func prepareLocked(current, previous StakeInput, rounds map[uint32]Round, member
 			}
 			isTG := x.ISP != nil && *x.ISP == "Telegram Messenger"
 			if x.Family != "" {
-				x.Protocol, x.Evidence = affiliationFor(round.Since, x.Holder, *x.ContractType)
+				x.Protocol, x.Evidence = affiliationFor(x.Holder, *x.ContractType, attrs.Affiliations)
 				if x.Protocol != "" {
 					r.Official++
 				}

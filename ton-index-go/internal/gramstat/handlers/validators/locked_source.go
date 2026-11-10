@@ -2,8 +2,6 @@ package validators
 
 import (
 	"context"
-	_ "embed"
-	"encoding/csv"
 	"encoding/json"
 	"fmt"
 	"net/url"
@@ -36,9 +34,10 @@ type ISPObservation struct {
 }
 
 type Attribution struct {
-	Types    map[[2]uint32]ContractObservation
-	ISPs     map[string]ISPObservation
-	Telegram map[string]TelegramEvidence
+	Types        map[[2]uint32]ContractObservation
+	ISPs         map[string]ISPObservation
+	Telegram     map[string]TelegramEvidence
+	Affiliations map[string]Affiliation
 }
 
 type TelegramEvidence struct {
@@ -167,38 +166,4 @@ func (s SessionStats) CollectAttribution(ctx context.Context, rounds []Round, ge
 		out.ISPs[r.RecordID] = r
 	}
 	return out, nil
-}
-
-// This evidence was captured in one active round, NOT at the first-ever use of
-// each holder. Do not extrapolate it into earlier/later rounds. Everything else
-// still qualifies by contract family, but retains an unverified affiliation.
-//
-//go:embed locked_affiliations.csv
-var affiliationCSV string
-
-var observedAffiliations = func() map[string]string {
-	rows, err := csv.NewReader(strings.NewReader(affiliationCSV)).ReadAll()
-	if err != nil {
-		panic(err)
-	}
-	out := map[string]string{}
-	for _, row := range rows[1:] {
-		if len(row) != 2 || rawHolder(row[1]) == "" {
-			panic("invalid stake affiliation registry")
-		}
-		out[rawHolder(row[1])] = row[0]
-	}
-	return out
-}()
-
-func affiliationFor(since uint32, holder, contractType string) (string, string) {
-	if since != 1792233224 {
-		return "", ""
-	}
-	name := observedAffiliations[holder]
-	valid := (name == "Tonstakers" || name == "Stakee") && contractType == "liquid_staking_controller" || name == "Hipo" && contractType == "hipo_controller" || name == "Whales wsTON" && contractType == "whales_proxy"
-	if !valid {
-		return "", ""
-	}
-	return name, "holder-registry-2026-10-17"
 }
