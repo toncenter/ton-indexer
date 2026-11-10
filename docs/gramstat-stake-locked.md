@@ -113,6 +113,41 @@ Pilot: the recent pair reconciled 724 positions exactly to
 initially took 2.9 s; the once-per-run Telegram-history read took 1.4 s.
 The exact-record ISP query uses the leading primary-key `record_id` column.
 
+### Completed historical aggregation, 2026-11-10
+
+Release `eb8a393` processed the indexed history in **6 min 1.087 s**, without
+an indexer replay. The independent hourly timer is enabled; an actual automatic
+window run completed successfully in **7.508 s**.
+
+* 3,335 round-axis snapshots; 3,123 have a verified two-round total.
+* 984 have category sums: 526 complete source coverage, 458 partial attribution.
+* All 413 round-axis points starting in 2026 have category sums.
+* First available two-round total: **2020-04-24 16:06:12 UTC**.
+* First category split: **2024-09-29 12:58:48 UTC**.
+* Zero category overlaps or discrepancies in the pair, category, individual
+  position and family-breakdown sums.
+
+Missing total reasons: 196 snapshots lack selected stake, 14 lack an adjacent
+interval (including the initial point), and 2 involve an unverified round.
+Another 2,139 snapshots have total principal but no defensible complete-pair
+attribution. Most precede historical ISP coverage. Later source holes include
+missing type rosters in February/October/November 2025 and missing ISP coverage
+in August–September 2025. These remain NULL category sums, not zero balances.
+
+Latest checked pair, current round **2026-11-09 22:54:00 UTC**:
+
+| Group | Exact GRAM |
+| --- | ---: |
+| Total | 1,293,534,592.018375276 |
+| Telegram | 217,254,026.640880000 |
+| Pool-contract group | 297,491,676.296108533 |
+| Others | 778,788,889.081386743 |
+
+All 724 positions have reconciled type records; 720 have usable ISP evidence,
+including historical Telegram evidence. The snapshot is `partial_attribution`.
+The complete per-position audit is stored with the aggregate, including full
+holder addresses, implementation types, groups and evidence timestamps.
+
 ## Approved chart text (awaiting UI integration)
 
 > Selected stake across the current and previous validator rounds. Telegram is identified by historical Telegram Messenger ISP observations. Liquid Staking includes positions held by verified Tonstakers and Stakee controllers, Hipo loan contracts, and the official Whales wsTON proxies, including validators’ own collateral. Others includes all remaining positions.
