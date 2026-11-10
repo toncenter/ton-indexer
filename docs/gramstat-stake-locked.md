@@ -121,6 +121,10 @@ only the small treasury/code definitions belong in source control. Stored
 observations avoid repeated archive RPC reads, and Hipo derivation is rechecked
 when an observation is used. Unknown code versions remain unconfirmed until reviewed.
 
+The StateInit/database migration was reconciled against all 3,335 prepared
+snapshots: no missing rows, changed totals, category or protocol amounts,
+coverage counts, affiliation counts, statuses, or sum errors.
+
 Twenty Bemo-labelled holders and 22 other Whales proxies remain unconfirmed;
 their elected positions still qualify for the corresponding `-like` family.
 
