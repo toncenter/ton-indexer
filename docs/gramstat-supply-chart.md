@@ -196,8 +196,12 @@ delta:              3012500000 nanotons
 The complete **3..7409467** prefix has zero NULL or nonzero `burned` values, so
 raw balance equals corrected supply throughout this early interval. At
 **06:39:14 UTC**, the public short-window `/api/v1/supply` response already exposed
-non-NULL values for MC 3..15. Prepared hourly/daily series refresh independently;
-their publication is checked by the read-only observer described below.
+non-NULL values for MC 3..15. The regular refresh at **07:00:09 UTC** published the
+early prepared series. At **07:04:57 UTC**, the read-only public API observer
+confirmed **13 raw MC points, 60 hourly snapshots and 3 daily snapshots** for
+2019-11-15..17: every exact integer balance and timestamp matched, with zero NULLs
+or mismatches. Both hourly and daily chart data now include the beginning of
+indexed history.
 
 ## Evidence and source semantics
 
