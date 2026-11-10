@@ -70,11 +70,12 @@ Machine-readable annotation constants:
    decode to a genuine zero. The mainnet full run starts at MC 3, before burning;
    its complete prefix through the first burn provides the zero opening baseline.
    For `N < 30410593`, the verified mainnet pre-burning baseline is `B(N) = 0`.
-5. If `global_balance(N)` is NULL, the chart value is unavailable. In the
-   current full run it begins at **MC 7409467**; earlier NULL values are not
-   filled by this chart rule. A later incomplete burn prefix makes the corrected
-   pre-v17 value unavailable as well. At/after v17, the stored value does not
-   depend on completeness of the old burn prefix.
+5. If `global_balance(N)` is NULL, the chart value is unavailable. The full run
+   now has stored balances from **MC 3** after the verified early-history backfill
+   on 2026-11-10; this chart rule does not synthesize missing values. A later
+   incomplete burn prefix also makes the corrected pre-v17 value unavailable.
+   At/after v17, the stored value does not depend on completeness of the old
+   burn prefix.
 6. Preserve exact integer nanotons / decimal arithmetic throughout aggregation
    and transport. Do not pass these integers through JavaScript `Number`;
    use decimal strings / `BigInt`. Divide by `10^9` only for display.
@@ -165,6 +166,39 @@ count/min/max within the fixed interval. All monetary arithmetic uses exact
 decimal/integer values. This was a read-only verification; raw stored balances
 retain their network values.
 
+### Early stored balances restored, 2026-11-10
+
+At **2026-11-10 06:36:34 UTC**, all **7409464** existing masterchain rows in
+**MC 3..7409466** were filled with their exact stored `global_balance` in
+`mainnet_gramstat_full.blocks`. There are no missing rows or NULL balances in
+that range. The first available supply is now **MC 3**, timestamp **1573822403**
+(**2019-11-15 12:53:23 UTC**), **5000001965100000000 nanotons**.
+
+The archive-only reader validated each block's file/root hashes and Merkle update,
+then read the balance from the right/new post-state proof. It did not open CellDB
+or reconstruct supply. All **1460219** overlapping frozen full-state references
+and **24774** archived calculator snapshots matched exactly; every staged block's
+canonical identity and timestamp matched the existing block row.
+
+Application preserved complete original rows in
+`gramstat_full.supply_backfill_blocks_backup_v1`, then replaced only
+`global_balance` in 75 bounded chunks. Exact comparisons verified every other
+field of all **7409464 rows**, including unchanged NULL historical queue counters.
+The 32 already-populated rows **7409467..7409498** also remain identical to their
+pre-backfill canary snapshots. At the old boundary:
+
+```text
+MC 7409466: 5023067548440620767 nanotons
+MC 7409467: 5023067551453120767 nanotons
+delta:              3012500000 nanotons
+```
+
+The complete **3..7409467** prefix has zero NULL or nonzero `burned` values, so
+raw balance equals corrected supply throughout this early interval. At
+**06:39:14 UTC**, the public short-window `/api/v1/supply` response already exposed
+non-NULL values for MC 3..15. Prepared hourly/daily series refresh independently;
+their publication is checked by the read-only observer described below.
+
 ## Evidence and source semantics
 
 - Mainnet config parameter 8: [MC 103190380: v16](https://toncenter.com/api/v2/getConfigParam?config_id=8&seqno=103190380),
@@ -181,6 +215,14 @@ retain their network values.
   probe manifests/logs in `balance-parity/`. The seam result includes the exact
   SQL, persisted block rows, prefix-completeness checks and all 15 flow residuals.
   Calculator TON revision: `31f1bdf1f5d3eb027cc423559203b496036027ad`.
+- Early-backfill evidence under `/opt/gramstat-full/backfill-supply/`:
+  `result.json`, `completion-summary.json`, `boundary-verification.json`,
+  `collect-result.json`, and `public-api-expected.json`. The read-only publication
+  observer records exact raw/hourly/daily API comparisons in
+  `public-supply-result.json`. Original failures and resource evidence remain in
+  `attempts/`; full original block rows remain in the backup table.
+- [TON Docs: Merkle updates](https://docs.ton.org/foundations/serialization/merkle-update)
+  describes the old/new references used by the archive-only reader.
 
 See [Gramstat storage and indexing](gramstat.md) for field definitions and resume
 semantics.
