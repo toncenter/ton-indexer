@@ -103,6 +103,14 @@ browser module from the same records.
 Twenty Bemo-labelled holders and 22 other Whales proxies remain unconfirmed;
 their elected positions still qualify for the corresponding `-like` family.
 
+After the identity correction, all 3,335 prepared snapshots were reconciled:
+no rows disappeared and **Total, Telegram, pool subtotal and Others were
+unchanged in every row**. Named Tonstakers now appears in 983 classified points,
+Stakee in 980, Hipo in 973 and Whales wsTON in 984, beginning in the available
+September 2024 attribution history. No Tonstakers-like or Hipo-like amounts
+remain in this checked history; Bemo-like and the other Whales-like positions
+remain unconfirmed. The former simultaneous October 17 naming transition is gone.
+
 ## Storage and refresh
 
 Each row atomically contains both rounds' full classified position lists,
