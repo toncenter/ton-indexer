@@ -148,13 +148,21 @@ including historical Telegram evidence. The snapshot is `partial_attribution`.
 The complete per-position audit is stored with the aggregate, including full
 holder addresses, implementation types, groups and evidence timestamps.
 
-## Approved chart text (awaiting UI integration)
+## Chart display and approved text
 
-> Selected stake across the current and previous validator rounds. Telegram is identified by historical Telegram Messenger ISP observations. Liquid Staking includes positions held by verified Tonstakers and Stakee controllers, Hipo loan contracts, and the official Whales wsTON proxies, including validators’ own collateral. Others includes all remaining positions.
+The UI displays each `pool_breakdown` entry as its own stepped area, legend
+control and exact tooltip row. Confirmed protocol names and their unconfirmed
+`-like` categories remain distinct. The pool subtotal is not an additional layer.
+The independent Total line remains available when category attribution is missing.
+Category labels describe the dated evidence in the aggregate; they do not prove
+that a contract without a confirmed affiliation is unofficial.
 
-> Also includes elected positions held by contracts of the same staking types whose affiliation with the named protocols has not been confirmed. These are labelled Tonstakers-like, Hipo-like, or Whales-like.
+> Stakes remain locked after a validation round ends, so validators need separate funds for consecutive rounds. To show the total capital committed to staking, this chart adds the selected stakes of the current and previous rounds, treating each stake as locked for two full rounds.
+
+> Liquid Staking is broken down by protocol and contract type. Protocol names indicate confirmed affiliation; the “-like” suffix indicates a recognized staking contract type whose protocol affiliation has not been confirmed. Amounts include validators’ own collateral.
+
+> Others is the total stake selected by the Elector across both rounds, minus the amounts attributed to Telegram and Liquid Staking.
 
 Link text: **Included contracts and attribution rules**. The wider Whales
-family includes conventional pools; the grouping name and display of the
-additional historical Bemo-like family must remain explicit when integrating
-the chart.
+family includes conventional pools. Historical `bemo_nominator` positions are
+displayed as Bemo-like unless a dated protocol affiliation has been confirmed.
