@@ -57,6 +57,7 @@ func run(log *slog.Logger) error {
 		fmt.Print(validators.Schema)
 		fmt.Print(validators.StakeSchema)
 		fmt.Print(validators.StakeChangesSchema)
+		fmt.Print(validators.LockedSchema)
 		return nil
 	}
 	if *list {
@@ -70,6 +71,7 @@ func run(log *slog.Logger) error {
 		fmt.Println("validator_geo: session-stats locations, countries and coverage by round")
 		fmt.Println("validator_stake: principal, rewards and two-round staking APR by verified round")
 		fmt.Println("validator_stake_changes: holder stake changes between rounds n-2 and n")
+		fmt.Println("validator_stake_locked: current plus previous selected stake, Telegram and pool-contract attribution")
 		return nil
 	}
 	if *timeout <= 0 {
@@ -113,6 +115,9 @@ func run(log *slog.Logger) error {
 			Sink: validators.Store{CH: ch}, ResultsDB: os.Getenv("GRAMSTAT_STAKE_RESULTS_DB"), Log: log},
 		&validators.StakeChangesHandler{Source: validators.Postgres{DSN: os.Getenv("GRAMSTAT_PG_DSN")},
 			Sink: validators.Store{CH: ch}, ResultsDB: os.Getenv("GRAMSTAT_STAKE_RESULTS_DB"), Log: log},
+		&validators.LockedHandler{Source: validators.Postgres{DSN: os.Getenv("GRAMSTAT_PG_DSN")},
+			Attribution: validators.SessionStats{URL: os.Getenv("GRAMSTAT_SS_URL"), User: os.Getenv("GRAMSTAT_SS_USER"), Password: os.Getenv("GRAMSTAT_SS_PASSWORD")},
+			Sink:        validators.Store{CH: ch}, Log: log},
 	}
 	names := strings.Split(*handlers, ",")
 	for i := range names {

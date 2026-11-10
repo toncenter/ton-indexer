@@ -10,6 +10,10 @@ import (
 )
 
 func (p Postgres) CollectStakeMembers(ctx context.Context, to time.Time) (map[uint32]StakeMembers, error) {
+	return p.CollectStakeMembersRange(ctx, time.Unix(0, 0).UTC(), to)
+}
+
+func (p Postgres) CollectStakeMembersRange(ctx context.Context, from, to time.Time) (map[uint32]StakeMembers, error) {
 	if p.DSN == "" {
 		return nil, fmt.Errorf("GRAMSTAT_PG_DSN is required")
 	}
@@ -28,7 +32,7 @@ func (p Postgres) CollectStakeMembers(ctx context.Context, to time.Time) (map[ui
 		return nil, err
 	}
 	defer conn.Close(context.Background())
-	ids, err := conn.Query(ctx, "SELECT utime_since FROM public.validator_cycles WHERE utime_since<$1 ORDER BY utime_since", to.Unix())
+	ids, err := conn.Query(ctx, "SELECT utime_since FROM public.validator_cycles WHERE utime_since>=$1 AND utime_since<$2 ORDER BY utime_since", from.Unix(), to.Unix())
 	if err != nil {
 		return nil, err
 	}

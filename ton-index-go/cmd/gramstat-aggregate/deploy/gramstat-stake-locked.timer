@@ -1,0 +1,10 @@
+[Unit]
+Description=Refresh Gramstat two-round stake hourly
+
+[Timer]
+OnCalendar=*-*-* *:20:00 UTC
+Persistent=true
+Unit=gramstat-stake-locked.service
+
+[Install]
+WantedBy=timers.target
