@@ -5,6 +5,11 @@
 CMake application helper have been removed after the successful real-NodeDB A/B
 below. Earlier sections document the diagnosis and previous deployed release.
 
+The follow-up [per-invariant code audit](rocksdb-secondary-upstream-audit.md)
+maps every part of the removed patches to the pinned upstream implementation,
+adds atomic-group and pre-existing-SST lifetime checks, and records a shared
+same-name SST restoration limitation plus an old patched-reader failure.
+
 ## Incident and evidence
 
 The Gramstat live reader aborted at `celldb.cpp:94`,
