@@ -194,3 +194,73 @@ observers were rearmed after the recovery check:
 
 These checks prove successful rollout and recovery, not indefinite absence of
 the original intermittent assertion. Continuous monitoring remains active.
+
+## Upstream provenance review (after rollout)
+
+The shipped patch is maintained in **ton-indexer**, alongside the existing
+`ton-index-worker/patches/fix-secondary-open.patch`; CMake applies both inside
+the nested RocksDB source tree. Neither the TON gitlink (`31f1bdf1`) nor the
+RocksDB gitlink (`4595a5e9`, version 10.10.1) was advanced. TON's secondary wrapper
+lives in the TON fork, but the existing RocksDB patch delivery mechanism is in
+the indexer repository.
+
+A subsequent upstream check found that this defect was already reported in
+[RocksDB #15051](https://github.com/meta/rocksdb/issues/15051) and addressed by
+[commit b616b203 / PR #15066](https://github.com/meta/rocksdb/commit/b616b203b8aab0c6f122e157f954e984d2bbc90c)
+on **2026-08-17**. The pinned revision predates it. It affects generic secondary
+reads, including ordinary Put/Get without TON or merge operators; TON's
+reference-count merge turns the stale-memtable case into a missing-base assertion.
+The primary writer is not the defective component in this reproducer.
+
+**The deployed minimal patch is not equivalent to the complete upstream fix.**
+Upstream gates retirement on the log boundary of the **installed readable
+Version**, not simply `cfd->GetLogNumber()`: the latter can advance while SST
+opening fails or an atomic group remains incomplete. It also reconciles column
+families after failed catch-up rounds and tracks partially replayed WAL batches
+conservatively. Those cases were not covered by our eight original regressions.
+The upstream implementation should be reviewed for a compatible backport rather
+than treating the local minimal change as the final general-purpose solution.
+
+RocksDB's [secondary-instance documentation](https://github.com/meta/rocksdb/wiki/Read-only-and-Secondary-instances)
+explicitly supports this read-only catch-up pattern. Applications using only a
+primary instance do not exercise the affected path; secondary readers on an
+affected version may need the upstream fix even outside the TON ecosystem.
+
+### Isolation from TON and the previous patches
+
+The pinned **unmodified** RocksDB `4595a5e9` was built separately on macOS arm64
+and tested using only its public API, without TON/indexer libraries. Result:
+`upstream-secondary-result.json`, completed **2026-11-11 14:39:24 UTC** in the
+runtime evidence directory. The baseline reproduced all six stale-memtable
+regressions, including **3 instead of 2** and **Corruption instead of NotFound**.
+Adding only our new patch corrected those six. The separate future-empty-WAL
+regression failed in both arms because neither contained the older #14781
+backport. Thus the suite counts are **7 failures → 1 failure**, not a claim that
+the new patch alone addresses every secondary defect.
+
+The clean build needed compiler flags to force-include `sys/types.h` and
+`cstdlib` with Clang 23; the test executable was built without RTTI to match
+the standalone library. These are build-compatibility adjustments, not source
+changes to the baseline. The initial missing-declaration/link failures remain
+in the build log.
+
+### Status of `fix-secondary-open.patch` in upstream
+
+Checked against upstream `main` **`4ff3dd282a7e54be7b7183cc48c9793398ea748e`**:
+
+| Part of our existing bundle | Upstream status |
+| --- | --- |
+| Fast initial recovery through a regular `VersionEditHandler`, then handoff to `ManifestTailer` | [PR #14815](https://github.com/meta/rocksdb/pull/14815), authored by `dungeon-master-666`, is still open; this exact path is not in checked main. |
+| Underlying slow/quadratic point-in-time MANIFEST recovery | Fixed by a different approach: [commit c9536aae / #14929](https://github.com/meta/rocksdb/commit/c9536aaef7815467f406ddf94cb2feeb772068f9), **2026-07-15**. It replaces whole-VersionBuilder copies per edit with single-edit undo, retaining PIT recovery semantics. |
+| Preserving an older growing WAL when a future empty WAL appears | [Commit ae30c71c / #14781](https://github.com/meta/rocksdb/commit/ae30c71c6b4490fe74cc102cd8e868bd07f2ae0c), **2026-05-26**; already backported into our bundle. |
+| Atomic-group transfer, rebasing builders to release old SSTs, retry/fallback around our accelerated open | Accompany the local fast-open/handoff design. Checked main does not contain these helpers; without that local design they should not be blindly carried over as independent upstream bug fixes. |
+
+Upstream also has asynchronous secondary file opening (#15294), but it changes
+when SSTs are pinned and requires additional deletion coordination. It is not a
+drop-in replacement for our synchronous max-open-files=-1 setup.
+
+An upstream upgrade containing **#14929, #14781 and #15066** could allow removing
+the local secondary patch bundle. That requires validating startup time on the
+real MANIFEST, SST lifetime and catch-up correctness; absence of our helper names
+alone is not a performance equivalence proof. No additional production upgrade
+was made as part of this provenance investigation.
