@@ -1,5 +1,10 @@
 # Secondary CellDB merge-base failure (2026-11-10)
 
+**Current source:** clean upstream RocksDB **v11.13.2**, via TON commit
+`348c85c096f96831d89c00870b8097f5cec4ed21`. Both local RocksDB patches and their
+CMake application helper have been removed after the successful real-NodeDB A/B
+below. Earlier sections document the diagnosis and previous deployed release.
+
 ## Incident and evidence
 
 The Gramstat live reader aborted at `celldb.cpp:94`,
@@ -363,9 +368,69 @@ Current observers are
 `gramstat-full-memory-after-upstream-3551820.service` (read-only host recovery
 watch). They survive SSH loss and have completion/event notification waiters.
 
-**Decision:** retain both patches and the old TON gitlink in the main indexer
+**Decision at 15:56 UTC (superseded by the completed v4 check below):** retain both patches and the old TON gitlink in the main indexer
 checkout and deployed reader for now. The published TON candidate branch and
 compiled upstream binaries are ready for the remaining canary; the upstream
 upgrade has **not** been deployed. The regression source now uses the owning
 open API accepted by both RocksDB 10.10.1 and 11.13.2. No writer/NFT or historical
 metrics changes are included in this evaluation.
+
+### Completed real-NodeDB A/B, 2026-11-11 16:32 UTC
+
+Further read-only host inspection identified **ZFS 2.1.5** on the NodeDB dataset,
+with an approximately **61–63 GiB ARC**. This accounts for much of the memory
+outside process RSS and Linux's ordinary page cache. Earlier global-PSI stops
+were not sufficient evidence that the protected services were memory-stalled.
+No ZFS, node, ordinary-indexer or global kernel settings were changed.
+
+The v4 canary retained a **12-GiB cgroup cap, 4-GiB RSS limit, 4-GiB minimum host
+headroom and 180-second per-arm timeout**. It additionally stopped for protected
+service full PSI >=5%, or the combined condition of host full PSI >=10% with
+available memory <6 GiB. It recorded ARC, reclaim counters and each service's
+PSI throughout. Both arms used their original binaries/options, on the same new
+range, without flushing caches.
+
+**MC 104794490..104794553 passed completely:** identical digest
+`f3045f41b6507c797ce35aabe8b1e45df7335eb3b54234d390c35ebbc9286cce`
+over **133 blocks, 1971 transactions, 1458 account states, 543 interfaces**,
+block metrics and account deltas/deployments.
+
+| Measurement | Deployed 10.10.1 + patches | Clean 11.13.2 |
+| --- | ---: | ---: |
+| Whole-process time | 55.260s | 75.066s |
+| Parsing measured range | 0.655s | 0.698s |
+| Open + teardown (difference, not open-only instrumentation) | 54.605s | 74.368s |
+| Peak RSS | 2891968 KiB | 2944372 KiB |
+| Sampled peak cgroup memory, including file cache | 4.019 GiB | 9.491 GiB |
+| Minimum available host memory | 7.292 GiB | 7.560 GiB |
+| Maximum host full PSI avg10 | 4.27% | 13.46% |
+| Maximum probe / node / ordinary-indexer full PSI avg10 | 0% / 0% / 0% | 0% / 0% / 0% |
+
+Upstream's whole-process time was **1.358×** baseline in this single sequential
+measurement. It is slower by about 20 seconds, with similar RSS; no multi-minute
+startup regression was observed. This is a live-node comparison, not a
+controlled cold-cache benchmark. Resource evidence is in
+`rocksdb-upstream-resource-analysis-v4.json` and
+`rocksdb-upstream-11.13.2/canary-resources-v4.jsonl`.
+
+The probe succeeded. The surrounding controller then received systemctl exit
+**5** when stopping the already-completed, garbage-collected transient probe
+unit. Its exception path resumed the old reader immediately. The initial
+controller failure remains recorded, and the cleanup now accepts an absent unit
+only after checking that it is inactive with PID 0. Follow-up verification is
+separate, in `rocksdb-upstream-canary-maintenance-result-v4-recovered.json` and
+`rocksdb-upstream-canary-resume-verification-v4.json`: **1211 MC in
+104794590..104795800**, including retryable fetches 104795068/104795069, no gaps,
+NULL balances, timestamp mismatches or fatal lines; PID **955158**, zero
+restarts, lag **4.37s** at **16:37:50 UTC**. Node and ordinary-indexer PIDs stayed
+2062301 and 2763123.
+
+**Source migration:** the indexer now pins the tested TON commit from
+`1IxI1/ton:gramstat-rocksdb-11.13.2`, removes both secondary patch targets/files
+and the unused `ApplyPatch.cmake`, and keeps the public regressions. The committed
+worker CMake file is byte-identical to the tested no-patch overlay; the TON
+wrappers match the compiled overlays, and the nested RocksDB tree is clean.
+The six previously patched nested files were first verified byte-for-byte against
+the two known patches, then preserved in a named Git stash and a runtime diff
+backup before switching versions. This source change is distinct from installing
+the candidate production executable.
