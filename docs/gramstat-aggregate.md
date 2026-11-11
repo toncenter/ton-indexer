@@ -352,6 +352,16 @@ all 6,674 prepared snapshots across both tables retained identical hashes,
 amounts and statuses, with no missing rows. These are pilot measurements, not
 guaranteed runtime bounds.
 
+The deployed scheduler was observed through the 13:55 and 14:00 UTC refreshes
+and the second monthly run on November 11. Both recent cycles finished all nine
+regular handlers in about 48 s: actions 14.1 s, accounts 7.5 s, wallets 3.0 s,
+locked stake 2.0–2.2 s and stake changes 0.18 s. The second monthly execution
+took 71.75 s and scheduled its successor for 14:15 UTC. There were no transport
+timeouts or process restarts during this observation. The startup historical
+pass still reported the known incomplete roster `1607798599`; recent runs
+succeeded without suppressing that historical rejection. All three old timers
+were retired, and the daemon retained the single-writer lock.
+
 The service has no
 write access to the source. For actions it needs `SELECT, INSERT` on
 `gramstat.daily_metrics` and `gramstat.telegram_stars_daily`, plus `SELECT` on
