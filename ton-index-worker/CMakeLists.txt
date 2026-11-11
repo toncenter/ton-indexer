@@ -44,6 +44,17 @@ add_custom_target(apply-rocksdb-secondary-open-patch
 )
 add_dependencies(rocksdb apply-rocksdb-secondary-open-patch)
 
+add_custom_target(apply-rocksdb-secondary-flushed-memtable-patch
+  COMMAND ${CMAKE_COMMAND}
+    -DGIT_EXECUTABLE=${GIT_EXECUTABLE}
+    -DPATCH_FILE=${CMAKE_CURRENT_SOURCE_DIR}/patches/fix-secondary-flushed-memtable.patch
+    -DPATCH_WORKING_DIRECTORY=${CMAKE_CURRENT_SOURCE_DIR}/external/ton/third-party/rocksdb
+    -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/ApplyPatch.cmake
+  VERBATIM
+)
+add_dependencies(apply-rocksdb-secondary-flushed-memtable-patch apply-rocksdb-secondary-open-patch)
+add_dependencies(rocksdb apply-rocksdb-secondary-flushed-memtable-patch)
+
 
 # The TON subtree already provides an lz4 target.  Tell clickhouse-cpp to use
 # that configured library instead of adding its bundled target with the same
@@ -115,4 +126,3 @@ if (PGTON)
     message("Building pgton")
     add_subdirectory(pgton)
 endif()
-

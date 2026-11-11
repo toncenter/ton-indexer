@@ -1,0 +1,36 @@
+diff --git a/db/db_impl/db_impl_secondary.cc b/db/db_impl/db_impl_secondary.cc
+--- a/db/db_impl/db_impl_secondary.cc
++++ b/db/db_impl/db_impl_secondary.cc
+@@ -693,6 +693,32 @@ Status DBImplSecondary::TryCatchUpWithPrimary() {
+     // list wal_dir to discover new WALs and apply new changes to the secondary
+     // instance
+     if (s.ok()) {
++      // A flush can make the active memtable obsolete even if the new WAL is
++      // empty. RecoverLogFiles only rotates it when replaying another record;
++      // keeping it would apply old merges again on top of the flushed SSTs.
++      // Retire it before WAL replay can advance cfd_to_current_log_. Only the
++      // per-CF MANIFEST log boundary proves these records are persisted, not
++      // the presence of a higher-number (possibly precreated) WAL.
++      for (auto* cfd : cfds_changed) {
++        if (cfd->IsDropped()) {
++          continue;
++        }
++        auto it = cfd_to_current_log_.find(cfd);
++        if (it != cfd_to_current_log_.end() &&
++            it->second < cfd->GetLogNumber() && !cfd->mem()->IsEmpty()) {
++          // MANIFEST's global sequence can be ahead of unreplayed WAL data.
++          // Let the first inserted record establish this table's sequence.
++          MemTable* new_mem = cfd->ConstructNewMemtable(
++              cfd->GetLatestMutableCFOptions(), kMaxSequenceNumber);
++          cfd->mem()->SetNextLogNumber(cfd->GetLogNumber());
++          cfd->mem()->ConstructFragmentedRangeTombstones();
++          // Normal immutable-list retirement preserves pinned SuperVersions.
++          cfd->imm()->Add(cfd->mem(), &job_context.memtables_to_free);
++          new_mem->Ref();
++          cfd->SetMemtable(new_mem);
++          cfd_to_current_log_.erase(it);
++        }
++      }
+       s = FindAndRecoverLogFiles(&cfds_changed, &job_context);
+       if (s.IsPathNotFound()) {
+         ROCKS_LOG_INFO(

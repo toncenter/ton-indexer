@@ -85,3 +85,8 @@ add_executable(test-state-update-reader EXCLUDE_FROM_ALL test/state-update-reade
 target_link_libraries(test-state-update-reader PRIVATE tondb-scanner)
 add_test(NAME gramstat_state_update COMMAND test-state-update-reader)
 set_tests_properties(gramstat_state_update PROPERTIES TIMEOUT 60)
+
+add_executable(test-rocksdb-secondary EXCLUDE_FROM_ALL test/rocksdb-secondary.cpp)
+target_link_libraries(test-rocksdb-secondary PRIVATE rocksdb)
+add_test(NAME rocksdb_secondary COMMAND test-rocksdb-secondary)
+set_tests_properties(rocksdb_secondary PROPERTIES TIMEOUT 60)
