@@ -264,3 +264,108 @@ the local secondary patch bundle. That requires validating startup time on the
 real MANIFEST, SST lifetime and catch-up correctness; absence of our helper names
 alone is not a performance equivalence proof. No additional production upgrade
 was made as part of this provenance investigation.
+
+## Clean upstream v11.13.2 evaluation
+
+The tested upstream revision is **`17b624b5c0d41bd42db5cf88aa867f3b26eaf1fa`**
+([v11.13.2](https://github.com/meta/rocksdb/releases/tag/v11.13.2), published
+2026-11-04). Its ancestry contains #14781, #14929 and #15066.
+
+The TON branch is
+[`1IxI1/ton:gramstat-rocksdb-11.13.2`](https://github.com/1IxI1/ton/tree/gramstat-rocksdb-11.13.2),
+HEAD **`348c85c096f96831d89c00870b8097f5cec4ed21`**. It starts directly from
+**`dungeon-master-666/ton:ton-indexer` at `31f1bdf1f5d3eb027cc423559203b496036027ad`**,
+not from a different fork's master. The two commits pin upstream RocksDB and
+adapt its removed `DB**` open overloads to `std::unique_ptr<DB>*` in the three
+database wrappers and optional `bench-state-gen`. Ownership transfers to the
+existing shared reader after successful open/catch-up. Transaction-DB's separate
+raw-pointer API is unchanged. No RocksDB source modifications are applied.
+
+Completed checks on **2026-11-11**:
+
+| Check | Result |
+| --- | --- |
+| Upstream Debug/assertions secondary suites, macOS arm64 | **71 passed**, two upstream-disabled tests |
+| Upstream Debug/assertions memtable-list suite | **10 passed** |
+| Our eight public-API regressions against clean Debug upstream | **8 passed** |
+| Linux Release build | `ton-index-clickhouse` and `ton-index-postgres` built |
+| Linux native suites | **4 passed**: Gramstat, elector rounds, caches, state-update reader |
+| Our eight public-API regressions against clean Linux upstream | **8 passed** |
+| Optional `bench-state-gen` with upstream headers | Compile-only compatibility passed |
+
+The initial builds correctly exposed the removed raw-pointer overloads; those
+failed attempt logs are retained. The subsequent checks use the API adaptations.
+The Linux build runs in a private namespace over a copied build tree, with
+read-only source overlays and NodeDB inaccessible. All **2588 unaffected
+non-RocksDB objects** remain byte-identical; the three tddb wrappers and the
+RocksDB-dependent `validator/db/celldb.cpp` were rebuilt. Original source/build
+files and the deployed executable retain their original SHA-256 and mtime.
+
+Candidate ClickHouse ELF SHA-256:
+`4c3a923560d9e2c312ccea20ef37b18c84979bc3f4d7219ff33ca07095ad7478`.
+This build result alone does not authorize a claim of real-NodeDB parity or
+production deployment. The read-only A/B and its bounded Gramstat-only pause
+have separate result records.
+
+Evidence under `/opt/gramstat-full/`:
+
+- `rocksdb-upstream-build-result-v2.json`;
+- `rocksdb-upstream-local-tests-result-v2.json`;
+- `rocksdb-upstream-11.13.2/benchmark-compatibility-result.json`;
+- `rocksdb-upstream-canary-result.json` and
+  `rocksdb-upstream-canary-maintenance-result.json` (A/B and resume separately).
+
+### Real NodeDB evaluation: incomplete because of host pressure
+
+The deployed-reader baseline successfully read **MC 104786915..104786978**:
+**133 blocks, 1963 transactions, 1360 account states, 536 interfaces**; digest
+`ca58eb3707a810f84bd1d46954177a5a7bc1bd708ebb1a492b0a71ac764d3c3a`.
+Its whole-process time was **59.784s**, including **0.614s** parsing, with peak
+RSS **2873564 KiB**. The remaining time includes DB open and teardown; it is not
+an independently instrumented open-only duration.
+
+Three upstream attempts were interrupted by host-memory-pressure guards before
+producing an `UPDATE_RESULT`. Their partial work does **not** establish either
+data parity or an upstream startup-time regression:
+
+| Attempt | Probe cgroup cap | Reason for interruption |
+| --- | --- | --- |
+| Initial A/B | 4 GiB | Host full PSI avg10 **5.89%**, available **9.29 GiB** |
+| v2, upstream-only against the saved baseline | 6 GiB | Host full PSI **5.53%**, available **8.97 GiB**; cgroup `memory.events.max=2233`, no OOM; RSS still below **1.5 GiB**, most charged memory was file cache |
+| v3, larger cache budget and separate 4-GiB RSS / 4-GiB host-headroom guards | 12 GiB | Host full PSI **11.78%**, available **8.64 GiB**; **zero** cgroup max/OOM events; sampled peak RSS **1.877 GiB**, cgroup **9.560 GiB**, file cache **8.236 GiB** |
+
+The larger cgroup removed the probe's own limit events but did not prevent host
+pressure. Thus the small probe cap was not a complete explanation, and these
+results do not demonstrate excessive upstream heap/RSS either. A completed
+real-NodeDB comparison under adequate host conditions remains the release gate.
+The three runs' logs, resource samples and failed result JSONs are retained;
+`rocksdb-upstream-resource-analysis.json` summarizes v3. The retry filenames carry
+`-v2` / `-v3`; they reuse the successful baseline's exact range and digest, not a
+claim of a controlled cold-cache timing benchmark.
+
+Each run paused only our Gramstat service and independently guaranteed resumption
+of the **same** deployed ELF. Pauses were **122.541s**, **32.304s** and **56.691s**.
+Node PID **2062301** and ordinary-indexer PID **2763123** remained unchanged.
+Runtime arguments, launcher, unit and binary manifest retained their hashes.
+
+Post-resume persistence checks passed:
+
+- initial: **993 MC**, 104787015..104788007, including the retryable startup fetch
+  at 104787468;
+- v2: **1301 MC**, 104787967..104789267, including retryable fetches at 104788197
+  and 104788202;
+- v3: **492 MC**, 104789368..104789859, with no startup fetch failures, missing
+  balances or timestamp mismatches. At **15:56:31 UTC**, PID **3551820**, zero
+  restarts/fatal lines, latest persisted MC **104789879**, wall lag **5.49s**.
+
+Current observers are
+`gramstat-full-live-health-3551820-after-upstream-canary-v3.service` and
+`gramstat-full-memory-after-upstream-3551820.service` (read-only host recovery
+watch). They survive SSH loss and have completion/event notification waiters.
+
+**Decision:** retain both patches and the old TON gitlink in the main indexer
+checkout and deployed reader for now. The published TON candidate branch and
+compiled upstream binaries are ready for the remaining canary; the upstream
+upgrade has **not** been deployed. The regression source now uses the owning
+open API accepted by both RocksDB 10.10.1 and 11.13.2. No writer/NFT or historical
+metrics changes are included in this evaluation.

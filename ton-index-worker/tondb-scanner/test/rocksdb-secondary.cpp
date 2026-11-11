@@ -1,4 +1,4 @@
-// Public-API regression tests for the RocksDB secondary reader patches.
+// Public-API regression tests for RocksDB secondary reader correctness.
 // These deliberately require a merge base, like TON's cell-refcount operator.
 #include <atomic>
 #include <chrono>
@@ -64,16 +64,12 @@ struct Fixture {
     options.max_background_jobs = 2;
     options.compression = rocksdb::kNoCompression;
     options.merge_operator = op;
-    rocksdb::DB* db = nullptr;
-    check(rocksdb::DB::Open(options, path + "/primary", &db));
-    primary.reset(db);
+    check(rocksdb::DB::Open(options, path + "/primary", &primary));
   }
 
   void open_secondary() {
     secondary.reset();
-    rocksdb::DB* db = nullptr;
-    check(rocksdb::DB::OpenAsSecondary(options, path + "/primary", path + "/secondary", &db));
-    secondary.reset(db);
+    check(rocksdb::DB::OpenAsSecondary(options, path + "/primary", path + "/secondary", &secondary));
   }
 
   void flush(rocksdb::ColumnFamilyHandle* cf = nullptr) {
@@ -218,9 +214,8 @@ void column_family_boundary(const std::string& path) {
   std::vector<rocksdb::ColumnFamilyDescriptor> descriptors{{rocksdb::kDefaultColumnFamilyName, f.options},
                                                         {"other", f.options}};
   std::vector<rocksdb::ColumnFamilyHandle*> handles;
-  rocksdb::DB* db = nullptr;
-  check(rocksdb::DB::OpenAsSecondary(f.options, path + "/primary", path + "/secondary", descriptors, &handles, &db));
-  f.secondary.reset(db);
+  check(rocksdb::DB::OpenAsSecondary(f.options, path + "/primary", path + "/secondary", descriptors, &handles,
+                                   &f.secondary));
   auto destroy_secondary = [&](rocksdb::ColumnFamilyHandle* cf) { check(f.secondary->DestroyColumnFamilyHandle(cf)); };
   std::unique_ptr<rocksdb::ColumnFamilyHandle, decltype(destroy_secondary)> default_handle(handles[0], destroy_secondary);
   std::unique_ptr<rocksdb::ColumnFamilyHandle, decltype(destroy_secondary)> other_handle(handles[1], destroy_secondary);
