@@ -114,7 +114,7 @@ At this verification point, production still runs reader revision
 the Gramstat-only scope and verify resume coverage, live lag and rearmed PID-bound
 observers. The completed early-supply backfill does not need to be rerun.
 
-## Production-build candidate, 2026-11-11
+## Production release, 2026-11-11
 
 The operator authorized a Gramstat-only rollout after the fourth assertion
 (**12:37:49.549852561 UTC**). The ordinary indexer independently asserted
@@ -152,3 +152,45 @@ The second attempt was stopped by the host-PSI guard before producing a digest.
 The rollout therefore performs one 32-MC read-only A/B comparison during a bounded
 pause of our live reader, releasing its memory first. The old executable is
 restored if the comparison or subsequent resume validation fails.
+
+### Installed and verified
+
+Release **`4e82a1686fb4335bdbef1bebb1a37ca34f6add0b`** was installed on
+**2026-11-11 at 13:24:27 UTC**, only in `gramstat-mainnet-full.service`.
+The pause took **116.024 seconds**, including the read-only A/B canary:
+
+- **MC 104767782..104767813**, 32 masterchain blocks per arm;
+- identical digests over **64 total blocks, 678 transactions, 500 account
+  states, 220 interfaces**, block metrics and account deltas/deployments;
+- digest `8f0a589841df33ba4920960de9cf33c6ef3d0646e905afcfd792383c65a64f85`;
+- result: `/opt/gramstat-full/secondary-release-canary-result-maintenance.json`.
+
+Live PID changed **2924146 → 1292050**, with the candidate executable SHA above.
+Node PID **2062301** and ordinary-indexer PID **2763123** were unchanged across
+the rollout. Runtime arguments, allocator settings, resource limits, 1-GiB LRU,
+and database targets were preserved. Rollback backup:
+`/opt/gramstat-full/upgrades/20261111T132231Z-secondary-memtable/`.
+The independent eight-minute rescue timer was cancelled after verification.
+
+At **13:25:40 UTC**, **401 MC blocks/deltas in 104767682..104768082** passed the
+resume check, wall lag **3.52s**, zero cgroup memory-limit/OOM events.
+`secondary-release-install-result.json` records the installation and checks.
+
+The first startup watcher also recorded retryable `cell not found` fetches for
+**MC 104768215 and 104768220** during catch-up. These were **not** the fatal
+merge-base assertion. The follow-up check at **13:27:11 UTC** verified all
+**818 blocks/deltas in 104767682..104768499**, including both affected MCs:
+no gaps, missing balances or timestamp mismatches. Latest persisted MC
+**104768549**, wall lag **3.68s**, PID **1292050**, **zero restarts/fatal lines**.
+Evidence: `/opt/gramstat-full/secondary-release-poststartup-verification.json`.
+
+The initial memory observer rejected a stale pre-pause log report before the
+new process's first periodic report; this was an observer-startup issue. Both
+observers were rearmed after the recovery check:
+
+- live: `gramstat-full-live-health-1292050-secondary-steady.service`;
+- host memory: `gramstat-full-memory-secondary-1292050-steady.service`
+  (observe-only, 12-hour cap).
+
+These checks prove successful rollout and recovery, not indefinite absence of
+the original intermittent assertion. Continuous monitoring remains active.
