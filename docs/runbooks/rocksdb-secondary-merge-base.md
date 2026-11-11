@@ -1,6 +1,6 @@
 # Secondary CellDB merge-base failure (2026-11-10)
 
-**Current source:** clean upstream RocksDB **v11.13.2**, via TON commit
+**Current source and Gramstat deployment:** clean upstream RocksDB **v11.13.2**, via TON commit
 `348c85c096f96831d89c00870b8097f5cec4ed21`. Both local RocksDB patches and their
 CMake application helper have been removed after the successful real-NodeDB A/B
 below. Earlier sections document the diagnosis and previous deployed release.
@@ -434,3 +434,40 @@ The six previously patched nested files were first verified byte-for-byte agains
 the two known patches, then preserved in a named Git stash and a runtime diff
 backup before switching versions. This source change is distinct from installing
 the candidate production executable.
+
+### Upstream installed and verified
+
+Indexer source **`fed5c1e3e9ba11056ca35a289ed740d1f3871542`** was published and its
+verified ELF installed in **`gramstat-mainnet-full.service` only** on
+**2026-11-11 at 16:43:56 UTC**. PID changed **955158 → 1412059**. The stop/replace/
+start interval was **1.603s**; startup and catch-up continued afterwards, and the
+live-data gate passed at **16:45:44 UTC**. This is not a claim that indexing was
+uninterrupted during DB open.
+
+- ELF SHA-256: `4c3a923560d9e2c312ccea20ef37b18c84979bc3f4d7219ff33ca07095ad7478`;
+- TON: `348c85c096f96831d89c00870b8097f5cec4ed21`, based on the requested
+  `dungeon-master-666/ton:ton-indexer` revision;
+- RocksDB: upstream `17b624b5c0d41bd42db5cf88aa867f3b26eaf1fa`, **no local patches**;
+- rollback backup: `/opt/gramstat-full/upgrades/20261111T164354Z-rocksdb-upstream-11132/`;
+- result: `/opt/gramstat-full/rocksdb-upstream-install-result.json`;
+- independent eight-minute rollback timer cancelled after successful verification.
+
+The install gate verified **343 consecutive MC blocks/deltas**. Follow-up at
+**16:47:04 UTC** verified **542 MC in 104796594..104797135**, including the
+retryable startup fetch for **104796955**: no missing rows, NULL balances,
+timestamp mismatches or fatal lines. Latest persisted MC **104797155**, lag
+**4.64s**, zero restarts. Evidence:
+`rocksdb-upstream-poststartup-verification.json`. The earlier startup watcher
+event was resolved by that persistence check, then the steady watcher was armed.
+
+Runtime arguments, database targets, launcher, service resource limits and
+allocator settings were preserved (`MALLOC_ARENA_MAX` remains absent).
+Cgroup high/max/OOM counters were all zero. Node PID **2062301** and
+ordinary-indexer PID **2763123** stayed unchanged. Monitoring:
+
+- `gramstat-full-live-health-1412059-rocksdb-upstream-steady.service`;
+- `gramstat-full-memory-rocksdb-upstream-1412059.service` (observe-only).
+
+Both have durable result files and reconnecting event/completion notification
+waiters. Successful rollout and bounded recovery checks do not establish
+indefinite absence of intermittent failures; live observation continues.
