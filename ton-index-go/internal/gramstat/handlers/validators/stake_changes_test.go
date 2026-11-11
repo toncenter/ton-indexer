@@ -131,19 +131,27 @@ func TestStakeChangesTwoChainsKeyRotationCoverageAndPenalties(t *testing.T) {
 }
 
 type changesStore struct {
-	inputs  []StakeInput
-	proofs  map[uint32]Coverage
-	members map[uint32]StakeMembers
-	results map[uint32]StakeResult
-	hashes  map[uint32]string
-	written []StakeChangeRound
+	inputs    []StakeInput
+	proofs    map[uint32]Coverage
+	members   map[uint32]StakeMembers
+	results   map[uint32]StakeResult
+	hashes    map[uint32]string
+	written   []StakeChangeRound
+	requested []uint32
 }
 
 func (f *changesStore) CollectStake(context.Context, time.Time, time.Time) ([]StakeInput, error) {
 	return f.inputs, nil
 }
-func (f *changesStore) CollectStakeMembers(context.Context, time.Time) (map[uint32]StakeMembers, error) {
-	return f.members, nil
+func (f *changesStore) CollectStakeMembersForRounds(_ context.Context, ids []uint32) (map[uint32]StakeMembers, error) {
+	f.requested = append([]uint32(nil), ids...)
+	out := map[uint32]StakeMembers{}
+	for _, id := range ids {
+		if m, ok := f.members[id]; ok {
+			out[id] = m
+		}
+	}
+	return out, nil
 }
 func (f *changesStore) Coverage(context.Context, bool) (map[uint32]Coverage, error) {
 	return f.proofs, nil
@@ -194,5 +202,27 @@ func TestStakeChangesHourlyReconcilesCorrectionsAndClearsMissing(t *testing.T) {
 	run()
 	if len(f.written) != 1 || f.written[0].NearReward != nil || f.written[0].Status != "missing_stake_or_reward" {
 		t.Fatal("stale classification survived", f.written)
+	}
+}
+
+func TestStakeChangesRecentRefreshIncludesOnlyTargetsAndTruePredecessors(t *testing.T) {
+	f := &changesStore{hashes: map[uint32]string{}}
+	for i := 0; i < 10; i++ {
+		f.inputs = append(f.inputs, StakeInput{Since: uint32(i*86400 + 100), Until: uint32((i + 1) * 86400)})
+	}
+	h := StakeChangesHandler{Source: f, Sink: f, Log: slog.New(slog.NewTextHandler(io.Discard, nil))}
+	req := gramstat.Request{AsOf: time.Unix(10*86400+1000, 0), LookbackDays: 1, RecentOnly: true}
+	if err := h.Run(context.Background(), req); err != nil {
+		t.Fatal(err)
+	}
+	if len(f.requested) != 3 || f.requested[0] != 7*86400+100 || len(f.written) != 1 || f.written[0].Since != 9*86400+100 {
+		t.Fatal(f.requested, f.written)
+	}
+	req.RecentOnly = false
+	if err := h.Run(context.Background(), req); err != nil {
+		t.Fatal(err)
+	}
+	if len(f.requested) != 10 || len(f.written) != 9 {
+		t.Fatal("historical reconciliation lost", f.requested, f.written)
 	}
 }

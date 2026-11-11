@@ -34,6 +34,13 @@ func run(log *slog.Logger) error {
 	to := flag.String("to", "", "exclusive UTC end date, YYYY-MM-DD (requires --from)")
 	lookback := flag.Int("lookback-days", 3, "closed days to refresh, in addition to today")
 	timeout := flag.Duration("timeout", 20*time.Minute, "timeout per handler, including catch-up")
+	daemon := flag.Bool("daemon", false, "run recurring handlers until SIGTERM/SIGINT")
+	interval := flag.Duration("interval", 5*time.Minute, "daemon refresh interval")
+	monthlyInterval := flag.Duration("monthly-interval", 15*time.Minute, "daemon monthly-unique refresh interval")
+	monthlyTimeout := flag.Duration("monthly-timeout", 5*time.Minute, "daemon monthly-unique handler timeout")
+	reconcileInterval := flag.Duration("reconcile-interval", time.Hour, "daemon historical reconciliation interval")
+	concurrency := flag.Int("concurrency", 3, "maximum concurrent daemon handlers")
+	recentOnly := flag.Bool("recent-only", false, "one-off recent-window refresh without historical catch-up")
 	actionsChunkDays := flag.Int("actions-chunk-days", 7, "actions days per source scan (1..3660; large chunks require explicit dates)")
 	actionsStatementTimeout := flag.Duration("actions-statement-timeout", 5*time.Minute, "actions PostgreSQL statement timeout")
 	actionsWorkMem := flag.Int("actions-work-mem-mb", 64, "actions PostgreSQL memory per sort/hash operation (1..1024 MiB)")
@@ -78,7 +85,7 @@ func run(log *slog.Logger) error {
 	if *timeout <= 0 {
 		return fmt.Errorf("--timeout must be positive")
 	}
-	req := gramstat.Request{AsOf: time.Now().UTC(), LookbackDays: *lookback}
+	req := gramstat.Request{AsOf: time.Now().UTC(), LookbackDays: *lookback, RecentOnly: *recentOnly}
 	var err error
 	if *from != "" {
 		if req.From, err = time.Parse(time.DateOnly, *from); err != nil {
@@ -92,6 +99,9 @@ func run(log *slog.Logger) error {
 	}
 	if _, _, err := req.DailyWindow(); err != nil {
 		return err
+	}
+	if (*daemon && (!req.From.IsZero() || *recentOnly || *actionsMonthly || *actionsChunkDays > 7)) || (*recentOnly && !req.From.IsZero()) {
+		return fmt.Errorf("daemon/recent refresh cannot be combined with explicit backfill options")
 	}
 	if *actionsMonthly && (req.From.IsZero() || *actionsChunkDays != 3660) {
 		return fmt.Errorf("--actions-include-monthly requires explicit dates and --actions-chunk-days 3660")
@@ -127,5 +137,34 @@ func run(log *slog.Logger) error {
 	}
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
+	if *daemon {
+		var specs []gramstat.Schedule
+		selected := map[string]bool{}
+		for _, name := range names {
+			selected[name] = true
+		}
+		dependencies := map[string][]string{
+			"validator_geo":           {"validators"},
+			"validator_stake":         {"validators"},
+			"validator_stake_changes": {"validator_stake"},
+			"validator_stake_locked":  {"validator_geo", "validator_stake"},
+		}
+		for _, name := range names {
+			if name == "stars" {
+				return fmt.Errorf("Stars-only rebuild is not a recurring handler; use actions")
+			}
+			s := gramstat.Schedule{Name: name, Every: *interval, Timeout: *timeout, ReconcileEvery: *reconcileInterval}
+			if name == "actions_monthly" {
+				s.Every, s.Timeout = *monthlyInterval, *monthlyTimeout
+			}
+			for _, dep := range dependencies[name] {
+				if selected[dep] {
+					s.After = append(s.After, dep)
+				}
+			}
+			specs = append(specs, s)
+		}
+		return gramstat.Serve(ctx, log, registry, specs, *concurrency, req)
+	}
 	return gramstat.Run(ctx, log, registry, names, req, *timeout)
 }

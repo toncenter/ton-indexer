@@ -89,7 +89,7 @@ type LockedRound struct {
 
 type LockedSource interface {
 	StakeSource
-	CollectStakeMembersRange(context.Context, time.Time, time.Time) (map[uint32]StakeMembers, error)
+	CollectStakeMembersForRounds(context.Context, []uint32) (map[uint32]StakeMembers, error)
 }
 
 type AttributionSource interface {
@@ -116,6 +116,14 @@ type LockedHandler struct {
 func (*LockedHandler) Name() string { return "validator_stake_locked" }
 
 func (h *LockedHandler) Run(ctx context.Context, req gramstat.Request) error {
+	// One-off processes used to provide this lifetime implicitly. Retry archive
+	// failures and reload persisted identity corrections on every daemon run.
+	resolver := h.Resolver
+	if resolver != nil {
+		copy := *resolver
+		copy.cache, copy.attempted = nil, nil
+		resolver = &copy
+	}
 	from, to, err := req.DailyWindow()
 	if err != nil {
 		return err
@@ -145,6 +153,9 @@ func (h *LockedHandler) Run(ctx context.Context, req gramstat.Request) error {
 	sort.Slice(inputs, func(i, j int) bool { return inputs[i].Since < inputs[j].Since })
 	var targets []int
 	for i, in := range inputs {
+		if req.RecentOnly && int64(in.Until) <= from.Unix() {
+			continue
+		}
 		if int64(in.Since) >= to.Unix() {
 			continue
 		}
@@ -195,7 +206,7 @@ func (h *LockedHandler) Run(ctx context.Context, req gramstat.Request) error {
 		if err != nil {
 			return err
 		}
-		members, err := h.Source.CollectStakeMembersRange(ctx, time.Unix(int64(ids[0]), 0), time.Unix(int64(ids[len(ids)-1])+1, 0))
+		members, err := h.Source.CollectStakeMembersForRounds(ctx, ids)
 		if err != nil {
 			return err
 		}
@@ -204,8 +215,8 @@ func (h *LockedHandler) Run(ctx context.Context, req gramstat.Request) error {
 			return err
 		}
 		attrs.Telegram = telegram
-		if h.Resolver != nil {
-			attrs.Affiliations, err = h.Resolver.Resolve(ctx, rounds, members, attrs)
+		if resolver != nil {
+			attrs.Affiliations, err = resolver.Resolve(ctx, rounds, members, attrs)
 			if err != nil {
 				return err
 			}

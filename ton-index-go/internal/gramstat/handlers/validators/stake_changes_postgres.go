@@ -3,17 +3,18 @@ package validators
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strconv"
 	"time"
 
 	"github.com/jackc/pgx/v5"
 )
 
-func (p Postgres) CollectStakeMembers(ctx context.Context, to time.Time) (map[uint32]StakeMembers, error) {
-	return p.CollectStakeMembersRange(ctx, time.Unix(0, 0).UTC(), to)
-}
-
-func (p Postgres) CollectStakeMembersRange(ctx context.Context, from, to time.Time) (map[uint32]StakeMembers, error) {
+func (p Postgres) CollectStakeMembersForRounds(ctx context.Context, ids []uint32) (map[uint32]StakeMembers, error) {
+	out := map[uint32]StakeMembers{}
+	if len(ids) == 0 {
+		return out, nil
+	}
 	if p.DSN == "" {
 		return nil, fmt.Errorf("GRAMSTAT_PG_DSN is required")
 	}
@@ -31,35 +32,18 @@ func (p Postgres) CollectStakeMembersRange(ctx context.Context, from, to time.Ti
 	if err != nil {
 		return nil, err
 	}
-	defer conn.Close(context.Background())
-	ids, err := conn.Query(ctx, "SELECT utime_since FROM public.validator_cycles WHERE utime_since>=$1 AND utime_since<$2 ORDER BY utime_since", from.Unix(), to.Unix())
-	if err != nil {
-		return nil, err
-	}
+	defer conn.Close(ctx)
 	var starts []int64
-	for ids.Next() {
-		var since int64
-		if err = ids.Scan(&since); err != nil {
-			ids.Close()
-			return nil, err
-		}
-		starts = append(starts, since)
+	for _, id := range ids {
+		starts = append(starts, int64(id))
 	}
-	err = ids.Err()
-	ids.Close()
-	if err != nil {
-		return nil, err
-	}
-	out := map[uint32]StakeMembers{}
+	slices.Sort(starts)
+	starts = slices.Compact(starts)
 	for start := 0; start < len(starts); start += 64 {
 		end := min(start+64, len(starts))
-		until := to.Unix()
-		if end < len(starts) {
-			until = starts[end]
-		}
-		batch, err := collectStakeMemberBatch(ctx, conn, starts[start], until)
+		batch, err := collectStakeMemberBatch(ctx, conn, starts[start:end])
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("stake members for %d rounds (%d..%d): %w", end-start, starts[start], starts[end-1], err)
 		}
 		for since, m := range batch {
 			out[since] = m
@@ -68,13 +52,13 @@ func (p Postgres) CollectStakeMembersRange(ctx context.Context, from, to time.Ti
 	return out, nil
 }
 
-func collectStakeMemberBatch(ctx context.Context, conn *pgx.Conn, from, to int64) (map[uint32]StakeMembers, error) {
+func collectStakeMemberBatch(ctx context.Context, conn *pgx.Conn, ids []int64) (map[uint32]StakeMembers, error) {
 	rows, err := conn.Query(ctx, `SELECT c.utime_since,c.utime_until,c.total,c.main,c.total_weight::text,
  m.validator_index,m.validator_pubkey,m.adnl_addr,m.weight::text,m.stake::text,p.stake_holder_address::text
  FROM public.validator_cycles c JOIN public.validator_cycle_members m USING(utime_since)
  LEFT JOIN LATERAL (SELECT stake_holder_address FROM public.validator_election_participants p
   WHERE p.election_id=c.election_id AND p.validator_pubkey=m.validator_pubkey OFFSET 0) p ON true
- WHERE c.utime_since>=$1 AND c.utime_since<$2 ORDER BY c.utime_since,m.validator_index`, from, to)
+	 WHERE c.utime_since=ANY($1::integer[]) ORDER BY c.utime_since,m.validator_index`, ids)
 	if err != nil {
 		return nil, err
 	}

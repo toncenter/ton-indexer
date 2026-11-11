@@ -86,7 +86,7 @@ func (h *Handler) Run(ctx context.Context, req gramstat.Request) error {
 	if h.StarsOnly && req.From.IsZero() {
 		return fmt.Errorf("Stars-only rebuild requires explicit dates")
 	}
-	if req.From.IsZero() {
+	if req.From.IsZero() && !req.RecentOnly {
 		stored, err := h.Sink.StoredDays(ctx, Metrics, gramstat.Day(req.AsOf))
 		if err != nil {
 			return fmt.Errorf("read refresh coverage: %w", err)

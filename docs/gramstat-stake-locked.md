@@ -177,8 +177,13 @@ The exact-record ISP query uses the leading primary-key `record_id` column.
 ### Completed historical aggregation, 2026-11-10
 
 Release `eb8a393` processed the indexed history in **6 min 1.087 s**, without
-an indexer replay. The independent hourly timer is enabled; an actual automatic
+an indexer replay. At that release, an independent hourly timer ran it; an actual automatic
 window run completed successfully in **7.508 s**.
+
+The continuous Go scheduler now runs recent locked-stake attribution every five
+minutes after geo/stake preparation, with an hourly historical reconciliation.
+It fetches members for exact round IDs, including the actual predecessor, rather
+than all cycles between sparse targets. Historical missing data remains unknown.
 
 * 3,335 round-axis snapshots; 3,123 have a verified two-round total.
 * 984 have category sums: 526 complete source coverage, 458 partial attribution.

@@ -15,6 +15,9 @@ type Request struct {
 	AsOf         time.Time
 	From, To     time.Time
 	LookbackDays int
+	// RecentOnly bounds frequent refreshes; periodic reconciliation still repairs
+	// historical gaps and corrections. Explicit backfills leave this false.
+	RecentOnly bool
 }
 
 // Handler owns its sources, calculation and output schema. It need not produce

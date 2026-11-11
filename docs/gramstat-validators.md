@@ -6,7 +6,7 @@ The Go `gramstat-aggregate` runner has two independent mainnet handlers:
 - `validator_geo`: the selected roster's session-stats locations, country distribution
   and map points, one snapshot per round.
 
-The hourly timer refreshes the current round and rounds overlapping the recent
+The Go scheduler refreshes every five minutes the current round and rounds overlapping the recent
 lookback. The x-axis is the round's start; its end and observation cutoff belong
 in the tooltip. Typical rounds last 65,536 seconds, but the implementation uses
 source intervals rather than manufacturing fixed 18-hour buckets.
@@ -120,7 +120,7 @@ handler before geo when both are requested.
 The destination runtime role needs `SELECT, INSERT` on both new tables and
 `SELECT` on the view for map readers. The SS role needs only source `SELECT`;
 queries additionally set `readonly=1` and resource limits. The example systemd
-unit runs all three handlers hourly. Source credentials and private infrastructure
+service schedules recent refreshes every five minutes and historical reconciliation hourly. Source credentials and private infrastructure
 hostnames must not be committed to this repository. The public TON Center API URL
 is shown directly; internal database and service addresses use placeholders.
 

@@ -2,7 +2,7 @@
 
 The `validators` aggregate reads indexed PostgreSQL cycle/member rows and checks
 each new roster against config #34 at its activation block. The standard service
-runs it hourly. Valid rounds are published even if another round fails; the
+runs recent rounds every five minutes and reconciles history hourly. Valid rounds are published even if another round fails; the
 handler reports the failures after writing valid rows. Complete unchanged rounds
 reuse the previously verified config hash. An explicit date range can backfill
 already indexed history without replaying the indexer.

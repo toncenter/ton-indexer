@@ -13,7 +13,8 @@ and [final stake/reward results](validator-round-results.md) in its ordinary dat
 
 The separate [Go aggregator](gramstat-aggregate.md) refreshes daily jetton/NFT
 activity, swaps, selected liquid-staking deposits and `.ton` mints from PostgreSQL actions into ClickHouse
-`gramstat.daily_metrics`. It runs hourly and supports independent future handlers.
+`gramstat.daily_metrics`. Its Go scheduler refreshes regular handlers every five
+minutes and monthly uniques every fifteen minutes, with hourly reconciliation.
 
 ## Stored block metrics
 

@@ -42,13 +42,13 @@ func (h *Handler) Run(ctx context.Context, req gramstat.Request) error {
 		return err
 	}
 	refresh := from
-	if req.From.IsZero() {
+	if req.From.IsZero() && !req.RecentOnly {
 		for _, c := range stored {
 			if t := time.Unix(int64(c.Since), 0).UTC(); t.Before(from) {
 				from = t
 			}
 		}
-	} else {
+	} else if !req.From.IsZero() {
 		refresh = time.Time{}
 	}
 	rounds, err := h.Source.Collect(ctx, from, to, refresh, stored)
@@ -111,6 +111,9 @@ func (h *GeoHandler) Run(ctx context.Context, req gramstat.Request) error {
 	}
 	var ids []uint32
 	for id, r := range rounds {
+		if req.RecentOnly && int64(r.Until) <= from.Unix() {
+			continue
+		}
 		if r.Version != Version || int64(r.Since) >= to.Unix() {
 			continue
 		}

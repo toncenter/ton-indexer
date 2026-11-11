@@ -17,7 +17,7 @@ contributing publication UUIDs (28–31). Only months with every day certified a
 published; partial initial/current months and months spanning holes remain missing.
 Certified empty windows produce zero. Source epochs make certified days immutable,
 so retries may safely repeat an exact result. API reads scalar counts, never states.
-The ordinary hourly handler and manual catch-up both resume missing months.
+The ordinary scheduled handler and manual catch-up both resume missing months.
 Monthly preparation uses one thread and an 8 GiB query memory cap for exact
 calendar-month unions, including large aggregate-state storage granules. API reads remain
 small scalar queries with their existing read-only limits.
@@ -71,12 +71,12 @@ Thus indexer jumps and scheduler downtime cannot leave permanent holes. Explicit
 date requests still select only their requested window. Current incomplete days
 remain unpublished; the latest day is the last complete day at the shard horizon.
 
-Wallets runs in the **existing** `gramstat-aggregate.service` / hourly timer,
+Wallets runs every five minutes in the **existing** `gramstat-aggregate.service` Go scheduler,
 after the other handlers, under the same user, environment and `flock` lock.
 Add `GRAMSTAT_WALLETS_SOURCE_ID=mainnet-wallets-v1` and
 `GRAMSTAT_WALLETS_FOLLOW_NATIVE=1` to `/etc/gramstat-aggregate.env`.
 There is no separate Wallets scheduler. The ordinary per-handler time budget is
-resumable: already published days are skipped on the next hourly run. An initial
+resumable: already published days are skipped on the next scheduled run. An initial
 large backlog may take several runs; other handlers still run first each hour.
 
 First-deployment preparation does require the entire preceding deployment history

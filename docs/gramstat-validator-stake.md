@@ -37,7 +37,7 @@ zero rewards, zero principal, or necessarily an unfinished round.
 
 ### Two-round staking APR (`stake-v3`)
 
-The same hourly `validator_stake` handler also prepares:
+The same scheduled `validator_stake` handler also prepares:
 
 ```text
 apr_percent = reward_nanogram / selected_nanogram
@@ -90,7 +90,7 @@ Explicit dates select overlapping rounds, not the date of release. Final results
 are read through the run's `AsOf` so an old round includes its later release.
 This is a current historical reconstruction, not a historical point-in-time API.
 
-The standard hourly service runs `validator_stake` after `validators` and before
+The standard Go scheduler runs `validator_stake` every five minutes after `validators` and before
 `wallets`. Automatic runs reconcile the small complete cycle/result tables, so
 late releases, old backfills and corrections are picked up outside the lookback.
 Unchanged content hashes produce no insert. Replacements atomically update all

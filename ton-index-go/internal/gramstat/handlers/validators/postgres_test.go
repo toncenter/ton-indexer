@@ -103,4 +103,39 @@ UPDATE blocks SET gen_utime=2100 WHERE seqno=12;`); err != nil {
 	if err != nil || len(rows) != 1 || rows[0].AnchorMC != 10 || rows[0].AnchorTime != 600 {
 		t.Fatalf("delayed activation lost: %+v %v", rows, err)
 	}
+	// Exact IDs must not read an intervening cycle, preserve money and missing
+	// holders, and reject an ambiguous participant join as an invalid roster.
+	_, err = fixture.Exec(ctx, `ALTER TABLE validator_cycles ADD COLUMN election_id integer;
+ALTER TABLE validator_cycle_members ADD COLUMN stake numeric;
+CREATE TABLE validator_election_participants(election_id integer,validator_pubkey text,stake_holder_address text);
+UPDATE validator_cycles SET election_id=utime_since-10;
+INSERT INTO validator_cycles SELECT 500,600,total,main,total_weight,source_mc_seqno,490 FROM validator_cycles WHERE utime_since=100;
+INSERT INTO validator_cycle_members SELECT 300,validator_index,validator_pubkey,adnl_addr,weight,NULL FROM validator_cycle_members WHERE utime_since=100;
+INSERT INTO validator_cycle_members SELECT 500,validator_index,validator_pubkey,adnl_addr,weight,0 FROM validator_cycle_members WHERE utime_since=100;
+UPDATE validator_cycle_members SET stake=900719925474099312345 WHERE utime_since=100;
+INSERT INTO validator_election_participants SELECT 90,validator_pubkey,'-1:holder' FROM validator_cycle_members WHERE utime_since=100 AND validator_index=0;`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	members, err := source.CollectStakeMembersForRounds(ctx, []uint32{500, 100, 500})
+	if err != nil || len(members) != 2 {
+		t.Fatal(members, err)
+	}
+	for _, pos := range members[100].Positions {
+		if pos.Stake.String() != "900719925474099312345" {
+			t.Fatal(pos)
+		}
+	}
+	for _, pos := range members[500].Positions {
+		if pos.Stake.Sign() != 0 || pos.Holder != "" {
+			t.Fatal(pos)
+		}
+	}
+	if _, err = fixture.Exec(ctx, `INSERT INTO validator_election_participants SELECT election_id,validator_pubkey,'-1:ambiguous' FROM validator_election_participants`); err != nil {
+		t.Fatal(err)
+	}
+	members, err = source.CollectStakeMembersForRounds(ctx, []uint32{100, 500})
+	if err != nil || len(members) != 1 || members[100].Digest != "" || members[500].Digest == "" {
+		t.Fatal("ambiguous holder accepted", members, err)
+	}
 }

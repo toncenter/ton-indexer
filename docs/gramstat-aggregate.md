@@ -4,7 +4,8 @@
 handlers. It reads indexed sources and publishes to ClickHouse `gramstat`.
 The `actions` handler reads PostgreSQL. [Validator handlers](gramstat-validators.md)
 publish elected counts and existing session-stats locations by round. They run
-independently through the same hourly runner.
+independently through the same Go scheduler. systemd supervises the long-running
+process; it no longer schedules individual aggregation runs.
 
 ## Run
 
@@ -49,18 +50,18 @@ and 1–1024 MiB, applied only to this connection, never globally. Large sorts m
 still spill to database temporary storage. It publishes
 only after the complete source query succeeds. The genesis day is accepted only
 with a verified first-MC=1 anchor; an absent opening history is not zero-filled.
-Large chunks require explicit dates and do not change the hourly seven-day policy.
+Large chunks require explicit dates and do not change the regular seven-day chunk policy.
 `--actions-include-monthly` requires explicit dates and a 3660-day chunk. It reuses
 the materialized source for monthly distinct counts instead of scanning the raw
 table again. Only complete trailing months are published; a mid-month historical
 end is left to the independent monthly handler. Genesis is allowed and marked
 partial. Monthly rows are published before the daily catch-up completion marker.
-Use a dedicated historical-run lock for a disjoint old range so the normal hourly
-job can continue refreshing recent days and the other independent handlers.
+Use a dedicated historical-run lock only for a disjoint old range so the normal
+service can continue refreshing recent days and the other independent handlers.
 Use a direct PostgreSQL connection for this job: the production proxy on port
 15432 disconnects silent long-running queries after approximately three minutes.
-Keep the job-specific DSN in a root-only environment file; the regular hourly
-service can retain its existing connection. A transport failure publishes no rows.
+Keep the DSN in a root-only environment file. The daemon also uses a direct
+connection to that same PostgreSQL server. A transport failure publishes no rows.
 
 ## Metrics and source query
 
@@ -77,10 +78,9 @@ ranges must start at a month boundary (or genesis) and end at a month boundary
 or tomorrow UTC. Genesis and current incomplete months are marked partial.
 Historical runs can use `--actions-statement-timeout 24h --timeout 25h` and the
 same dedicated history lock, serializing them behind the daily-history scan.
-The dedicated `gramstat-activity-monthly.timer` runs at minute 20 each UTC hour,
-using the direct-connection environment and `/opt/gramstat/bin/gramstat-aggregate-monthly`.
-It has a separate lock so historical preparation and the existing hourly handlers
-can proceed independently; publication timestamps keep newer snapshots authoritative.
+The daemon schedules this handler every 15 minutes, independently of the five-minute
+handlers. It uses the same protected direct-connection environment; publication
+timestamps keep newer snapshots authoritative. Its deadline is five minutes.
 Additive monthly counts,
 amounts and Stars quantities are composed from complete sets of prepared daily
 rows by Gramstat; missing inputs and unknown Stars quantities remain unknown.
@@ -212,9 +212,10 @@ closed calendar day can change after late classification. The rolling refresh
 handles recent changes; older backfills/reclassification need an explicit date
 range. Each whole chunk is collected before its synchronous ClickHouse insert;
 a retry can repair a failed/uncertain insert. Failed handlers leave their previous
-values in place, other handlers continue, and the process exits nonzero.
+values in place and other handlers continue. One-off runs exit nonzero; the daemon
+logs the error and retries at the next scheduled interval.
 
-## Scheduled runs (systemd)
+## Preparation and scheduling
 
 ### Prepared chain intervals and consumer API
 
@@ -295,17 +296,63 @@ Replays replace daily rows; missing monetary inputs remain NULL.
 The API and UI belong to the standalone **[1IxI1/gramstat](https://github.com/1IxI1/gramstat)**
 application. They read these prepared tables with SELECT-only credentials and
 have no code dependency on the indexer. Production DDL, data preparation and the
-hourly aggregation job remain here. The API is not part of the TON Center API product.
+aggregation service remain here. The API is not part of the TON Center API product.
 
-### Hourly deployment
+### Continuous service deployment
 
-The example units in `ton-index-go/cmd/gramstat-aggregate/deploy/` expect the binary
+The example service in `ton-index-go/cmd/gramstat-aggregate/deploy/` expects the binary
 at `/opt/gramstat/bin/gramstat-aggregate`, a root-only environment file at
 `/etc/gramstat-aggregate.env`, and a service user named `gramstat`. Adjust these
-paths as needed, install the units on a host with access to both databases, and
-enable `gramstat-aggregate.timer`.
-It runs every UTC hour, with persistent catch-up after a reboot. `flock` prevents
-overlap; manual runs on that host should use the same lock. The service has no
+paths as needed and install it on a host with access to both databases. For an
+upgrade, disable and stop all three old timers, then stop their one-off services
+before replacing the binary/unit. Enable `gramstat-aggregate.service` itself.
+The old aggregate, monthly and stake-locked timer templates are retired.
+
+`--daemon` starts a bounded scheduler with these deployment defaults:
+
+| Setting | Value |
+| --- | --- |
+| Regular handlers | every 5 minutes, deadline 3 minutes each |
+| `actions_monthly` | every 15 minutes, deadline 5 minutes |
+| Historical reconciliation | on startup and once per hour per handler |
+| Concurrent handlers | at most 3; never two executions of the same handler |
+
+Each start receives a fresh, stable UTC `Request.AsOf`. Missed ticks coalesce;
+the next start is a future UTC-aligned boundary, without queued catch-up bursts.
+`validators` precedes geo/stake, stake precedes changes, and geo/stake precede
+locked attribution. A failed predecessor does not prevent independent handlers
+or consumers of previously verified rows from running; consumers retain their
+existing identity and completeness checks. Duration, mode (`recent`/`reconcile`),
+error and next execution time are logged per handler. A historical rejected
+roster remains an explicit reconciliation error, not fabricated data or a
+process-wide shutdown. Recent runs exclude old incomplete rounds.
+
+The frequent runs set `Request.RecentOnly`: actions skip old-gap catch-up;
+validators/geo/locked refresh their recent overlap; stake changes fetch only
+target rounds and their actual two predecessors. Member reads use exact cycle
+IDs in bounded batches, not a broad interval between sparse targets. The hourly
+pass retains full historical reconciliation. Chain/account source-prefix proofs
+and wallet preparation keep their existing completeness policies.
+Affiliation observations and failed-RPC attempts have one-run lifetime, so a
+long-running process still retries transient failures and sees persisted corrections.
+
+SIGTERM/SIGINT cancels in-flight I/O and drains handlers. systemd restarts an
+unexpectedly exited process, with a 45-second shutdown grace period. `flock`
+holds the existing single-writer lock for the process lifetime; stop the daemon
+before an overlapping manual one-off run using that same lock. For a bounded
+diagnostic refresh use `--recent-only` without `--daemon`. Explicit backfill dates
+and large historical-scan options cannot be combined with daemon mode.
+
+November 11, 2026 migration checks: the direct and proxied DSNs resolved to the
+same PostgreSQL database/server and MC head. An index-backed exact-ID member
+query returned the same 1,463 rows as the bounded previous query (zero differences;
+27 ms for four rounds). The recent validator/geo/stake/changes/locked pilot took
+8.29 s. Full stake-change and locked reconciliation took 7.35 s and 2.67 s;
+all 6,674 prepared snapshots across both tables retained identical hashes,
+amounts and statuses, with no missing rows. These are pilot measurements, not
+guaranteed runtime bounds.
+
+The service has no
 write access to the source. For actions it needs `SELECT, INSERT` on
 `gramstat.daily_metrics` and `gramstat.telegram_stars_daily`, plus `SELECT` on
 `gramstat.telegram_stars_buckets` for chart readers. The validator handlers have
@@ -313,8 +360,12 @@ their own grants. DDL is applied separately by an administrator before upgrading
 the binary; `--print-schema` includes all tables and views.
 
 ```bash
-sudo systemctl start gramstat-aggregate.service
-sudo systemctl list-timers gramstat-aggregate.timer
+sudo systemctl disable --now gramstat-aggregate.timer gramstat-activity-monthly.timer gramstat-stake-locked.timer
+sudo systemctl stop gramstat-aggregate.service gramstat-activity-monthly.service gramstat-stake-locked.service
+# Install the new unit/binary and protected direct-PostgreSQL environment here.
+sudo systemctl daemon-reload
+sudo systemctl enable --now gramstat-aggregate.service
+sudo systemctl status gramstat-aggregate.service
 sudo journalctl -u gramstat-aggregate.service --since today
 ```
 
@@ -327,7 +378,9 @@ per-MC cumulative activations and long-range checkpoints.
 Implement `gramstat.Handler` (`Name`, `Run`) and register it in the CLI. Inject
 only the source clients and writer it needs. `Request.AsOf` supplies one stable
 UTC reference; handlers own their refresh policy and may publish a different
-typed table. SQL and individual metric definitions stay with their handler.
+typed table. In daemon mode a handler instance is reused serially, so run-scoped
+caches/retry suppression must be reset in `Run`. SQL and individual metric
+definitions stay with their handler.
 
 The `validators` and `validator_geo` handlers demonstrate separate typed tables:
 verified #34 rosters and full round-level location/distribution snapshots. GeoIP
@@ -340,6 +393,6 @@ values; no additional MMDB lookup is performed. See [validator rounds](gramstat-
 go test -race ./internal/gramstat/... ./cmd/gramstat-aggregate
 # Optional real PostgreSQL test: creates and removes its own temporary database.
 GRAMSTAT_TEST_PG_DSN='host=localhost dbname=postgres user=...' \
-  go test ./internal/gramstat/handlers/actions
+  go test ./internal/gramstat/handlers/actions ./internal/gramstat/handlers/validators
 go vet ./internal/gramstat/... ./cmd/gramstat-aggregate
 ```

@@ -66,7 +66,7 @@ type StakeChangeRound struct {
 
 type StakeChangesSource interface {
 	StakeSource
-	CollectStakeMembers(context.Context, time.Time) (map[uint32]StakeMembers, error)
+	CollectStakeMembersForRounds(context.Context, []uint32) (map[uint32]StakeMembers, error)
 }
 
 type StakeChangesSink interface {
@@ -91,7 +91,7 @@ func (h *StakeChangesHandler) Run(ctx context.Context, req gramstat.Request) err
 	if err != nil {
 		return err
 	}
-	if req.From.IsZero() {
+	if req.From.IsZero() && !req.RecentOnly {
 		from = time.Unix(0, 0).UTC()
 	}
 	if req.AsOf.Before(to) {
@@ -112,7 +112,24 @@ func (h *StakeChangesHandler) Run(ctx context.Context, req gramstat.Request) err
 		return err
 	}
 	started := time.Now()
-	members, err := h.Source.CollectStakeMembers(ctx, to)
+	sort.Slice(inputs, func(i, j int) bool { return inputs[i].Since < inputs[j].Since })
+	// Include true n-2 predecessors even when they lie outside the refresh window.
+	needed := map[uint32]bool{}
+	for i, in := range inputs {
+		if int64(in.Until) <= from.Unix() {
+			continue
+		}
+		for j := max(0, i-2); j <= i; j++ {
+			needed[inputs[j].Since] = true
+		}
+	}
+	var ids []uint32
+	for _, in := range inputs {
+		if needed[in.Since] {
+			ids = append(ids, in.Since)
+		}
+	}
+	members, err := h.Source.CollectStakeMembersForRounds(ctx, ids)
 	if err != nil {
 		return err
 	}
@@ -121,10 +138,12 @@ func (h *StakeChangesHandler) Run(ctx context.Context, req gramstat.Request) err
 	if err != nil {
 		return err
 	}
-	sort.Slice(inputs, func(i, j int) bool { return inputs[i].Since < inputs[j].Since })
 	stakes := make(map[uint32]StakeRound)
 	var fined []StakeRound
 	for _, in := range inputs {
+		if !needed[in.Since] {
+			continue
+		}
 		p := proofs[in.Since]
 		if p.Version != Version || p.Until != in.Until || p.Hash == "" {
 			continue

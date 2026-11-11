@@ -1,6 +1,6 @@
 # Telegram Stars purchases through Fragment
 
-The hourly `actions` handler publishes a daily purchase-size distribution from
+The scheduled `actions` handler publishes a daily purchase-size distribution from
 already classified PostgreSQL actions. The x-axis is the UTC day; a series can
 represent one exact package size (50, 75, 100, 150, etc.), or a chart can group
 sizes into ranges without another source scan. Both **purchase counts** and
@@ -125,7 +125,7 @@ The handler writes the full distribution first, then publishes
 `telegram_stars_purchases` in `gramstat.daily_metrics` as a completion marker.
 The two tables are not a cross-table transaction: use the Stars snapshot's own
 totals and timestamps for charts. Retries repair interrupted writes. The ordinary
-hourly refresh covers today plus three preceding days and fills missing days in
+five-minute refresh covers today plus three preceding days; hourly reconciliation fills missing days in
 established actions history. Older source corrections require explicit dates.
 The current day and source-lagged days retain `is_partial=1`.
 

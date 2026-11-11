@@ -1,6 +1,6 @@
 # Stake changes between rounds
 
-`validator_stake_changes` runs in the common hourly aggregator after
+`validator_stake_changes` runs in the common Go scheduler after
 `validator_stake`. It reconciles the entire indexed history into
 `gramstat.validator_stake_changes`, keyed by the **new** validation round `n`.
 There is no separate timer. Explicit windows restrict output, not predecessor
