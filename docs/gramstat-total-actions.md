@@ -73,3 +73,27 @@ ANALYZE), versus 14.66 s previously. One worker, 64 MiB work_mem; source pages
 were cached. Total operations: 2,281,703; 2,331,808; 1,995,453; 1,540,599 (last
 day partial). The type-only reference took 10.43 s. These are measured warm-cache
 times, not a cold-storage latency guarantee.
+
+### Production rollout, November 12, 2026
+
+Aggregator `d258a1d` publishes the new metric during ordinary five-minute refresh;
+two observed runs took 25.68/25.76 s. The initial count-only backfill published
+2,551 days (2019-11-15 through 2026-11-08) in 528.31 s. Together with recent
+refreshes, 2,555 consecutive daily publications extend through 2026-11-12, with
+only that day's row partial. Every stored total equals its exact type-map sum.
+
+The 16 zero days coincide with timestamp gaps between consecutive source MCs:
+3295708 at 2020-04-17 23:16:38 UTC → 3295709 at 2020-04-19 06:24:48 UTC, and
+8536840 at 2020-12-13 05:45:30 UTC → 8536841 at 2020-12-29 16:52:04 UTC.
+They are not holes in the new daily publication. API/UI reconciliation matched
+all daily maps and 83 complete calendar months. November 2019 remains unavailable
+as a full month because coverage starts on the 15th; November 2026 is partial.
+
+Browser checks covered daily/monthly All time, desktop/mobile, exact stack/Total
+alignment, tri-state categories, hiding all types, isolating `renew_dns`, URL
+reload, expanded-chart Escape behavior and both color schemes. The full-history
+dashboard's gzip GSC1 body measured 679,112 bytes. On the test link its transfer
+and queued chart requests exceeded the previous shared 25-second UI deadline;
+the range-load budget was extended to 75 seconds while preserving cancellation
+on range changes. A full-history browser load then completed in 54.53 s without
+API or JavaScript errors. Server preparation and link transfer are distinct costs.
