@@ -3,6 +3,14 @@
 **Audited revision:** `17b624b5c0d41bd42db5cf88aa867f3b26eaf1fa`, not moving main.
 **Date:** 2026-11-11. This supplements the [rollout record](rocksdb-secondary-merge-base.md).
 
+**2026-11-12 update:** the clean-upstream deployment repeated the CellDB
+merge-base abort twice. The old fast-open patch is now restored in source,
+rebased for 11.13.2, at the operator's request. WAL retention and memtable
+retirement remain upstream implementations. The conclusions below describe the
+earlier removal audit, not the current patch policy or proof that the production
+failure was eliminated. See the [restoration record](rocksdb-secondary-merge-base.md#restoring-the-old-fast-open-patch-2026-11-12)
+for scope and compatibility checks.
+
 The pre-rollout review established upstream fix ancestry, exercised the secondary
 and memtable suites, ran eight public regressions, and compared real NodeDB reads.
 It did **not** yet trace every fast-open supporting change to its replacement

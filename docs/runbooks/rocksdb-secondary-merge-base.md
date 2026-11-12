@@ -1,14 +1,64 @@
 # Secondary CellDB merge-base failure (2026-11-10)
 
-**Current source and Gramstat deployment:** clean upstream RocksDB **v11.13.2**, via TON commit
-`348c85c096f96831d89c00870b8097f5cec4ed21`. Both local RocksDB patches and their
-CMake application helper have been removed after the successful real-NodeDB A/B
-below. Earlier sections document the diagnosis and previous deployed release.
+**Current source:** upstream RocksDB **v11.13.2**, via TON commit
+`348c85c096f96831d89c00870b8097f5cec4ed21`, with the previous **fast-open patch
+restored** for synchronous secondary opening. The CMake application helper is
+restored too. WAL-reader retention and flushed-memtable retirement remain supplied
+by upstream; their duplicate local hunks are not reapplied.
+
+**Deployment:** Gramstat is still on the clean-upstream ELF installed on
+2026-11-11. The source restoration below has not been deployed.
 
 The follow-up [per-invariant code audit](rocksdb-secondary-upstream-audit.md)
 maps every part of the removed patches to the pinned upstream implementation,
 adds atomic-group and pre-existing-SST lifetime checks, and records a shared
 same-name SST restoration limitation plus an old patched-reader failure.
+
+## Restoring the old fast-open patch, 2026-11-12
+
+The clean-upstream deployment repeated `CHECK(merge_in.existing_value)` at
+**07:18:58.292485989 UTC** and **10:00:44.388226832 UTC**. Both stacks follow
+the same CellDB point-read path. Systemd restarted Gramstat automatically;
+the running ELF still had SHA-256
+`4c3a923560d9e2c312ccea20ef37b18c84979bc3f4d7219ff33ca07095ad7478`.
+The previously recorded successful tests did not establish that this production
+failure was eliminated.
+
+Per the operator's instruction, work now restores the previous patch rather
+than investigating a new failure mechanism or introducing a new crash fix:
+
+- `fix-secondary-open.patch` restores final-state MANIFEST recovery, missing-SST
+  retries/PIT fallback, atomic-group/CF handoff, and the empty-baseline/rebase
+  machinery from `cc2a67d`.
+- The old WAL retention code and `CatchUpTailsCurrentWalWhenFutureWalExists`
+  remain unchanged in upstream #14781; only duplicate patch-file hunks are absent.
+- The later local `fix-secondary-flushed-memtable.patch` stays replaced by
+  upstream #15066. Its implementation is not overwritten with the older raw-CF
+  log-number rule.
+- Rebase adaptations cover constructor/open signatures, new MANIFEST read-offset
+  and installed-Version watermark bookkeeping, and the checked handoff status.
+  Async opening and trust-MANIFEST remote compaction keep their upstream paths.
+
+Local compatibility checks passed: **74 secondary tests** (including the three
+restored fast-open tests), **10 memtable-list**, **29 version-builder**, **24
+atomic/PIT** tests, and all **8 public regressions**. The Debug build enables
+`ASSERT_STATUS_CHECKED`; the initial run exposed an unchecked successful handoff
+status, corrected by returning that status to the caller. That failed run is
+preserved. Patch application and a second, idempotent application were verified
+against a fresh export of the pinned upstream files. These checks do not claim
+that fast-open restoration fixes the production abort, nor remove the previously
+recorded same-name SST restoration limitation.
+
+Runtime evidence: local `gramstat-full/old-patch-rebase/`, including
+`test-result.json`, `public-result.json`, `apply-result.json`, and the first
+run's `test-result-v1-unchecked-handoff-status.json`.
+Production incident/recovery evidence is in
+`/opt/gramstat-full/incidents/20261112T101748Z-upstream-merge-repeat/`.
+At **10:19:49 UTC**, bounded recovery checks covered **2483 MC** across
+104923400..104924400, 104946800..104947800, and 104949217..104949697, with no gaps,
+NULL `global_balance`, or timestamp mismatch. The 12-hour observe-only memory
+watch ended at **04:47:43 UTC** without meeting admission criteria; it launched
+no child job.
 
 ## Incident and evidence
 
