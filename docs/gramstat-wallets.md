@@ -133,12 +133,12 @@ still touches most `wallet_first` granules because senders are distributed
 throughout the account keyspace. No lifetime lookup is copied or raw history replayed.
 
 Wallets runs every five minutes in the **existing** `gramstat-aggregate.service` Go scheduler,
-after the other handlers, under the same user, environment and `flock` lock.
+as an independent handler under the same user, environment and `flock` lock.
 Add `GRAMSTAT_WALLETS_SOURCE_ID=mainnet-wallets-v1` and
 `GRAMSTAT_WALLETS_FOLLOW_NATIVE=1` to `/etc/gramstat-aggregate.env`.
 There is no separate Wallets scheduler. The ordinary per-handler time budget is
 resumable: already published days are skipped on the next scheduled run. An initial
-large backlog may take several runs; other handlers still run first each hour.
+large backlog may take several runs; other handlers continue on their own schedules.
 
 First-deployment preparation does require the entire preceding deployment history
 on the first run. It then reads only MCs after its persisted progress. The first
