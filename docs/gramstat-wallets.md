@@ -101,6 +101,11 @@ matched every historical timestamp and exact cumulative count (0.45 s including
 the reference read). The transaction-day query reproduced all 246,558 qualifying
 first deployments on November 11, 2026 (2.48 s).
 
+At MC 104975784 (2026-11-12 13:21:05 UTC), an independent full `minMerge`
+reconciliation reproduced the streamed total **63,982,276** and **52,283**
+transaction-day activations through the exclusive shard cutoff 13:21:04 UTC.
+This one-time verification took 35.04 s; normal updates use the incremental path.
+
 ### Current-day Active wallets
 
 Without explicit dates, the wallet handler also publishes hourly and daily
