@@ -20,5 +20,7 @@ This is a port of the old opening mechanism, not a new fix for the production
 
 Compatibility checks passed: 137 existing/restored tests with checked Status
 objects, plus eight public regressions; clean and idempotent patch application
-also passed. This source change is not a production deployment. See
+also passed. The Linux release passed four native suites and the eight public
+regressions, then was deployed to Gramstat on 2026-11-12 after a bounded
+candidate-only NodeDB smoke. See
 [the runbook](../../docs/runbooks/rocksdb-secondary-merge-base.md).

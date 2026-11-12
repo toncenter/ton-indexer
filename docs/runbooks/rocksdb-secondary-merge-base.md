@@ -6,8 +6,9 @@ restored** for synchronous secondary opening. The CMake application helper is
 restored too. WAL-reader retention and flushed-memtable retirement remain supplied
 by upstream; their duplicate local hunks are not reapplied.
 
-**Deployment:** Gramstat is still on the clean-upstream ELF installed on
-2026-11-11. The source restoration below has not been deployed.
+**Deployment:** the restored-patch ELF from indexer **`c1ef71d`** was installed
+in Gramstat on **2026-11-12 at 11:25:55 UTC** and verified live. See the rollout
+record below; the two earlier unsuccessful attempts are preserved separately.
 
 The follow-up [per-invariant code audit](rocksdb-secondary-upstream-audit.md)
 maps every part of the removed patches to the pinned upstream implementation,
@@ -59,6 +60,89 @@ At **10:19:49 UTC**, bounded recovery checks covered **2483 MC** across
 NULL `global_balance`, or timestamp mismatch. The 12-hour observe-only memory
 watch ended at **04:47:43 UTC** without meeting admission criteria; it launched
 no child job.
+
+### Linux release and first rollout attempt
+
+The Linux build of `c1ef71db864fc1d44f47b51b9e72efd561129155` passed the four
+native suites and all eight public secondary regressions. All **2592 non-RocksDB
+object files** remained byte-identical to the clean-upstream build. Original
+server source/build/installed files were preserved by private build mounts.
+
+- Candidate ELF SHA-256:
+  `d7135c6a862663c35049887600779252044cc126b9d08eafea8a7060374a67e8`.
+- Restored patch SHA-256:
+  `a96b37bb08a10bfe0e1323f46a49852f02e9763ca29f361f581f38a29e679d18`.
+- Evidence: `/opt/gramstat-full/rocksdb-fast-open-c1ef71d/build-result.json`.
+
+The first rollout paused Gramstat at **11:02:24 UTC**, but its read-only A/B was
+stopped at **11:04:45 UTC** while opening the **old clean-upstream** arm: host
+available memory was **5.983 GiB** with full PSI avg10 **18.86%**, crossing the
+existing combined `<6 GiB and >=10%` guard. Node and ordinary-indexer full PSI
+were both zero. No candidate arm completed and the candidate ELF was not
+installed. The controller resumed the old ELF as PID **2489216**; both protected
+service PIDs remained unchanged. Original failure evidence is retained in
+`install-result.json` and `canary-result.json` in the release directory.
+
+Recovery verification at **11:11:05 UTC** checked **1331 MC,
+104955753..104957083**, with no gaps, NULL balances or timestamp mismatch; lag
+was **3.81s** and there were no restarts. A startup `cell not found` fetch for
+MC **104956560** triggered the observer, then was confirmed persisted inside
+that range. The health watcher was rearmed.
+
+The second attempt (`-v2`) timed out in preflight at **11:23:01 UTC** without
+pausing Gramstat: its 120 samples all had **zero host PSI**, but only
+**3.78..4.37 GiB** available, so the requested 60s with >=6 GiB never began.
+This was an overly restrictive pre-stop admission rule: the running Gramstat
+itself occupied about **7.2 GiB**. The next attempt (`-v3`) checks headroom again
+after stopping only Gramstat and runs one bounded **candidate-only smoke**.
+The existing canary resource guards and automatic rollback remain in force.
+It does not claim completed same-range old/new A/B equivalence; the full A/B
+attempt remains recorded as failed.
+
+### Restored fast-open deployed and observed
+
+The candidate-only smoke passed **64 MC, 104958895..104958958**, reading
+**131 blocks, 1501 transactions, 1148 accounts, 402 interfaces**. Its digest was
+`b4c41cd086bf3fbff88af8d5bd375d846c0dd27b149d2219178cdb16cd857cdc`;
+whole-process time **58.83s**, peak RSS **3012512 KiB**. This is a successful
+bounded read, not an A/B equality result or a cold-cache performance comparison.
+
+Only **`gramstat-mainnet-full.service`** was upgraded. PID changed
+**2489216 -> 3365444**; stop through smoke and restart took **60.93s**. The
+candidate started at **11:25:55 UTC**, and the live-data gate passed at
+**11:27:26 UTC**. ELF SHA-256 is
+`d7135c6a862663c35049887600779252044cc126b9d08eafea8a7060374a67e8`.
+
+The install gate verified **444 MC**; follow-up at **11:27:39 UTC** verified
+**479 MC, 104958995..104959473**, spanning the pause and restart. There were no
+gaps, NULL `global_balance`, timestamp mismatches, retryable fetches or fatal
+lines. Latest persisted MC was **104959493**, lag **4.79s**, restart count **0**.
+The cgroup's high/max/OOM/oom_kill counters were zero. Node PID **2062301** and
+ordinary-indexer PID **2850699**, their restart counts, Gramstat's arguments,
+launcher, unit and allocator settings remained unchanged; `MALLOC_ARENA_MAX`
+remains absent.
+
+Release evidence in `/opt/gramstat-full/rocksdb-fast-open-c1ef71d/`:
+
+- `install-result-v3.json`, `rollout-state-v3.json`, `canary-result-v3.json`;
+- `poststartup-verification-v3.json`;
+- rollback backup:
+  `/opt/gramstat-full/upgrades/20261112T112453Z-fast-open-c1ef71d/`.
+
+The independent ten-minute rollback timer was cancelled after verification.
+Three server-side observers are active with reconnecting notification waiters:
+
+- `gramstat-full-live-health-3365444-fast-open-c1ef71d.service`: log errors,
+  fatal lines and memory-pressure events;
+- `gramstat-full-status-3365444-fast-open.service`: PID/restart/lag/progress
+  every 30s and bounded persisted-data coverage every 10 minutes;
+- `gramstat-full-resources-3365444-fast-open-6h.service`: six-hour resource
+  sample series at 30-second intervals, with a completion result.
+
+Their unit/result/waiter IDs are recorded in
+`/opt/gramstat-full/health-watch-current.json`; release summary is
+`/opt/gramstat-full/fast-open-release.json`. This establishes rollout and bounded
+data verification, not that the intermittent merge-base abort has been cured.
 
 ## Incident and evidence
 

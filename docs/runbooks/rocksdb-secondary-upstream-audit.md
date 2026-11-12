@@ -4,7 +4,7 @@
 **Date:** 2026-11-11. This supplements the [rollout record](rocksdb-secondary-merge-base.md).
 
 **2026-11-12 update:** the clean-upstream deployment repeated the CellDB
-merge-base abort twice. The old fast-open patch is now restored in source,
+merge-base abort twice. The old fast-open patch is now restored and deployed,
 rebased for 11.13.2, at the operator's request. WAL retention and memtable
 retirement remain upstream implementations. The conclusions below describe the
 earlier removal audit, not the current patch policy or proof that the production
