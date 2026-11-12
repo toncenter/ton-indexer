@@ -179,6 +179,9 @@ func (h *Handler) Run(ctx context.Context, req gramstat.Request) error {
 		if err := h.live(ctx, p, s); err != nil {
 			return err
 		}
+		if err := h.liveActivated(ctx, p, s); err != nil {
+			return err
+		}
 	}
 	if h.FollowNative && req.From.IsZero() {
 		// Enumerate all missing closed days, not only a moving lookback window.

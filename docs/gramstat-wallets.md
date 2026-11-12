@@ -68,8 +68,38 @@ without publishing the proposed watermark. The original source ID and proof are 
 In this mode, running without dates enumerates **every missing closed UTC day**,
 oldest first, rather than just the last few days or days after a maximum date.
 Thus indexer jumps and scheduler downtime cannot leave permanent holes. Explicit
-date requests still select only their requested window. Cumulative activations
-and calendar-month unions retain their closed-day publication contract.
+date requests still select only their requested window. Calendar-month unions
+retain their closed-day publication contract.
+
+### Current cumulative and daily activations
+
+`wallet_activation_stream` appends per-MC cumulative counts after the latest
+certified closed-day MC point. Each run reads only new deployments, resolves
+the candidate accounts' lifetime first qualifying deployment and counts only
+minima after the previously committed MC. Redeployments cannot increment the
+counter. Catch-up commits batches of at most 20,000 MCs, so an interrupted run
+resumes its verified prefix instead of rebuilding the whole day or history.
+
+Hourly/daily endpoints are appended to `wallet_activation_stream_checkpoints`;
+`wallet_activation_stream_state` commits the MC watermark and exact counter
+last. Readers cap both points and checkpoints at that captured watermark and
+deduplicate MCs. These tables intentionally retain old checkpoint versions:
+an uncommitted future endpoint must not replace a previously visible one.
+An immutable source epoch guarantees retries produce identical MC values;
+conflicting tip values or a regressing source stop publication.
+
+At the final batch, the same state row records current-day activations counted
+by **transaction time**, through the verified shard-time horizon. This count is
+separate from MC-date increments: a late-included shard deployment may increment
+today's cumulative series while belonging to yesterday's daily count. The API
+marks the current daily count partial and keeps dataset-specific coverage.
+Complete-day data takes precedence over the stream on historical reads.
+
+Apply the three added stream tables from `schema.sql`, granting SELECT/INSERT to
+the writer and SELECT to the API. A bounded production comparison over 1,000 MCs
+matched every historical timestamp and exact cumulative count (0.45 s including
+the reference read). The transaction-day query reproduced all 246,558 qualifying
+first deployments on November 11, 2026 (2.48 s).
 
 ### Current-day Active wallets
 

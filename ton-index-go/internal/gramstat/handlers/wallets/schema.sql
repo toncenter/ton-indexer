@@ -87,6 +87,23 @@ CREATE TABLE IF NOT EXISTS gramstat.wallet_live_days (
 ) ENGINE=MergeTree PARTITION BY toYYYYMM(day)
 ORDER BY (source_id,registry,day,through_mc,calculated_at,run_id);
 
+-- Incremental, immutable MC points. Failed/repeated batches are harmless:
+-- readers deduplicate MCs and cap all point/checkpoint reads at the committed state.
+CREATE TABLE IF NOT EXISTS gramstat.wallet_activation_stream (
+ source_id String,registry String,day Date,mc_seqno UInt32,utime UInt32,activated UInt64
+) ENGINE=MergeTree PARTITION BY toYYYYMM(day) ORDER BY (source_id,registry,day,mc_seqno);
+
+CREATE TABLE IF NOT EXISTS gramstat.wallet_activation_stream_checkpoints (
+ source_id String,registry String,day Date,step UInt32,bucket UInt32,
+ mc_seqno UInt32,utime UInt32,activated UInt64
+) ENGINE=MergeTree PARTITION BY toYYYYMM(day) ORDER BY (source_id,registry,step,day,bucket,mc_seqno);
+
+CREATE TABLE IF NOT EXISTS gramstat.wallet_activation_stream_state (
+ source_id String,registry String,base_mc UInt32,from_utime UInt32,
+ through_mc UInt32,to_utime UInt32,activated UInt64,day Date,
+ activations Nullable(UInt64),complete_before UInt32,calculated_at DateTime64(6,'UTC')
+) ENGINE=MergeTree ORDER BY (source_id,registry,through_mc);
+
 CREATE TABLE IF NOT EXISTS gramstat.wallet_activated_checkpoints (
  source_id String, registry String, day Date, run_id UUID,
  step UInt32, bucket UInt32, mc_seqno UInt32, utime UInt32, activated UInt64
