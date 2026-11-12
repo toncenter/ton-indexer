@@ -68,8 +68,34 @@ without publishing the proposed watermark. The original source ID and proof are 
 In this mode, running without dates enumerates **every missing closed UTC day**,
 oldest first, rather than just the last few days or days after a maximum date.
 Thus indexer jumps and scheduler downtime cannot leave permanent holes. Explicit
-date requests still select only their requested window. Current incomplete days
-remain unpublished; the latest day is the last complete day at the shard horizon.
+date requests still select only their requested window. Cumulative activations
+and calendar-month unions retain their closed-day publication contract.
+
+### Current-day Active wallets
+
+Without explicit dates, the wallet handler also publishes hourly and daily
+active-wallet counts for `[UTC midnight, complete_before)`. It uses the same
+verified source prefix and minimum shard-tip horizon, not wall-clock time.
+The last incomplete hour/day is marked partial by the API; no future zero
+buckets are generated. Counts are exact distinct-address unions, with the same
+first qualifying deployment LT and non-bounced outgoing-message conditions.
+
+`live_counts.sql` reads LT-bounded current-day messages and resolves first
+deployments for candidate senders directly from `wallet_first`, avoiding a new
+full scalar lookup snapshot every five minutes. It writes scalar counts under
+a fresh run UUID, then commits `wallet_live_days` last. Interrupted inserts stay
+invisible; retries use a new UUID. A source endpoint already committed is skipped.
+This separate marker cannot cause the closed-day preparation or complete-month
+union to accept a partial day. Later complete-day publications supersede live
+activity by certified cutoff, not merely insert time. Apply the added
+`wallet_live_days` schema and grant SELECT/INSERT to the writer and SELECT to
+the API before upgrading.
+
+November 12 check: a bounded closed-hour comparison matched all 16,333 active
+wallets exactly. The live current-day query took 9.86 s for roughly 12.5 hours.
+`EXPLAIN indexes=1` confirmed the message LT range; the candidate-address filter
+still touches most `wallet_first` granules because senders are distributed
+throughout the account keyspace. No lifetime lookup is copied or raw history replayed.
 
 Wallets runs every five minutes in the **existing** `gramstat-aggregate.service` Go scheduler,
 after the other handlers, under the same user, environment and `flock` lock.

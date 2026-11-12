@@ -178,6 +178,29 @@ func TestExactPublicationAndRetry(t *testing.T) {
 	if len(result.Data) != 1 || result.Data[0].Active != "4" {
 		t.Fatal("daily distinct incorrect", result)
 	}
+	// Partial current-day publications retain exact eligibility/distinctness,
+	// commit last, and never add future zero hours or certify a full day.
+	liveParams := url.Values{"param_sink": {"gramstat"}, "param_source": {"fixture"}, "param_registry": {Registry}, "param_raw": {"raw"}, "param_first": {"3"}, "param_end": {"6"}}
+	liveSource := source{First: 3, End: 6, From: uint32(day.Unix()), Before: uint32(day.Add(270 * time.Minute).Unix()), Verified: 1, Proof: "fixture"}
+	s.fail = "INSERT INTO {sink:Identifier}.wallet_live_days"
+	if err = h.live(ctx, liveParams, liveSource); err == nil {
+		t.Fatal("failed live commit accepted")
+	}
+	if got := string(run("SELECT count() FROM gramstat.wallet_live_days", nil)); got != "0\n" {
+		t.Fatal(got)
+	}
+	s.fail = ""
+	for i := 0; i < 2; i++ {
+		if err = h.live(ctx, liveParams, liveSource); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got := string(run("SELECT count() FROM gramstat.wallet_live_days", nil)); got != "1\n" {
+		t.Fatal("live retry not idempotent", got)
+	}
+	if got := string(run(`SELECT step,bucket,active FROM gramstat.wallet_counts WHERE run_id IN (SELECT run_id FROM gramstat.wallet_live_days) ORDER BY step,bucket`, nil)); got != "3600\t1728777600\t3\n3600\t1728781200\t1\n3600\t1728784800\t0\n3600\t1728788400\t0\n3600\t1728792000\t0\n86400\t1728777600\t3\n" {
+		t.Fatal("live union/cutoff incorrect", got)
+	}
 	var mc struct {
 		Data []struct {
 			MC    uint32 `json:"mc_seqno"`

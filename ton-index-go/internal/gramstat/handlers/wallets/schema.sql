@@ -78,6 +78,15 @@ CREATE TABLE IF NOT EXISTS gramstat.wallet_days (
 ) ENGINE=MergeTree PARTITION BY toYYYYMM(day)
 ORDER BY (source_id, registry, day, through_mc, calculated_at, run_id);
 
+-- Only the certified prefix of an open day. Commit after its scalar counts;
+-- this marker never makes a day eligible for immutable closed-month unions.
+CREATE TABLE IF NOT EXISTS gramstat.wallet_live_days (
+ source_id String, registry String, day Date, run_id UUID,
+ through_mc UInt32, complete_before UInt32, proof_id String,
+ calculated_at DateTime64(6,'UTC')
+) ENGINE=MergeTree PARTITION BY toYYYYMM(day)
+ORDER BY (source_id,registry,day,through_mc,calculated_at,run_id);
+
 CREATE TABLE IF NOT EXISTS gramstat.wallet_activated_checkpoints (
  source_id String, registry String, day Date, run_id UUID,
  step UInt32, bucket UInt32, mc_seqno UInt32, utime UInt32, activated UInt64

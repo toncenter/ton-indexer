@@ -175,6 +175,11 @@ func (h *Handler) Run(ctx context.Context, req gramstat.Request) error {
 	if from.Unix() < int64(s.From) && !(h.FollowNative && req.From.IsZero()) {
 		return fmt.Errorf("requested days precede complete source coverage")
 	}
+	if req.From.IsZero() {
+		if err := h.live(ctx, p, s); err != nil {
+			return err
+		}
+	}
 	if h.FollowNative && req.From.IsZero() {
 		// Enumerate all missing closed days, not only a moving lookback window.
 		// This recovers outages and indexer jumps without silently leaving holes.
