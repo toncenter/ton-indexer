@@ -87,6 +87,7 @@ rows by Gramstat; missing inputs and unknown Stars quantities remain unknown.
 
 | Metric | Definition |
 | --- | --- |
+| `actions_total_v1` | Successful recognized operations excluding descendants of accepted types; exact per-type `breakdown`. See [Total actions](gramstat-total-actions.md). |
 | `jetton_senders` | Distinct non-null owner `source` addresses in successful `jetton_transfer` actions |
 | `jetton_receivers` | Distinct non-null owner `destination` addresses in successful `jetton_transfer` actions |
 | `jetton_transfers` | Successful `jetton_transfer` action rows, including rows with an unknown source |

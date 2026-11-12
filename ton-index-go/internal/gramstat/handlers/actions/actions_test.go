@@ -26,7 +26,7 @@ func TestDailyRowsZeroAndSourceLag(t *testing.T) {
 		"nft_senders": 4, "nft_receivers": 6, "nft_transfers": 7,
 		"swaps_total": 0, "swaps_users": 0, "ton_dns_mints": 0, "liquid_staking_deposits": 0,
 		"liquid_staking_deposits_tonstakers": 0, "liquid_staking_deposits_stakee": 0,
-		"liquid_staking_deposits_kton": 0, "liquid_staking_deposits_sgram": 0, "telegram_stars_purchases": 0}
+		"liquid_staking_deposits_kton": 0, "liquid_staking_deposits_sgram": 0, "telegram_stars_purchases": 0, TotalMetric: 0}
 	for _, row := range rows {
 		value, exists := want[row.Metric]
 		if !exists {

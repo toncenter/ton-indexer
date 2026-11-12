@@ -71,6 +71,7 @@ func run(log *slog.Logger) error {
 	if *list {
 		fmt.Println("actions: " + strings.Join(actions.Metrics, ", "))
 		fmt.Println("stars: explicit-date Stars-only rebuild through Fragment's account index")
+		fmt.Println("actions_total: explicit-date initial total action type-count backfill")
 		fmt.Println("actions_monthly: exact calendar-month unique jetton/NFT senders, receivers and swap users")
 		fmt.Println("chain: full-history block flows and burn-corrected daily supply")
 		fmt.Println("accounts: existing accounts from a verified opening state and complete deltas")
@@ -116,6 +117,7 @@ func run(log *slog.Logger) error {
 		&chain.Handler{CH: ch, RawDB: os.Getenv("GRAMSTAT_CHAIN_RAW_DB"), MetricsDB: os.Getenv("GRAMSTAT_CHAIN_METRICS_DB"), Log: log},
 		&actions.Handler{Source: actions.Postgres{DSN: os.Getenv("GRAMSTAT_PG_DSN"), StatementTimeout: *actionsStatementTimeout, WorkMemMB: *actionsWorkMem, ParallelWorkers: *actionsWorkers, IncludeMonthly: *actionsMonthly}, Sink: ch, Log: log, ChunkDays: *actionsChunkDays},
 		&actions.Handler{Source: actions.Postgres{DSN: os.Getenv("GRAMSTAT_PG_DSN"), StatementTimeout: *actionsStatementTimeout, WorkMemMB: *actionsWorkMem, ParallelWorkers: *actionsWorkers, StarsOnly: true}, Sink: ch, Log: log, ChunkDays: *actionsChunkDays, StarsOnly: true},
+		&actions.Handler{Source: actions.Postgres{DSN: os.Getenv("GRAMSTAT_PG_DSN"), StatementTimeout: *actionsStatementTimeout, WorkMemMB: *actionsWorkMem, ParallelWorkers: *actionsWorkers, TotalOnly: true}, Sink: ch, Log: log, ChunkDays: *actionsChunkDays, TotalOnly: true},
 		&actions.MonthlyHandler{Source: actions.Postgres{DSN: os.Getenv("GRAMSTAT_PG_DSN"), StatementTimeout: *actionsStatementTimeout, WorkMemMB: *actionsWorkMem, ParallelWorkers: *actionsWorkers}, Sink: ch, Log: log},
 		&validators.Handler{Source: validators.Postgres{DSN: os.Getenv("GRAMSTAT_PG_DSN")},
 			Verifier: validators.ConfigRPC{URL: strings.TrimRight(os.Getenv("GRAMSTAT_CONFIG_URL"), "/"), APIKey: os.Getenv("GRAMSTAT_CONFIG_API_KEY")},
@@ -150,8 +152,8 @@ func run(log *slog.Logger) error {
 			"validator_stake_locked":  {"validator_geo", "validator_stake"},
 		}
 		for _, name := range names {
-			if name == "stars" {
-				return fmt.Errorf("Stars-only rebuild is not a recurring handler; use actions")
+			if name == "stars" || name == "actions_total" {
+				return fmt.Errorf("targeted rebuild is not a recurring handler; use actions")
 			}
 			s := gramstat.Schedule{Name: name, Every: *interval, Timeout: *timeout, ReconcileEvery: *reconcileInterval}
 			if name == "actions_monthly" {

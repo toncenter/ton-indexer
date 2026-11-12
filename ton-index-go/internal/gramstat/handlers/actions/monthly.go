@@ -17,7 +17,7 @@ const monthlySQL = `SELECT date_trunc('month',to_timestamp(start_utime) AT TIME 
  count(DISTINCT source) FILTER (WHERE type='nft_transfer'),
  count(DISTINCT destination) FILTER (WHERE type='nft_transfer'), 0, 0,
  count(DISTINCT source) FILTER (WHERE type='jetton_swap'),
- '{}'::jsonb, 0, '0'::text, '{}'::jsonb, 0, 0, '[]'::jsonb
+ '{}'::jsonb, 0, '0'::text, '{}'::jsonb, 0, 0, '[]'::jsonb, '{}'::jsonb
  FROM public.actions
  WHERE trace_mc_seqno_end >= $1 AND trace_mc_seqno_end <= $2
  AND start_utime >= $3 AND start_utime < $4 AND success=true

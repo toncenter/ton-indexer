@@ -19,6 +19,7 @@ var Metrics = []string{
 	"liquid_staking_deposits_tonstakers", "liquid_staking_deposits_stakee",
 	"liquid_staking_deposits_kton", "liquid_staking_deposits_sgram",
 	"telegram_stars_purchases",
+	TotalMetric,
 }
 
 var liquidPools = []string{"tonstakers", "stakee", "kton", "sgram"}
@@ -39,6 +40,7 @@ type DayCounts struct {
 	StarsPurchases                                       uint64
 	StarsRejected                                        uint64
 	StarsBuckets                                         []gramstat.StarsBucket
+	TotalByType                                          map[string]uint64
 }
 
 type Snapshot struct {
@@ -69,9 +71,13 @@ type Handler struct {
 	// StarsOnly is an explicit historical rebuild; ordinary refresh shares the
 	// existing actions scan. Publish only Stars tables/metrics in this mode.
 	StarsOnly bool
+	TotalOnly bool
 }
 
 func (h *Handler) Name() string {
+	if h.TotalOnly {
+		return "actions_total"
+	}
 	if h.StarsOnly {
 		return "stars"
 	}
@@ -83,15 +89,18 @@ func (h *Handler) Run(ctx context.Context, req gramstat.Request) error {
 	if err != nil {
 		return err
 	}
-	if h.StarsOnly && req.From.IsZero() {
-		return fmt.Errorf("Stars-only rebuild requires explicit dates")
+	if (h.StarsOnly || h.TotalOnly) && req.From.IsZero() {
+		return fmt.Errorf("targeted rebuild requires explicit dates")
 	}
 	if req.From.IsZero() && !req.RecentOnly {
 		stored, err := h.Sink.StoredDays(ctx, Metrics, gramstat.Day(req.AsOf))
 		if err != nil {
 			return fmt.Errorf("read refresh coverage: %w", err)
 		}
-		from = gramstat.CatchUpStart(from, gramstat.Day(req.AsOf), Metrics, stored)
+		// Initial taxonomy history is an explicit, single-scan backfill. Do not
+		// turn its introduction into seven-day scans of the entire source tail.
+		from = gramstat.CatchUpStart(from, gramstat.Day(req.AsOf), Metrics[:len(Metrics)-1], stored)
+		from = gramstat.CatchUpStart(from, gramstat.Day(req.AsOf), []string{TotalMetric}, map[string][]time.Time{TotalMetric: stored[TotalMetric]})
 	}
 	chunkDays := h.ChunkDays
 	if chunkDays == 0 {
@@ -115,10 +124,10 @@ func (h *Handler) Run(ctx context.Context, req gramstat.Request) error {
 		if err != nil {
 			return err
 		}
-		if h.StarsOnly {
+		if h.StarsOnly || h.TotalOnly {
 			selected := rows[:0]
 			for _, row := range rows {
-				if row.Metric == "telegram_stars_purchases" {
+				if (h.StarsOnly && row.Metric == "telegram_stars_purchases") || (h.TotalOnly && row.Metric == TotalMetric) {
 					selected = append(selected, row)
 				}
 			}
@@ -130,8 +139,10 @@ func (h *Handler) Run(ctx context.Context, req gramstat.Request) error {
 		}
 		// The daily metric is the completion marker used by catch-up. Publish the
 		// full distribution first so an interrupted write cannot hide a gap.
-		if err := h.Sink.WriteStars(ctx, stars); err != nil {
-			return fmt.Errorf("publish Stars distributions: %w", err)
+		if !h.TotalOnly {
+			if err := h.Sink.WriteStars(ctx, stars); err != nil {
+				return fmt.Errorf("publish Stars distributions: %w", err)
+			}
 		}
 		if snapshot.MonthlyIncluded && monthStart(snapshot.Through).After(start) {
 			months := snapshot
@@ -233,6 +244,14 @@ func dailyRows(from, to time.Time, snapshot Snapshot) ([]gramstat.DailyMetric, e
 			values = append(values, d.LiquidStakingByPool[pool].Count)
 		}
 		values = append(values, d.StarsPurchases)
+		var total uint64
+		for typ, count := range d.TotalByType {
+			if !totalTypeSet[typ] || count > ^uint64(0)-total {
+				return nil, fmt.Errorf("invalid total action breakdown for %s", day.Format(time.DateOnly))
+			}
+			total += count
+		}
+		values = append(values, total)
 		through := day.AddDate(0, 0, 1)
 		partial := uint8(0)
 		if through.After(snapshot.Through) {
@@ -247,6 +266,8 @@ func dailyRows(from, to time.Time, snapshot Snapshot) ([]gramstat.DailyMetric, e
 				SourceMCSeqno: snapshot.SourceMC, IsPartial: partial,
 			}
 			switch metric {
+			case TotalMetric:
+				row.Breakdown = d.TotalByType
 			case "swaps_total":
 				row.Breakdown = d.SwapsByDEX
 			case "liquid_staking_deposits":

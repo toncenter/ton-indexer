@@ -1,7 +1,8 @@
 WITH payments AS (
     SELECT (to_timestamp(start_utime) AT TIME ZONE 'UTC')::date AS day,
            start_utime / 3600 * 3600 AS hour,
-           type, source, destination, amount, value, asset,
+            type, source, destination, amount, value, asset,
+            NOT (coalesce(ancestor_type, ARRAY[]::varchar[]) && $5::varchar[]) AS is_total_action,
            CASE WHEN type = 'jetton_swap'
                 THEN coalesce(nullif((jetton_swap_data).dex, ''), 'unknown')
            END AS dex,
@@ -23,13 +24,11 @@ WITH payments AS (
     WHERE trace_mc_seqno_end >= $1 AND trace_mc_seqno_end <= $2
       AND start_utime >= $3 AND start_utime < $4
       AND success = true
-      AND (type IN ('jetton_transfer', 'nft_transfer', 'jetton_swap', 'stake_deposit', 'nft_mint')
-           OR (type = 'ton_transfer'
-               AND destination = '0:852443F8599FE6A5DA34FE43049AC4E0BEB3071BB2BFB56635EA9421287C283A'))
+       AND type = ANY($5::varchar[])
 ), src AS MATERIALIZED (
     -- One source-table scan. Keep only columns needed by the independent
     -- aggregates; in particular, do not retain arbitrary assets or amounts.
-    SELECT day, type,
+     SELECT day, type, is_total_action,
            CASE WHEN type IN ('jetton_transfer','nft_transfer','jetton_swap') THEN source END AS source,
            CASE WHEN type IN ('jetton_transfer','nft_transfer') THEN destination END AS destination,
            CASE WHEN liquid_pool IS NOT NULL THEN amount END AS amount,
@@ -58,6 +57,10 @@ WITH payments AS (
            END AS deposit_nanoton,
            count(*) FILTER (WHERE dns_mint) AS dns_mints
     FROM src GROUP BY day
+), type_counts AS (
+    SELECT day, type, count(*) AS actions FROM src WHERE is_total_action GROUP BY day, type
+), type_days AS (
+    SELECT day, jsonb_object_agg(type, actions) AS breakdown FROM type_counts GROUP BY day
 ), dex_counts AS (
     SELECT day, dex, count(*) AS swaps FROM src
     WHERE dex IS NOT NULL GROUP BY day, dex
@@ -113,9 +116,10 @@ SELECT d.day, d.jetton_senders, d.jetton_receivers, d.jetton_transfers,
        d.nft_senders, d.nft_receivers, d.nft_transfers, d.swaps, d.swap_users,
        coalesce(x.breakdown, '{}'::jsonb), d.deposits, d.deposit_nanoton::text,
        coalesce(p.breakdown, '{}'::jsonb), d.dns_mints,
-       coalesce(s.purchases, 0), coalesce(s.buckets, '[]'::jsonb)
+        coalesce(s.purchases, 0), coalesce(s.buckets, '[]'::jsonb), coalesce(t.breakdown, '{}'::jsonb)
 FROM daily d
 LEFT JOIN dex_days x USING (day)
 LEFT JOIN pool_days p USING (day)
 LEFT JOIN star_days s USING (day)
+LEFT JOIN type_days t USING (day)
 ORDER BY d.day

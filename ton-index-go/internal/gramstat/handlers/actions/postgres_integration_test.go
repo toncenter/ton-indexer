@@ -51,7 +51,7 @@ CREATE TYPE jetton_swap_details AS (dex text);
 CREATE TYPE ton_transfer_details AS (content text);
 CREATE TYPE jetton_transfer_details AS (comment text);
 CREATE TABLE actions(trace_mc_seqno_end integer, start_utime bigint, source text, destination text, type text, success boolean, parent_action_id text,
-    amount numeric, value numeric, asset text, staking_data staking_details, jetton_swap_data jetton_swap_details,
+    ancestor_type varchar[] DEFAULT '{}', amount numeric, value numeric, asset text, staking_data staking_details, jetton_swap_data jetton_swap_details,
     ton_transfer_data ton_transfer_details, jetton_transfer_data jetton_transfer_details);
 INSERT INTO blocks VALUES (-1,99,1792540799), (-1,100,1792544400), (-1,101,1792630800), (-1,102,1792717200);
 INSERT INTO actions(trace_mc_seqno_end,start_utime,source,destination,type,success,parent_action_id) VALUES
@@ -128,6 +128,51 @@ INSERT INTO actions(trace_mc_seqno_end,start_utime,type,success,destination,stak
 	}
 	if _, err := dailyRows(from, from.Add(48*time.Hour), s); err != nil {
 		t.Fatal(err)
+	}
+	// Accepted ancestors suppress only the new total, not existing transfer
+	// metrics. Technical wrappers must not hide recognized children.
+	_, err = fixture.Exec(ctx, `UPDATE actions SET ancestor_type=ARRAY['jetton_swap'] WHERE parent_action_id='swap';
+UPDATE actions SET ancestor_type=ARRAY['nft_purchase'] WHERE parent_action_id='sale';
+INSERT INTO actions(trace_mc_seqno_end,start_utime,type,success,ancestor_type) VALUES
+ (100,1792540810,'ton_transfer',true,ARRAY['gasless_request']),
+ (100,1792540811,'renew_dns',true,'{}'),
+ (100,1792540812,'renew_dns',false,'{}'),
+ (100,1792540813,'call_contract',true,'{}'),
+ (100,1792540814,'contract_deploy',true,'{}'),
+ (100,1792540815,'unknown_future_type',true,'{}'),
+ (100,1792540816,'layerzero_send_tokens',true,'{}'),
+ (100,1792540817,'layerzero_send',true,ARRAY['layerzero_send_tokens']);`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	nested, err := source.Collect(ctx, from, from.Add(48*time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if nested.Days[0].JettonTransfers != 4 || nested.Days[1].NFTTransfers != 3 ||
+		nested.Days[0].TotalByType["jetton_transfer"] != 3 || nested.Days[1].TotalByType["nft_transfer"] != 2 ||
+		nested.Days[0].TotalByType["ton_transfer"] != 1 || nested.Days[0].TotalByType["renew_dns"] != 1 ||
+		nested.Days[0].TotalByType["layerzero_send"] != 0 || nested.Days[0].TotalByType["layerzero_send_tokens"] != 1 {
+		t.Fatalf("nested total changed legacy semantics or double counted: %+v", nested.Days)
+	}
+	for _, typ := range []string{"call_contract", "contract_deploy", "unknown_future_type"} {
+		if _, exists := nested.Days[0].TotalByType[typ]; exists {
+			t.Fatal("excluded type counted", typ)
+		}
+	}
+	totalSource := source
+	totalSource.TotalOnly = true
+	only, err := totalSource.Collect(ctx, from, from.Add(48*time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(only.Days) != len(nested.Days) {
+		t.Fatal("total backfill lost days")
+	}
+	for i := range only.Days {
+		if !reflect.DeepEqual(only.Days[i].TotalByType, nested.Days[i].TotalByType) {
+			t.Fatal("initial backfill differs from shared scan", only.Days[i], nested.Days[i])
+		}
 	}
 	monthly, err := source.CollectMonthly(ctx, from, from.Add(48*time.Hour))
 	if err != nil {
@@ -240,7 +285,7 @@ INSERT INTO action_accounts SELECT account,trace_id,action_id,trace_mc_seqno_end
 	}
 	// EXPLAIN the actual embedded SQL: adding dimensions must not introduce a
 	// second scan of actions. The tiny fixture naturally uses a sequential scan.
-	planRows, err := fixture.Query(ctx, "EXPLAIN "+dailySQL, int64(99), int64(102), from.Unix(), from.Add(48*time.Hour).Unix())
+	planRows, err := fixture.Query(ctx, "EXPLAIN "+dailySQL, int64(99), int64(102), from.Unix(), from.Add(48*time.Hour).Unix(), TotalTypes)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -318,7 +363,7 @@ INSERT INTO action_accounts SELECT account,trace_id,action_id,trace_mc_seqno_end
 	if !combined.MonthlyIncluded || len(combined.Months) != 1 || !reflect.DeepEqual(combined.Months, monthly.Days) {
 		t.Fatalf("monthly distinct results differ: %+v vs %+v", combined.Months, monthly.Days)
 	}
-	planRows, err = fixture.Query(ctx, "EXPLAIN "+combinedSQL(), int64(98), int64(103), monthFrom.Unix(), head.Unix())
+	planRows, err = fixture.Query(ctx, "EXPLAIN "+combinedSQL(), int64(98), int64(103), monthFrom.Unix(), head.Unix(), TotalTypes)
 	if err != nil {
 		t.Fatal(err)
 	}

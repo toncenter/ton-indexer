@@ -39,7 +39,7 @@ func starsOnlySQL() string {
 	}
 	return strings.TrimSpace(starsSourceSQL) + ", parsed AS MATERIALIZED (" + tail + `
 SELECT day, 0, 0, 0, 0, 0, 0, 0, 0, '{}'::jsonb, 0, '0'::text,
-       '{}'::jsonb, 0, purchases, buckets FROM star_days ORDER BY day`
+       '{}'::jsonb, 0, purchases, buckets, '{}'::jsonb FROM star_days ORDER BY day`
 }
 
 type Postgres struct {
@@ -49,6 +49,7 @@ type Postgres struct {
 	ParallelWorkers  int
 	IncludeMonthly   bool
 	StarsOnly        bool
+	TotalOnly        bool
 }
 
 func (p Postgres) Collect(ctx context.Context, from, to time.Time) (snapshot Snapshot, err error) {
@@ -56,6 +57,12 @@ func (p Postgres) Collect(ctx context.Context, from, to time.Time) (snapshot Sna
 		return snapshot, fmt.Errorf("daily actions require a UTC day boundary")
 	}
 	query := dailySQL
+	if p.TotalOnly {
+		if p.IncludeMonthly || p.StarsOnly {
+			return snapshot, fmt.Errorf("total-only collection cannot include other metrics")
+		}
+		query = totalOnlySQL
+	}
 	if p.StarsOnly {
 		if p.IncludeMonthly {
 			return snapshot, fmt.Errorf("Stars-only collection cannot include monthly activity")
@@ -90,7 +97,7 @@ SELECT 'monthly', date_trunc('month',day)::date,
  count(DISTINCT source) FILTER (WHERE type='nft_transfer'),
  count(DISTINCT destination) FILTER (WHERE type='nft_transfer'), 0, 0,
  count(DISTINCT source) FILTER (WHERE type='jetton_swap'),
- '{}'::jsonb, 0, '0'::text, '{}'::jsonb, 0, 0, '[]'::jsonb
+ '{}'::jsonb, 0, '0'::text, '{}'::jsonb, 0, 0, '[]'::jsonb, '{}'::jsonb
 FROM src WHERE day < date_trunc('month',to_timestamp($4) AT TIME ZONE 'UTC')::date
 AND type IN ('jetton_transfer','nft_transfer','jetton_swap')
 GROUP BY 2 ORDER BY 1,2`
@@ -131,6 +138,11 @@ func (p Postgres) collect(ctx context.Context, from, to time.Time, query string,
 	cfg.ConnConfig.RuntimeParams["lock_timeout"] = "5000"
 	cfg.ConnConfig.RuntimeParams["timezone"] = "UTC"
 	cfg.ConnConfig.RuntimeParams["jit"] = "off"
+	if p.TotalOnly {
+		// Correlated MC/time predicates severely underestimate recent rows. This
+		// count-only query can hash into a small day/type set without a giant sort.
+		cfg.ConnConfig.RuntimeParams["enable_sort"] = "off"
+	}
 	pool, err := pgxpool.NewWithConfig(ctx, cfg)
 	if err != nil {
 		return snapshot, err
@@ -184,7 +196,11 @@ WHERE workchain = -1 AND seqno = $1 LIMIT 1`, upper).Scan(&sourceTime); err != n
 	if err = tx.QueryRow(ctx, `SELECT transaction_timestamp()`).Scan(&snapshot.CalculatedAt); err != nil {
 		return snapshot, err
 	}
-	rows, err := tx.Query(ctx, query, lower, upper, from.Unix(), snapshot.Through.Unix())
+	args := []any{lower, upper, from.Unix(), snapshot.Through.Unix()}
+	if strings.Contains(query, "$5") {
+		args = append(args, TotalTypes)
+	}
+	rows, err := tx.Query(ctx, query, args...)
 	if err != nil {
 		return snapshot, err
 	}
@@ -193,11 +209,11 @@ WHERE workchain = -1 AND seqno = $1 LIMIT 1`, upper).Scan(&sourceTime); err != n
 		var d DayCounts
 		var senders, receivers, transfers, nftSenders, nftReceivers, nfts int64
 		var swaps, users, deposits, dnsMints int64
-		var dexJSON, poolsJSON, starsJSON []byte
+		var dexJSON, poolsJSON, starsJSON, typesJSON []byte
 		var starsPurchases int64
 		granularity := "daily"
 		dest := []any{&d.Day, &senders, &receivers, &transfers, &nftSenders, &nftReceivers, &nfts,
-			&swaps, &users, &dexJSON, &deposits, &d.LiquidStakingAmount, &poolsJSON, &dnsMints, &starsPurchases, &starsJSON}
+			&swaps, &users, &dexJSON, &deposits, &d.LiquidStakingAmount, &poolsJSON, &dnsMints, &starsPurchases, &starsJSON, &typesJSON}
 		if combined {
 			dest = append([]any{&granularity}, dest...)
 		}
@@ -213,6 +229,9 @@ WHERE workchain = -1 AND seqno = $1 LIMIT 1`, upper).Scan(&sourceTime); err != n
 		d.Swaps, d.SwapUsers, d.LiquidStakingDeposits, d.TonDNSMints = uint64(swaps), uint64(users), uint64(deposits), uint64(dnsMints)
 		if err = json.Unmarshal(dexJSON, &d.SwapsByDEX); err != nil {
 			return snapshot, fmt.Errorf("decode DEX breakdown: %w", err)
+		}
+		if err = json.Unmarshal(typesJSON, &d.TotalByType); err != nil {
+			return snapshot, fmt.Errorf("decode action type breakdown: %w", err)
 		}
 		if err = json.Unmarshal(poolsJSON, &d.LiquidStakingByPool); err != nil {
 			return snapshot, fmt.Errorf("decode liquid staking breakdown: %w", err)
