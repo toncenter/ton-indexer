@@ -10,6 +10,11 @@ by upstream; their duplicate local hunks are not reapplied.
 in Gramstat on **2026-11-12 at 11:25:55 UTC** and verified live. See the rollout
 record below; the two earlier unsuccessful attempts are preserved separately.
 
+**2026-11-13 outcome:** the same `merge_in.existing_value` assertion recurred on
+the restored-patch ELF at **14:58:45 UTC**. The upgrade plus old fast-open patch
+has **not eliminated the production failure**. Automatic recovery was verified;
+the release remains installed and observation continues.
+
 The follow-up [per-invariant code audit](rocksdb-secondary-upstream-audit.md)
 maps every part of the removed patches to the pinned upstream implementation,
 adds atomic-group and pre-existing-SST lifetime checks, and records a shared
@@ -130,7 +135,7 @@ Release evidence in `/opt/gramstat-full/rocksdb-fast-open-c1ef71d/`:
   `/opt/gramstat-full/upgrades/20261112T112453Z-fast-open-c1ef71d/`.
 
 The independent ten-minute rollback timer was cancelled after verification.
-Three server-side observers are active with reconnecting notification waiters:
+Three server-side observers were started with reconnecting notification waiters:
 
 - `gramstat-full-live-health-3365444-fast-open-c1ef71d.service`: log errors,
   fatal lines and memory-pressure events;
@@ -143,6 +148,46 @@ Their unit/result/waiter IDs are recorded in
 `/opt/gramstat-full/health-watch-current.json`; release summary is
 `/opt/gramstat-full/fast-open-release.json`. This establishes rollout and bounded
 data verification, not that the intermittent merge-base abort has been cured.
+
+### Same assertion recurred with the restored patch, 2026-11-13
+
+The first 12 hours had no fatal events; bounded checks covered 104708 consecutive
+MC. At **06:03:47 UTC**, both indexers experienced ClickHouse connection errors,
+followed by a separate `TraceAssembler.cpp:133` fatal on an already passed seqno.
+Systemd restarted Gramstat as PID **2617286** at **06:04:20 UTC**. Its 601-MC
+recovery window included all affected seqnos, with no gaps, NULL balances or
+timestamp mismatch. Evidence:
+`/opt/gramstat-full/incidents/20261113T060347Z-clickhouse-insert-trace-restart/`.
+The unchanged ordinary indexer subsequently repeated the CellDB assertion at
+**08:50:24** and **10:25:05 UTC**.
+
+At **14:58:45.104803822 UTC**, Gramstat itself repeated
+`celldb.cpp:94: Check merge_in.existing_value failed` in `!indexquery`. Its
+installed and recovered running ELF hashes still match
+`d7135c6a862663c35049887600779252044cc126b9d08eafea8a7060374a67e8`:
+this occurred on **11.13.2 plus the restored fast-open patch**, not a reverted
+binary. Cgroup high/max/OOM/oom_kill counters were zero; both service and host
+full PSI avg10 were zero at the event.
+
+Systemd restarted it at **14:59:18 UTC**, PID **2617286 -> 643229**, restart
+count **2** including the earlier ClickHouse/TraceAssembler event. Ordinary
+indexer PID **178930** and node PID **1824966** stayed unchanged in this incident.
+At **15:01:20 UTC**, the recovered reader had persisted MC **105199926**, lag
+**5.01s**. The **607-MC** window **105199300..105199906** had no gaps, NULL balances
+or timestamp mismatch; startup fetch retries for **105199738, 105199742,
+105199743** were inside the verified window. No new fatal occurred after restart.
+
+Evidence:
+`/opt/gramstat-full/incidents/20261113T145845Z-fast-open-merge-repeat/`
+contains the complete captured crash/restart log segment, service journals,
+observer events, binary manifests, `capture.json` and `recovery-verification.json`.
+The three Gramstat observers were rearmed for PID **643229**; the read-only
+ordinary-indexer journal observer remains active for PID **178930**. Current
+unit/result/notification IDs are in `health-watch-current.json`.
+
+This recurrence disproves an operational claim that the retained patch bundle
+fully fixes the crash. It does not identify the exact merge key or underlying
+failure mechanism. No new production patch or rollback was made for this event.
 
 ## Incident and evidence
 

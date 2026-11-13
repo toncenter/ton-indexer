@@ -11,6 +11,12 @@ earlier removal audit, not the current patch policy or proof that the production
 failure was eliminated. See the [restoration record](rocksdb-secondary-merge-base.md#restoring-the-old-fast-open-patch-2026-11-12)
 for scope and compatibility checks.
 
+**2026-11-13 update:** Gramstat repeated the same assertion at **14:58:45 UTC**
+on the unchanged 11.13.2 + restored fast-open ELF. Neither the clean-upstream
+rollout nor restoration established elimination of this production failure.
+The [incident record](rocksdb-secondary-merge-base.md#same-assertion-recurred-with-the-restored-patch-2026-11-13)
+preserves recovery verification and the limits of the available evidence.
+
 The pre-rollout review established upstream fix ancestry, exercised the secondary
 and memtable suites, ran eight public regressions, and compared real NodeDB reads.
 It did **not** yet trace every fast-open supporting change to its replacement
