@@ -4,6 +4,7 @@
 #include <mc-config.h>
 
 #include "IndexData.h"
+#include "AccountLookupContext.h"
 
 
 using AllShardStates = std::vector<td::Ref<vm::Cell>>;
@@ -11,7 +12,8 @@ using AllShardStates = std::vector<td::Ref<vm::Cell>>;
 // Performs the synchronous shard-state dictionary lookup and TLB unpack used by
 // both actors and direct callers.
 td::Result<schema::AccountState> lookup_account(const AllShardStates& shard_states,
-                                                const block::StdAddress& address);
+                                                const block::StdAddress& address,
+                                                AccountLookupContext* context = nullptr);
 
 class FetchAccountFromShardV2: public td::actor::Actor {
 private:

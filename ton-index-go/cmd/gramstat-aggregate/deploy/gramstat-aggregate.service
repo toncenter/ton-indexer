@@ -1,0 +1,25 @@
+[Unit]
+Description=Gramstat continuous aggregate scheduler
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=gramstat
+Group=gramstat
+EnvironmentFile=/etc/gramstat-aggregate.env
+StateDirectory=gramstat-aggregate
+ExecStart=/usr/bin/flock --no-fork --nonblock /var/lib/gramstat-aggregate/run.lock /opt/gramstat/bin/gramstat-aggregate --daemon --handlers chain,accounts,wallets,actions,validators,validator_geo,validator_stake,validator_stake_changes,validator_stake_locked,actions_monthly --interval 5m --monthly-interval 15m --reconcile-interval 1h --timeout 3m --monthly-timeout 5m --concurrency 3
+Restart=on-failure
+RestartSec=10s
+TimeoutStopSec=45s
+MemoryMax=2G
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+RestrictSUIDSGID=true
+
+[Install]
+WantedBy=multi-user.target

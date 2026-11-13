@@ -1,6 +1,8 @@
 #include "Statistics.h"
 #include <sstream>
 #include <iomanip>
+#include "parse_contract_methods.h"
+#include "ValidatorElection.h"
 
 
 void HistogramImpl::add(uint64_t duration, size_t count) {
@@ -115,9 +117,8 @@ std::string Statistics::generate_report_and_reset() {
   per_core_stats_.for_each([&](StatisticsData &data) {
     // Merge tickers.
     for (uint32_t i = 0; i < TICKERS_COUNT; ++i) {
-      uint64_t value = data.tickers_[i].load(std::memory_order_relaxed);
-      aggTickers[i] += value;
-      data.tickers_[i].store(0, std::memory_order_relaxed);
+      // A load followed by store(0) loses increments from concurrent workers.
+      aggTickers[i] += data.tickers_[i].exchange(0, std::memory_order_relaxed);
     }
 
     // Merge histograms.
@@ -142,6 +143,7 @@ std::string Statistics::generate_report_and_reset() {
                                  << " SUM : " << aggHist[h].get_sum() << std::endl;
   }
 
+  oss << contract_methods_cache_report() << elector::election_cache_report();
   return oss.str();
 }
 

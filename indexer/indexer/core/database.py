@@ -230,6 +230,9 @@ class Block(Base):
     rand_seed: str = Column(TonHash)
     created_by: str = Column(TonHash)
 
+    global_balance: Optional[int] = Column(Numeric(38, 0), nullable=True)
+    out_msg_queue_size: Optional[int] = Column(BigInteger, nullable=True)
+
     tx_count: int = Column(Integer)
     prev_blocks: List[Any] = Column(JSONB)
 

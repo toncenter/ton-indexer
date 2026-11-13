@@ -9,6 +9,7 @@
 #include "validator/interfaces/shard.h"
 #include "convert-utils.h"
 #include "Statistics.h"
+#include "StateUpdateReader.h"
 
 using namespace ton::validator; //TODO: remove this
 
@@ -40,6 +41,9 @@ td::Status ParseQuery::parse_impl() {
 
     // block details
     auto schema_block = parse_block(block_ds.block_data->root_cell(), block_ds.block_data->block_id(), blk, info, extra, mc_block);
+    TRY_STATUS(parse_block_fees(extra, schema_block));
+    TRY_STATUS(parse_block_value_flow(blk.value_flow, schema_block));
+    TRY_STATUS(parse_block_state_metrics(block_ds.block_state, schema_block));
     if (!mc_block) {
         mc_block = schema_block;
     }
@@ -60,7 +64,25 @@ td::Status ParseQuery::parse_impl() {
     g_statistics.record_time(PARSE_TRANSACTION, transactions_timer.elapsed() * 1e6, schema_block.transactions.size());
 
     td::Timer acc_states_timer;
-    TRY_RESULT(account_states_fast, parse_account_states_new(schema_block.workchain, schema_block.gen_utime, account_states_to_get));
+    std::unique_ptr<StateUpdateReader> update_reader;
+    if (!account_states_to_get.empty()) {
+      td::Timer update_timer;
+      auto reader = StateUpdateReader::create(blk.state_update, block_ds.block_state, cell_db_reader_);
+      g_statistics.record_time(BUILD_STATE_UPDATE, update_timer.elapsed() * 1e6);
+      if (reader.is_ok()) {
+        update_reader = reader.move_as_ok();
+        g_statistics.record_count(STATE_UPDATE_CELLS, update_reader->size());
+      } else {
+        // This is an optional read optimization. Oversized or unsupported updates
+        // retain the original historical CellDB path, never an incomplete state.
+        g_statistics.record_count(reader.error().code() == StateUpdateReader::LIMIT_EXCEEDED
+            ? STATE_UPDATE_OVERSIZED : STATE_UPDATE_ERROR);
+        LOG(DEBUG) << "State update reader bypass: " << reader.error();
+      }
+    }
+    TRY_RESULT(account_states_fast, parse_account_states_new(schema_block.workchain, schema_block.gen_utime,
+        account_states_to_get, update_reader ? static_cast<vm::CellDbReader&>(*update_reader) : *cell_db_reader_));
+    update_reader.reset(); // Do not retain whole update indexes in parsed/insert queues.
     g_statistics.record_time(PARSE_ACCOUNT_STATE, acc_states_timer.elapsed() * 1e6, account_states_fast.size());
     
     for (auto &acc : account_states_fast) {
@@ -79,6 +101,111 @@ td::Status ParseQuery::parse_impl() {
 
   result->mc_block_ = mc_block_;
   result->cell_db_reader_ = cell_db_reader_;
+  return td::Status::OK();
+}
+
+td::Status ParseQuery::parse_block_state_metrics(td::Ref<vm::Cell> state_root, schema::Block& result) {
+  result.global_balance.clear();
+  result.out_msg_queue_size.reset();
+  if (state_root.is_null()) return td::Status::Error("Missing block post-state");
+  try {
+    // ShardStateUnsplit's generated unpack also loads its inline ^[ ... ]
+    // auxiliary record. None of those fields are needed here: consume only the
+    // root header and references (crypto/block/block.tlb, shard_state#9023afe2).
+    auto state = vm::load_cell_slice(std::move(state_root));
+    unsigned seqno, gen_utime;
+    bool has_custom;
+    td::Ref<vm::Cell> queue_info, custom;
+    if (state.fetch_ulong(32) != block::gen::ShardStateUnsplit::cons_tag[0] ||
+        !state.advance(32 + 104) ||  // global_id, ShardIdent
+        !state.fetch_uint_to(32, seqno) || !state.advance(32) ||  // vert_seq_no
+        !state.fetch_uint_to(32, gen_utime) || !state.advance(64 + 32) ||  // gen_lt, min_ref_mc_seqno
+        !state.fetch_ref_to(queue_info) || !state.advance(1) ||  // before_split
+        !state.advance_refs(2) ||  // accounts and auxiliary record: do not load either
+        !state.fetch_bool_to(has_custom) || (has_custom && !state.fetch_ref_to(custom)) ||
+        !state.empty_ext() || seqno != result.seqno || gen_utime != result.gen_utime) {
+      return td::Status::Error("Invalid or mismatched block post-state");
+    }
+    if (result.workchain == ton::masterchainId) {
+      if (custom.is_null()) return td::Status::Error("Missing masterchain state extra");
+      auto extra = vm::load_cell_slice(std::move(custom));
+      block::CurrencyCollection balance;
+      // McStateExtra has another auxiliary record (validators/previous blocks).
+      // Skip its reference and the shard/config roots; global_balance is inline.
+      if (extra.fetch_ulong(16) != block::gen::McStateExtra::cons_tag[0] ||
+          !block::gen::t_ShardHashes.skip(extra) || !extra.advance_ext(256, 2) ||  // config + aux ref
+          !balance.fetch_exact(extra) ||
+          balance.grams.is_null() || !balance.grams->is_valid() || balance.grams->sgn() < 0) {
+        return td::Status::Error("Invalid stored masterchain global balance");
+      }
+      result.global_balance = std::move(balance.grams);
+    }
+    block::gen::OutMsgQueueInfo::Record info;
+    if (!tlb::unpack_cell(std::move(queue_info), info)) {
+      return td::Status::Error("Invalid OutMsgQueueInfo");
+    }
+    // Read only optional metadata, never the out/dispatch dictionary contents.
+    // An absent counter stays NULL even when the legacy queue happens to be empty.
+    if (info.extra.write().fetch_long(1)) {
+      block::gen::OutMsgQueueExtra::Record extra;
+      if (!tlb::csr_unpack(info.extra, extra)) return td::Status::Error("Invalid OutMsgQueueExtra");
+      if (extra.out_queue_size.write().fetch_long(1)) {
+        result.out_msg_queue_size = extra.out_queue_size->prefetch_ulong(48);
+      }
+    }
+    return td::Status::OK();
+  } catch (const vm::VmError& error) {
+    return td::Status::Error(PSLICE() << "Failed to parse stored block metrics: " << error.get_msg());
+  } catch (const vm::VmVirtError& error) {
+    return td::Status::Error(PSLICE() << "Failed to load stored block metrics: " << error.get_msg());
+  }
+}
+
+td::Status ParseQuery::parse_block_fees(const block::gen::BlockExtra::Record& extra, schema::Block& result) {
+  if (extra.account_blocks.is_null() || extra.in_msg_descr.is_null()) {
+    return td::Status::Error("Missing block fee dictionaries");
+  }
+  try {
+    vm::AugmentedDictionary accounts{vm::load_cell_slice_ref(extra.account_blocks), 256,
+                                     block::tlb::aug_ShardAccountBlocks};
+    block::CurrencyCollection transaction_fees;
+    if (!transaction_fees.validate_unpack(accounts.get_root_extra())) {
+      return td::Status::Error("Failed to unpack transaction fees from ShardAccountBlocks");
+    }
+    vm::AugmentedDictionary messages{vm::load_cell_slice_ref(extra.in_msg_descr), 256,
+                                     block::tlb::aug_InMsgDescrDefault};
+    block::gen::ImportFees::Record import_data;
+    if (!tlb::csr_unpack(messages.get_root_extra(), import_data)) {
+      return td::Status::Error("Failed to unpack import fees from InMsgDescr");
+    }
+    auto import_fees = block::tlb::t_Grams.as_integer_skip(import_data.fees_collected.write());
+    if (import_fees.is_null()) {
+      return td::Status::Error("Invalid block import fees");
+    }
+    result.transaction_fees = std::move(transaction_fees.grams);
+    result.import_fees = std::move(import_fees);
+  } catch (const vm::VmError& error) {
+    return td::Status::Error(PSLICE() << "Failed to parse block fees: " << error.get_msg());
+  }
+  return td::Status::OK();
+}
+
+td::Status ParseQuery::parse_block_value_flow(td::Ref<vm::Cell> value_flow, schema::Block& result) {
+  if (value_flow.is_null()) {
+    return td::Status::Error("Missing block ValueFlow");
+  }
+  try {
+    block::ValueFlow flow;
+    if (!flow.unpack(vm::load_cell_slice_ref(value_flow))) {
+      return td::Status::Error("Failed to unpack block ValueFlow");
+    }
+    // Toncoin block rewards are `created`; `minted` is for extra currencies.
+    // The native decoder supplies burned=0 for the legacy ValueFlow constructor.
+    result.created = std::move(flow.created.grams);
+    result.burned = std::move(flow.burned.grams);
+  } catch (const vm::VmError& error) {
+    return td::Status::Error(PSLICE() << "Failed to parse block ValueFlow: " << error.get_msg());
+  }
   return td::Status::OK();
 }
 
@@ -700,11 +827,11 @@ td::Result<std::vector<schema::Transaction>> ParseQuery::parse_transactions(cons
   return res;
 }
 
-td::Result<std::vector<schema::AccountState>> ParseQuery::parse_account_states_new(ton::WorkchainId workchain_id, uint32_t gen_utime, std::map<td::Bits256, AccountStateShort> &account_states) {
+td::Result<std::vector<schema::AccountState>> ParseQuery::parse_account_states_new(ton::WorkchainId workchain_id, uint32_t gen_utime, std::map<td::Bits256, AccountStateShort> &account_states, vm::CellDbReader& reader) {
   std::vector<schema::AccountState> res;
   res.reserve(account_states.size());
   for (auto &[addr, state_short] : account_states) {
-    auto account_cell_r = cell_db_reader_->load_cell(state_short.account_cell_hash.as_slice());
+    auto account_cell_r = reader.load_cell(state_short.account_cell_hash.as_slice());
     if (account_cell_r.is_error()) {
       LOG(ERROR) << "Failed to load account state cell " << state_short.account_cell_hash.to_hex();
       continue;

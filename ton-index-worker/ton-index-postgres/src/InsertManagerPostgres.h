@@ -38,16 +38,19 @@ private:
   bool disable_progress_advance_{false};
   bool kvrocks_skip_current_tables_{false};
   bool pg_no_copy_{false};
+  bool collect_gramstat_{false};
   std::shared_ptr<FailoverBaseline> failover_baseline_;
   std::optional<std::int64_t> ensure_kvrocks_progress_initialized(std::int64_t pg_finalized_seqno);
 public:
   InsertManagerPostgres(Credential credential, KvrocksConfig kvrocks_config = {}, PartitionManagerConfig partition_config = {},
                         bool no_leader = false, bool disable_progress_advance = false,
                         bool kvrocks_skip_current_tables = false, bool pg_no_copy = false,
-                        std::shared_ptr<FailoverBaseline> failover_baseline = nullptr) :
+                        std::shared_ptr<FailoverBaseline> failover_baseline = nullptr,
+                        bool collect_gramstat = false) :
     credential_(credential), kvrocks_config_(std::move(kvrocks_config)), partition_config_(partition_config),
     no_leader_(no_leader), disable_progress_advance_(disable_progress_advance),
     kvrocks_skip_current_tables_(kvrocks_skip_current_tables), pg_no_copy_(pg_no_copy),
+    collect_gramstat_(collect_gramstat),
     failover_baseline_(std::move(failover_baseline)) {}
 
   void start_up() override;
