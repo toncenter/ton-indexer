@@ -989,6 +989,51 @@ func ParseRawAction(raw *models.RawAction) (*models.Action, error) {
 		details.FeeAmount = raw.NFTListingMarketplaceFee
 		details.FeeAddress = raw.NFTListingMarketplaceFeeAddress
 		act.Details = &details
+	case "nft_fixed_sale_create":
+		var details models.ActionDetailsNftFixedSaleCreate
+		details.Depositor = raw.Source
+		details.Seller = raw.DestinationSecondary
+		details.Sale = raw.Destination
+		details.NftItem = raw.AssetSecondary
+		details.NftCollection = raw.Asset
+		details.NftItemIndex = raw.NFTListingNFTItemIndex
+		details.Price = raw.NFTListingFullPrice
+		details.FeeAmount = raw.NFTListingMarketplaceFee
+		details.FeeAddress = raw.NFTListingMarketplaceFeeAddress
+		act.Details = &details
+	case "nft_fixed_sale_update":
+		var details models.ActionDetailsNftFixedSaleListing
+		details.Seller = raw.Source
+		details.Sale = raw.Destination
+		details.NftItem = raw.AssetSecondary
+		details.NftCollection = raw.Asset
+		details.NftItemIndex = raw.NFTListingNFTItemIndex
+		details.Price = raw.NFTListingFullPrice
+		details.FeeAmount = raw.NFTListingMarketplaceFee
+		details.FeeAddress = raw.NFTListingMarketplaceFeeAddress
+		act.Details = &details
+	case "nft_fixed_sale_purchase":
+		var details models.ActionDetailsNftFixedSalePurchase
+		details.Buyer = raw.DestinationSecondary
+		details.Seller = raw.Source
+		details.Recipient = raw.Destination
+		details.Sale = raw.SourceSecondary
+		details.NftItem = raw.AssetSecondary
+		details.NftCollection = raw.Asset
+		details.NftItemIndex = raw.NFTTransferNFTItemIndex
+		details.QueryId = raw.NFTTransferQueryId
+		details.Price = raw.NFTTransferPrice
+		details.FeeAmount = raw.NFTListingMarketplaceFee
+		details.FeeAddress = raw.NFTListingMarketplaceFeeAddress
+		act.Details = &details
+	case "nft_fixed_sale_cancel":
+		var details models.ActionDetailsNftFixedSaleCancel
+		details.Seller = raw.Source
+		details.Sale = raw.Destination
+		details.NftItem = raw.AssetSecondary
+		details.NftCollection = raw.Asset
+		details.NftItemIndex = raw.NFTListingNFTItemIndex
+		act.Details = &details
 	case "nft_update_sale":
 		var details models.ActionDetailsNftUpdateSale
 		details.Source = raw.Source

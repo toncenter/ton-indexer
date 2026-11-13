@@ -59,6 +59,7 @@ var ActionTypeShortcuts = map[string][]string{
 	"v6": {
 		"v5",
 		"nft_offer_create", "nft_offer_cancel", "nft_offer_expire", "nft_offer_signed_cancel", "nft_offer_accept",
+		"nft_fixed_sale_create", "nft_fixed_sale_update", "nft_fixed_sale_purchase", "nft_fixed_sale_cancel",
 	},
 	"latest": {"v6"},
 	"staking": {

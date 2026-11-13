@@ -1,0 +1,108 @@
+# nft-fixed-sale / FixedSale cancel opcode on other sale code
+# trace: Ckhz0dJECrhXnryA4aSMJUlp54qOgGX7z7rgROtU6Ew=
+actions:
+  - type: call_contract
+    anchor: call_contract#474d0003@111081842000011
+    id: qqnUAu0rBHokuiSYzW9q23VNSze2rirL/purmXSs5uE=
+    success: true
+    source: 0:6628B49BDF5DB3767F3FA5AC3A72748521294249A87DEDE9CE7BC85EC70C0A49
+    source_secondary: null
+    destination: 0:58DC74F7BDC06EB07987A954149132E347993FC277BA34EA8683D80CC9B1471E
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: 25000000
+    opcode: 0x474d0003
+    tx_hashes:
+      - Ckhz0dJECrhXnryA4aSMJUlp54qOgGX7z7rgROtU6Ew=
+      - XL5jZ6eMPTKOPb/RJkO+xJcR6VpIYKqBLQHf3u3UR1o=
+    accounts:
+      - 0:58DC74F7BDC06EB07987A954149132E347993FC277BA34EA8683D80CC9B1471E
+      - 0:6628B49BDF5DB3767F3FA5AC3A72748521294249A87DEDE9CE7BC85EC70C0A49
+    start_lt: 111081842000011
+    end_lt: 111081842000012
+    start_utime: 1792449702
+    end_utime: 1792449702
+    mc_seqno_end: 100112473
+  - type: nft_transfer
+    matcher: nft_transfer
+    anchor: nft_transfer@111081842000013
+    id: DDysnMkNO7X9OeXCZ5XIVVI3raBULr+1uPuqS2p1J0I=
+    success: true
+    source: 0:58DC74F7BDC06EB07987A954149132E347993FC277BA34EA8683D80CC9B1471E
+    source_secondary: null
+    destination: 0:6628B49BDF5DB3767F3FA5AC3A72748521294249A87DEDE9CE7BC85EC70C0A49
+    destination_secondary: null
+    asset: 0:427BBE46D00863A82EB807B1FF0473F4C207CE357FF1F7CAECCE6B04C2774354
+    asset_secondary: 0:79893D5C7D0D43016CB0825F38631274F7C2BAB5EA03A0AD84E8C27C4D53AC4B
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: null
+    opcode: null
+    nft_listing_data:
+      marketplace_fee_address: null
+      royalty_address: null
+    nft_transfer_data:
+      custom_payload: null
+      forward_amount: 1000000
+      forward_payload: cellhash:96A296D224F285C67BEE93C30F8A309157F0DAA35DC5B87E410B78630A09CFC7
+      is_purchase: false
+      marketplace: null
+      marketplace_address: null
+      nft_item_index: "45497094679850295309202266537793289171854199695023887390310747770798232064304"
+      payout_amount: null
+      payout_comment: null
+      payout_comment_encoded: null
+      payout_comment_encrypted: null
+      price: null
+      query_id: 1792449700303
+      real_prev_owner: null
+      response_destination: 0:58DC74F7BDC06EB07987A954149132E347993FC277BA34EA8683D80CC9B1471E
+      royalty_amount: null
+    tx_hashes:
+      - NaHqVu+9M9XARXuKdNtcu9JAHwhjmCbDGVREtR+VmQ0=
+      - XL5jZ6eMPTKOPb/RJkO+xJcR6VpIYKqBLQHf3u3UR1o=
+      - aWrvIS84hW+sFx19SZUdejm0sF8KLFJv9iueoGiJf2c=
+      - mIyG8Z4nIQcaw4nagetINvkpmGMW0yhuRZiXy/ShMhI=
+    accounts:
+      - 0:58DC74F7BDC06EB07987A954149132E347993FC277BA34EA8683D80CC9B1471E
+      - 0:6628B49BDF5DB3767F3FA5AC3A72748521294249A87DEDE9CE7BC85EC70C0A49
+      - 0:79893D5C7D0D43016CB0825F38631274F7C2BAB5EA03A0AD84E8C27C4D53AC4B
+    start_lt: 111081842000013
+    end_lt: 111081842000017
+    start_utime: 1792449702
+    end_utime: 1792449702
+    mc_seqno_end: 100112473
+  - type: ton_transfer
+    anchor: ton_transfer@111081842000018
+    id: OLki+41Pbf+AufB5iVvI68u1npJZ0jKxwKigpYkZOJ8=
+    success: true
+    source: 0:58DC74F7BDC06EB07987A954149132E347993FC277BA34EA8683D80CC9B1471E
+    source_secondary: null
+    destination: 0:6628B49BDF5DB3767F3FA5AC3A72748521294249A87DEDE9CE7BC85EC70C0A49
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: 29060823
+    opcode: null
+    ton_transfer_data:
+      content: null
+      encrypted: false
+    tx_hashes:
+      - mIyG8Z4nIQcaw4nagetINvkpmGMW0yhuRZiXy/ShMhI=
+      - mQee3sgllxBxTl3H8WZkIYFS5HT31LPA08SYawpOYXE=
+    accounts:
+      - 0:58DC74F7BDC06EB07987A954149132E347993FC277BA34EA8683D80CC9B1471E
+      - 0:6628B49BDF5DB3767F3FA5AC3A72748521294249A87DEDE9CE7BC85EC70C0A49
+    start_lt: 111081842000018
+    end_lt: 111081842000019
+    start_utime: 1792449702
+    end_utime: 1792449702
+    mc_seqno_end: 100112473

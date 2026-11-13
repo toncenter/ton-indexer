@@ -7,6 +7,8 @@ from indexer.events.blocks.messages import JettonNotify, JettonTransfer, StonfiS
 from indexer.events.blocks.messages.externals import extract_payload_from_wallet_message
 from indexer.events.blocks.messages.nft_offer import NftOfferCancel, NftOfferCancelByBuyer, NftOfferData, \
     parse_nft_offer_state_init
+from indexer.events.blocks.messages.fixed_sale import FixedSaleBuy, FixedSaleCancel, FixedSaleChangePrice, \
+    FixedSaleData
 from indexer.events.interface_repository import ExtraAccountRequest
 
 
@@ -170,6 +172,13 @@ def derive_accounts_from_nft_offer(extra_data: dict):
     except Exception:
         return [], set()
 
+def derive_accounts_from_fixed_sale(extra_data: dict):
+    try:
+        nft = FixedSaleData(Slice.one_from_boc(extra_data['data_boc'])).nft
+        return [], {nft.to_str(is_user_friendly=False).upper()}
+    except Exception:
+        return [], set()
+
 # The payout and balance release distinguish offer acceptance from ordinary NFT and auction transfers.
 def _sends_nft_back(tx: Transaction, nft: str | None) -> bool:
     out = [m for m in tx.messages if m.direction == 'out']
@@ -193,7 +202,16 @@ def extract_extra_accounts_data_requests(tx: Transaction) -> set[ExtraAccountReq
                 requests.add(ExtraAccountRequest(account=msg.destination,
                                                  request_type='data_boc',
                                                  callback=derive_accounts_from_nft_offer))
+            is_sale_call = opcode in (FixedSaleBuy.opcode, FixedSaleChangePrice.opcode, FixedSaleCancel.opcode)
+            if is_sale_call and msg.source is not None and msg.destination is not None:
+                requests.add(ExtraAccountRequest(account=msg.destination,
+                                                 request_type='data_boc',
+                                                 callback=derive_accounts_from_fixed_sale))
             if opcode == NftOwnershipAssigned.opcode and msg.direction == 'in' and _sends_nft_back(tx, msg.source):
+                requests.add(ExtraAccountRequest(account=msg.destination, request_type='data_boc'))
+            # A sale takes the NFT without a reply; its terms are in its data.
+            if (opcode == NftOwnershipAssigned.opcode and msg.direction == 'in' and not tx.aborted
+                    and tx.compute_exit_code == 0 and not any(m.direction == 'out' for m in tx.messages)):
                 requests.add(ExtraAccountRequest(account=msg.destination, request_type='data_boc'))
         except Exception as e:
             pass

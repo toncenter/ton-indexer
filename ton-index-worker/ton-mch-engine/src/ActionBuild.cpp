@@ -1412,7 +1412,7 @@ void fill_sale_update(const Value &d, Action &a) {
   push_account(a, a.asset_secondary);
 }
 
-void fill_nft_offer(const Value &d, Action &a) {
+void fill_nft_escrow(const Value &d, Action &a) {
   a.source = av_addr(dg(d, "source"));
   a.destination = av_addr(dg(d, "destination"));
   a.amount = av_amount(dg(d, "amount"));
@@ -1428,10 +1428,10 @@ void fill_nft_offer(const Value &d, Action &a) {
   a.nft_listing_data = mkdict(std::move(l));
 }
 
-void fill_nft_offer_accept(const Value &d, Action &a) {
+void fill_nft_escrow_purchase(const Value &d, Action &a) {
   a.source = av_addr(dg(d, "source"));
   a.destination = av_addr(dg(d, "destination"));
-  a.source_secondary = av_addr(dg(d, "offer"));
+  a.source_secondary = av_addr(dg(d, "escrow"));
   a.destination_secondary = av_addr(dg(d, "buyer"));
   a.amount = av_amount(dg(d, "amount"));
   a.asset = av_addr(dg(d, "nft_collection"));
@@ -1637,8 +1637,16 @@ bool fill_action(Block *b, Action &a) {
   else if (t == "nft_mint") fill_nft_mint(d, a);
   else if (t == "nft_offer_create" || t == "nft_offer_cancel" || t == "nft_offer_expire" ||
            t == "nft_offer_signed_cancel")
-    fill_nft_offer(d, a);
-  else if (t == "nft_offer_accept") fill_nft_offer_accept(d, a);
+    fill_nft_escrow(d, a);
+  else if (t == "nft_offer_accept") fill_nft_escrow_purchase(d, a);
+  // The NFT's history lists every sale action, also a price change that has no NFT transaction.
+  else if (t == "nft_fixed_sale_create" || t == "nft_fixed_sale_update" || t == "nft_fixed_sale_cancel") {
+    fill_nft_escrow(d, a);
+    push_account(a, a.asset_secondary);
+  } else if (t == "nft_fixed_sale_purchase") {
+    fill_nft_escrow_purchase(d, a);
+    push_account(a, a.asset_secondary);
+  }
   else return false;
   return true;
 }
@@ -1732,6 +1740,8 @@ bool build_action(Block *b, Action &a) {
       b->initiating_event_node->tx != nullptr) {
     accts.push_back(b->initiating_event_node->tx->account);
   }
+  // Anyone can list an NFT for any seller, so the seller is in accounts only through a transaction of their own.
+  if (a.type == "nft_fixed_sale_create") a.destination_secondary = av_addr(dg(b->data, "seller"));
   std::sort(accts.begin(), accts.end());
   accts.erase(std::unique(accts.begin(), accts.end()), accts.end());
   a.accounts = std::move(accts);

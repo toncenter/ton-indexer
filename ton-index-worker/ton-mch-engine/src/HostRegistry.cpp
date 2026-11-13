@@ -41,6 +41,10 @@ const std::map<std::string, HostFnEntry> &host_fns() {
       {"getgems_auction_init", {getgems_auction_init, 2}},
       {"auction_bid_data", {auction_bid_data, 1}},
       {"nft_offer_init", {nft_offer_init, 1}},
+      {"nft_fixed_sale_init", {nft_fixed_sale_init, 1}},
+      {"nft_fixed_sale_fee", {nft_fixed_sale_fee, 2}},
+      {"nft_fixed_sale_new_price", {nft_fixed_sale_new_price, 1}},
+      {"nft_ownership_accepted", {nft_ownership_accepted, 1}},
       // expectedMyAddress string renderer shared by three matchers.
       {"cocoon_expected_address", {cocoon_expected_address, 1}},
   };
@@ -94,6 +98,7 @@ const std::map<std::string, HostPredFn> &host_predicates() {
       {"nft_trade_finish_comment", nft_trade_finish_comment},
       {"auction_bid_candidate", auction_bid_candidate},
       {"auction_outbid_leg", auction_outbid_leg},
+      {"state_init_deploy", state_init_deploy},
   };
   return preds;
 }

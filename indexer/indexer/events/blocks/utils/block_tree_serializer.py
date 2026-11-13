@@ -80,7 +80,6 @@ from indexer.events.blocks.layerzero import (
 )
 from indexer.events.blocks.tgbtc import TgBTCDkgLogBlock, TgBTCMintBlock, TgBTCBurnBlock, TgBTCNewKeyBlock
 from indexer.events.blocks.tgwallet import ChangeWalletKeyBlock
-from indexer.events.blocks.nft_offer import NftOfferBlock
 
 logger = logging.getLogger(__name__)
 
@@ -1447,7 +1446,7 @@ def _fill_change_wallet_key_action(block: ChangeWalletKeyBlock, action: Action):
     }
 
 
-def _fill_nft_offer_action(block: NftOfferBlock, action: Action):
+def _fill_nft_escrow_action(block: Block, action: Action):
     action.source = _addr(block.data['source'])
     action.destination = _addr(block.data['destination'])
     action.amount = _value(block.data['amount'])
@@ -1461,10 +1460,10 @@ def _fill_nft_offer_action(block: NftOfferBlock, action: Action):
         action.nft_listing_data['marketplace_fee_address'] = _addr(block.data['fee_address'])
 
 
-def _fill_nft_offer_accept_action(block: NftOfferBlock, action: Action):
+def _fill_nft_escrow_purchase_action(block: Block, action: Action):
     action.source = _addr(block.data['source'])
     action.destination = _addr(block.data['destination'])
-    action.source_secondary = _addr(block.data['offer'])
+    action.source_secondary = _addr(block.data['escrow'])
     action.destination_secondary = _addr(block.data['buyer'])
     action.amount = _value(block.data['amount'])
     action.asset = _addr(block.data['nft_collection'])
@@ -1666,9 +1665,16 @@ def block_to_action(block: Block, trace_id: str, trace: Trace) -> Action:
         case 'gasless_request':
             _fill_gasless_request_action(block, action)
         case 'nft_offer_create' | 'nft_offer_cancel' | 'nft_offer_expire' | 'nft_offer_signed_cancel':
-            _fill_nft_offer_action(block, action)
+            _fill_nft_escrow_action(block, action)
         case 'nft_offer_accept':
-            _fill_nft_offer_accept_action(block, action)
+            _fill_nft_escrow_purchase_action(block, action)
+        # The NFT's history lists every sale action, also a price change that has no NFT transaction.
+        case 'nft_fixed_sale_create' | 'nft_fixed_sale_update' | 'nft_fixed_sale_cancel':
+            _fill_nft_escrow_action(block, action)
+            action.accounts.append(action.asset_secondary)
+        case 'nft_fixed_sale_purchase':
+            _fill_nft_escrow_purchase_action(block, action)
+            action.accounts.append(action.asset_secondary)
         case 'nft_update_sale':
             _fill_sale_update_action(block, action)
         case _:
@@ -1679,6 +1685,9 @@ def block_to_action(block: Block, trace_id: str, trace: Trace) -> Action:
     if not block.is_ghost_block:
         action.accounts.append(action.destination)
         action.accounts.append(action.destination_secondary)
+    # Anyone can list an NFT for any seller, so the seller is in accounts only through a transaction of their own.
+    if block.btype == 'nft_fixed_sale_create':
+        action.destination_secondary = _addr(block.data['seller'])
 
     # Fill extended tx hashes
     extended_tx_hashes = set(action.tx_hashes)

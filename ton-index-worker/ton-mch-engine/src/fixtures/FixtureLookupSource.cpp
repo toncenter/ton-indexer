@@ -1,5 +1,6 @@
 #include "FixtureLookupSource.h"
 
+#include "host/HostNftFixedSale.h"
 #include "host/HostNftOffer.h"
 #include "parse/PSlice.h"  // load_address_py
 
@@ -55,6 +56,7 @@ Value FixtureLookupSource::fetch(const std::string &kind, const std::vector<Valu
     DedustPool,
     JvaultAssets,
     NftOffer,
+    NftFixedSale,
   };
   static const std::map<std::string, Handler> handlers = {
       {"jetton_wallet", Handler::JettonWallet},
@@ -66,6 +68,7 @@ Value FixtureLookupSource::fetch(const std::string &kind, const std::vector<Valu
       {"dedust_pool", Handler::DedustPool},
       {"jvault_assets", Handler::JvaultAssets},
       {"nft_offer", Handler::NftOffer},
+      {"nft_fixed_sale", Handler::NftFixedSale},
   };
   auto handler = handlers.find(kind);
   if (handler == handlers.end()) {
@@ -231,7 +234,8 @@ Value FixtureLookupSource::fetch(const std::string &kind, const std::vector<Valu
     }
     return make_record(Value::make_asset_jetton(jetton->str));
   }
-    case Handler::NftOffer: {
+    case Handler::NftOffer:
+    case Handler::NftFixedSale: {
     auto it = interfaces_->find(upper_ascii(addr));
     const Value *extra = it == interfaces_->end() ? nullptr : it->second.field("data_boc");
     const Value *boc_str = extra == nullptr ? nullptr : extra->field("data_boc");
@@ -247,7 +251,8 @@ Value FixtureLookupSource::fetch(const std::string &kind, const std::vector<Valu
     if (r_cell.is_error() || r_addr.is_error()) {
       return Value::null();
     }
-    auto r = parse_nft_offer(r_addr.ok().addr, r_cell.move_as_ok());
+    auto r = handler->second == Handler::NftOffer ? parse_nft_offer(r_addr.ok().addr, r_cell.move_as_ok())
+                                                  : parse_nft_fixed_sale(r_addr.ok().addr, r_cell.move_as_ok());
     return r.is_ok() ? r.move_as_ok() : Value::null();
   }
   }

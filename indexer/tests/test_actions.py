@@ -82,6 +82,9 @@ class TestChangeWalletKeyActions(BaseGenericActionTest):
 class TestNftOfferActions(BaseGenericActionTest):
     yaml_file = "nft-offer.yaml"
 
+class TestNftFixedSaleActions(BaseGenericActionTest):
+    yaml_file = "nft-fixed-sale.yaml"
+
 class TestGaslessRequestActions(BaseGenericActionTest):
     yaml_file = "gasless.yaml"
 

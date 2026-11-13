@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import base64
-import hashlib
 
-from pytoniq_core import Address, Cell, Slice, StateInit, begin_cell
+from pytoniq_core import Address, Cell, Slice, begin_cell
+
+from indexer.events.blocks.messages.state_init import is_state_init_address, state_init_data
 
 NFT_OFFER_CODES = [(base64.b64decode('jUjSF20IDx2xXmHCFnnQ9wEHUgOA1TMa55WqvIm7ztw='), 5)]
 
@@ -52,12 +53,8 @@ def is_nft_offer(address: Address, data: Cell) -> bool:
     """Only phase changes after deploy; a crafted initial phase can bypass the buyer's funding."""
     s = data.begin_parse()
     initial = begin_cell().store_ref(s.load_ref()).store_uint(s.load_uint(256), 256).store_uint(0, 8).end_cell()
-    for code_hash, code_depth in NFT_OFFER_CODES:
-        state_init = (bytes([2, 1, 0b00110100]) + code_depth.to_bytes(2, 'big')
-                      + initial.get_depth().to_bytes(2, 'big') + code_hash + initial.hash)
-        if hashlib.sha256(state_init).digest() == address.hash_part:
-            return True
-    return False
+    return any(is_state_init_address(address, code_hash, code_depth, initial)
+               for code_hash, code_depth in NFT_OFFER_CODES)
 
 
 def parse_nft_offer(address: str, data: Cell) -> NftOfferData | None:
@@ -69,11 +66,5 @@ def parse_nft_offer(address: str, data: Cell) -> NftOfferData | None:
 
 
 def parse_nft_offer_state_init(address: str, state_init_boc: str) -> NftOfferData | None:
-    try:
-        state_init = Cell.one_from_boc(state_init_boc)
-        if state_init.hash != Address(address).hash_part:
-            return None
-        data = StateInit.deserialize(state_init.begin_parse()).data
-    except Exception:
-        return None
-    return parse_nft_offer(address, data)
+    data = state_init_data(address, state_init_boc)
+    return parse_nft_offer(address, data) if data is not None else None

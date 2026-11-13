@@ -86,6 +86,7 @@ DEFAULT_SPEC_PATHS = [
     "specs/coffee_staking.mch",
     "specs/cocoon.mch",
     "specs/nft_offer.mch",
+    "specs/nft_fixed_sale.mch",
     "specs/tgwallet.mch",  # last: claims only a change-key call nothing else wanted
 ]
 

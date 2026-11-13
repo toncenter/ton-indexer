@@ -133,7 +133,7 @@ matcher nft_offer_accept {
         source:          offer.seller
         destination:     offer.recipient
         buyer:           offer.buyer
-        offer:           account(accept.data.new_owner)
+        escrow:          account(accept.data.new_owner)
         amount:          amount(payout.msg.value)
         nft_address:     offer.nft
         nft_collection:  account(accept.data.nft.collection.address)
