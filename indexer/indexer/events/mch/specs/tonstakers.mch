@@ -33,6 +33,7 @@ opcode TONStakersMintJettons         = 0x1674b0a0
 opcode TONStakersNftBurn             = 0xf127fe4e
 opcode TONStakersNftBurnNotification = 0xed58b0b2
 opcode TONStakersDistributedAsset    = 0xdb3b8abd
+opcode NftOwnershipAssigned          = 0x05138d91
 
 # ---------------------------------------------------------------------------
 # tonstakers_delayed_withdrawal — legacy TONStakersDelayedWithdrawalMatcher.
@@ -128,12 +129,10 @@ matcher tonstakers_deposit {
 # withdraw request, which forks into an immediate pool withdrawal or a delayed
 # withdrawal that mints a request NFT.
 #
-# The produces switch follows an XOR of two distinct concrete heads. It
-# dispatches the produced btype according to the bound arm:
-# tonstakers_withdraw (immediate) vs tonstakers_withdraw_request (delayed). Both
-# arms map their fields declaratively. The delayed arm peeks first for the
-# already-produced nft_mint block, then for the raw init call fallback. Both
-# candidates remain outside the consumed set.
+# The delayed arm consumes the payout NFT (nft_mint, or the raw init call) and
+# the ownership_assigned the item sends with IGNORE_ERRORS, so it can be missing
+# (liquid-staking-contract@1f4e9bad contracts/payout_nft/nft-item.func:193).
+# unwind_nft_mints keeps the nft_mint row.
 # ---------------------------------------------------------------------------
 matcher tonstakers_withdraw {
     produces tonstakers_withdraw | tonstakers_withdraw_request
@@ -144,14 +143,14 @@ matcher tonstakers_withdraw {
       -> op JettonBurnNotification
         -> op TONStakersWithdrawRequest @request
           -> ( op TONStakersPoolWithdrawal @immediate_withdrawal
-             ^ op TONStakersMintNFT @delayed_withdrawal
-                 -> { maybe peek btype nft_mint @minted_block
-                    ; maybe peek op TONStakersInitNFT @minted_call } )
+             ^ op TONStakersMintNFT
+                 -> maybe ( btype nft_mint @minted -> maybe op NftOwnershipAssigned
+                          ^ op TONStakersInitNFT @minted -> maybe op NftOwnershipAssigned ) )
 
     parse burn as JettonBurn
-    let minted = (account(minted_block.msg.destination) ?? addr_none()) if minted_block != null else ((account(minted_call.msg.destination) ?? addr_none()) if minted_call != null else null)
+    let minted_nft = (account(minted.msg.destination) ?? addr_none()) if minted != null else null
     failed when burn.failed
-    failed when immediate_withdrawal == null and minted == null
+    failed when immediate_withdrawal == null and minted_nft == null
     produces switch {
         when immediate_withdrawal != null => tonstakers_withdraw out {
             stake_holder: account(burn.msg.source)
@@ -166,7 +165,7 @@ matcher tonstakers_withdraw {
             tsTON_wallet: account(burn.msg.destination)
             pool:         account(request.msg.destination)
             tokens_burnt: amount(burn.body.amount)
-            minted_nft:   minted
+            minted_nft:   minted_nft
             asset:        asset(request.msg.source)
         }
     }

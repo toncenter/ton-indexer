@@ -202,6 +202,16 @@ def init_from_external(node: EventNode) -> Block:
 
     return init_block(node)
 
+# Composite types that consume an nft_mint block yet keep it as its own action.
+nft_mint_unwind_parents = {'tonstakers_withdraw_request'}
+
+
+async def unwind_nft_mints(blocks: list[Block]) -> list[Block]:
+    for block in list(blocks):
+        if block.btype in nft_mint_unwind_parents:
+            blocks.extend(c for c in block.children_blocks if c.btype == 'nft_mint')
+    return blocks
+
 async def unwind_deployments(blocks: list[Block]) -> list[Block]:
     visited = set()
     for block in blocks:
@@ -337,6 +347,7 @@ matchers = [
 trace_post_processors = [
     post_process_dedust_liquidity,
     post_process_dedust_v2_liquidity,
+    unwind_nft_mints,
     unwind_deployments,
     unwind_gasless_requests
 ]

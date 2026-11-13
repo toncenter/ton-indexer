@@ -483,12 +483,26 @@ void unwind_markers(std::vector<Block *> &blocks, const char *btype) {
   }
 }
 
+// Composite btypes that consume an nft_mint block yet keep it as its own row:
+// their nft_mint children are promoted to the spine.
+void unwind_nft_mints(std::vector<Block *> &spine) {
+  static const std::set<std::string> parents{mch::btype::kTonstakersWithdrawRequest};
+  const std::size_t n = spine.size();
+  for (std::size_t i = 0; i < n; i++) {
+    if (parents.count(spine[i]->btype) == 0) continue;
+    for (Block *c : spine[i]->children_blocks) {
+      if (c->btype == mch::btype::kNftMint) spine.push_back(c);
+    }
+  }
+}
+
 // Order is load-bearing: V1 merge before V2 pairing, markers unwound last.
 void run_post_processors(std::vector<Block *> &spine, BlockArena &arena,
                          std::set<Block *> &removed) {
   post_process_dedust_liquidity(spine, removed);
   post_process_dedust_v2_liquidity(spine, removed);
   post_process_stonfi_v2_liquidity(spine, arena, removed);
+  unwind_nft_mints(spine);
   unwind_markers(spine, mch::btype::kContractDeploy);
   unwind_markers(spine, mch::btype::kGaslessRequest);
 }
