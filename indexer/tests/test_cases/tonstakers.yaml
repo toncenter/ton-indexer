@@ -125,13 +125,6 @@ cases:
             address: 0:7ABD6C4CD7E44D1E3D293C1F8324F4AF610F69F62966E009662D3442484D3025
             index: 49
             collection: 0:0BA5C4C5C3A4896EB494116FBA4CDB83CE84ED3266FFA8C2859960F9D778669E
-      - type: nft_transfer
-        values:
-          data:
-            new_owner: 0:86530F927FE5C3C25FA6C117332FDC2C626F98DCE1E165FFE73014809FD43FCC
-            forward_payload: te6cckEBAQEAAgAAAEysuc0=
-            prev_owner: null
-            is_purchase: false
     expected-actions:
       - type: nft_mint
         values:
@@ -150,8 +143,11 @@ cases:
             - Y1AisfkNC94JFyH0Wgp7+IeFdZpuI/NmXDobacmzSYw=
             - GO+NI0EjOuhj1z4YzHK+VDAAOJsLm710DvyRRRMXhoY=
             - BZ813BpSIbji0ENW40+a24tcfCt3Id6mVg12JnR0jCk=
+            - 9oGSzvp1o5dhSXD2IiVA60fTCXKE7vgxFnYvJQoVGEs=
+            - RXwDHifCEHqiY0cswOOgE6VlR/4DmoS/E9sb6QoYkaA=
           accounts:
             - 0:BDF3FA8098D129B54B4F73B5BAC5D1E1FD91EB054169C3916DFC8CCD536D1000
+            - 0:7ABD6C4CD7E44D1E3D293C1F8324F4AF610F69F62966E009662D3442484D3025
             - 0:0BA5C4C5C3A4896EB494116FBA4CDB83CE84ED3266FFA8C2859960F9D778669E
             - 0:A45B17F28409229B78360E3290420F13E4FE20F90D7E2BF8C4AC6703259E22FA
             - 0:86530F927FE5C3C25FA6C117332FDC2C626F98DCE1E165FFE73014809FD43FCC
@@ -165,20 +161,31 @@ cases:
           staking_data:
             provider: liquid_staking
             ts_nft: 0:7ABD6C4CD7E44D1E3D293C1F8324F4AF610F69F62966E009662D3442484D3025
-      - type: nft_transfer
+  "TS Withdrawal request (raw NFT init)":
+    trace-id: AW6qvdOLx4SsHA3KvruPHzeLufrX7Em0ToWUbGyD-IY=
+    expected-actions:
+      - type: stake_withdrawal_request
         values:
-          destination: 0:86530F927FE5C3C25FA6C117332FDC2C626F98DCE1E165FFE73014809FD43FCC
-          asset_secondary: 0:7ABD6C4CD7E44D1E3D293C1F8324F4AF610F69F62966E009662D3442484D3025
-          asset: 0:0BA5C4C5C3A4896EB494116FBA4CDB83CE84ED3266FFA8C2859960F9D778669E
-          nft_transfer_data:
-            query_id: 6083770387559464359
-            is_purchase: false
-            price: null
-            nft_item_index: 49.0
-            forward_amount: null
-            custom_payload: null
-            forward_payload: te6cckEBAQEAAgAAAEysuc0=
-            response_destination: null
+          tx_hashes:
+            - AW6qvdOLx4SsHA3KvruPHzeLufrX7Em0ToWUbGyD+IY=
+            - R0Ke5DjzvtCqfMbWbaFkzFdY2oXnjZsWKT/P71Yv27o=
+            - RSLo2D0DrTKRaYjTo2KtgWF2g1S/IgP6Kl+AvMlveR4=
+            - RyIHhyYm5nGZc9DLxiovZB2Ryy28RTwMNsCz3FqSqT0=
+            - TsGRYhBefgKKZ5+by2fqrKFhJON1gIy8XNP9S8mES9U=
+            - V00T2aDJyhrnie+5PjYaOpq71fD+6P2zKnGzWe1xMIE=
+            - lIkqSn/3HPsXnfvzcaRPiBhiSkrR9XA1J9e4JdmRQcY=
+          accounts:
+            - 0:3BF4FDE700BDEBA0D5D4D2C5579296354C74C265989A2E97B84BD218A6FBEA9B
+            - 0:7C2E3E710D84F1877F9AA2BFDEBD9C68232C5F2CF3ABCD1DD97AB47C09D4DFEB
+            - 0:993E931A27AC73B868C887D00590F1F5D81F607ADFBFD8C620C8D06484828772
+            - 0:A45B17F28409229B78360E3290420F13E4FE20F90D7E2BF8C4AC6703259E22FA
+            - 0:BDF3FA8098D129B54B4F73B5BAC5D1E1FD91EB054169C3916DFC8CCD536D1000
+            - 0:BEF923A5CB77C5BF9EFCD030EBE728F4EFB0877D4B5E4D4AA78EA34E0F891719
+          success: true
+          source: 0:993E931A27AC73B868C887D00590F1F5D81F607ADFBFD8C620C8D06484828772
+          staking_data:
+            provider: liquid_staking
+            ts_nft: 0:3BF4FDE700BDEBA0D5D4D2C5579296354C74C265989A2E97B84BD218A6FBEA9B
   "TS Withdrawal via nft burn":
     trace-id: a0rjbO1XsPBt-2LXRQZT4piiD8x_OrfG82dU0in-WUc=
     expected-blocks:

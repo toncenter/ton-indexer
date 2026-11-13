@@ -1224,6 +1224,12 @@
    "group": "nft-fixed-sale",
    "name": "FixedSale cancel opcode on other sale code",
    "slug": "nft-fixed-sale-cancel-other-code"
+  },
+  "AW6qvdOLx4SsHA3KvruPHzeLufrX7Em0ToWUbGyD-IY=": {
+   "group": "tonstakers",
+   "name": "TS Withdrawal request (raw NFT init)",
+   "slug": "ts-withdrawal-request-raw-init",
+   "note": "payout NFT item not in interfaces, so no nft_mint block forms"
   }
  }
 }

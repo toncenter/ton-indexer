@@ -25,9 +25,10 @@ from indexer.events.blocks.messages.staking import (
     TONStakersWithdrawRequest, TONStakersPoolWithdrawal, TONStakersDistributedAsset, TONStakersNftBurnNotification,
     TONStakersNftBurn, NominatorPoolProcessWithdrawRequests,
 )
+from indexer.events.blocks.messages.nft import NftOwnershipAssigned
 from indexer.events.blocks.nft import NftMintBlock
 from indexer.events.blocks.utils import AccountId, Amount
-from indexer.events.blocks.utils.block_utils import find_call_contract, get_labeled
+from indexer.events.blocks.utils.block_utils import get_labeled
 from indexer.events.blocks.utils.ton_utils import Asset
 from indexer.events.blocks.jettons import JettonTransferBlock
 from indexer.events.blocks.messages.coffee import (
@@ -179,19 +180,11 @@ def build_tonstakers_withdraw_core(
     block: Block,
     request: Block | None,
     immediate_withdrawal: Block | None,
-    delayed_withdrawal: Block | None,
+    minted: Block | None,
 ) -> Block:
-    """Shared build core for tonstakers_withdraw. Produces a
-    TONStakersWithdrawBlock (immediate withdrawal) or a
-    TONStakersWithdrawRequestBlock (delayed withdrawal via minted NFT) — the
-    produces-union of specs/tonstakers.mch. Does NOT merge consumed blocks.
-
-    The delayed branch reads the NftMint off `delayed_withdrawal.next_blocks`
-    (it is produced by NftMintBlockMatcher, which runs first) rather than as a
-    consumed pattern node: the legacy matcher leaves that NftMint as its own
-    sibling block (a separate nft_mint action), so capturing it here would
-    consume it and diverge from the legacy consumed set.
-    """
+    """Builds the immediate withdrawal or the delayed request; the caller merges the blocks.
+    `minted` is the payout NFT's nft_mint block, or its raw init call when no nft_mint block formed;
+    unwind_nft_mints emits that nft_mint again as its own action."""
     msg = block.get_message()
 
     burn_request_data = JettonBurn(block.get_body())
@@ -212,15 +205,9 @@ def build_tonstakers_withdraw_core(
             )
         )
     else:
-        # btype, not isinstance(NftMintBlock): specs/nft_mint.mch is declarative,
-        # so under the mch engines the minted NFT is a generic Block carrying
-        # that btype. NftMintBlock.btype is 'nft_mint', so legacy is unchanged.
-        nft_mint_block = next((b for b in delayed_withdrawal.next_blocks if b.btype == 'nft_mint'), None)
-        if nft_mint_block is None:
-            nft_mint_block = find_call_contract(delayed_withdrawal.next_blocks, TONStakersInitNFT.opcode)
         minted_nft = None
-        if nft_mint_block is not None:
-            minted_nft = AccountId(nft_mint_block.event_nodes[0].message.destination)
+        if minted is not None:
+            minted_nft = AccountId(minted.event_nodes[0].message.destination)
         else:
             failed = True
         new_block = TONStakersWithdrawRequestBlock(
@@ -247,7 +234,19 @@ class TONStakersWithdrawMatcher(BlockMatcher):
                     opcode=TONStakersWithdrawRequest.opcode,
                     child_matcher=OrMatcher([
                         labeled('immediate_withdrawal', ContractMatcher(opcode=TONStakersPoolWithdrawal.opcode)),
-                        labeled('delayed_withdrawal', ContractMatcher(opcode=TONStakersMintNFT.opcode))
+                        ContractMatcher(
+                            opcode=TONStakersMintNFT.opcode,
+                            child_matcher=OrMatcher([
+                                labeled('minted', BlockTypeMatcher(
+                                    block_type='nft_mint',
+                                    child_matcher=ContractMatcher(opcode=NftOwnershipAssigned.opcode, optional=True),
+                                )),
+                                labeled('minted', ContractMatcher(
+                                    opcode=TONStakersInitNFT.opcode,
+                                    child_matcher=ContractMatcher(opcode=NftOwnershipAssigned.opcode, optional=True),
+                                )),
+                            ], optional=True),
+                        )
                     ])
                 ))
             )
@@ -260,11 +259,11 @@ class TONStakersWithdrawMatcher(BlockMatcher):
 
     async def build_block(self, block: Block, other_blocks: list[Block]) -> list[Block]:
         immediate_withdrawal = get_labeled('immediate_withdrawal', other_blocks, CallContractBlock)
-        delayed_withdrawal = get_labeled('delayed_withdrawal', other_blocks, CallContractBlock)
+        minted = get_labeled('minted', other_blocks)
         request = get_labeled('request', other_blocks, CallContractBlock)
 
         new_block = build_tonstakers_withdraw_core(
-            block, request, immediate_withdrawal, delayed_withdrawal
+            block, request, immediate_withdrawal, minted
         )
         new_block.merge_blocks([block] + other_blocks)
         return [new_block]

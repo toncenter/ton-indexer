@@ -56,53 +56,6 @@ actions:
     start_utime: 1744291551
     end_utime: 1744291559
     mc_seqno_end: 46694569
-  - type: nft_transfer
-    matcher: telegram_nft_assigned
-    anchor: nft_transfer@55917648000002
-    id: egRUJ7uxw1bokVquNGmks0K4Fc/LpUdfnQFXI7kceII=
-    success: true
-    source: null
-    source_secondary: null
-    destination: 0:86530F927FE5C3C25FA6C117332FDC2C626F98DCE1E165FFE73014809FD43FCC
-    destination_secondary: null
-    asset: 0:0BA5C4C5C3A4896EB494116FBA4CDB83CE84ED3266FFA8C2859960F9D778669E
-    asset_secondary: 0:7ABD6C4CD7E44D1E3D293C1F8324F4AF610F69F62966E009662D3442484D3025
-    asset2: null
-    asset2_secondary: null
-    amount: null
-    value: null
-    opcode: null
-    nft_listing_data:
-      marketplace_fee_address: null
-      royalty_address: null
-    nft_transfer_data:
-      custom_payload: null
-      forward_amount: null
-      forward_payload: cellhash:96A296D224F285C67BEE93C30F8A309157F0DAA35DC5B87E410B78630A09CFC7
-      is_purchase: false
-      marketplace: null
-      marketplace_address: null
-      nft_item_index: 49
-      payout_amount: null
-      payout_comment: null
-      payout_comment_encoded: null
-      payout_comment_encrypted: null
-      price: null
-      query_id: 6083770387559464359
-      real_prev_owner: null
-      response_destination: null
-      royalty_amount: null
-    tx_hashes:
-      - 9oGSzvp1o5dhSXD2IiVA60fTCXKE7vgxFnYvJQoVGEs=
-      - RXwDHifCEHqiY0cswOOgE6VlR/4DmoS/E9sb6QoYkaA=
-    accounts:
-      - 0:7ABD6C4CD7E44D1E3D293C1F8324F4AF610F69F62966E009662D3442484D3025
-      - 0:86530F927FE5C3C25FA6C117332FDC2C626F98DCE1E165FFE73014809FD43FCC
-    start_lt: 55917648000002
-    end_lt: 55917652000001
-    start_utime: 1744291559
-    end_utime: 1744291567
-    mc_seqno_end: 46694571
   - type: stake_withdrawal_request
     matcher: tonstakers_withdraw
     anchor: tonstakers_withdraw_request@55917636000002
@@ -123,19 +76,22 @@ actions:
       provider: liquid_staking
       ts_nft: 0:7ABD6C4CD7E44D1E3D293C1F8324F4AF610F69F62966E009662D3442484D3025
     tx_hashes:
+      - 9oGSzvp1o5dhSXD2IiVA60fTCXKE7vgxFnYvJQoVGEs=
       - BZ813BpSIbji0ENW40+a24tcfCt3Id6mVg12JnR0jCk=
       - DyQJCORFmmOHuVWR/KyXUxIyUfWlehqYm+CNPn9doYY=
       - GO+NI0EjOuhj1z4YzHK+VDAAOJsLm710DvyRRRMXhoY=
+      - RXwDHifCEHqiY0cswOOgE6VlR/4DmoS/E9sb6QoYkaA=
       - Y1AisfkNC94JFyH0Wgp7+IeFdZpuI/NmXDobacmzSYw=
       - y8HAvsj8wJ/GaxA1/ejlQHv7SDeOay9VaSCHtSCaVMc=
     accounts:
       - 0:0BA5C4C5C3A4896EB494116FBA4CDB83CE84ED3266FFA8C2859960F9D778669E
       - 0:518C1B9462A4073EAD26B9308BEF3350ABBB6D21666E17ECC1D4BB5656C2227A
+      - 0:7ABD6C4CD7E44D1E3D293C1F8324F4AF610F69F62966E009662D3442484D3025
       - 0:86530F927FE5C3C25FA6C117332FDC2C626F98DCE1E165FFE73014809FD43FCC
       - 0:A45B17F28409229B78360E3290420F13E4FE20F90D7E2BF8C4AC6703259E22FA
       - 0:BDF3FA8098D129B54B4F73B5BAC5D1E1FD91EB054169C3916DFC8CCD536D1000
     start_lt: 55917636000002
-    end_lt: 55917646000001
+    end_lt: 55917652000001
     start_utime: 1744291526
-    end_utime: 1744291551
-    mc_seqno_end: 46694565
+    end_utime: 1744291567
+    mc_seqno_end: 46694571
