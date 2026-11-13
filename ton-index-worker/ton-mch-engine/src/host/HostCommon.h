@@ -4,7 +4,9 @@
 #include "Value.h"
 
 #include "td/utils/Status.h"
+#include "td/utils/bits.h"
 #include "vm/cells/Cell.h"
+#include "vm/cellslice.h"
 
 #include <cstdint>
 #include <optional>
@@ -52,5 +54,18 @@ Value data_field(const Block *b, const char *name);
 
 // Equal iff same addr_none state and canonical "wc:HEX" string.
 bool same_account(const Value &a, const Value &b);
+
+// An ordinary cell opened for reading; exotic cells are errors.
+td::Result<vm::CellSlice> ordinary_cell_slice(const td::Ref<vm::Cell> &cell);
+
+// A standard address as an Account value; addr_none is an error.
+td::Result<Value> load_std_account(vm::CellSlice &cs);
+
+// The address is the hash of a StateInit with only code and data, so it proves both.
+bool is_state_init_address(const td::Bits256 &address, td::Slice code_hash_b64, int code_depth,
+                           const td::Ref<vm::Cell> &data);
+
+// The StateInit data of a message whose StateInit hash is its destination address.
+td::Result<td::Ref<vm::Cell>> deploy_data(const Message *msg, td::Bits256 &address);
 
 }  // namespace mch

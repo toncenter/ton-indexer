@@ -1,0 +1,65 @@
+# nft-fixed-sale / FixedSale update
+# trace: KUNQqR9mAR18eCM27NSdidXamPylrpP_I29x_VXUMiU=
+actions:
+  - type: call_contract
+    anchor: call_contract#474d0002@109440691000002
+    id: F9LQITCADkPwTX4yyBQsyt+C2B4dQHkXufwfcvsFs50=
+    success: true
+    source: 0:4C8FC9B86FF27F4B9423F4353DDA56C3F48D8979E815FE11FD3F486DEDDA503B
+    source_secondary: null
+    destination: 0:24CF038A8E1655516F68CBE71509715615190225077FCA7BD588F1699475B6C2
+    destination_secondary: null
+    asset: null
+    asset_secondary: null
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: 3000000
+    opcode: 0x474d0002
+    tx_hashes:
+      - KUNQqR9mAR18eCM27NSdidXamPylrpP/I29x/VXUMiU=
+      - Y7N2AW6wy9R7E7MuKTDOtawZdRVMnE/v5b9IGVzpmdA=
+    accounts:
+      - 0:24CF038A8E1655516F68CBE71509715615190225077FCA7BD588F1699475B6C2
+      - 0:4C8FC9B86FF27F4B9423F4353DDA56C3F48D8979E815FE11FD3F486DEDDA503B
+    start_lt: 109440691000002
+    end_lt: 109440691000003
+    start_utime: 1794560625
+    end_utime: 1794560625
+    mc_seqno_end: 97650681
+    parent_action_id: NwZOP/dc8lu0opTmjmag+6a+sUC+RI2MDRqNk8WM5dk=
+    ancestor_type:
+      - nft_fixed_sale_update
+  - type: nft_fixed_sale_update
+    matcher: nft_fixed_sale_update
+    anchor: nft_fixed_sale_update@109440691000002
+    id: NwZOP/dc8lu0opTmjmag+6a+sUC+RI2MDRqNk8WM5dk=
+    success: true
+    source: 0:4C8FC9B86FF27F4B9423F4353DDA56C3F48D8979E815FE11FD3F486DEDDA503B
+    source_secondary: null
+    destination: 0:24CF038A8E1655516F68CBE71509715615190225077FCA7BD588F1699475B6C2
+    destination_secondary: null
+    asset: 0:4377B86770DF7BA71DB0245D204B3FCEF4A5CD28BA2C65FF2F852378CD4D077C
+    asset_secondary: 0:00AEEB141F57783A155F64AE058FB46C4F41E7C3C9C57FE9D53BE4DA9BEA2548
+    asset2: null
+    asset2_secondary: null
+    amount: null
+    value: null
+    opcode: null
+    nft_listing_data:
+      full_price: 150000000
+      marketplace_fee: 3000000
+      marketplace_fee_address: 0:808200C6F708EF746BDC87B1CBFE6F84642F2CD4CA1251CC55A64EF8ACA7EE18
+      nft_item_index: 2
+    tx_hashes:
+      - KUNQqR9mAR18eCM27NSdidXamPylrpP/I29x/VXUMiU=
+      - Y7N2AW6wy9R7E7MuKTDOtawZdRVMnE/v5b9IGVzpmdA=
+    accounts:
+      - 0:00AEEB141F57783A155F64AE058FB46C4F41E7C3C9C57FE9D53BE4DA9BEA2548
+      - 0:24CF038A8E1655516F68CBE71509715615190225077FCA7BD588F1699475B6C2
+      - 0:4C8FC9B86FF27F4B9423F4353DDA56C3F48D8979E815FE11FD3F486DEDDA503B
+    start_lt: 109440691000002
+    end_lt: 109440691000003
+    start_utime: 1794560625
+    end_utime: 1794560625
+    mc_seqno_end: 97650681

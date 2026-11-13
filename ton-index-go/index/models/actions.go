@@ -602,6 +602,51 @@ type ActionDetailsNftOfferAccept struct {
 	FeeAddress    *AccountAddress `json:"fee_address"`
 }
 
+type ActionDetailsNftFixedSaleCreate struct {
+	Depositor     *AccountAddress `json:"depositor"`
+	Seller        *AccountAddress `json:"seller"`
+	Sale          *AccountAddress `json:"sale"`
+	NftItem       *AccountAddress `json:"nft_item"`
+	NftCollection *AccountAddress `json:"nft_collection"`
+	NftItemIndex  *string         `json:"nft_item_index"`
+	Price         *string         `json:"price"`
+	FeeAmount     *string         `json:"fee_amount"`
+	FeeAddress    *AccountAddress `json:"fee_address"`
+}
+
+type ActionDetailsNftFixedSaleListing struct {
+	Seller        *AccountAddress `json:"seller"`
+	Sale          *AccountAddress `json:"sale"`
+	NftItem       *AccountAddress `json:"nft_item"`
+	NftCollection *AccountAddress `json:"nft_collection"`
+	NftItemIndex  *string         `json:"nft_item_index"`
+	Price         *string         `json:"price"`
+	FeeAmount     *string         `json:"fee_amount"`
+	FeeAddress    *AccountAddress `json:"fee_address"`
+}
+
+type ActionDetailsNftFixedSalePurchase struct {
+	Buyer         *AccountAddress `json:"buyer"`
+	Seller        *AccountAddress `json:"seller"`
+	Recipient     *AccountAddress `json:"recipient"`
+	Sale          *AccountAddress `json:"sale"`
+	NftItem       *AccountAddress `json:"nft_item"`
+	NftCollection *AccountAddress `json:"nft_collection"`
+	NftItemIndex  *string         `json:"nft_item_index"`
+	QueryId       *string         `json:"query_id"`
+	Price         *string         `json:"price"`
+	FeeAmount     *string         `json:"fee_amount"`
+	FeeAddress    *AccountAddress `json:"fee_address"`
+}
+
+type ActionDetailsNftFixedSaleCancel struct {
+	Seller        *AccountAddress `json:"seller"`
+	Sale          *AccountAddress `json:"sale"`
+	NftItem       *AccountAddress `json:"nft_item"`
+	NftCollection *AccountAddress `json:"nft_collection"`
+	NftItemIndex  *string         `json:"nft_item_index"`
+}
+
 type ActionDetailsNftPutOnAuction struct {
 	NftCollection         *AccountAddress `json:"nft_collection"`
 	NftItem               *AccountAddress `json:"nft_item"`

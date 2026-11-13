@@ -27,6 +27,7 @@ namespace {
 
 constexpr std::uint32_t kTeleitemBidInfoOpcode = 0x38127DE1;
 constexpr std::uint32_t kTelemintOpcode = 0x299a3e15;
+constexpr std::uint32_t kNftOwnershipAssigned = 0x05138D91;
 
 // Raw-address Str -> normalized Account; anything else (null, non-address)
 // becomes addr_none.
@@ -617,6 +618,26 @@ bool single_contract_deploy(const Block *b) {
     deployed.insert(tx->account);
   }
   return deployed.size() == 1;
+}
+
+// The new owner took the NFT: its transaction on the ownership notice succeeded and sent nothing.
+EvalResult nft_ownership_accepted(BuildEnv &env, const std::vector<Value> &args) {
+  (void)env;
+  const Block *b = as_block(args[0]);
+  if (b == nullptr) {
+    return rt_ok(Value::make_bool(false));
+  }
+  Value new_owner = data_field(b, "new_owner");
+  for (const EventNode *n : b->event_nodes) {
+    if (n->opcode() != kNftOwnershipAssigned || n->msg == nullptr ||
+        !same_account(account_from_opt(n->msg->destination), new_owner)) {
+      continue;
+    }
+    const Transaction *tx = n->tx;
+    return rt_ok(Value::make_bool(tx != nullptr && n->children.empty() && !tx->aborted &&
+                                  tx->compute_exit_code == 0));
+  }
+  return rt_ok(Value::make_bool(false));
 }
 
 }  // namespace mch

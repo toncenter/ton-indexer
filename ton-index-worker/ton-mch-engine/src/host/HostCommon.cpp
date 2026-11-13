@@ -5,7 +5,12 @@
 #include "TraceLoader.h"
 #include "btypes_gen.h"
 
+#include "parse/PSlice.h"
+
+#include "block/block.h"
+
 #include "td/utils/base64.h"
+#include "td/utils/crypto.h"
 #include "vm/boc.h"
 
 namespace mch {
@@ -91,6 +96,56 @@ Value data_field(const Block *b, const char *name) {
 bool same_account(const Value &a, const Value &b) {
   return a.t == VType::Account && b.t == VType::Account && a.addr_none == b.addr_none &&
          a.str == b.str;
+}
+
+td::Result<vm::CellSlice> ordinary_cell_slice(const td::Ref<vm::Cell> &cell) {
+  if (cell.is_null()) {
+    return td::Status::Error("no cell");
+  }
+  bool special = false;
+  vm::CellSlice cs = vm::load_cell_slice_special(cell, special);
+  if (special) {
+    return td::Status::Error("exotic cell");
+  }
+  return cs;
+}
+
+td::Result<Value> load_std_account(vm::CellSlice &cs) {
+  TRY_RESULT(v, load_address_py(cs));
+  if (v.t != VType::Account || v.addr_none) {
+    return td::Status::Error("not a std address");
+  }
+  return v;
+}
+
+bool is_state_init_address(const td::Bits256 &address, td::Slice code_hash_b64, int code_depth,
+                           const td::Ref<vm::Cell> &data) {
+  auto code_hash = td::base64_decode(code_hash_b64);
+  if (code_hash.is_error()) {
+    return false;
+  }
+  int data_depth = data->get_depth();
+  std::string repr = {2, 1, 0b00110100, static_cast<char>(code_depth >> 8), static_cast<char>(code_depth & 0xff),
+                      static_cast<char>(data_depth >> 8), static_cast<char>(data_depth & 0xff)};
+  repr += code_hash.move_as_ok();
+  repr += data->get_hash().as_slice().str();
+  td::Bits256 state_init_hash;
+  td::sha256(repr, state_init_hash.as_slice());
+  return state_init_hash == address;
+}
+
+td::Result<td::Ref<vm::Cell>> deploy_data(const Message *msg, td::Bits256 &address) {
+  if (msg == nullptr || !msg->init_state || !msg->destination) {
+    return td::Status::Error("no StateInit");
+  }
+  TRY_RESULT(dest, block::StdAddress::parse(td::Slice(*msg->destination)));
+  TRY_RESULT(root, cell_from_pystr(msg->init_state->body));
+  if (td::Bits256(root->get_hash().bits()) != dest.addr) {
+    return td::Status::Error("StateInit hash is not the destination");
+  }
+  TRY_RESULT(cs, open_ref_cell(root));
+  address = dest.addr;
+  return state_init_data_cell(cs);
 }
 
 }  // namespace mch

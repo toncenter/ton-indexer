@@ -3,17 +3,11 @@
 #include "host/HostCommon.h"
 #include "host/HostImpls.h"
 
-#include "BlockTree.h"
 #include "parse/PSlice.h"
 
-#include "block/block.h"
-
-#include "td/utils/base64.h"
-#include "td/utils/crypto.h"
 #include "vm/cells/CellBuilder.h"
 #include "vm/cells/CellSlice.h"
 
-#include <string>
 #include <utility>
 
 namespace mch {
@@ -34,60 +28,34 @@ bool is_nft_offer(const td::Bits256 &address, const vm::CellSlice &storage) {
   }
   auto initial = cb.finalize();
   for (const auto &[hash_b64, depth] : kNftOfferCodes) {
-    std::string repr = {2, 1, 0b00110100, static_cast<char>(depth >> 8), static_cast<char>(depth & 0xff),
-                        static_cast<char>(initial->get_depth() >> 8), static_cast<char>(initial->get_depth() & 0xff)};
-    repr += td::base64_decode(td::Slice(hash_b64)).move_as_ok();
-    repr += initial->get_hash().as_slice().str();
-    td::Bits256 state_init_hash;
-    td::sha256(repr, state_init_hash.as_slice());
-    if (state_init_hash == address) {
+    if (is_state_init_address(address, td::Slice(hash_b64), depth, initial)) {
       return true;
     }
   }
   return false;
 }
 
-td::Result<vm::CellSlice> cell_slice(const td::Ref<vm::Cell> &cell) {
-  if (cell.is_null()) {
-    return td::Status::Error("nft_offer: no cell");
-  }
-  bool special = false;
-  vm::CellSlice cs = vm::load_cell_slice_special(cell, special);
-  if (special) {
-    return td::Status::Error("nft_offer: exotic cell");
-  }
-  return cs;
-}
-
-td::Result<Value> load_account(vm::CellSlice &cs) {
-  TRY_RESULT(v, load_address_py(cs));
-  if (v.t != VType::Account || v.addr_none) {
-    return td::Status::Error("nft_offer: not a std address");
-  }
-  return v;
-}
-
 td::Result<Value> parse(const td::Bits256 &address, const td::Ref<vm::Cell> &data) {
-  TRY_RESULT(storage, cell_slice(data));
+  TRY_RESULT(storage, ordinary_cell_slice(data));
   if (storage.size() != 256 + 8 || storage.size_refs() != 1) {
     return td::Status::Error("nft_offer: not an NftOffer data cell");
   }
   if (!is_nft_offer(address, storage)) {
     return td::Status::Error("nft_offer: address does not match the offer code");
   }
-  TRY_RESULT(config, cell_slice(storage.prefetch_ref()));
-  TRY_RESULT(nft, load_account(config));
+  TRY_RESULT(config, ordinary_cell_slice(storage.prefetch_ref()));
+  TRY_RESULT(nft, load_std_account(config));
   TRY_RESULT(price, load_coins_py(config));
   unsigned long long expires_at = 0;
   if (!config.advance(64) || !config.fetch_uint_to(32, expires_at) || !config.have_refs(2)) {
     return td::Status::Error("nft_offer: config underflow");
   }
-  TRY_RESULT(parties, cell_slice(config.prefetch_ref(0)));
-  TRY_RESULT(buyer, load_account(parties));
-  TRY_RESULT(recipient, load_account(parties));
-  TRY_RESULT(seller, load_account(parties));
-  TRY_RESULT(fee, cell_slice(config.prefetch_ref(1)));
-  TRY_RESULT(fee_address, load_account(fee));
+  TRY_RESULT(parties, ordinary_cell_slice(config.prefetch_ref(0)));
+  TRY_RESULT(buyer, load_std_account(parties));
+  TRY_RESULT(recipient, load_std_account(parties));
+  TRY_RESULT(seller, load_std_account(parties));
+  TRY_RESULT(fee, ordinary_cell_slice(config.prefetch_ref(1)));
+  TRY_RESULT(fee_address, load_std_account(fee));
   unsigned long long fee_bps = 0;
   if (!fee.fetch_uint_to(16, fee_bps)) {
     return td::Status::Error("nft_offer: fee underflow");
@@ -118,24 +86,12 @@ td::Result<Value> parse_nft_offer(const td::Bits256 &address, const td::Ref<vm::
 
 EvalResult nft_offer_init(BuildEnv &env, const std::vector<Value> &args) {
   (void)env;
-  const Message *msg = block_msg(as_block(args[0]));
-  if (msg == nullptr || !msg->init_state || !msg->destination) {
-    return rt_ok(Value::null());
-  }
-  auto r_addr = block::StdAddress::parse(td::Slice(*msg->destination));
-  auto r_root = cell_from_pystr(msg->init_state->body);
-  if (r_addr.is_error() || r_root.is_error() || td::Bits256(r_root.ok()->get_hash().bits()) != r_addr.ok().addr) {
-    return rt_ok(Value::null());
-  }
-  auto r_cs = open_ref_cell(r_root.move_as_ok());
-  if (r_cs.is_error()) {
-    return rt_ok(Value::null());
-  }
-  auto r_data = state_init_data_cell(r_cs.ok_ref());
+  td::Bits256 address;
+  auto r_data = deploy_data(block_msg(as_block(args[0])), address);
   if (r_data.is_error()) {
     return rt_ok(Value::null());
   }
-  auto r = parse_nft_offer(r_addr.ok().addr, r_data.move_as_ok());
+  auto r = parse_nft_offer(address, r_data.move_as_ok());
   return rt_ok(r.is_ok() ? r.move_as_ok() : Value::null());
 }
 

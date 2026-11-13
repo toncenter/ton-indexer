@@ -1189,6 +1189,41 @@
    "group": "nft-offer",
    "name": "NftOffer accept",
    "slug": "nft-offer-accept"
+  },
+  "qOIXPuEgib6XJlfpEcNHrqvaYNcn7_xcjqBYPJE3eFU=": {
+   "group": "nft-fixed-sale",
+   "name": "FixedSale create (relayed deploy and deposit)",
+   "slug": "nft-fixed-sale-create-relayed"
+  },
+  "2YVSvsskKnZwFpLgiLhxMRjy_4oYlsnl_he8GcPBWds=": {
+   "group": "nft-fixed-sale",
+   "name": "FixedSale create (sale deployed earlier)",
+   "slug": "nft-fixed-sale-create-later"
+  },
+  "KUNQqR9mAR18eCM27NSdidXamPylrpP_I29x_VXUMiU=": {
+   "group": "nft-fixed-sale",
+   "name": "FixedSale update",
+   "slug": "nft-fixed-sale-update"
+  },
+  "yP_Yos0hs4BFWKUhwJcyi+esSS1Ate5DPfb68dBeevc=": {
+   "group": "nft-fixed-sale",
+   "name": "FixedSale purchase with cashback",
+   "slug": "nft-fixed-sale-purchase"
+  },
+  "hU9TFYv_X0A7c6UXryMR6F4xnxpnqR9bGwrNWxg_u44=": {
+   "group": "nft-fixed-sale",
+   "name": "FixedSale cancel",
+   "slug": "nft-fixed-sale-cancel"
+  },
+  "GTjh1OEdBF+rDzK0a0ZdDEV1fJka8tZGGysMLBOyqRs=": {
+   "group": "nft-fixed-sale",
+   "name": "FixedSale refused deposit",
+   "slug": "nft-fixed-sale-refused-deposit"
+  },
+  "Ckhz0dJECrhXnryA4aSMJUlp54qOgGX7z7rgROtU6Ew=": {
+   "group": "nft-fixed-sale",
+   "name": "FixedSale cancel opcode on other sale code",
+   "slug": "nft-fixed-sale-cancel-other-code"
   }
  }
 }

@@ -26,6 +26,7 @@ EvalResult telegram_nft_purchase_data(BuildEnv &env, const std::vector<Value> &a
 EvalResult is_teleitem(BuildEnv &env, const std::vector<Value> &args);
 // Exactly one distinct contract deployment across the block's event nodes.
 bool single_contract_deploy(const Block *block);
+EvalResult nft_ownership_accepted(BuildEnv &env, const std::vector<Value> &args);
 
 // GetGems sale/auction family (HostNftSale.cpp).
 bool sale_contract_deploy(const Block *block);
@@ -38,6 +39,11 @@ EvalResult getgems_auction_init(BuildEnv &env, const std::vector<Value> &args);
 EvalResult auction_bid_data(BuildEnv &env, const std::vector<Value> &args);
 
 EvalResult nft_offer_init(BuildEnv &env, const std::vector<Value> &args);
+
+EvalResult nft_fixed_sale_init(BuildEnv &env, const std::vector<Value> &args);
+EvalResult nft_fixed_sale_fee(BuildEnv &env, const std::vector<Value> &args);
+EvalResult nft_fixed_sale_new_price(BuildEnv &env, const std::vector<Value> &args);
+bool state_init_deploy(const Block *block);
 
 // tgBTC (HostTgbtc.cpp): mint host fn, the four shared event-log parse fns (one
 // per event opcode, each shared by a full matcher and its `*_log_only` fallback
