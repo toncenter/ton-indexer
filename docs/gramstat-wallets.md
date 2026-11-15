@@ -111,11 +111,16 @@ matches the independently calculated Total. All 18 keys are present even for a
 certified zero day. An empty legacy map means unprepared, not zero.
 
 Explicit-date runs and periodic reconciliation fill missing maps in existing
-closed-day publications, in month-sized transaction-time windows. Memory/time
-limit failures split the read-only window down to smaller spans. Each month's
-totals and MC bounds are checked before writing; the original run IDs, source
+closed-day publications. Historical upgrades use one ordered pass over qualifying
+indexed deployments, resolving the exact lifetime-first event per account before
+grouping by UTC date and version. The input has no lower transaction-time bound:
+earlier deployments still exclude later redeployments. Opposite code-index
+tie-breaks detect conflicting codes for the same first event.
+
+All missing days' totals and MC bounds are checked before writing; the original run IDs, source
 proofs and counts are retained. Activity sets and cumulative checkpoints are
 reused, and retries skip completed maps. There is no indexer replay.
+Current-day updates keep the bounded candidate/lifetime-first join.
 
 ```sh
 gramstat-aggregate --handlers wallets --from 2019-11-15 --to 2026-11-15 --timeout 45m
@@ -124,6 +129,16 @@ gramstat-aggregate --handlers wallets --from 2019-11-15 --to 2026-11-15 --timeou
 The bounded production probe for 2026-11-13 read only that month's deployment
 parts, matched all first-event identities without ambiguities, and took 2.99 s.
 The lifetime-first candidate lookup still reads most account-index granules.
+It is suitable for live daily updates, but repeating it per historical month
+created large candidate sets and memory-limit retries; the historical upgrade
+therefore uses `activation_history.sql` without candidate sets or joins.
+
+Production full-history verification on 2026-11-15: the replacement query read
+191,671,156 deployment rows in **105.7 s** (two threads), reproducing **64,168,086**
+activations across **2,557 closed days** with zero total mismatches. All 1,888
+previously prepared version maps also matched exactly, version by version.
+Publishing the remaining 669 maps from that verified result took **4.06 s**;
+read-back verified all 2,557 maps. No daily totals or publication run IDs changed.
 
 Apply the three added stream tables from `schema.sql`, granting SELECT/INSERT to
 the writer and SELECT to the API. A bounded production comparison over 1,000 MCs

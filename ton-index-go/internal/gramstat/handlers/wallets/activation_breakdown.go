@@ -15,6 +15,9 @@ import (
 //go:embed activation_breakdown.sql
 var activationBreakdownSQL string
 
+//go:embed activation_history.sql
+var activationHistorySQL string
+
 type versionDay struct {
 	Counts map[string]uint64
 	Total  uint64
@@ -45,6 +48,10 @@ func versionParameter(d *versionDay) string {
 // All arithmetic stays UInt64. Complete maps distinguish certified zeros from
 // legacy/unprepared rows. The caller compares Total to its independent counter.
 func (h *Handler) activationVersions(ctx context.Context, p url.Values) (map[string]*versionDay, error) {
+	return h.readActivationVersions(ctx, p, activationBreakdownSQL)
+}
+
+func (h *Handler) readActivationVersions(ctx context.Context, p url.Values, query string) (map[string]*versionDay, error) {
 	var rows struct {
 		Data []struct {
 			Day       string `json:"day"`
@@ -54,10 +61,10 @@ func (h *Handler) activationVersions(ctx context.Context, p url.Values) (map[str
 			MC        uint32 `json:"through_mc"`
 		} `json:"data"`
 	}
-	if err := h.query(ctx, activationBreakdownSQL, p, &rows); err != nil {
+	if err := h.query(ctx, query, p, &rows); err != nil {
 		from, _ := strconv.ParseUint(p.Get("param_day_from"), 10, 64)
 		before, _ := strconv.ParseUint(p.Get("param_before"), 10, 64)
-		if before > from+3600 && (strings.Contains(err.Error(), "Code: 241.") || strings.Contains(err.Error(), "Code: 159.")) {
+		if query == activationBreakdownSQL && before > from+3600 && (strings.Contains(err.Error(), "Code: 241.") || strings.Contains(err.Error(), "Code: 159.")) {
 			// Bounded read-only retries, including the unusually busy 2024 days.
 			// Split on transaction time so no first event appears in both halves.
 			middle := from + (before-from)/2
@@ -142,7 +149,8 @@ func (h *Handler) dailyActivationVersions(ctx context.Context, p url.Values, tot
 
 // Upgrade only the compact existing publication rows. Reuse their run IDs and
 // coverage proof: activity, cumulative points and monthly unions stay attached
-// to the same publication. Each month's complete reconciliation precedes writes.
+// to the same publication. One ordered lifetime pass replaces monthly joins;
+// every missing day's complete reconciliation precedes the first write.
 func (h *Handler) backfillActivationVersions(ctx context.Context, params url.Values, from, to time.Time) error {
 	p := url.Values{}
 	for k, v := range params {
@@ -168,29 +176,34 @@ func (h *Handler) backfillActivationVersions(ctx context.Context, params url.Val
  ORDER BY day FORMAT JSON`, p, &missing); err != nil {
 		return err
 	}
+	if len(missing.Data) == 0 {
+		return nil
+	}
+	first, _ := time.Parse(time.DateOnly, missing.Data[0].Day)
+	last, _ := time.Parse(time.DateOnly, missing.Data[len(missing.Data)-1].Day)
+	set(p, "day_from", uint64(first.Unix()))
+	set(p, "before", uint64(last.AddDate(0, 0, 1).Unix()))
+	p.Set("max_execution_time", "180")
+	days, err := h.readActivationVersions(ctx, p, activationHistorySQL)
+	if err != nil {
+		return fmt.Errorf("activation version history: %w", err)
+	}
+	for _, row := range missing.Data {
+		d := days[row.Day]
+		if d == nil {
+			d = emptyVersionDay()
+			days[row.Day] = d
+		}
+		if d.Total != row.Total || d.MC > row.MC {
+			return fmt.Errorf("activation versions mismatch on %s: got %d, want %d", row.Day, d.Total, row.Total)
+		}
+	}
 	for i := 0; i < len(missing.Data); {
 		j := i + 1
 		for j < len(missing.Data) && missing.Data[j].Day[:7] == missing.Data[i].Day[:7] {
 			j++
 		}
 		start, _ := time.Parse(time.DateOnly, missing.Data[i].Day)
-		last, _ := time.Parse(time.DateOnly, missing.Data[j-1].Day)
-		set(p, "day_from", uint64(start.Unix()))
-		set(p, "before", uint64(last.AddDate(0, 0, 1).Unix()))
-		days, err := h.activationVersions(ctx, p)
-		if err != nil {
-			return fmt.Errorf("activation versions %s: %w", start.Format("2006-01"), err)
-		}
-		for _, row := range missing.Data[i:j] {
-			d := days[row.Day]
-			if d == nil {
-				d = emptyVersionDay()
-				days[row.Day] = d
-			}
-			if d.Total != row.Total || d.MC > row.MC {
-				return fmt.Errorf("activation versions mismatch on %s: got %d, want %d", row.Day, d.Total, row.Total)
-			}
-		}
 		for _, row := range missing.Data[i:j] {
 			p.Set("param_day", row.Day)
 			p.Set("param_run", row.Run)

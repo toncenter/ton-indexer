@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/url"
 	"os/exec"
+	"reflect"
 	"testing"
 	"time"
 )
@@ -45,6 +46,16 @@ func TestActivationVersionMigrationAndFirstCode(t *testing.T) {
 	run(firstSQL, p)
 	h := Handler{CH: s}
 	start := time.Date(2026, 11, 12, 0, 0, 0, 0, time.UTC)
+	set(p, "day_from", uint64(start.Unix()))
+	set(p, "before", uint64(start.AddDate(0, 0, 3).Unix()))
+	live, err := h.activationVersions(ctx, p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	history, err := h.readActivationVersions(ctx, p, activationHistorySQL)
+	if err != nil || !reflect.DeepEqual(live, history) {
+		t.Fatal("ordered history and lifetime-event join disagree", live, history, err)
+	}
 	for i := 0; i < 2; i++ {
 		if err := h.backfillActivationVersions(ctx, p, start, start.AddDate(0, 0, 3)); err != nil {
 			t.Fatal(err)
@@ -63,5 +74,9 @@ func TestActivationVersionMigrationAndFirstCode(t *testing.T) {
 	}
 	if got := run(`SELECT count(),max(length(activation_versions)) FROM gramstat.wallet_days WHERE day='2026-11-13'`, nil); got != "1\t0\n" {
 		t.Fatal(got)
+	}
+	run(fmt.Sprintf(`INSERT INTO metrics.deployments VALUES ('v3',4,2,1794441602,'v3','%s')`, codes[18]), nil)
+	if _, err := h.readActivationVersions(ctx, p, activationHistorySQL); err == nil {
+		t.Fatal("conflicting codes for the same first event accepted")
 	}
 }
