@@ -117,6 +117,7 @@ func (h *Handler) liveActivated(ctx context.Context, params url.Values, s source
 		set(p, "day_from", uint64(day.Unix()))
 		set(p, "before", uint64(s.Before))
 		count := "0"
+		versionMap := "{}"
 		set(p, "daily_ready", 0)
 		if end == s.End && day.Unix() >= int64(s.From) && day.Unix() < int64(s.Before) {
 			set(p, "daily_ready", 1)
@@ -139,15 +140,21 @@ func (h *Handler) liveActivated(ctx context.Context, params url.Values, s source
 				}
 				count = daily.Count
 			}
+			var err error
+			versionMap, err = h.dailyActivationVersions(ctx, p, count)
+			if err != nil {
+				return err
+			}
 		}
 		set(p, "base", uint64(prev.Base))
 		set(p, "base_time", uint64(prev.From))
 		set(p, "tip_time", uint64(tip.Time))
 		p.Set("param_activated", tip.Min)
 		p.Set("param_daily_activations", count)
+		p.Set("param_versions", versionMap)
 		if err := h.query(ctx, `INSERT INTO {sink:Identifier}.wallet_activation_stream_state
  SELECT {source:String},{registry:String},{base:UInt32},{base_time:UInt32},{end:UInt32},{tip_time:UInt32},{activated:UInt64},
- toDate({day:String}),if({daily_ready:UInt8}=1,toNullable({daily_activations:UInt64}),NULL),{before:UInt32},now64(6)`, p, nil); err != nil {
+ toDate({day:String}),if({daily_ready:UInt8}=1,toNullable({daily_activations:UInt64}),NULL),{before:UInt32},now64(6),{versions:Map(String,UInt64)}`, p, nil); err != nil {
 			return err
 		}
 		prev.MC, prev.To, prev.Activated = end, tip.Time, tip.Min

@@ -22,7 +22,7 @@ func TestMonthlyExactWindow(t *testing.T) {
 		return string(out)
 	}
 	run("CREATE DATABASE gramstat;" + Schema + `
- INSERT INTO gramstat.wallet_days SELECT 's','r',toDate('2025-01-01')+toUInt32(number),toUUID('00000000-0000-0000-0000-000000000001'),1,1,1,'proof',0,0,0,0,now64(6) FROM numbers(31);
+ INSERT INTO gramstat.wallet_days SELECT 's','r',toDate('2025-01-01')+toUInt32(number),toUUID('00000000-0000-0000-0000-000000000001'),1,1,1,'proof',0,0,0,0,now64(6),map() FROM numbers(31);
  INSERT INTO gramstat.wallet_activity SELECT 's','r',toDate('2025-01-01')+toUInt32(number),toUUID('00000000-0000-0000-0000-000000000001'),86400,0,uniqExactState(account)
  FROM (SELECT number,arrayJoin(['shared',toString(number)]) account FROM numbers(31)) GROUP BY number;
  -- A large unpublished state must not contribute.
@@ -38,7 +38,7 @@ func TestMonthlyExactWindow(t *testing.T) {
 		t.Fatal("incomplete window published", got)
 	}
 	// A complete certified empty month is a real zero.
-	run("INSERT INTO gramstat.wallet_days SELECT 's','r',toDate('2025-01-15'),toUUID('00000000-0000-0000-0000-000000000001'),1,1,1,'proof',0,0,0,0,now64(6); TRUNCATE TABLE gramstat.wallet_activity;")
+	run("INSERT INTO gramstat.wallet_days SELECT 's','r',toDate('2025-01-15'),toUUID('00000000-0000-0000-0000-000000000001'),1,1,1,'proof',0,0,0,0,now64(6),map(); TRUNCATE TABLE gramstat.wallet_activity;")
 	run(monthlySQL)
 	if got := run("SELECT active FROM gramstat.wallet_months"); got != "0\n" {
 		t.Fatal(got)
@@ -48,12 +48,12 @@ func TestMonthlyExactWindow(t *testing.T) {
 		days  int
 	}{{"2024-02-01", 29}, {"2025-02-01", 28}, {"2025-04-01", 30}} {
 		month = tc.month
-		run("TRUNCATE TABLE gramstat.wallet_days; TRUNCATE TABLE gramstat.wallet_months;" + fmt.Sprintf("INSERT INTO gramstat.wallet_days SELECT 's','r',toDate('%s')+toUInt32(number),toUUID('00000000-0000-0000-0000-000000000001'),1,1,1,'proof',0,0,0,0,now64(6) FROM numbers(%d);", month, tc.days-1))
+		run("TRUNCATE TABLE gramstat.wallet_days; TRUNCATE TABLE gramstat.wallet_months;" + fmt.Sprintf("INSERT INTO gramstat.wallet_days SELECT 's','r',toDate('%s')+toUInt32(number),toUUID('00000000-0000-0000-0000-000000000001'),1,1,1,'proof',0,0,0,0,now64(6),map() FROM numbers(%d);", month, tc.days-1))
 		run(monthlySQL)
 		if got := run("SELECT count() FROM gramstat.wallet_months"); got != "0\n" {
 			t.Fatal("partial month published", month, got)
 		}
-		run(fmt.Sprintf("INSERT INTO gramstat.wallet_days SELECT 's','r',toDate('%s')+%d,toUUID('00000000-0000-0000-0000-000000000001'),1,1,1,'proof',0,0,0,0,now64(6)", month, tc.days-1))
+		run(fmt.Sprintf("INSERT INTO gramstat.wallet_days SELECT 's','r',toDate('%s')+%d,toUUID('00000000-0000-0000-0000-000000000001'),1,1,1,'proof',0,0,0,0,now64(6),map()", month, tc.days-1))
 		run(monthlySQL)
 		if got := run("SELECT active,length(runs) FROM gramstat.wallet_months"); got != fmt.Sprintf("0\t%d\n", tc.days) {
 			t.Fatal(month, got)

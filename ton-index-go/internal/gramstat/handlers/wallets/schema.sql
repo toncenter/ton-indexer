@@ -74,7 +74,8 @@ CREATE TABLE IF NOT EXISTS gramstat.wallet_days (
  source_id String, registry String, day Date, run_id UUID,
  through_mc UInt32, complete_before UInt32, history_verified UInt8,
  proof_id String, activations UInt64, opening_activated UInt64,
- first_mc UInt32, last_mc UInt32, calculated_at DateTime64(6,'UTC')
+ first_mc UInt32, last_mc UInt32, calculated_at DateTime64(6,'UTC'),
+ activation_versions Map(String,UInt64) DEFAULT map()
 ) ENGINE=MergeTree PARTITION BY toYYYYMM(day)
 ORDER BY (source_id, registry, day, through_mc, calculated_at, run_id);
 
@@ -101,7 +102,8 @@ CREATE TABLE IF NOT EXISTS gramstat.wallet_activation_stream_checkpoints (
 CREATE TABLE IF NOT EXISTS gramstat.wallet_activation_stream_state (
  source_id String,registry String,base_mc UInt32,from_utime UInt32,
  through_mc UInt32,to_utime UInt32,activated UInt64,day Date,
- activations Nullable(UInt64),complete_before UInt32,calculated_at DateTime64(6,'UTC')
+ activations Nullable(UInt64),complete_before UInt32,calculated_at DateTime64(6,'UTC'),
+ activation_versions Map(String,UInt64) DEFAULT map()
 ) ENGINE=MergeTree ORDER BY (source_id,registry,through_mc);
 
 CREATE TABLE IF NOT EXISTS gramstat.wallet_activated_checkpoints (

@@ -29,6 +29,15 @@ var codes = []string{
 	"kUmuUcHkaJcQzr94MCl7Fqz7rbNjqSClN4k+f/7sp2g=",
 }
 
+// Same order as codes; both V5 beta hashes deliberately share one version.
+var versions = []string{
+	"wallet_v1r1", "wallet_v1r2", "wallet_v1r3", "wallet_v2r1", "wallet_v2r2",
+	"wallet_v3r1", "wallet_v3r2", "wallet_v4r1", "wallet_v4r2",
+	"wallet_v5_beta", "wallet_v5_beta", "wallet_v5r1",
+	"wallet_highload_v1r1", "wallet_highload_v1r2", "wallet_highload_v2",
+	"wallet_highload_v2r1", "wallet_highload_v2r2", "wallet_highload_v3r1", "wallet_tg",
+}
+
 func registryParameter() string {
 	s := "["
 	for i, c := range codes {

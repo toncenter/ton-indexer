@@ -214,12 +214,20 @@ func (h *Handler) Run(ctx context.Context, req gramstat.Request) error {
 				return fmt.Errorf("wallet day %s: %w", row.Day, err)
 			}
 		}
+		if !req.RecentOnly {
+			if err := h.backfillActivationVersions(ctx, p, time.Unix(int64(completeFrom), 0).UTC(), to); err != nil {
+				return err
+			}
+		}
 		return h.monthly(ctx, p, time.Unix(int64(completeFrom), 0).UTC(), to)
 	}
 	for d := from; d.Before(to); d = d.AddDate(0, 0, 1) {
 		if err := h.day(ctx, p, s, d); err != nil {
 			return fmt.Errorf("wallet day %s: %w", d.Format(time.DateOnly), err)
 		}
+	}
+	if err := h.backfillActivationVersions(ctx, p, from, to); err != nil {
+		return err
 	}
 	return h.monthly(ctx, p, from, to)
 }
@@ -441,11 +449,19 @@ func (h *Handler) day(ctx context.Context, p url.Values, s source, d time.Time) 
 	set(p, "before", uint64(s.Before))
 	set(p, "verified", uint64(s.Verified))
 	p.Set("param_proof", s.Proof)
+	// Transaction-time counts use the complete UTC day, not MC chart time.
+	set(p, "before", uint64(d.AddDate(0, 0, 1).Unix()))
+	versionMap, err := h.dailyActivationVersions(ctx, p, totals.Activations)
+	if err != nil {
+		return err
+	}
+	p.Set("param_versions", versionMap)
+	set(p, "before", uint64(s.Before))
 	// Commit last. Readers select one whole run for each day in a single query.
 	if err := h.query(ctx, `INSERT INTO {sink:Identifier}.wallet_days
  SELECT {source:String},{registry:String},toDate({day:String}),{run:UUID},
  {end:UInt32},{before:UInt32},{verified:UInt8},{proof:String},{activations:UInt64},
- {opening:UInt64},{first_mc:UInt32},{last_mc:UInt32},now64(6)`, p, nil); err != nil {
+ {opening:UInt64},{first_mc:UInt32},{last_mc:UInt32},now64(6),{versions:Map(String,UInt64)}`, p, nil); err != nil {
 		return err
 	}
 	if h.Log != nil {

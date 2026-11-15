@@ -31,7 +31,7 @@ func TestActivationStreamCommitRetryMCTiesAndTransactionDay(t *testing.T) {
  INSERT INTO raw.blocks VALUES(-1,-9223372036854775808,10,10,1794441599,100,200),(-1,-9223372036854775808,11,11,1794441660,200,300),(-1,-9223372036854775808,12,12,1794441660,300,400),
  (0,-9223372036854775808,1,11,1794441599,200,300);
  INSERT INTO metrics.deployments VALUES('old',1,9,1794441500,'old','HASH'),('old',320,12,1794441660,'redeploy','HASH'),('late',250,11,1794441599,'late','HASH'),('new',350,12,1794441660,'new','HASH'),('new',350,12,1794441660,'new','HASH'),('excluded',360,12,1794441660,'excluded','other');
- INSERT INTO gramstat.wallet_days VALUES('fixture','REGISTRY','2026-11-11','00000000-0000-0000-0000-000000000001',11,1794441600,1,'proof',1,9007199254740992,10,10,now64(6));
+ INSERT INTO gramstat.wallet_days VALUES('fixture','REGISTRY','2026-11-11','00000000-0000-0000-0000-000000000001',11,1794441600,1,'proof',1,9007199254740992,10,10,now64(6),{});
  INSERT INTO gramstat.wallet_activations_mc VALUES('fixture','REGISTRY','2026-11-11','00000000-0000-0000-0000-000000000001',10,1794441599,0,9007199254740993);`
 	run(strings.ReplaceAll(strings.ReplaceAll(fixture, "HASH", codes[0]), "REGISTRY", Registry), nil)
 	p := url.Values{"param_sink": {"gramstat"}, "param_source": {"fixture"}, "param_registry": {Registry}, "param_metrics": {"metrics"}, "param_raw": {"raw"}, "param_first": {"9"}, "param_end": {"12"}, "param_previous": {"0"}, "param_hashes": {registryParameter()}}
@@ -53,6 +53,9 @@ func TestActivationStreamCommitRetryMCTiesAndTransactionDay(t *testing.T) {
 	}
 	if got := run("SELECT base_mc,through_mc,activated,activations FROM gramstat.wallet_activation_stream_state", nil); got != "10\t12\t9007199254740995\t1\n" {
 		t.Fatal("precision, redeploy or transaction-day error", got)
+	}
+	if got := run("SELECT length(activation_versions),activation_versions['wallet_v1r1'],arraySum(mapValues(activation_versions)) FROM gramstat.wallet_activation_stream_state", nil); got != "18\t1\t1\n" {
+		t.Fatal("live versions lost transaction-day cutoff", got)
 	}
 	if got := run("SELECT mc_seqno,any(activated),count() FROM gramstat.wallet_activation_stream GROUP BY mc_seqno ORDER BY mc_seqno", nil); got != "11\t9007199254740994\t2\n12\t9007199254740995\t2\n" {
 		t.Fatal("retry/ties changed count", got)

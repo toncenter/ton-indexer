@@ -5,6 +5,10 @@
 * **Activated wallets:** cumulative first qualifying deployments, sampled at each
   including MC; hourly and daily checkpoints accelerate long ranges.
 * **Activations per day:** first qualifying deployments by transaction UTC day.
+  The existing `wallet_days` and `wallet_activation_stream_state` rows also carry
+  `activation_versions Map(String,UInt64)`: 18 frozen versions, including both
+  V5 beta hashes in one version. Version comes from `deployments.init_code_hash`
+  at the exact lifetime-first `(lt, mc_seqno, tx time, tx hash)` event.
 * **Active wallets:** fixed Hourly / Daily / Monthly tabs. Hourly and Daily count
   aligned UTC buckets. Monthly is one exact union per UTC calendar month,
   covering [month start, next month start). Daily is the default.
@@ -94,6 +98,32 @@ separate from MC-date increments: a late-included shard deployment may increment
 today's cumulative series while belonging to yesterday's daily count. The API
 marks the current daily count partial and keeps dataset-specific coverage.
 Complete-day data takes precedence over the stream on historical reads.
+
+### Activation version format upgrade
+
+Apply [`activation_migration.sql`](../ton-index-go/internal/gramstat/handlers/wallets/activation_migration.sql)
+administratively before replacing the writer. These are two added columns in
+existing aggregates, with no new tables. Older writers use positional inserts,
+so switch them to the upgraded binary when applying the migration.
+
+The map is committed with the existing daily/live marker, only after its sum
+matches the independently calculated Total. All 18 keys are present even for a
+certified zero day. An empty legacy map means unprepared, not zero.
+
+Explicit-date runs and periodic reconciliation fill missing maps in existing
+closed-day publications, in month-sized transaction-time windows. Memory/time
+limit failures split the read-only window down to smaller spans. Each month's
+totals and MC bounds are checked before writing; the original run IDs, source
+proofs and counts are retained. Activity sets and cumulative checkpoints are
+reused, and retries skip completed maps. There is no indexer replay.
+
+```sh
+gramstat-aggregate --handlers wallets --from 2019-11-15 --to 2026-11-15 --timeout 45m
+```
+
+The bounded production probe for 2026-11-13 read only that month's deployment
+parts, matched all first-event identities without ambiguities, and took 2.99 s.
+The lifetime-first candidate lookup still reads most account-index granules.
 
 Apply the three added stream tables from `schema.sql`, granting SELECT/INSERT to
 the writer and SELECT to the API. A bounded production comparison over 1,000 MCs
