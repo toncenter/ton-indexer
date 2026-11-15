@@ -7,6 +7,10 @@ publish elected counts and existing session-stats locations by round. They run
 independently through the same Go scheduler. systemd supervises the long-running
 process; it no longer schedules individual aggregation runs.
 
+The [`account_code_hashes` handler](gramstat-code-hashes.md) collects the full
+latest Kvrocks code-hash distribution every ten minutes, using bounded read-only
+metadata queries and publication markers. It does not classify interfaces.
+
 ## Run
 
 ```bash

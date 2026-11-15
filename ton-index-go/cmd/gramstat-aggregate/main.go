@@ -16,6 +16,7 @@ import (
 	"github.com/toncenter/ton-indexer/ton-index-go/internal/gramstat/handlers/accounts"
 	"github.com/toncenter/ton-indexer/ton-index-go/internal/gramstat/handlers/actions"
 	"github.com/toncenter/ton-indexer/ton-index-go/internal/gramstat/handlers/chain"
+	"github.com/toncenter/ton-indexer/ton-index-go/internal/gramstat/handlers/codehashes"
 	"github.com/toncenter/ton-indexer/ton-index-go/internal/gramstat/handlers/validators"
 	"github.com/toncenter/ton-indexer/ton-index-go/internal/gramstat/handlers/wallets"
 )
@@ -38,6 +39,8 @@ func run(log *slog.Logger) error {
 	interval := flag.Duration("interval", 5*time.Minute, "daemon refresh interval")
 	monthlyInterval := flag.Duration("monthly-interval", 15*time.Minute, "daemon monthly-unique refresh interval")
 	monthlyTimeout := flag.Duration("monthly-timeout", 5*time.Minute, "daemon monthly-unique handler timeout")
+	codeHashesInterval := flag.Duration("code-hashes-interval", 10*time.Minute, "daemon latest code-hash distribution interval")
+	codeHashesTimeout := flag.Duration("code-hashes-timeout", 2*time.Minute, "daemon code-hash collection and publication timeout")
 	reconcileInterval := flag.Duration("reconcile-interval", time.Hour, "daemon historical reconciliation interval")
 	concurrency := flag.Int("concurrency", 3, "maximum concurrent daemon handlers")
 	recentOnly := flag.Bool("recent-only", false, "one-off recent-window refresh without historical catch-up")
@@ -59,6 +62,7 @@ func run(log *slog.Logger) error {
 		fmt.Print(gramstat.ChainSchema)
 		fmt.Print(chain.Schema)
 		fmt.Print(accounts.Schema)
+		fmt.Print(codehashes.Schema)
 		fmt.Print(wallets.Schema)
 		fmt.Print(strings.Replace(gramstat.ChainSchema, "gramstat.chain_daily", "gramstat.chain_daily_full", 1))
 		fmt.Print(validators.Schema)
@@ -75,6 +79,7 @@ func run(log *slog.Logger) error {
 		fmt.Println("actions_monthly: exact calendar-month unique jetton/NFT senders, receivers and swap users")
 		fmt.Println("chain: full-history block flows and burn-corrected daily supply")
 		fmt.Println("accounts: existing accounts from a verified opening state and complete deltas")
+		fmt.Println("account_code_hashes: complete latest Kvrocks code-hash index counts, without interface classification")
 		fmt.Println("wallets: exact minute/hour/day activity and per-MC first activations")
 		fmt.Println("validators: elected #34 count and roster by round")
 		fmt.Println("validator_geo: session-stats locations, countries and coverage by round")
@@ -112,6 +117,7 @@ func run(log *slog.Logger) error {
 		return err
 	}
 	registry := []gramstat.Handler{
+		&codehashes.Handler{Source: codehashes.RedisSource{Addr: os.Getenv("GRAMSTAT_KVROCKS_ADDR"), Username: os.Getenv("GRAMSTAT_KVROCKS_USERNAME"), Password: os.Getenv("GRAMSTAT_KVROCKS_PASSWORD")}, Sink: codehashes.Store{CH: ch}, Log: log},
 		&wallets.Handler{CH: ch, SourceID: os.Getenv("GRAMSTAT_WALLETS_SOURCE_ID"), SinkDB: os.Getenv("GRAMSTAT_WALLETS_SINK_DB"), FollowNative: os.Getenv("GRAMSTAT_WALLETS_FOLLOW_NATIVE") == "1", Log: log},
 		&accounts.Handler{CH: ch, MetricsDB: os.Getenv("GRAMSTAT_CHAIN_METRICS_DB"), Log: log},
 		&chain.Handler{CH: ch, RawDB: os.Getenv("GRAMSTAT_CHAIN_RAW_DB"), MetricsDB: os.Getenv("GRAMSTAT_CHAIN_METRICS_DB"), Log: log},
@@ -158,6 +164,9 @@ func run(log *slog.Logger) error {
 			s := gramstat.Schedule{Name: name, Every: *interval, Timeout: *timeout, ReconcileEvery: *reconcileInterval}
 			if name == "actions_monthly" {
 				s.Every, s.Timeout = *monthlyInterval, *monthlyTimeout
+			}
+			if name == "account_code_hashes" {
+				s.Every, s.Timeout = *codeHashesInterval, *codeHashesTimeout
 			}
 			for _, dep := range dependencies[name] {
 				if selected[dep] {
