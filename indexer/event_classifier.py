@@ -23,7 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.dialects.postgresql import ARRAY as PG_ARRAY
 from sqlalchemy.dialects.postgresql import array as pg_array
 from sqlalchemy.dialects.postgresql import insert as pg_insert
-from sqlalchemy.orm import sessionmaker, selectinload, noload
+from sqlalchemy.orm import sessionmaker, selectinload, noload, with_loader_criteria
 from sqlalchemy.orm.attributes import set_committed_value
 from sqlalchemy.sql import text
 from sqlalchemy_utils import CompositeType
@@ -378,7 +378,37 @@ class EventClassifierWorker(mp.Process):
                 else:
                     fltr = and_(Trace.mc_seqno_end.in_(mc_seqnos),
                                 Trace.nodes_ <= self.big_traces_threshold)
+
+                # transactions is partitioned by mc_block_seqno, but Trace.transactions joins
+                # on trace_id alone, so with no bound on the partition key every key of the
+                # selectin load probes every partition. Restrict the load to the seqno span
+                # of the batch.
+                #
+                # The span is exact, not a guess. TraceAssembler creates a trace with
+                # mc_seqno_start = mc_seqno_end = seqno of its first transaction, is fed
+                # blocks in strictly increasing seqno order and only ever raises
+                # mc_seqno_end, so every transaction of a trace satisfies
+                # mc_seqno_start <= mc_block_seqno <= mc_seqno_end. Only complete traces
+                # are written to the table (InsertManagerPostgres), one row at the trace's
+                # last block, so the upper bound is exact too: a row never has
+                # transactions in later blocks. The bounds are taken over the whole batch,
+                # so for a single trace they can only be wider.
+                #
+                # mc_seqno_start is nullable in the schema, but the writer always fills it
+                # (a plain int32 on the whole insert path), so the coalesce is a no-op
+                # today; a NULL there is not a supported case.
+                seqno_lo, seqno_hi = (await session.execute(
+                    select(func.min(func.coalesce(Trace.mc_seqno_start, Trace.mc_seqno_end)),
+                           func.max(Trace.mc_seqno_end)).filter(fltr)
+                )).one()
+
                 query = select(Trace).filter(fltr)
+                if seqno_lo is not None:
+                    query = query.options(
+                        with_loader_criteria(Transaction,
+                                             and_(Transaction.mc_block_seqno >= seqno_lo,
+                                                  Transaction.mc_block_seqno <= seqno_hi))
+                    )
                 msg_join = selectinload(Trace.transactions).selectinload(Transaction.messages)
                 if kvrocks.is_enabled():
                     query = query.options(
