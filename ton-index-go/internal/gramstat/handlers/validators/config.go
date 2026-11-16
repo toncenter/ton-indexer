@@ -93,7 +93,11 @@ func verifyConfig(boc []byte, want Round) (string, error) {
 		return "", err
 	}
 	var set tlb.ValidatorSetAny
-	if err = tlb.LoadFromCell(&set, root.BeginParse()); err != nil {
+	slice, err := root.BeginParse()
+	if err != nil {
+		return "", err
+	}
+	if err = tlb.LoadFromCell(&set, slice); err != nil {
 		return "", err
 	}
 	var got Round

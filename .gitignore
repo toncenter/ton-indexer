@@ -231,6 +231,11 @@ indexer/indexer/core/t_est.py
 some.txt
 /indexer/files
 
+# Shared, checksum-pinned ABI catalog and generated native Go bindings.
+/ton-index-go/index/acton/catalog/catalog.json
+/ton-index-go/index/acton/catalog/catalog.json.*
+/ton-index-go/index/acton/catalog/*_gen.go
+
 /sandbox
 /logs
 build/

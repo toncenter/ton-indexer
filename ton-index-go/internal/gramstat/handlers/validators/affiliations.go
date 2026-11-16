@@ -193,7 +193,10 @@ func InspectAffiliation(raw []byte, r Round, holder, family string) (Affiliation
 		}
 		return rawHolder(v.StringRaw()), nil
 	}
-	s := data.BeginParse()
+	s, err := data.BeginParse()
+	if err != nil {
+		return a, err
+	}
 	switch family {
 	case "liquid_staking_controller":
 		if a.CodeHash != controllerCodeHash {

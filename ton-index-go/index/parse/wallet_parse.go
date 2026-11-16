@@ -21,7 +21,10 @@ func ParseWalletSeqno(data string, state *models.WalletState) error {
 		return err
 	}
 	if c, err := cell.FromBOC(boc); err == nil {
-		l := c.BeginParse()
+		l, err := c.BeginParse()
+		if err != nil {
+			return err
+		}
 		state.Seqno = new(int64)
 		*state.Seqno = int64(l.MustLoadUInt(32))
 	} else {
@@ -36,7 +39,10 @@ func ParseWalletV3(data string, state *models.WalletState) error {
 		return err
 	}
 	if c, err := cell.FromBOC(boc); err == nil {
-		l := c.BeginParse()
+		l, err := c.BeginParse()
+		if err != nil {
+			return err
+		}
 		state.Seqno = new(int64)
 		state.WalletId = new(int64)
 		*state.Seqno = int64(l.MustLoadUInt(32))
@@ -53,7 +59,10 @@ func ParseWalletV5(data string, state *models.WalletState) error {
 		return err
 	}
 	if c, err := cell.FromBOC(boc); err == nil {
-		l := c.BeginParse()
+		l, err := c.BeginParse()
+		if err != nil {
+			return err
+		}
 		state.IsSignatureAllowed = new(bool)
 		state.Seqno = new(int64)
 		state.WalletId = new(int64)
@@ -80,7 +89,10 @@ func ParseWalletTg(data string, state *models.WalletState) error {
 	if err != nil {
 		return err
 	}
-	l := c.BeginParse()
+	l, err := c.BeginParse()
+	if err != nil {
+		return err
+	}
 	if _, err := l.LoadUInt(8); err != nil { // storage revision
 		return err
 	}

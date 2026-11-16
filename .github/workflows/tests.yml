@@ -101,6 +101,14 @@ jobs:
       with:
         cmake-version: '3.x'
 
+    - name: Prepare shared ABI catalog
+      working-directory: ton-index-go
+      run: sh index/acton/catalog/prepare.sh
+
+    - name: Test shared ABI catalog and Gramstat
+      working-directory: ton-index-go
+      run: go test ./index/acton/... ./internal/gramstat/... ./cmd/gramstat-aggregate
+
     - name: Configure CMake
       run: |
         cmake -S . -B build \

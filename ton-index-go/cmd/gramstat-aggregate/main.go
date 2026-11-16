@@ -14,6 +14,7 @@ import (
 
 	"github.com/toncenter/ton-indexer/ton-index-go/internal/gramstat"
 	"github.com/toncenter/ton-indexer/ton-index-go/internal/gramstat/handlers/accounts"
+	"github.com/toncenter/ton-indexer/ton-index-go/internal/gramstat/handlers/accounttypes"
 	"github.com/toncenter/ton-indexer/ton-index-go/internal/gramstat/handlers/actions"
 	"github.com/toncenter/ton-indexer/ton-index-go/internal/gramstat/handlers/chain"
 	"github.com/toncenter/ton-indexer/ton-index-go/internal/gramstat/handlers/codehashes"
@@ -63,6 +64,7 @@ func run(log *slog.Logger) error {
 		fmt.Print(chain.Schema)
 		fmt.Print(accounts.Schema)
 		fmt.Print(codehashes.Schema)
+		fmt.Print(accounttypes.Schema)
 		fmt.Print(wallets.Schema)
 		fmt.Print(strings.Replace(gramstat.ChainSchema, "gramstat.chain_daily", "gramstat.chain_daily_full", 1))
 		fmt.Print(validators.Schema)
@@ -80,6 +82,7 @@ func run(log *slog.Logger) error {
 		fmt.Println("chain: full-history block flows and burn-corrected daily supply")
 		fmt.Println("accounts: existing accounts from a verified opening state and complete deltas")
 		fmt.Println("account_code_hashes: complete latest Kvrocks code-hash index counts, without interface classification")
+		fmt.Println("account_types: versioned ABI and method classification of a completed code-hash snapshot")
 		fmt.Println("wallets: exact minute/hour/day activity and per-MC first activations")
 		fmt.Println("validators: elected #34 count and roster by round")
 		fmt.Println("validator_geo: session-stats locations, countries and coverage by round")
@@ -117,6 +120,7 @@ func run(log *slog.Logger) error {
 		return err
 	}
 	registry := []gramstat.Handler{
+		&accounttypes.Handler{CH: ch, Log: log},
 		&codehashes.Handler{Source: codehashes.RedisSource{Addr: os.Getenv("GRAMSTAT_KVROCKS_ADDR"), Username: os.Getenv("GRAMSTAT_KVROCKS_USERNAME"), Password: os.Getenv("GRAMSTAT_KVROCKS_PASSWORD")}, Sink: codehashes.Store{CH: ch}, Log: log},
 		&wallets.Handler{CH: ch, SourceID: os.Getenv("GRAMSTAT_WALLETS_SOURCE_ID"), SinkDB: os.Getenv("GRAMSTAT_WALLETS_SINK_DB"), FollowNative: os.Getenv("GRAMSTAT_WALLETS_FOLLOW_NATIVE") == "1", Log: log},
 		&accounts.Handler{CH: ch, MetricsDB: os.Getenv("GRAMSTAT_CHAIN_METRICS_DB"), Log: log},
@@ -152,6 +156,7 @@ func run(log *slog.Logger) error {
 			selected[name] = true
 		}
 		dependencies := map[string][]string{
+			"account_types":           {"account_code_hashes"},
 			"validator_geo":           {"validators"},
 			"validator_stake":         {"validators"},
 			"validator_stake_changes": {"validator_stake"},
@@ -165,7 +170,7 @@ func run(log *slog.Logger) error {
 			if name == "actions_monthly" {
 				s.Every, s.Timeout = *monthlyInterval, *monthlyTimeout
 			}
-			if name == "account_code_hashes" {
+			if name == "account_code_hashes" || name == "account_types" {
 				s.Every, s.Timeout = *codeHashesInterval, *codeHashesTimeout
 			}
 			for _, dep := range dependencies[name] {

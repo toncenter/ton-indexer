@@ -138,7 +138,10 @@ func changesWalletKey(bodyB64 string) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	s := c.BeginParse()
+	s, err := c.BeginParse()
+	if err != nil {
+		return false, err
+	}
 	op, err := s.LoadUInt(32)
 	if err != nil || op != opChangeDNSRecord {
 		return false, err

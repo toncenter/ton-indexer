@@ -11,6 +11,10 @@ The [`account_code_hashes` handler](gramstat-code-hashes.md) collects the full
 latest Kvrocks code-hash distribution every ten minutes, using bounded read-only
 metadata queries and publication markers. It does not classify interfaces.
 
+The [`account_types` handler](gramstat-account-types.md) follows it, reusing the
+shared compiled ABI catalog and static method metadata to publish a versioned
+drill-down tree. Its source count snapshot and classification are pinned together.
+
 ## Run
 
 ```bash

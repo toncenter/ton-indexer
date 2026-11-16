@@ -28,7 +28,10 @@ func ParseCommentFromPayload(payload string) (*string, bool, error) {
 		return nil, false, err
 	}
 
-	slice := payloadCell.BeginParse()
+	slice, err := payloadCell.BeginParse()
+	if err != nil {
+		return nil, false, err
+	}
 	sumType, err := slice.LoadUInt(32)
 	if err != nil {
 		return nil, false, nil
