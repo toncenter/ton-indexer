@@ -43,6 +43,15 @@ The count-only `transfer_history.sql` takes identical MC/time bounds and
 registry; reconcile its two parent counts against existing closed-day rows
 before publishing a historical upgrade. Never infer missing coverage from zeros.
 
+On 2026-11-19 the single historical scan through MC 106421866 took 1,384 s.
+For 2019-11-15 through 2026-11-15 inclusive, both parent counts matched on
+all 2,558 closed days: 200,508,087 jetton transfers (71,301,606 USDT,
+429 unknown master) and 842,905,682 accepted GRAM transfers (307,316,941
+at least one GRAM; none missing a value). All 5,116 companion rows were
+verified after insertion. The regular handler covered the remaining days;
+the dashboard API reconciled both splits on 2,561 closed days plus the
+partial 2026-11-19 UTC observation.
+
 Monthly totals sum exact covered daily counts without another PostgreSQL scan.
 Missing historical days leave the month unknown; current months can be partial.
 The Total overlay equals the sum of visible categories. Type checkboxes change
