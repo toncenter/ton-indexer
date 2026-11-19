@@ -280,7 +280,15 @@ func CalculateBalanceChanges(traceId models.HashType, conn *pgxpool.Conn, store 
 					continue
 				}
 				var transfer jetton.TransferPayload
-				err = tlb.LoadFromCell(&transfer, c.BeginParse())
+				slice, err := c.BeginParse()
+				if err != nil {
+					log.Error(err)
+					continue
+				}
+				if err = tlb.LoadFromCell(&transfer, slice); err != nil {
+					log.Error(err)
+					continue
+				}
 				destination_raw := transfer.Destination.String()
 				var destination models.AccountAddress
 				addr_loc, err := models.ParseAccountAddress(destination_raw)

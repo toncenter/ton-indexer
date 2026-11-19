@@ -1,7 +1,12 @@
 #include "InsertManagerClickhouse.h"
+#include "GramstatStorage.h"
+#include "TokenStatesStorage.h"
+#include "ValidatorRoundResultsStorage.h"
+#include "ValidatorStorage.h"
 
 #include "td/utils/StringBuilder.h"
 #include "clickhouse/client.h"
+#include "clickhouse/columns/decimal.h"
 #include "clickhouse/columns/nullable.h"
 #include "clickhouse/columns/numeric.h"
 #include "clickhouse/types/types.h"
@@ -9,19 +14,24 @@
 #include "convert-utils.h"
 
 #include <algorithm>
+#include <stdexcept>
 
 
 class InsertBatchClickhouse: public td::actor::Actor {
 public:
     InsertBatchClickhouse(clickhouse::ClientOptions client_options, std::vector<InsertTaskStruct> insert_tasks,
-                          td::Promise<InsertManagerInterface::InsertResult> promise)
-      : client_options_(std::move(client_options)), insert_tasks_(std::move(insert_tasks)), promise_(std::move(promise)) {}
+                          td::Promise<InsertManagerInterface::InsertResult> promise, bool collect_gramstat,
+                          std::string gramstat_db)
+      : client_options_(std::move(client_options)), insert_tasks_(std::move(insert_tasks)), promise_(std::move(promise)),
+        collect_gramstat_(collect_gramstat), gramstat_db_(std::move(gramstat_db)) {}
 
     void start_up() override;
 private:
     clickhouse::ClientOptions client_options_;
     std::vector<InsertTaskStruct> insert_tasks_;
     td::Promise<InsertManagerInterface::InsertResult> promise_;
+    bool collect_gramstat_;
+    std::string gramstat_db_;
 
     void insert_jettons(clickhouse::Client& client);
     void insert_nfts(clickhouse::Client& client);
@@ -30,6 +40,8 @@ private:
     void insert_account_states(clickhouse::Client& client);
     void insert_shard_state(clickhouse::Client& client);
     void insert_blocks(clickhouse::Client& client);
+    void insert_deployments(clickhouse::Client& client);
+    void insert_account_deltas(clickhouse::Client& client);
 };
 
 void InsertManagerClickhouse::start_up() {
@@ -51,6 +63,9 @@ void InsertManagerClickhouse::start_up() {
         }
         auto options = credential_.get_clickhouse_options();
         clickhouse::Client client(options);
+        if (collect_gramstat_) {
+            for (const auto& query : gramstat::schema_queries(gramstat_db_)) client.Execute(query);
+        }
         {
             td::StringBuilder builder;
             builder << "CREATE TABLE IF NOT EXISTS blocks ("
@@ -83,9 +98,23 @@ void InsertManagerClickhouse::start_up() {
                     << "created_by FixedString(44), "
                     << "prev_blocks Array(Tuple(Int32, Int64, Int32)), "
                     << "shards Array(Tuple(Int32, Int64, Int32)), "
-                    << "transaction_count Int32"
+                    << "transaction_count Int32, "
+                    << "transaction_fees Nullable(Decimal(38, 0)), "
+                    << "import_fees Nullable(Decimal(38, 0)), "
+                    << "created Nullable(Decimal(38, 0)), "
+                    << "burned Nullable(Decimal(38, 0)), "
+                    << "global_balance Nullable(Decimal(38, 0)), "
+                    << "out_msg_queue_size Nullable(UInt64)"
                     << ") ENGINE ReplacingMergeTree PRIMARY KEY(workchain, shard, seqno) ORDER BY (workchain, shard, seqno);\n";
             client.Execute(builder.as_cslice().str());
+            // Existing rows remain NULL until explicitly replayed with --force.
+            client.Execute("ALTER TABLE blocks "
+                           "ADD COLUMN IF NOT EXISTS transaction_fees Nullable(Decimal(38, 0)), "
+                           "ADD COLUMN IF NOT EXISTS import_fees Nullable(Decimal(38, 0)), "
+                           "ADD COLUMN IF NOT EXISTS created Nullable(Decimal(38, 0)), "
+                           "ADD COLUMN IF NOT EXISTS burned Nullable(Decimal(38, 0)), "
+                           "ADD COLUMN IF NOT EXISTS global_balance Nullable(Decimal(38, 0)), "
+                           "ADD COLUMN IF NOT EXISTS out_msg_queue_size Nullable(UInt64)");
             LOG(INFO) << "Table blocks created";
         }
         {
@@ -342,6 +371,10 @@ void InsertManagerClickhouse::start_up() {
                     << ") ENGINE ReplacingMergeTree(last_transaction_lt) PRIMARY KEY(jetton, address) ORDER BY (jetton, address);\n";
             client.Execute(builder.as_cslice().str());
             LOG(INFO) << "Table jetton_wallets created";
+            client.Execute(jetton_history::CREATE_STATES);
+            client.Execute(nft_history::CREATE_STATES);
+            client.Execute(elector::clickhouse_storage::SCHEMA_SQL);
+            for (const auto& query : validator_storage::schema_queries()) client.Execute(query);
         }
         {
             td::StringBuilder builder;
@@ -398,7 +431,8 @@ void InsertManagerClickhouse::start_up() {
 
 void InsertManagerClickhouse::create_insert_actor(std::vector<InsertTaskStruct> insert_tasks,
                                                   td::Promise<InsertManagerInterface::InsertResult> promise) {
-    td::actor::create_actor<InsertBatchClickhouse>("insert_batch_clickhouse", credential_.get_clickhouse_options(), std::move(insert_tasks), std::move(promise)).release();
+    td::actor::create_actor<InsertBatchClickhouse>("insert_batch_clickhouse", credential_.get_clickhouse_options(),
+                                                std::move(insert_tasks), std::move(promise), collect_gramstat_, gramstat_db_).release();
 }
 
 void InsertManagerClickhouse::get_existing_seqnos(td::Promise<std::vector<std::uint32_t>> promise, std::int32_t from_seqno, std::int32_t to_seqno)
@@ -409,15 +443,8 @@ void InsertManagerClickhouse::get_existing_seqnos(td::Promise<std::vector<std::u
         clickhouse::Client client(options);
         
         std::vector<std::uint32_t> result;
-        td::StringBuilder sb;
-        sb << "select seqno from blocks where workchain = -1";
-        if (from_seqno > 0) {
-        sb << " and seqno >= " << from_seqno;
-        }
-        if (to_seqno > 0) {
-        sb << " and seqno <= " << to_seqno;
-        }
-        client.Select(sb.as_cslice().str(), [&result](const clickhouse::Block& block) {
+        client.Select(gramstat::completed_seqnos_query(collect_gramstat_, from_seqno, to_seqno, gramstat_db_),
+                      [&result](const clickhouse::Block& block) {
             for (size_t i = 0; i < block.GetRowCount(); ++i) {
                 result.push_back(block[0]->As<clickhouse::ColumnInt32>()->At(i));
             }
@@ -442,15 +469,8 @@ void InsertManagerClickhouse::get_resume_seqno(td::Promise<InsertManagerInterfac
         clickhouse::Client client(options);
 
         std::vector<std::uint32_t> existing_seqnos;
-        td::StringBuilder sb;
-        sb << "select seqno from blocks where workchain = -1";
-        if (from_seqno > 0) {
-            sb << " and seqno >= " << from_seqno;
-        }
-        if (to_seqno > 0) {
-            sb << " and seqno <= " << to_seqno;
-        }
-        client.Select(sb.as_cslice().str(), [&existing_seqnos](const clickhouse::Block& block) {
+        client.Select(gramstat::completed_seqnos_query(collect_gramstat_, from_seqno, to_seqno, gramstat_db_),
+                      [&existing_seqnos](const clickhouse::Block& block) {
             for (size_t i = 0; i < block.GetRowCount(); ++i) {
                 existing_seqnos.push_back(block[0]->As<clickhouse::ColumnInt32>()->At(i));
             }
@@ -477,7 +497,7 @@ void InsertManagerClickhouse::get_resume_seqno(td::Promise<InsertManagerInterfac
 void InsertManagerClickhouse::Credential::set_conn_str(const std::string& conn_str) {
   auto pos = conn_str.find("://");
   if (pos == std::string::npos) {
-    LOG(FATAL) << "Invalid connection string: " << conn_str;
+    LOG(FATAL) << "Invalid ClickHouse connection string: missing protocol";
     std::_Exit(2);
   }
   auto protocol = conn_str.substr(0, pos);
@@ -516,9 +536,9 @@ void InsertManagerClickhouse::Credential::set_conn_str(const std::string& conn_s
   } else {
       host = std::move(host_port);
   }
-  LOG(ERROR) << "Parsed Clickhouse connection string: host=" << host
+  LOG(INFO) << "Clickhouse connection: host=" << host
              << ", port=" << port << ", user=" << user
-             << ", password=" << password << ", dbname=" << dbname;
+             << ", dbname=" << dbname;
 }
 
 clickhouse::ClientOptions InsertManagerClickhouse::Credential::get_clickhouse_options()
@@ -542,7 +562,15 @@ void InsertBatchClickhouse::start_up() {
         insert_shard_state(client);
         insert_nfts(client);
         insert_jettons(client);
+        account_history::insert_states(client, insert_tasks_);
+        elector::clickhouse_storage::insert_round_results(client, insert_tasks_);
+        validator_storage::insert(client, insert_tasks_);
         insert_blocks(client);
+        if (collect_gramstat_) {
+            // Deltas are the completion marker even for MCs with zero deployments.
+            insert_deployments(client);
+            insert_account_deltas(client);
+        }
         
         // all done
         InsertManagerInterface::InsertResult result;
@@ -558,6 +586,40 @@ void InsertBatchClickhouse::start_up() {
         promise_.set_error(td::Status::Error(ErrorCode::DB_ERROR, PSLICE() << "Error inserting batch to Clickhouse: " << e.what()));
     }
     stop();
+}
+
+void InsertBatchClickhouse::insert_deployments(clickhouse::Client& client) {
+    std::vector<schema::Deployment> deployments;
+    for (const auto& task : insert_tasks_) {
+        const auto& events = task.parsed_block_->deployments_;
+        if (!events) {
+            throw std::runtime_error("Missing deployments in ClickHouse batch");
+        }
+        for (const auto& event : *events) {
+            if (event.mc_seqno != task.mc_seqno_) {
+                throw std::runtime_error("Mismatched deployment in ClickHouse batch");
+            }
+            deployments.push_back(event);
+        }
+    }
+    if (!deployments.empty()) {
+        client.Insert(gramstat::table_name(gramstat_db_, "deployments"), gramstat::deployments_block(deployments));
+    }
+}
+
+void InsertBatchClickhouse::insert_account_deltas(clickhouse::Client& client) {
+    std::vector<schema::AccountDeltas> deltas;
+    deltas.reserve(insert_tasks_.size());
+    for (const auto& task : insert_tasks_) {
+        const auto& delta = task.parsed_block_->account_deltas_;
+        if (!delta || delta->mc_seqno != task.mc_seqno_) {
+            throw std::runtime_error("Missing or mismatched account deltas in ClickHouse batch");
+        }
+        deltas.push_back(*delta);
+    }
+    if (!deltas.empty()) {
+        client.Insert(gramstat::table_name(gramstat_db_, "account_deltas"), gramstat::account_deltas_block(deltas));
+    }
 }
 
 void InsertBatchClickhouse::insert_shard_state(clickhouse::Client &client) {
@@ -636,6 +698,14 @@ void InsertBatchClickhouse::insert_blocks(clickhouse::Client &client){
         std::make_shared<ColumnInt32>(),
     }));
     auto transaction_count_col = std::make_shared<ColumnInt32>();
+    auto transaction_fees_col = std::make_shared<ColumnDecimal>(38, 0);
+    auto import_fees_col = std::make_shared<ColumnDecimal>(38, 0);
+    auto created_col = std::make_shared<ColumnDecimal>(38, 0);
+    auto burned_col = std::make_shared<ColumnDecimal>(38, 0);
+    auto aggregate_nulls = std::make_shared<ColumnUInt8>();
+    auto global_balance_col = std::make_shared<ColumnDecimal>(38, 0);
+    auto global_balance_nulls = std::make_shared<ColumnUInt8>();
+    auto out_msg_queue_size_col = std::make_shared<ColumnNullableT<ColumnUInt64>>();
 
     for(const auto& task_ : insert_tasks_) {
         for(const auto& blk_ :task_.parsed_block_->blocks_) {
@@ -698,6 +768,14 @@ void InsertBatchClickhouse::insert_blocks(clickhouse::Client &client){
                 shards_col->AppendAsColumn(std::make_shared<ColumnTuple>(std::vector<ColumnRef>{loc_workchain, loc_shard, loc_seqno}));
             }
             transaction_count_col->Append(blk_.transactions.size());
+            transaction_fees_col->Append(blk_.transaction_fees->to_dec_string());
+            import_fees_col->Append(blk_.import_fees->to_dec_string());
+            created_col->Append(blk_.created->to_dec_string());
+            burned_col->Append(blk_.burned->to_dec_string());
+            aggregate_nulls->Append(0);
+            global_balance_col->Append(blk_.global_balance.is_null() ? "0" : blk_.global_balance->to_dec_string());
+            global_balance_nulls->Append(blk_.global_balance.is_null());
+            out_msg_queue_size_col->Append(blk_.out_msg_queue_size);
         }
     }
     block.AppendColumn("workchain", workchain_col);
@@ -730,6 +808,12 @@ void InsertBatchClickhouse::insert_blocks(clickhouse::Client &client){
     block.AppendColumn("prev_blocks", prev_blocks_col);
     block.AppendColumn("shards", shards_col);
     block.AppendColumn("transaction_count", transaction_count_col);
+    block.AppendColumn("transaction_fees", std::make_shared<ColumnNullable>(transaction_fees_col, aggregate_nulls));
+    block.AppendColumn("import_fees", std::make_shared<ColumnNullable>(import_fees_col, aggregate_nulls));
+    block.AppendColumn("created", std::make_shared<ColumnNullable>(created_col, aggregate_nulls));
+    block.AppendColumn("burned", std::make_shared<ColumnNullable>(burned_col, aggregate_nulls));
+    block.AppendColumn("global_balance", std::make_shared<ColumnNullable>(global_balance_col, global_balance_nulls));
+    block.AppendColumn("out_msg_queue_size", out_msg_queue_size_col);
 
     client.Insert("blocks", block);
 }

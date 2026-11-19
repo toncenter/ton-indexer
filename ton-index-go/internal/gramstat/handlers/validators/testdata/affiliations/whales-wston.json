@@ -1,0 +1,39 @@
+{
+  "family": "whales_proxy",
+  "holder": "Ef-SzcUNsP2UF10p7cHELTmiQp2rLaTCgFHkhnCrFmHwsTON",
+  "utime_since": 1702252296,
+  "anchor_mc_seqno": 34701208,
+  "anchor_root_hash": "gpn0yJ7RjDzRXtY4F2GC88PinOKOcaBkvCwmxu/tQOU=",
+  "anchor_file_hash": "rygXOiWCsPkotHWOAFIwpoQzSkFL7SlcRpn7/9uPsmU=",
+  "response_sha256": "466ca9f7085da9a6360eaf52219784e3af575b0c43f6a33487a73bfa91d5150c",
+  "body": {
+    "ok": true,
+    "result": {
+      "@type": "raw.fullAccountState",
+      "balance": "1000000000",
+      "extra_currencies": [],
+      "last_transaction_id": {
+        "@type": "internal.transactionId",
+        "lt": "43145578000011",
+        "hash": "6NYdy+n7Yxb6omoEZiwjsQdBk09wQ84Vx4fLxiWoA4s="
+      },
+      "block_id": {
+        "@type": "ton.blockIdExt",
+        "workchain": -1,
+        "shard": "-9223372036854775808",
+        "seqno": 34701208,
+        "root_hash": "gpn0yJ7RjDzRXtY4F2GC88PinOKOcaBkvCwmxu/tQOU=",
+        "file_hash": "rygXOiWCsPkotHWOAFIwpoQzSkFL7SlcRpn7/9uPsmU="
+      },
+      "code": "te6cckEBBgEArAABFP8A9KQT9LzyyAsBAgEgAgMC9NIB0NMD+kAw7UTQ+kD6QIBA1yHRbW1TQ8cFkVubU0LHBZJbAZJsIuLiAW6OHxNfA4IQO5rKAHL7AnCAEMjLBVjPFiH6AstqyYMG+wDgMYIQO5rKAHL7AnBSA8jLAxPLAQHPFiH6AstpIM8xpCLXSaCECbzjD8mDBvsABAUACvIw8sBIABTIWM8WyXFYywDMAA5wAcsAAc8W17F+lQ==",
+      "data": "te6cckEBAQEATQAAlZ/mZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZnAB0SoxuGDx5qjVt0P/bPICFeWdFLBmVopHhjgfs0q+wscpagV6bGO+IjbRtR8=",
+      "frozen_hash": "",
+      "sync_utime": 1702252296,
+      "state": "active",
+      "suspended": false
+    },
+    "@extra": "1794315066:2:184.73"
+  },
+  "error": "",
+  "inventory": null
+}

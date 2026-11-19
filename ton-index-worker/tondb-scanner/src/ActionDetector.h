@@ -29,6 +29,14 @@ public:
 
   void start_up() override {
     timer_.resume();
+    auto round_results = elector::collect_round_results(*block_);
+    if (round_results.is_error()) {
+      // A missed unfreeze cannot be recovered from later Elector states.
+      promise_.set_error(round_results.move_as_error());
+      stop();
+      return;
+    }
+    block_->validator_round_results_ = round_results.move_as_ok();
     StakingEventProcessor staking_processor(block_);
     for (const auto& block : block_->blocks_) {
       for (const auto& transaction : block.transactions) {

@@ -44,7 +44,6 @@ add_custom_target(apply-rocksdb-secondary-open-patch
 )
 add_dependencies(rocksdb apply-rocksdb-secondary-open-patch)
 
-
 # The TON subtree already provides an lz4 target.  Tell clickhouse-cpp to use
 # that configured library instead of adding its bundled target with the same
 # plain name.
@@ -115,4 +114,3 @@ if (PGTON)
     message("Building pgton")
     add_subdirectory(pgton)
 endif()
-

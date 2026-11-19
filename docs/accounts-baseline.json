@@ -1,0 +1,24 @@
+{
+  "network": "mainnet",
+  "verified_on_utc": "2026-11-08",
+  "baseline_id": "mainnet-mc2-545984e4-v1",
+  "source_sha256": "6f029a2256f3e2224246e4c6990ee25cbaa21956d9243d7cda353d757543ea6c",
+  "binary_sha256": "6f800104aea66c9c0ab8b85c52468aaed0a0f78f7e51100a95489164c9073ae5",
+  "baseline": {
+    "mc_seqno": 2,
+    "gen_utime": 1573822391,
+    "mc_state_hash": "545984E4836DD4B44FA92D31652068C65540B1E6BFE29D18C04F55D2AE48BA4E",
+    "uninit": 0,
+    "active": 7,
+    "frozen": 0,
+    "basechain_zero_state_hash": "55B13F6D0E1D0C34C9C2160F6F918E92D82BF9DDCF8DE2E4C94A3FDF39D15446",
+    "basechain_accounts": 0
+  },
+  "checks": [
+    {"mc_seqno": 3, "gen_utime": 1573822403, "uninit": 0, "active": 7, "frozen": 0,
+     "mc_state_hash": "E4A7DF982C61735BB9198BC87BF3DC50D302EF99F58EF8576E3747475532D469"},
+    {"mc_seqno": 1001, "gen_utime": 1573825399, "uninit": 0, "active": 9, "frozen": 0,
+     "mc_state_hash": "BC1C75A17D794AE6037E4458BCA62402418CF0FE725DD68778FCE0568B39A40E"}
+  ],
+  "delta_check": {"first_mc": 3, "last_mc": 1001, "rows": 999, "uninit": 0, "active": 2, "frozen": 0}
+}

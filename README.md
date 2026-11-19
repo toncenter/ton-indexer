@@ -28,6 +28,13 @@ TON Indexer stack consists of following services:
 > [!IMPORTANT]
 > Metadata fetcher and imgproxy services perform requests to external links, such requests may expose your IP, strongly recommended to run this services on a separate machine and set up `IMGPROXY_KEY` and `IMGPROXY_SALT` variables.
 
+## Gramstat analytics
+
+See [Gramstat storage and metrics](docs/gramstat.md). For supply-chart/API work,
+follow the [mainnet supply-chart contract](docs/gramstat-supply-chart.md): cumulative
+burn correction before MC **103190382**, raw stored balance from that block onward,
+and a burn-start marker at MC **30410593**.
+
 ## Getting started
 
 ### Prerequisites

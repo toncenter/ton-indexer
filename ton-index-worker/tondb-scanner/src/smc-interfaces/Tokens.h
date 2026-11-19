@@ -4,9 +4,20 @@
 #include <mc-config.h>
 
 using AllShardStates = std::vector<td::Ref<vm::Cell>>;
+class AccountLookupContext;
+
+// Per-address probes from the normal detector run. Unknown includes failed
+// getters/lookups; only a proven non-match is false.
+struct TokenDetectionStatus {
+  std::optional<bool> jetton_wallet;
+  std::optional<bool> nft_item;
+};
 
 class JettonWalletDetectorR: public td::actor::Actor {
 public:
+  static constexpr unsigned long long DATA_METHOD_ID = 97026;
+  // A proven non-match, as opposed to an unavailable/invalid getter result.
+  static constexpr int NOT_JETTON_WALLET = 11001;
   struct Result {
     td::RefInt256 balance;
     block::StdAddress address;
@@ -20,7 +31,8 @@ public:
                        td::Ref<vm::Cell> data_cell, 
                        AllShardStates shard_states,
                        std::shared_ptr<block::ConfigInfo> config,
-                       td::Promise<Result> promise);
+                       td::Promise<Result> promise,
+                       std::shared_ptr<AccountLookupContext> lookup = nullptr);
 
   void start_up() override;
 
@@ -28,7 +40,8 @@ public:
                                    const td::Ref<vm::Cell>& code_cell,
                                    const td::Ref<vm::Cell>& data_cell,
                                    const AllShardStates& shard_states,
-                                   const std::shared_ptr<block::ConfigInfo>& config);
+                                   const std::shared_ptr<block::ConfigInfo>& config,
+                                   AccountLookupContext* lookup = nullptr);
 
 private:
   block::StdAddress address_;
@@ -37,6 +50,7 @@ private:
   AllShardStates shard_states_;
   std::shared_ptr<block::ConfigInfo> config_;
   td::Promise<Result> promise_;
+  std::shared_ptr<AccountLookupContext> lookup_;
 };
 
 class JettonMasterDetectorR: public td::actor::Actor {
@@ -70,6 +84,8 @@ private:
 
 class NftItemDetectorR: public td::actor::Actor {
 public:
+  static constexpr unsigned long long DATA_METHOD_ID = 102351;
+  static constexpr int NOT_NFT_ITEM = 11002;
   struct Result {
     struct DNSEntry {
       std::string domain;
@@ -100,7 +116,8 @@ public:
                        td::Ref<vm::Cell> data_cell, 
                        AllShardStates shard_states,
                        std::shared_ptr<block::ConfigInfo> config,
-                       td::Promise<Result> promise);
+                       td::Promise<Result> promise,
+                       std::shared_ptr<AccountLookupContext> lookup = nullptr);
 
   void start_up() override;
 
@@ -108,19 +125,18 @@ public:
                                    const td::Ref<vm::Cell>& code_cell,
                                    const td::Ref<vm::Cell>& data_cell,
                                    const AllShardStates& shard_states,
-                                   const std::shared_ptr<block::ConfigInfo>& config);
+                                   const std::shared_ptr<block::ConfigInfo>& config,
+                                   AccountLookupContext* lookup = nullptr);
 
 private:
-  void got_collection(Result item_data, td::Ref<vm::Cell> ind_content, td::Ref<vm::Cell> collection_code, td::Ref<vm::Cell> collection_data);
-  td::Status verify_with_collection(block::StdAddress collection_address, td::Ref<vm::Cell> collection_code, td::Ref<vm::Cell> collection_data, td::RefInt256 index);
-  td::Result<std::map<std::string, std::string>> get_content(td::RefInt256 index, td::Ref<vm::Cell> ind_content, block::StdAddress collection_address,
-                                                            td::Ref<vm::Cell> collection_code, td::Ref<vm::Cell> collection_data);
   void process_domain_and_dns_data(const block::StdAddress& root_address, const std::function<td::Result<std::string>()>& get_domain_function, Result& item_data);
   td::Result<NftItemDetectorR::Result::DNSEntry> get_dns_entry_data();
   td::Status get_auction_info(Result::DNSEntry& entry);
   td::Status get_last_fill_up_time(Result::DNSEntry& entry);
   td::Result<std::string> get_ton_domain();
   td::Result<std::string> get_t_me_domain();
+
+  std::shared_ptr<AccountLookupContext> lookup_;
 
   block::StdAddress address_;
   td::Ref<vm::Cell> code_cell_;
@@ -129,7 +145,6 @@ private:
   std::shared_ptr<block::ConfigInfo> config_;
   td::Promise<Result> promise_;
 
-  td::Ref<vm::Cell> ind_content_;
 };
 
 class NftCollectionDetectorR: public td::actor::Actor {
@@ -178,7 +193,8 @@ public:
                      td::Ref<vm::Cell> data_cell,
                      AllShardStates shard_states,
                      std::shared_ptr<block::ConfigInfo> config,
-                     td::Promise<Result> promise);
+                     td::Promise<Result> promise,
+                     std::shared_ptr<AccountLookupContext> lookup = nullptr);
 
   void start_up() override;
 
@@ -187,9 +203,11 @@ public:
                                    const td::Ref<vm::Cell>& code_cell,
                                    const td::Ref<vm::Cell>& data_cell,
                                    const AllShardStates& shard_states,
-                                   const std::shared_ptr<block::ConfigInfo>& config);
+                                   const std::shared_ptr<block::ConfigInfo>& config,
+                                   AccountLookupContext* lookup = nullptr);
 
 private:
+  std::shared_ptr<AccountLookupContext> lookup_;
   block::StdAddress address_;
   td::Ref<vm::Cell> code_cell_;
   td::Ref<vm::Cell> data_cell_;

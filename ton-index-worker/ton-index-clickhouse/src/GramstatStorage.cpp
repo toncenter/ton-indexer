@@ -1,0 +1,131 @@
+#include "GramstatStorage.h"
+
+#include <algorithm>
+#include <stdexcept>
+
+#include "clickhouse/columns/date.h"
+#include "clickhouse/columns/decimal.h"
+#include "clickhouse/columns/numeric.h"
+#include "clickhouse/columns/nullable.h"
+#include "clickhouse/columns/string.h"
+#include "convert-utils.h"
+
+namespace gramstat {
+
+bool valid_database_name(const std::string& database) {
+    auto letter = [](char c) { return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_'; };
+    return !database.empty() && letter(database.front()) &&
+        std::all_of(database.begin(), database.end(), [&](char c) { return letter(c) || (c >= '0' && c <= '9'); });
+}
+
+std::string table_name(const std::string& database, const std::string& table) {
+    if (!valid_database_name(database) || !valid_database_name(table)) {
+        throw std::invalid_argument("Invalid Gramstat database or table name");
+    }
+    return "`" + database + "`.`" + table + "`";
+}
+
+std::vector<std::string> schema_queries(const std::string& database) {
+    // Use the same qualified names for DDL, inserts and resume checks.
+    auto deltas = table_name(database, "account_deltas");
+    auto deployments = table_name(database, "deployments");
+    return {
+        "CREATE DATABASE IF NOT EXISTS `" + database + "`",
+        "CREATE TABLE IF NOT EXISTS " + deltas + R"SQL( (
+    mc_seqno UInt32,
+    gen_utime DateTime('UTC'),
+    delta_uninit Int64,
+    delta_active Int64,
+    delta_frozen Int64
+) ENGINE = ReplacingMergeTree
+PARTITION BY toYYYYMM(gen_utime)
+ORDER BY (gen_utime, mc_seqno)
+)SQL",
+        "CREATE TABLE IF NOT EXISTS " + deployments + R"SQL( (
+    mc_seqno UInt32,
+    gen_utime DateTime('UTC'),
+    account String,
+    lt UInt64,
+    tx_hash FixedString(44),
+    init_code_hash Nullable(FixedString(44)),
+    out_msgs_count UInt32
+) ENGINE = ReplacingMergeTree
+PARTITION BY toYYYYMM(gen_utime)
+ORDER BY (account, lt, tx_hash)
+)SQL"};
+}
+
+clickhouse::Block account_deltas_block(const std::vector<schema::AccountDeltas>& deltas) {
+    using namespace clickhouse;
+    auto seqno = std::make_shared<ColumnUInt32>();
+    auto time = std::make_shared<ColumnDateTime>("UTC");
+    auto uninit = std::make_shared<ColumnInt64>();
+    auto active = std::make_shared<ColumnInt64>();
+    auto frozen = std::make_shared<ColumnInt64>();
+    for (const auto& delta : deltas) {
+        seqno->Append(delta.mc_seqno);
+        time->AppendRaw(delta.gen_utime);
+        uninit->Append(delta.delta_uninit);
+        active->Append(delta.delta_active);
+        frozen->Append(delta.delta_frozen);
+    }
+    Block block;
+    block.AppendColumn("mc_seqno", seqno);
+    block.AppendColumn("gen_utime", time);
+    block.AppendColumn("delta_uninit", uninit);
+    block.AppendColumn("delta_active", active);
+    block.AppendColumn("delta_frozen", frozen);
+    return block;
+}
+
+clickhouse::Block deployments_block(const std::vector<schema::Deployment>& deployments) {
+    using namespace clickhouse;
+    auto seqno = std::make_shared<ColumnUInt32>();
+    auto time = std::make_shared<ColumnDateTime>("UTC");
+    auto account = std::make_shared<ColumnString>();
+    auto lt = std::make_shared<ColumnUInt64>();
+    auto hash = std::make_shared<ColumnFixedString>(44);
+    auto code = std::make_shared<ColumnNullableT<ColumnFixedString>>(44);
+    auto out_count = std::make_shared<ColumnUInt32>();
+    for (const auto& event : deployments) {
+        seqno->Append(event.mc_seqno);
+        time->AppendRaw(event.gen_utime);
+        account->Append(convert::to_raw_address(event.account));
+        lt->Append(event.lt);
+        hash->Append(td::base64_encode(event.tx_hash.as_slice()));
+        code->Append(event.init_code_hash
+            ? std::optional<std::string>(td::base64_encode(event.init_code_hash->as_slice())) : std::nullopt);
+        out_count->Append(event.out_msgs_count);
+    }
+    Block block;
+    block.AppendColumn("mc_seqno", seqno);
+    block.AppendColumn("gen_utime", time);
+    block.AppendColumn("account", account);
+    block.AppendColumn("lt", lt);
+    block.AppendColumn("tx_hash", hash);
+    block.AppendColumn("init_code_hash", code);
+    block.AppendColumn("out_msgs_count", out_count);
+    return block;
+}
+
+std::string completed_seqnos_query(bool collect_gramstat, std::int32_t from_seqno, std::int32_t to_seqno,
+                                  const std::string& database) {
+    auto range = [from_seqno, to_seqno](const char* column) {
+        std::string sql;
+        if (from_seqno > 0) {
+            sql += " AND " + std::string(column) + " >= " + std::to_string(from_seqno);
+        }
+        if (to_seqno > 0) {
+            sql += " AND " + std::string(column) + " <= " + std::to_string(to_seqno);
+        }
+        return sql;
+    };
+    std::string sql = "SELECT DISTINCT seqno FROM blocks WHERE workchain = -1" + range("seqno");
+    if (collect_gramstat) {
+        sql += " AND toUInt32(seqno) IN (SELECT mc_seqno FROM " + table_name(database, "account_deltas") + " WHERE 1" +
+               range("mc_seqno") + ")";
+    }
+    return sql;
+}
+
+}  // namespace gramstat
