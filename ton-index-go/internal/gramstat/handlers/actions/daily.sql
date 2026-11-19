@@ -29,6 +29,8 @@ WITH payments AS (
     -- One source-table scan. Keep only columns needed by the independent
     -- aggregates; in particular, do not retain arbitrary assets or amounts.
      SELECT day, type, is_total_action,
+           CASE WHEN type='jetton_transfer' THEN asset='0:B113A994B5024A16719F69139328EB759596C38A25F59028B146FECDC3621DFE' END AS usdt,
+           CASE WHEN type='ton_transfer' THEN value>=1000000000 END AS gram_ge_one,
            CASE WHEN type IN ('jetton_transfer','nft_transfer','jetton_swap') THEN source END AS source,
            CASE WHEN type IN ('jetton_transfer','nft_transfer') THEN destination END AS destination,
            CASE WHEN liquid_pool IS NOT NULL THEN amount END AS amount,
@@ -45,6 +47,10 @@ WITH payments AS (
            count(DISTINCT source) FILTER (WHERE type = 'jetton_transfer') AS jetton_senders,
            count(DISTINCT destination) FILTER (WHERE type = 'jetton_transfer') AS jetton_receivers,
            count(*) FILTER (WHERE type = 'jetton_transfer') AS jetton_transfers,
+           count(*) FILTER (WHERE usdt) AS usdt,
+           count(*) FILTER (WHERE type='jetton_transfer' AND usdt IS NULL) AS unknown_asset,
+           count(*) FILTER (WHERE is_total_action AND gram_ge_one) AS gram_ge_one,
+           count(*) FILTER (WHERE type='ton_transfer' AND is_total_action AND gram_ge_one IS NULL) AS unknown_value,
            count(DISTINCT source) FILTER (WHERE type = 'nft_transfer') AS nft_senders,
            count(DISTINCT destination) FILTER (WHERE type = 'nft_transfer') AS nft_receivers,
            count(*) FILTER (WHERE type = 'nft_transfer') AS nft_transfers,
@@ -116,7 +122,8 @@ SELECT d.day, d.jetton_senders, d.jetton_receivers, d.jetton_transfers,
        d.nft_senders, d.nft_receivers, d.nft_transfers, d.swaps, d.swap_users,
        coalesce(x.breakdown, '{}'::jsonb), d.deposits, d.deposit_nanoton::text,
        coalesce(p.breakdown, '{}'::jsonb), d.dns_mints,
-        coalesce(s.purchases, 0), coalesce(s.buckets, '[]'::jsonb), coalesce(t.breakdown, '{}'::jsonb)
+        coalesce(s.purchases, 0), coalesce(s.buckets, '[]'::jsonb), coalesce(t.breakdown, '{}'::jsonb),
+        d.usdt, d.unknown_asset, d.gram_ge_one, d.unknown_value
 FROM daily d
 LEFT JOIN dex_days x USING (day)
 LEFT JOIN pool_days p USING (day)

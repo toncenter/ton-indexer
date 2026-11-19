@@ -12,15 +12,19 @@ import (
 	"github.com/toncenter/ton-indexer/ton-index-go/internal/gramstat"
 )
 
-var Metrics = []string{
+const jettonAssets = "jetton_transfer_assets_v1"
+const gramSizes = "action_gram_transfer_sizes_v1"
+
+var baseMetrics = []string{
 	"jetton_senders", "jetton_receivers", "jetton_transfers",
 	"nft_senders", "nft_receivers", "nft_transfers",
 	"swaps_total", "swaps_users", "liquid_staking_deposits", "ton_dns_mints",
 	"liquid_staking_deposits_tonstakers", "liquid_staking_deposits_stakee",
 	"liquid_staking_deposits_kton", "liquid_staking_deposits_sgram",
 	"telegram_stars_purchases",
-	TotalMetric,
 }
+
+var Metrics = append(append([]string{}, baseMetrics...), TotalMetric, jettonAssets, gramSizes)
 
 var liquidPools = []string{"tonstakers", "stakee", "kton", "sgram"}
 
@@ -41,6 +45,7 @@ type DayCounts struct {
 	StarsRejected                                        uint64
 	StarsBuckets                                         []gramstat.StarsBucket
 	TotalByType                                          map[string]uint64
+	USDT, UnknownAsset, GramGEOne, UnknownValue          uint64
 }
 
 type Snapshot struct {
@@ -99,8 +104,10 @@ func (h *Handler) Run(ctx context.Context, req gramstat.Request) error {
 		}
 		// Initial taxonomy history is an explicit, single-scan backfill. Do not
 		// turn its introduction into seven-day scans of the entire source tail.
-		from = gramstat.CatchUpStart(from, gramstat.Day(req.AsOf), Metrics[:len(Metrics)-1], stored)
-		from = gramstat.CatchUpStart(from, gramstat.Day(req.AsOf), []string{TotalMetric}, map[string][]time.Time{TotalMetric: stored[TotalMetric]})
+		from = gramstat.CatchUpStart(from, gramstat.Day(req.AsOf), baseMetrics, stored)
+		for _, metric := range []string{TotalMetric, jettonAssets, gramSizes} {
+			from = gramstat.CatchUpStart(from, gramstat.Day(req.AsOf), []string{metric}, map[string][]time.Time{metric: stored[metric]})
+		}
 	}
 	chunkDays := h.ChunkDays
 	if chunkDays == 0 {
@@ -127,7 +134,7 @@ func (h *Handler) Run(ctx context.Context, req gramstat.Request) error {
 		if h.StarsOnly || h.TotalOnly {
 			selected := rows[:0]
 			for _, row := range rows {
-				if (h.StarsOnly && row.Metric == "telegram_stars_purchases") || (h.TotalOnly && row.Metric == TotalMetric) {
+				if (h.StarsOnly && row.Metric == "telegram_stars_purchases") || (h.TotalOnly && (row.Metric == TotalMetric || row.Metric == gramSizes)) {
 					selected = append(selected, row)
 				}
 			}
@@ -251,7 +258,12 @@ func dailyRows(from, to time.Time, snapshot Snapshot) ([]gramstat.DailyMetric, e
 			}
 			total += count
 		}
-		values = append(values, total)
+		grams := d.TotalByType["ton_transfer"]
+		if d.USDT > d.JettonTransfers || d.UnknownAsset > d.JettonTransfers-d.USDT ||
+			d.GramGEOne > grams || d.UnknownValue > grams-d.GramGEOne {
+			return nil, fmt.Errorf("inconsistent transfer breakdown for %s", day.Format(time.DateOnly))
+		}
+		values = append(values, total, d.JettonTransfers, grams)
 		through := day.AddDate(0, 0, 1)
 		partial := uint8(0)
 		if through.After(snapshot.Through) {
@@ -268,6 +280,10 @@ func dailyRows(from, to time.Time, snapshot Snapshot) ([]gramstat.DailyMetric, e
 			switch metric {
 			case TotalMetric:
 				row.Breakdown = d.TotalByType
+			case jettonAssets:
+				row.Breakdown = map[string]uint64{"usdt": d.USDT, "others": d.JettonTransfers - d.USDT - d.UnknownAsset, "unknown": d.UnknownAsset}
+			case gramSizes:
+				row.Breakdown = map[string]uint64{"small": grams - d.GramGEOne - d.UnknownValue, "ge_one": d.GramGEOne, "unknown": d.UnknownValue}
 			case "swaps_total":
 				row.Breakdown = d.SwapsByDEX
 			case "liquid_staking_deposits":

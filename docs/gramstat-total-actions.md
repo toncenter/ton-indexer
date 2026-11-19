@@ -30,6 +30,19 @@ Lending, Bridges, or Other recognized actions. Its corresponding frozen registry
 is `gramstat/ui/action-types.mjs`. A taxonomy change needs a new metric version
 and consistent rebuild; never mix definitions within a version.
 
+The GRAM size refinement does not alter this frozen taxonomy. The same daily
+publication writes `action_gram_transfer_sizes_v1` for accepted `ton_transfer`
+rows (`small`, `ge_one`, `unknown`); `actions.value >= 1000000000` includes
+exactly one GRAM. The separate `jetton_transfer_assets_v1` counts **all**
+successful `jetton_transfer` rows, including nested transfers. USDT matches
+master `0:B113A994B5024A16719F69139328EB759596C38A25F59028B146FECDC3621DFE`
+in `actions.asset`; `others` requires another known master and NULL is `unknown`.
+Both keep all three keys even for a verified zero day, in the existing
+`daily_metrics` table. Normal refresh shares `daily.sql`'s single source scan.
+The count-only `transfer_history.sql` takes identical MC/time bounds and
+registry; reconcile its two parent counts against existing closed-day rows
+before publishing a historical upgrade. Never infer missing coverage from zeros.
+
 Monthly totals sum exact covered daily counts without another PostgreSQL scan.
 Missing historical days leave the month unknown; current months can be partial.
 The Total overlay equals the sum of visible categories. Type checkboxes change
@@ -48,7 +61,7 @@ gramstat-aggregate --handlers actions_total --from 2019-11-15 --to 2026-11-13 \
 ```
 
 This explicit backfill scans once for day/type counts and writes only
-`actions_total_v1`. It does not recalculate existing unique counts, Stars or
+`actions_total_v1` and its GRAM-size companion. It does not recalculate existing unique counts, Stars or
 amounts. Use a dedicated historical lock with disjoint writer ownership.
 Ordinary refresh continues through the shared query every five minutes.
 

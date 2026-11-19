@@ -39,7 +39,7 @@ func starsOnlySQL() string {
 	}
 	return strings.TrimSpace(starsSourceSQL) + ", parsed AS MATERIALIZED (" + tail + `
 SELECT day, 0, 0, 0, 0, 0, 0, 0, 0, '{}'::jsonb, 0, '0'::text,
-       '{}'::jsonb, 0, purchases, buckets, '{}'::jsonb FROM star_days ORDER BY day`
+       '{}'::jsonb, 0, purchases, buckets, '{}'::jsonb, 0,0,0,0 FROM star_days ORDER BY day`
 }
 
 type Postgres struct {
@@ -97,7 +97,7 @@ SELECT 'monthly', date_trunc('month',day)::date,
  count(DISTINCT source) FILTER (WHERE type='nft_transfer'),
  count(DISTINCT destination) FILTER (WHERE type='nft_transfer'), 0, 0,
  count(DISTINCT source) FILTER (WHERE type='jetton_swap'),
- '{}'::jsonb, 0, '0'::text, '{}'::jsonb, 0, 0, '[]'::jsonb, '{}'::jsonb
+ '{}'::jsonb, 0, '0'::text, '{}'::jsonb, 0, 0, '[]'::jsonb, '{}'::jsonb, 0,0,0,0
 FROM src WHERE day < date_trunc('month',to_timestamp($4) AT TIME ZONE 'UTC')::date
 AND type IN ('jetton_transfer','nft_transfer','jetton_swap')
 GROUP BY 2 ORDER BY 1,2`
@@ -213,7 +213,8 @@ WHERE workchain = -1 AND seqno = $1 LIMIT 1`, upper).Scan(&sourceTime); err != n
 		var starsPurchases int64
 		granularity := "daily"
 		dest := []any{&d.Day, &senders, &receivers, &transfers, &nftSenders, &nftReceivers, &nfts,
-			&swaps, &users, &dexJSON, &deposits, &d.LiquidStakingAmount, &poolsJSON, &dnsMints, &starsPurchases, &starsJSON, &typesJSON}
+			&swaps, &users, &dexJSON, &deposits, &d.LiquidStakingAmount, &poolsJSON, &dnsMints, &starsPurchases, &starsJSON, &typesJSON,
+			&d.USDT, &d.UnknownAsset, &d.GramGEOne, &d.UnknownValue}
 		if combined {
 			dest = append([]any{&granularity}, dest...)
 		}

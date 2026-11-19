@@ -2,6 +2,7 @@ package actions
 
 import (
 	"context"
+	_ "embed"
 	"fmt"
 	"os"
 	"reflect"
@@ -11,6 +12,9 @@ import (
 
 	"github.com/jackc/pgx/v5"
 )
+
+//go:embed transfer_history.sql
+var transferHistorySQL string
 
 // The supplied local test role must have CREATEDB. All fixture data lives in a
 // fresh database, removed afterwards; never use the production source DSN here.
@@ -168,6 +172,48 @@ INSERT INTO actions(trace_mc_seqno_end,start_utime,type,success,ancestor_type) V
 	}
 	if len(only.Days) != len(nested.Days) {
 		t.Fatal("total backfill lost days")
+	}
+	_, err = fixture.Exec(ctx, `UPDATE actions SET asset='0:B113A994B5024A16719F69139328EB759596C38A25F59028B146FECDC3621DFE' WHERE parent_action_id='swap';
+UPDATE actions SET asset='other' WHERE parent_action_id='late_trace';
+INSERT INTO actions(trace_mc_seqno_end,start_utime,type,success,ancestor_type,value) VALUES
+ (100,1792540810,'ton_transfer',true,'{}',999999999),
+ (100,1792540810,'ton_transfer',true,'{}',1000000000),
+ (100,1792540810,'ton_transfer',true,ARRAY['jetton_swap'],1000000000),
+ (100,1792540810,'ton_transfer',false,'{}',1000000000)`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	splits, err := source.Collect(ctx, from, from.Add(48*time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	first := splits.Days[0]
+	if first.USDT != 1 || first.UnknownAsset != 2 || first.GramGEOne != 1 || first.UnknownValue != 1 || first.TotalByType["ton_transfer"] != 3 {
+		t.Fatalf("transfer threshold, missing value, or nested transfer counted incorrectly: %+v", first)
+	}
+	hist, err := fixture.Query(ctx, transferHistorySQL, 99, 102, from.Unix(), from.Add(48*time.Hour).Unix(), TotalTypes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	byDate := map[time.Time]DayCounts{}
+	for _, d := range splits.Days {
+		byDate[d.Day] = d
+	}
+	for hist.Next() {
+		var date time.Time
+		var got [6]uint64
+		if err := hist.Scan(&date, &got[0], &got[1], &got[2], &got[3], &got[4], &got[5]); err != nil {
+			t.Fatal(err)
+		}
+		d, ok := byDate[date]
+		if !ok || got != [6]uint64{d.JettonTransfers, d.USDT, d.UnknownAsset, d.TotalByType["ton_transfer"], d.GramGEOne, d.UnknownValue} {
+			t.Fatalf("history %s: %v vs %+v", date, got, d)
+		}
+		delete(byDate, date)
+	}
+	hist.Close()
+	if err := hist.Err(); err != nil || len(byDate) != 0 {
+		t.Fatal(err, byDate)
 	}
 	for i := range only.Days {
 		if !reflect.DeepEqual(only.Days[i].TotalByType, nested.Days[i].TotalByType) {

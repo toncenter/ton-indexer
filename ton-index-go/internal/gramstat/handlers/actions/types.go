@@ -41,10 +41,12 @@ var totalTypeSet = func() map[string]bool {
 // A one-off initial backfill needs only type counts, not the already prepared
 // distinct users, Stars distributions or money. Ordinary refresh uses daily.sql.
 const totalOnlySQL = `WITH counts AS (
- SELECT (to_timestamp(start_utime) AT TIME ZONE 'UTC')::date AS day,type,count(*) AS n
+ SELECT (to_timestamp(start_utime) AT TIME ZONE 'UTC')::date AS day,type,count(*) AS n,
+ count(*) FILTER (WHERE type='ton_transfer' AND value>=1000000000) AS ge_one,
+ count(*) FILTER (WHERE type='ton_transfer' AND value IS NULL) AS unknown_value
  FROM public.actions WHERE trace_mc_seqno_end >= $1 AND trace_mc_seqno_end <= $2
  AND start_utime >= $3 AND start_utime < $4 AND success=true AND type=ANY($5::varchar[])
  AND NOT(coalesce(ancestor_type,ARRAY[]::varchar[]) && $5::varchar[])
  GROUP BY 1,2)
  SELECT day,0,0,0,0,0,0,0,0,'{}'::jsonb,0,'0'::text,'{}'::jsonb,0,0,'[]'::jsonb,
- jsonb_object_agg(type,n) FROM counts GROUP BY day ORDER BY day`
+ jsonb_object_agg(type,n),0,0,sum(ge_one)::bigint,sum(unknown_value)::bigint FROM counts GROUP BY day ORDER BY day`
