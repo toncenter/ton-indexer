@@ -1,0 +1,25 @@
+[Unit]
+Description=Prepare closing DEX reserve valuations
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=gramstat-dex
+Group=gramstat-dex
+EnvironmentFile=/etc/gramstat-dex/tvl.env
+ExecStart=/usr/bin/python3 -I /opt/gramstat/bin/gramstat-dex-tvl.py --write --missing
+TimeoutStartSec=infinity
+UMask=0077
+Nice=10
+MemoryMax=256M
+CPUQuota=100%
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+CapabilityBoundingSet=
