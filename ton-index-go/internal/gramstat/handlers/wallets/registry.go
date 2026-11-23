@@ -1,6 +1,9 @@
 package wallets
 
-import "encoding/base64"
+import (
+	"encoding/base64"
+	"slices"
+)
 
 // Frozen agreed registry, exported by scripts/tonstat-wallets/wallet_codes.py.
 // Never derive it from the evolving detector at runtime. V5 beta has two hashes;
@@ -37,6 +40,10 @@ var versions = []string{
 	"wallet_highload_v1r1", "wallet_highload_v1r2", "wallet_highload_v2",
 	"wallet_highload_v2r1", "wallet_highload_v2r2", "wallet_highload_v3r1", "wallet_tg",
 }
+
+// KnownCode checks a historical account-state code hash against the same
+// frozen wallet registry used for the wallet activity series.
+func KnownCode(code string) bool { return slices.Contains(codes, code) }
 
 func registryParameter() string {
 	s := "["

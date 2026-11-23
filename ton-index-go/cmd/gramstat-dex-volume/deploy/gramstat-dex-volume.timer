@@ -1,0 +1,9 @@
+[Unit]
+Description=Refresh recognized DEX user volume after UTC day close
+
+[Timer]
+OnCalendar=*-*-* *:17:00 UTC
+Persistent=true
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,26 @@
+[Unit]
+Description=Prepare missing closed days of recognized DEX user volume
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=gramstat-dex
+Group=gramstat-dex
+EnvironmentFile=/etc/gramstat-dex/aggregate.env
+Environment=GOMEMLIMIT=700MiB
+ExecStart=/opt/gramstat/bin/gramstat-dex-volume --from 2022-09-01 --missing --recent-first --write
+TimeoutStartSec=infinity
+CPUQuota=150%
+MemoryMax=1G
+Nice=10
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+CapabilityBoundingSet=
