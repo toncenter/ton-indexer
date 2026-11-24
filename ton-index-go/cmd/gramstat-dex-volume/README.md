@@ -39,5 +39,10 @@ of the first positive `swaps_total`. Day selection uses the MC in which the
 trace closed; the quote instant is the action/route end. Direct GRAM and both
 STON.fi pTON masters are valued at their transferred nanogram amount. Otherwise
 use the canonical USDT anchor or a fresh jetton quote from an earlier closed
-minute, with at most 15 minutes of observation age. An invalid latest quote
-invalidates the asset; it does not uncover an older valid quote.
+minute. Prefer quotes no more than 15 minutes old on either boundary. If
+neither side can be valued this way, use the latest still-valid jetton quote
+before execution, without an age cap or later GRAM/USDT adjustment. An invalid
+latest quote invalidates the asset; it does not uncover an older valid quote.
+The USDT anchor itself must be from the preceding minute. Look up pre-window
+history only for assets on otherwise unpriced routes. `dex_volume_gram_v2`
+keeps `carried` as a subset of priced routes and does not overwrite v1.

@@ -47,29 +47,61 @@ func TestRoutes(t *testing.T) {
 	assert([]Swap{first, independent}, 0, 1, "", "")
 }
 func TestHistoricalValuation(t *testing.T) {
-	b, e := readBook(strings.NewReader("USDT\t600\t0.002\t600\nTOKEN\t540\t1.5\t555\nTOKEN\t600\t-\t620\nTOKEN\t660\t99\t675\ndone\n"))
+	b, e := readBook(strings.NewReader("USDT\t600\t0.002\t600\nTOKEN\t540\t1.5\t555\nTOKEN\t600\t-\t620\nTOKEN\t660\t99\t675\ndone\n"), "done")
 	if e != nil {
 		t.Fatal(e)
 	}
 	r := Route{End: 659, In: leg("TOKEN", "3", "a")}
-	if n := b.nanograms(r); n == nil || n.String() != "5" {
+	if n, old := b.nanograms(r); n == nil || n.String() != "5" || old {
 		t.Fatalf("prior minute: %v", n)
 	}
 	r.End = 670
-	if n := b.nanograms(r); n != nil {
+	if n, _ := b.nanograms(r); n != nil {
 		t.Fatal("lookahead or ignored tombstone", n)
 	}
 	r.In = leg(USDT, "1000000", "a")
-	if n := b.nanograms(r); n.String() != "500000000" {
+	if n, _ := b.nanograms(r); n.String() != "500000000" {
 		t.Fatal(n)
 	}
 	r.Out = leg(Native, "100000000000000000001", "b")
-	if n := b.nanograms(r); n.String() != r.Out.Amount {
+	if n, _ := b.nanograms(r); n.String() != r.Out.Amount {
 		t.Fatal("must use exact native boundary")
 	}
 	d := Day{Routes: []Route{{Dex: "stonfi", Out: r.Out}, {Dex: "tonco"}}, Ambiguous: 1}
-	m, e := Summarize(d, b, time.Now())
+	m, e := Summarize(d, Books{0: b}, time.Now())
 	if e != nil || *m.AmountNanoton != r.Out.Amount || m.Value != 1 || m.Breakdown["gram:stonfi"] != 100000000000 || m.Breakdown["nano:stonfi"] != 1 || m.Breakdown["unpriced:tonco"] != 1 || m.IsPartial != 1 {
 		t.Fatal(m, e)
+	}
+}
+
+func TestLastKnownOnlyWhenNeitherBoundaryIsFresh(t *testing.T) {
+	b, err := readBook(strings.NewReader("A\t60\t1.5\t90\nB\t960\t2\t965\nUSDT\t60\t0.002\t60\nA\t1080\t-\t1085\ndone\n"), "done")
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := Route{Dex: "stonfi", In: leg("A", "3", "a"), Out: leg("B", "6", "b"), End: 1030}
+	if v, old := b.nanograms(r); old || v.String() != "12" {
+		t.Fatal("older input displaced fresh output", v, old)
+	}
+	r.Out = leg(USDT, "120", "b")
+	if v, old := b.nanograms(r); !old || v.String() != "5" {
+		t.Fatal("did not carry exact jetton quote", v, old)
+	}
+	r.End = 1160
+	if v, _ := b.nanograms(r); v != nil {
+		t.Fatal("revived invalidated quote or carried USDT anchor", v)
+	}
+	routes := []Route{r, {End: 1160, In: r.In, Out: leg("C", "4", "c")}}
+	keys := b.missingOpenings(routes)
+	if len(keys) != 1 || !keys["C"] {
+		t.Fatal("bad pre-window lookup", keys)
+	}
+	r.End = 1030
+	m, e := Summarize(Day{Routes: []Route{r}}, Books{0: b}, time.Now())
+	if e != nil || m.Breakdown["carried"] != 1 || m.Value != 1 || *m.AmountNanoton != "5" {
+		t.Fatal(m, e)
+	}
+	if _, e := readBook(strings.NewReader("done\n"), "done-opening"); e == nil {
+		t.Fatal("old reader cannot masquerade as opening history")
 	}
 }

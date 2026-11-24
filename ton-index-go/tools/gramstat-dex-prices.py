@@ -1,9 +1,9 @@
 #!/usr/bin/python3
 """Restricted stdin/stdout price reader. Install on the approved price reader host.
 
-Input: one JSON object {"day":"YYYY-MM-DD","assets":["0:...","USDT"]}.
+Input: {"day":"YYYY-MM-DD","assets":["0:...","USDT"],"mode":"window"|"opening"}.
 Output: TSV asset, minute epoch, raw price (or '-'), latest observation epoch.
-A final 'done' line is mandatory. No caller-controlled SQL or target address.
+Opening reads use 'done-opening'; window reads use 'done'.
 """
 import datetime as dt
 import json
@@ -20,7 +20,9 @@ def main():
     request = json.loads(payload)
     day = dt.date.fromisoformat(request["day"])
     assets = sorted(set(request["assets"]))
-    if (len(assets) > 16384 or not all(a == "USDT" or re.fullmatch(r"-?\d+:[A-F0-9]{64}", a) for a in assets)
+    mode = request.get("mode", "window")
+    if (mode not in ("window", "opening") or (mode == "opening" and "USDT" in assets)
+            or len(assets) > 16384 or not all(a == "USDT" or re.fullmatch(r"-?\d+:[A-F0-9]{64}", a) for a in assets)
             or day >= dt.datetime.now(dt.timezone.utc).date()):
         raise ValueError("invalid quote request")
     with open("/etc/gramstat-dex-prices.json", encoding="utf-8") as f:
@@ -40,6 +42,29 @@ def main():
     interval = "minute >= toDateTime(%(start)s,'UTC') AND minute < toDateTime(%(end)s,'UTC')"
     # Keep invalid observations as tombstones: never fall back across one.
     value = "if(not stale AND pools>0 AND isFinite(price_raw) AND price_raw>0, toString(price_raw), '-')"
+    if mode == "opening":
+        # Read at most one predecessor per requested asset, including an
+        # invalidation. Do not seek the last *non-null* price. Ordering by the
+        # calculation version also resolves duplicate minutes before merges.
+        sql = f"""SELECT asset,argMax(tuple(toUnixTimestamp(minute),{value},toUnixTimestamp(newest_utime)),
+                          tuple(minute,computed_at)) FROM price_1m
+                  WHERE asset IN %(assets)s AND minute<toDateTime(%(start)s,'UTC') GROUP BY asset"""
+        def opening(keys):
+            try:
+                rows = client.execute(sql, {**params, 'assets':tuple(keys)})
+            except Exception as exc:
+                if getattr(exc, 'code', None) != 158 or len(keys) < 2:
+                    raise
+                mid = len(keys)//2
+                opening(keys[:mid])
+                opening(keys[mid:])
+                return
+            for a, obs in rows:
+                print(a, *obs, sep="\t")
+        for i in range(0,len(assets),16):
+            opening(assets[i:i+16])
+        print("done-opening")
+        return
     if "USDT" in assets:
         assets.remove("USDT")
         emit(f"SELECT 'USDT',toUnixTimestamp(minute),{value},toUnixTimestamp(minute) FROM anchor_1m FINAL WHERE {interval} ORDER BY minute")

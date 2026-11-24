@@ -12,6 +12,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 )
 
 type quote struct {
@@ -19,8 +20,9 @@ type quote struct {
 	raw            *big.Rat
 }
 type Book map[string][]quote
+type Books map[int64]Book // by UTC day of execution, not trace completion
 
-func readBook(r io.Reader) (Book, error) {
+func readBook(r io.Reader, terminator string) (Book, error) {
 	sc := bufio.NewScanner(r)
 	book := Book{}
 	done := false
@@ -29,7 +31,7 @@ func readBook(r io.Reader) (Book, error) {
 			return nil, fmt.Errorf("unexpected trailing price data")
 		}
 		line := sc.Text()
-		if line == "done" {
+		if line == terminator {
 			done = true
 			continue
 		}
@@ -62,18 +64,68 @@ func readBook(r io.Reader) (Book, error) {
 	return book, nil
 }
 
-func Prices(ctx context.Context, sshConfig string, d Day) (Book, error) {
-	needed := map[string]bool{}
+func Prices(ctx context.Context, sshConfig string, d Day) (Books, error) {
+	days := make(map[int64][]Route)
 	for _, r := range d.Routes {
 		if (r.In.Asset == Native && r.In.quantity() != nil) || (r.Out.Asset == Native && r.Out.quantity() != nil) {
 			continue
 		}
+		days[r.End/86400] = append(days[r.End/86400], r)
+	}
+	books := Books{}
+	for index, routes := range days {
+		day := time.Unix(index*86400, 0).UTC()
+		needed := map[string]bool{}
+		for _, r := range routes {
+			for _, l := range []Leg{r.In, r.Out} {
+				if l.Asset != "" && l.Asset != Native && l.quantity() != nil {
+					needed[l.Asset] = true
+				}
+			}
+		}
+		book, err := requestBook(ctx, sshConfig, day, needed, false)
+		if err != nil {
+			return nil, err
+		}
+		keys := book.missingOpenings(routes)
+		if len(keys) > 0 {
+			openings, err := requestBook(ctx, sshConfig, day, keys, true)
+			if err != nil {
+				return nil, err
+			}
+			for k, row := range openings {
+				if !keys[k] || len(row) != 1 || row[0].minute >= day.Unix()-900 {
+					return nil, fmt.Errorf("invalid opening quote")
+				}
+				book[k] = append(row, book[k]...)
+			}
+		}
+		books[index] = book
+	}
+	return books, nil
+}
+
+// Only look up pre-window history for unpriced routes and only when the
+// window has no prior observation. An explicit invalid row is authoritative.
+func (b Book) missingOpenings(routes []Route) map[string]bool {
+	keys := map[string]bool{}
+	for _, r := range routes {
+		if v, old := b.nanograms(r); v != nil && !old {
+			continue
+		}
 		for _, l := range []Leg{r.In, r.Out} {
-			if l.quantity() != nil && l.Asset != "" && l.Asset != Native {
-				needed[l.Asset] = true
+			if l.Asset == "" || l.Asset == Native || l.Asset == USDT || l.quantity() == nil {
+				continue
+			}
+			if b.latest(l.Asset, r.End) == nil {
+				keys[l.Asset] = true
 			}
 		}
 	}
+	return keys
+}
+
+func requestBook(ctx context.Context, sshConfig string, day time.Time, needed map[string]bool, opening bool) (Book, error) {
 	if len(needed) == 0 {
 		return Book{}, nil
 	}
@@ -85,7 +137,11 @@ func Prices(ctx context.Context, sshConfig string, d Day) (Book, error) {
 		keys = append(keys, k)
 	}
 	sort.Strings(keys)
-	body, err := json.Marshal(map[string]any{"day": d.Date.Format("2006-01-02"), "assets": keys})
+	mode, terminator := "window", "done"
+	if opening {
+		mode, terminator = "opening", "done-opening"
+	}
+	body, err := json.Marshal(map[string]any{"day": day.Format(time.DateOnly), "assets": keys, "mode": mode})
 	if err != nil {
 		return nil, err
 	}
@@ -100,7 +156,7 @@ func Prices(ctx context.Context, sshConfig string, d Day) (Book, error) {
 	if err = cmd.Start(); err != nil {
 		return nil, err
 	}
-	b, err := readBook(out)
+	b, err := readBook(out, terminator)
 	if err != nil {
 		_ = cmd.Process.Kill()
 	}
@@ -111,38 +167,43 @@ func Prices(ctx context.Context, sshConfig string, d Day) (Book, error) {
 	return b, err
 }
 
-func (b Book) price(l Leg, ts int64) *big.Rat {
-	n := l.quantity()
-	if n == nil {
-		return nil
-	}
-	v := new(big.Rat).SetInt(n)
-	if l.Asset == Native {
-		return v
-	}
-	k := l.Asset
-	if k == USDT {
-		k = "USDT"
-	}
+func (b Book) latest(k string, ts int64) *quote {
 	rows := b[k]
 	i := sort.Search(len(rows), func(i int) bool { return rows[i].minute >= ts-ts%60 }) - 1
 	if i < 0 {
 		return nil
 	}
-	q := rows[i]
-	if q.raw == nil || ts-q.newest > 900 || q.newest >= ts || ts-q.minute > 960 {
-		return nil
-	}
-	if k == "USDT" {
-		if q.minute != ts-ts%60-60 {
-			return nil
-		}
-		return v.Quo(v, q.raw) // raw USDT per nanogram
-	}
-	return v.Mul(v, q.raw) // nanograms per raw jetton unit
+	return &rows[i]
 }
 
-func (b Book) nanograms(r Route) *big.Int {
+func (b Book) price(l Leg, ts int64) (*big.Rat, bool) {
+	n := l.quantity()
+	if n == nil {
+		return nil, false
+	}
+	v := new(big.Rat).SetInt(n)
+	if l.Asset == Native {
+		return v, false
+	}
+	k := l.Asset
+	if k == USDT {
+		k = "USDT"
+	}
+	q := b.latest(k, ts)
+	if q == nil || q.raw == nil || q.newest <= 0 || q.newest >= ts {
+		return nil, false
+	}
+	old := ts-q.newest > 900 || ts-q.minute > 960
+	if k == "USDT" {
+		if old || q.minute != ts-ts%60-60 {
+			return nil, false
+		}
+		return v.Quo(v, q.raw), false // raw USDT per nanogram
+	}
+	return v.Mul(v, q.raw), old // use the stored GRAM quote, not a new USDT conversion
+}
+
+func (b Book) nanograms(r Route) (*big.Int, bool) {
 	// Prefer a directly exchanged GRAM amount, then canonical USDT, then
 	// a jetton. For equal ranks use the input; never sum the two valuations.
 	rank := func(l Leg) int {
@@ -158,16 +219,29 @@ func (b Book) nanograms(r Route) *big.Int {
 	if rank(legs[1]) < rank(legs[0]) {
 		legs[0], legs[1] = legs[1], legs[0]
 	}
+	var selected *big.Rat
+	var carried bool
 	for _, l := range legs {
-		if v := b.price(l, r.End); v != nil {
-			// Round a valued route once to the nearest nanogram, ties upwards.
-			n, rem := new(big.Int), new(big.Int)
-			n.QuoRem(v.Num(), v.Denom(), rem)
-			if rem.Lsh(rem, 1).Cmp(v.Denom()) >= 0 {
-				n.Add(n, big.NewInt(1))
-			}
-			return n
+		v, old := b.price(l, r.End)
+		if v == nil {
+			continue
+		}
+		if !old {
+			selected, carried = v, false
+			break
+		}
+		if selected == nil {
+			selected, carried = v, true
 		}
 	}
-	return nil
+	if selected == nil {
+		return nil, false
+	}
+	// Round only the selected boundary, once, to the nearest nanogram.
+	n, rem := new(big.Int), new(big.Int)
+	n.QuoRem(selected.Num(), selected.Denom(), rem)
+	if rem.Lsh(rem, 1).Cmp(selected.Denom()) >= 0 {
+		n.Add(n, big.NewInt(1))
+	}
+	return n, carried
 }
