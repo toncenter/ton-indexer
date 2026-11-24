@@ -71,7 +71,7 @@ func TestClassifierPeerAmountsMustReconcile(t *testing.T) {
 }
 
 func TestTokenSpotOnlyForSmallValuations(t *testing.T) {
-	b, e := readBook(strings.NewReader("X\t600\t1\t605\t10000\nY\t600\t1\t606\t20000\ndone-depth\n"), "done-depth")
+	b, e := readBook(strings.NewReader("X\t600\t1\t605\t500\nY\t600\t1\t606\t1000\ndone-depth\n"), "done-depth")
 	if e != nil {
 		t.Fatal(e)
 	}

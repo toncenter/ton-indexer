@@ -8,7 +8,7 @@ import (
 	"github.com/toncenter/ton-indexer/ton-index-go/internal/gramstat"
 )
 
-const Metric = "dex_volume_gram_v3"
+const Metric = "dex_volume_gram_v4"
 
 // One ReplacingMergeTree row replaces the entire day including disappeared
 // venues. Split GRAM and nanogram remainder for the UInt64 breakdown map;

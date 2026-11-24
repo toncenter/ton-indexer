@@ -43,7 +43,7 @@ neither boundary qualifies, use one confirmed intermediate GRAM or USDT
 amount covering every successful funded path. Multi-hop action records must
 match both endpoints and every handoff in raw units. Only then fall back to
 a jetton spot estimate, preferring the received token over the spent token
-at equal freshness. Admit estimates only up to 1% of the historical
+at equal freshness. Admit estimates only up to 20% of the historical
 `liquidity_quote` in nanograms from the same observation; above that we cannot
 reliably infer the execution value from a marginal rate. Prefer quotes no
 more than 15 minutes old on either boundary. If
@@ -51,6 +51,6 @@ neither side can be valued this way, use the latest still-valid jetton quote
 before execution, without an age cap or later GRAM/USDT adjustment. An invalid
 latest quote invalidates the asset; it does not uncover an older valid quote.
 The USDT anchor itself must be from the preceding minute. Look up pre-window
-history only for assets on otherwise unpriced routes. `dex_volume_gram_v3`
+history only for assets on otherwise unpriced routes. `dex_volume_gram_v4`
 records `carried` and `intermediate` as disjoint subsets of priced routes and
 does not overwrite earlier metric versions.

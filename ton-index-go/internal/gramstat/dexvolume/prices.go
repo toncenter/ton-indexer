@@ -219,7 +219,8 @@ func (b Book) price(l Leg, ts int64) (*big.Rat, bool) {
 	v.Mul(v, q.raw)
 	// Spot is a marginal rate, not a firm quote for an arbitrary quantity.
 	// This is a conservative admission test, NOT a simulated execution curve.
-	if q.liquidity == nil || new(big.Rat).Mul(v, big.NewRat(100, 1)).Cmp(q.liquidity) > 0 {
+	// Accept v <= 20% of quoted liquidity, before rounding.
+	if q.liquidity == nil || new(big.Rat).Mul(v, big.NewRat(5, 1)).Cmp(q.liquidity) > 0 {
 		return nil, false
 	}
 	return v, old
