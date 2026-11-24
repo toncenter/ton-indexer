@@ -14,7 +14,7 @@ const Metric = "dex_volume_gram_v4"
 // venues. Split GRAM and nanogram remainder for the UInt64 breakdown map;
 // the exact independently reconciled total is Decimal(38,0).
 func Summarize(d Day, books Books, now time.Time) (gramstat.DailyMetric, error) {
-	m := gramstat.DailyMetric{Metric: Metric, Day: d.Date.Format(time.DateOnly), CalculatedAt: now.UTC().Format("2006-01-02 15:04:05.000000"), SourceMCSeqno: d.MC, DataThrough: d.Date.AddDate(0, 0, 1).Format(time.DateTime), Breakdown: map[string]uint64{"ambiguous": d.Ambiguous}}
+	m := gramstat.DailyMetric{Metric: Metric, Day: d.Date.Format(time.DateOnly), CalculatedAt: now.UTC().Format("2006-01-02 15:04:05.000000"), SourceMCSeqno: d.MC, DataThrough: d.Date.AddDate(0, 0, 1).Format(time.DateTime), Breakdown: map[string]uint64{"ambiguous": d.Ambiguous, "unresolved_traces": d.UnresolvedTraces}}
 	totals := map[string]*big.Int{}
 	sum := new(big.Int)
 	var unpriced uint64

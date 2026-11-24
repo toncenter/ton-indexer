@@ -13,11 +13,20 @@ import (
 // The classification partition key is the MC in which the whole trace
 // closed. Cutting on it keeps all sibling actions together across midnight.
 type Day struct {
-	Date      time.Time
-	MC        uint32
-	Routes    []Route
-	Ambiguous uint64
-	Complex   int
+	Date             time.Time
+	MC               uint32
+	Routes           []Route
+	Ambiguous        uint64
+	UnresolvedTraces uint64
+	Complex          int
+}
+
+// Called once per complete trace, even if several of its instructions failed to resolve.
+func (d *Day) recordUnresolved(groups int) {
+	if groups > 0 {
+		d.Ambiguous += uint64(groups)
+		d.UnresolvedTraces++
+	}
 }
 
 const swapsSQL = `WITH s AS (
@@ -100,7 +109,7 @@ func ReadDay(ctx context.Context, conn *pgx.Conn, date time.Time, audit func(str
 				continue
 			}
 			if len(ss) > 64 {
-				out.Ambiguous++
+				out.recordUnresolved(1)
 				continue
 			}
 			complex = append(complex, id)
@@ -118,7 +127,7 @@ func ReadDay(ctx context.Context, conn *pgx.Conn, date time.Time, audit func(str
 			for _, id := range ids {
 				g := graphs[id]
 				if g == nil {
-					out.Ambiguous++
+					out.recordUnresolved(1)
 					continue
 				}
 				rs, missing := Resolve(batch[id], *g)
@@ -126,7 +135,7 @@ func ReadDay(ctx context.Context, conn *pgx.Conn, date time.Time, audit func(str
 					audit(id, batch[id], rs, missing)
 				}
 				out.Routes = append(out.Routes, rs...)
-				out.Ambiguous += uint64(missing)
+				out.recordUnresolved(missing)
 			}
 		}
 	}
