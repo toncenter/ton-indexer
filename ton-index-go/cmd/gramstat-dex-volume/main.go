@@ -64,7 +64,7 @@ func run(ctx context.Context) error {
 			return e
 		}
 		if *missing {
-			raw, e := sink.Query(ctx, `SELECT day FROM gramstat.daily_metrics FINAL WHERE metric={metric:String} AND day>={lo:Date} AND day<{hi:Date} AND mapContains(breakdown,'unresolved_traces') FORMAT JSON`, url.Values{"param_metric": {dexvolume.Metric}, "param_lo": {*from}, "param_hi": {*to}})
+			raw, e := sink.Query(ctx, `SELECT day FROM gramstat.daily_metrics FINAL WHERE metric={metric:String} AND day>={lo:Date} AND day<{hi:Date} FORMAT JSON`, url.Values{"param_metric": {dexvolume.Metric}, "param_lo": {*from}, "param_hi": {*to}})
 			if e != nil {
 				return e
 			}
