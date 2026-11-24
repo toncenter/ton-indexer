@@ -21,6 +21,9 @@ COPY ton-index-worker/ton-trace-task-emulator/ /app/ton-trace-task-emulator/
 COPY ton-index-worker/tondb-scanner/ /app/tondb-scanner/
 COPY ton-index-worker/ton-marker/ /app/ton-marker/
 COPY ton-index-worker/ton-observability/ /app/ton-observability/
+COPY ton-index-worker/index-engine/ /app/index-engine/
+COPY ton-index-worker/cmake/ /app/cmake/
+COPY ton-index-worker/patches/ /app/patches/
 COPY ton-index-worker/CMakeLists.txt /app/
 
 WORKDIR /app/build

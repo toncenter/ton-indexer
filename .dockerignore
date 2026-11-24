@@ -247,6 +247,8 @@ CTestTestfile.cmake
 _deps
 
 # custom
+# Submodule gitdir paths are invalid after copying sources into the image.
+**/.git
 [Bb][Uu][Ii][Ll][Dd]
 sandbox/
 .vscode/
