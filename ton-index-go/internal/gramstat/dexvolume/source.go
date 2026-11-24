@@ -30,7 +30,8 @@ const swapsSQL = `WITH s AS (
 ) SELECT trace_id::text,start_lt,end_utime,success,coalesce((j).dex,''),
  coalesce(((j).dex_incoming_transfer).asset::text,''),coalesce(((j).dex_incoming_transfer).amount::text,''),coalesce(((j).dex_incoming_transfer).source::text,''),
  coalesce(((j).dex_outgoing_transfer).asset::text,''),coalesce(((j).dex_outgoing_transfer).amount::text,''),coalesce(((j).dex_outgoing_transfer).destination::text,''),
- CASE WHEN n BETWEEN 2 AND 64 THEN tx_hashes::text[] END,coalesce(((j).dex_outgoing_transfer).destination_jetton_wallet::text,'')
+ CASE WHEN n BETWEEN 2 AND 64 THEN tx_hashes::text[] END,coalesce(((j).dex_outgoing_transfer).destination_jetton_wallet::text,''),
+ CASE WHEN success AND cardinality((j).peer_swaps) BETWEEN 2 AND 64 THEN to_jsonb((j).peer_swaps)::text END
  FROM s`
 
 func ReadDay(ctx context.Context, conn *pgx.Conn, date time.Time, audit func(string, []Swap, []Route, int)) (Day, error) {
@@ -68,12 +69,18 @@ func ReadDay(ctx context.Context, conn *pgx.Conn, date time.Time, audit func(str
 		for rows.Next() {
 			var id string
 			var a Swap
-			if err = rows.Scan(&id, &a.StartLT, &a.End, &a.OK, &a.Dex, &a.In.Asset, &a.In.Amount, &a.In.Holder, &a.Out.Asset, &a.Out.Amount, &a.Out.Holder, &a.Hashes, &a.OutWallet); err != nil {
+			var hops []byte
+			if err = rows.Scan(&id, &a.StartLT, &a.End, &a.OK, &a.Dex, &a.In.Asset, &a.In.Amount, &a.In.Holder, &a.Out.Asset, &a.Out.Amount, &a.Out.Holder, &a.Hashes, &a.OutWallet, &hops); err != nil {
 				rows.Close()
 				return out, err
 			}
 			a.In.Asset = asset(a.In.Asset)
 			a.Out.Asset = asset(a.Out.Asset)
+			a.Via, err = peerFlow(hops, a.In, a.Out)
+			if err != nil {
+				rows.Close()
+				return out, err
+			}
 			batch[id] = append(batch[id], a)
 		}
 		if rows.Err() != nil {

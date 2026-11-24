@@ -18,6 +18,7 @@ import (
 type quote struct {
 	minute, newest int64
 	raw            *big.Rat
+	liquidity      *big.Rat // contemporaneous quoted liquidity in nanograms
 }
 type Book map[string][]quote
 type Books map[int64]Book // by UTC day of execution, not trace completion
@@ -36,7 +37,7 @@ func readBook(r io.Reader, terminator string) (Book, error) {
 			continue
 		}
 		fields := strings.Split(line, "\t")
-		if len(fields) != 4 {
+		if len(fields) != 5 {
 			return nil, fmt.Errorf("invalid price row")
 		}
 		at, e := strconv.ParseInt(fields[1], 10, 64)
@@ -53,7 +54,15 @@ func readBook(r io.Reader, terminator string) (Book, error) {
 				return nil, fmt.Errorf("invalid decimal price")
 			}
 		}
-		book[fields[0]] = append(rows, quote{at, newest, raw})
+		var liquidity *big.Rat
+		if fields[4] != "-" {
+			var ok bool
+			liquidity, ok = new(big.Rat).SetString(fields[4])
+			if !ok || liquidity.Sign() <= 0 {
+				return nil, fmt.Errorf("invalid quote liquidity")
+			}
+		}
+		book[fields[0]] = append(rows, quote{at, newest, raw, liquidity})
 	}
 	if err := sc.Err(); err != nil {
 		return nil, err
@@ -70,6 +79,9 @@ func Prices(ctx context.Context, sshConfig string, d Day) (Books, error) {
 		if (r.In.Asset == Native && r.In.quantity() != nil) || (r.Out.Asset == Native && r.Out.quantity() != nil) {
 			continue
 		}
+		if r.Via.Gram != "" && r.In.Asset != USDT && r.Out.Asset != USDT {
+			continue
+		}
 		days[r.End/86400] = append(days[r.End/86400], r)
 	}
 	books := Books{}
@@ -77,6 +89,9 @@ func Prices(ctx context.Context, sshConfig string, d Day) (Books, error) {
 		day := time.Unix(index*86400, 0).UTC()
 		needed := map[string]bool{}
 		for _, r := range routes {
+			if r.Via.USDT != "" {
+				needed[USDT] = true
+			}
 			for _, l := range []Leg{r.In, r.Out} {
 				if l.Asset != "" && l.Asset != Native && l.quantity() != nil {
 					needed[l.Asset] = true
@@ -110,7 +125,7 @@ func Prices(ctx context.Context, sshConfig string, d Day) (Books, error) {
 func (b Book) missingOpenings(routes []Route) map[string]bool {
 	keys := map[string]bool{}
 	for _, r := range routes {
-		if v, old := b.nanograms(r); v != nil && !old {
+		if v, old, _ := b.nanograms(r); v != nil && !old {
 			continue
 		}
 		for _, l := range []Leg{r.In, r.Out} {
@@ -141,7 +156,8 @@ func requestBook(ctx context.Context, sshConfig string, day time.Time, needed ma
 	if opening {
 		mode, terminator = "opening", "done-opening"
 	}
-	body, err := json.Marshal(map[string]any{"day": day.Format(time.DateOnly), "assets": keys, "mode": mode})
+	terminator += "-depth"
+	body, err := json.Marshal(map[string]any{"day": day.Format(time.DateOnly), "assets": keys, "mode": mode, "depth": true})
 	if err != nil {
 		return nil, err
 	}
@@ -200,28 +216,41 @@ func (b Book) price(l Leg, ts int64) (*big.Rat, bool) {
 		}
 		return v.Quo(v, q.raw), false // raw USDT per nanogram
 	}
-	return v.Mul(v, q.raw), old // use the stored GRAM quote, not a new USDT conversion
+	v.Mul(v, q.raw)
+	// Spot is a marginal rate, not a firm quote for an arbitrary quantity.
+	// This is a conservative admission test, NOT a simulated execution curve.
+	if q.liquidity == nil || new(big.Rat).Mul(v, big.NewRat(100, 1)).Cmp(q.liquidity) > 0 {
+		return nil, false
+	}
+	return v, old
 }
 
-func (b Book) nanograms(r Route) (*big.Int, bool) {
-	// Prefer a directly exchanged GRAM amount, then canonical USDT, then
-	// a jetton. For equal ranks use the input; never sum the two valuations.
-	rank := func(l Leg) int {
-		switch l.Asset {
-		case Native:
-			return 0
-		case USDT:
-			return 1
+func (b Book) nanograms(r Route) (*big.Int, bool, bool) {
+	// Executed boundaries first; then a verified intermediate cut, once.
+	// When neither is observable, prefer a usable estimate of what the user
+	// actually received. A fresh input still wins over a carried output.
+	for _, internal := range []bool{false, true} {
+		for _, asset := range []string{Native, USDT} {
+			legs := [2]Leg{r.In, r.Out}
+			if internal {
+				legs = [2]Leg{{Asset: asset, Amount: r.Via.amount(asset)}, {}}
+			}
+			for _, l := range legs {
+				if l.Asset != asset {
+					continue
+				}
+				if v, _ := b.price(l, r.End); v != nil {
+					return roundNano(v), false, internal
+				}
+			}
 		}
-		return 2
-	}
-	legs := [2]Leg{r.In, r.Out}
-	if rank(legs[1]) < rank(legs[0]) {
-		legs[0], legs[1] = legs[1], legs[0]
 	}
 	var selected *big.Rat
 	var carried bool
-	for _, l := range legs {
+	for _, l := range [2]Leg{r.Out, r.In} {
+		if l.Asset == Native || l.Asset == USDT {
+			continue
+		}
 		v, old := b.price(l, r.End)
 		if v == nil {
 			continue
@@ -235,13 +264,17 @@ func (b Book) nanograms(r Route) (*big.Int, bool) {
 		}
 	}
 	if selected == nil {
-		return nil, false
+		return nil, false, false
 	}
+	return roundNano(selected), carried, false
+}
+
+func roundNano(selected *big.Rat) *big.Int {
 	// Round only the selected boundary, once, to the nearest nanogram.
 	n, rem := new(big.Int), new(big.Int)
 	n.QuoRem(selected.Num(), selected.Denom(), rem)
 	if rem.Lsh(rem, 1).Cmp(selected.Denom()) >= 0 {
 		n.Add(n, big.NewInt(1))
 	}
-	return n, carried
+	return n
 }

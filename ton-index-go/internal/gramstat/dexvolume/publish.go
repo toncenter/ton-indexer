@@ -8,7 +8,7 @@ import (
 	"github.com/toncenter/ton-indexer/ton-index-go/internal/gramstat"
 )
 
-const Metric = "dex_volume_gram_v2"
+const Metric = "dex_volume_gram_v3"
 
 // One ReplacingMergeTree row replaces the entire day including disappeared
 // venues. Split GRAM and nanogram remainder for the UInt64 breakdown map;
@@ -19,13 +19,16 @@ func Summarize(d Day, books Books, now time.Time) (gramstat.DailyMetric, error) 
 	sum := new(big.Int)
 	var unpriced uint64
 	for _, r := range d.Routes {
-		v, carried := books[r.End/86400].nanograms(r)
+		v, carried, internal := books[r.End/86400].nanograms(r)
 		if v == nil {
 			m.Breakdown["unpriced:"+r.Dex]++
 			unpriced++
 			continue
 		}
 		m.Value++
+		if internal {
+			m.Breakdown["intermediate"]++
+		}
 		if carried {
 			m.Breakdown["carried"]++
 		}

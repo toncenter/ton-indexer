@@ -55,12 +55,25 @@ type Swap struct {
 	In, Out   Leg
 	Hashes    []string
 	OutWallet string
+	Via       Flow
+}
+
+// Flow contains alternative measurements of the SAME complete exchange.
+// Neither field is added to turnover as a separate hop.
+type Flow struct{ Gram, USDT string }
+
+func (f Flow) amount(k string) string {
+	if k == Native {
+		return f.Gram
+	}
+	return f.USDT
 }
 
 type Route struct {
 	Dex     string
 	End     int64
 	In, Out Leg
+	Via     Flow
 }
 
 // Graph is scoped to one complete trace. Parent is derived from the two
@@ -105,7 +118,9 @@ func (g Graph) path(a Swap) []string {
 	return nil
 }
 
-func single(s Swap) Route { return Route{venue(s.Dex), s.End, s.In, s.Out} }
+func single(s Swap) Route {
+	return Route{Dex: venue(s.Dex), End: s.End, In: s.In, Out: s.Out, Via: s.Via}
+}
 
 // Add only interchangeable boundaries. Unknown amounts and different holders
 // cannot be made interchangeable by assigning the same display symbol.
@@ -222,6 +237,45 @@ func branch(v []positioned, g Graph) (Route, bool) {
 		return Route{}, false
 	}
 	r.Out, _ = combine(outs) // Unlike outputs may still have a single exact input.
+	// Funding and conservation of every inter-action edge were checked above.
+	// Pick one measurement per successful path. A measurement before a split
+	// covers all descendants; below a split ALL successful arms must qualify.
+	cut := func(k string) string {
+		var visit func(int) *big.Int
+		sum := func(indices []int) *big.Int {
+			total := new(big.Int)
+			for _, i := range indices {
+				if !v[i].OK {
+					continue
+				}
+				n := visit(i)
+				if n == nil {
+					return nil
+				}
+				total.Add(total, n)
+			}
+			if total.Sign() == 0 {
+				return nil
+			}
+			return total
+		}
+		visit = func(i int) *big.Int {
+			s := v[i]
+			for _, l := range []Leg{s.In, s.Out, {Asset: k, Amount: s.Via.amount(k)}} {
+				if l.Asset == k {
+					if n := l.quantity(); n != nil {
+						return n
+					}
+				}
+			}
+			return sum(children[i])
+		}
+		if n := sum(roots); n != nil {
+			return n.String()
+		}
+		return ""
+	}
+	r.Via = Flow{Gram: cut(Native), USDT: cut(USDT)}
 	return r, true
 }
 

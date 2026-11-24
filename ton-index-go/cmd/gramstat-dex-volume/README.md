@@ -38,11 +38,19 @@ The service processes missing dates newest first. The start includes the month
 of the first positive `swaps_total`. Day selection uses the MC in which the
 trace closed; the quote instant is the action/route end. Direct GRAM and both
 STON.fi pTON masters are valued at their transferred nanogram amount. Otherwise
-use the canonical USDT anchor or a fresh jetton quote from an earlier closed
-minute. Prefer quotes no more than 15 minutes old on either boundary. If
+use the actual boundary USDT amount at the preceding minute's rate. When
+neither boundary qualifies, use one confirmed intermediate GRAM or USDT
+amount covering every successful funded path. Multi-hop action records must
+match both endpoints and every handoff in raw units. Only then fall back to
+a jetton spot estimate, preferring the received token over the spent token
+at equal freshness. Admit estimates only up to 1% of the historical
+`liquidity_quote` in nanograms from the same observation; above that we cannot
+reliably infer the execution value from a marginal rate. Prefer quotes no
+more than 15 minutes old on either boundary. If
 neither side can be valued this way, use the latest still-valid jetton quote
 before execution, without an age cap or later GRAM/USDT adjustment. An invalid
 latest quote invalidates the asset; it does not uncover an older valid quote.
 The USDT anchor itself must be from the preceding minute. Look up pre-window
-history only for assets on otherwise unpriced routes. `dex_volume_gram_v2`
-keeps `carried` as a subset of priced routes and does not overwrite v1.
+history only for assets on otherwise unpriced routes. `dex_volume_gram_v3`
+records `carried` and `intermediate` as disjoint subsets of priced routes and
+does not overwrite earlier metric versions.

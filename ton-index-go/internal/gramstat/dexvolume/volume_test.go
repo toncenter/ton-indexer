@@ -47,24 +47,24 @@ func TestRoutes(t *testing.T) {
 	assert([]Swap{first, independent}, 0, 1, "", "")
 }
 func TestHistoricalValuation(t *testing.T) {
-	b, e := readBook(strings.NewReader("USDT\t600\t0.002\t600\nTOKEN\t540\t1.5\t555\nTOKEN\t600\t-\t620\nTOKEN\t660\t99\t675\ndone\n"), "done")
+	b, e := readBook(strings.NewReader("USDT\t600\t0.002\t600\t-\nTOKEN\t540\t1.5\t555\t500\nTOKEN\t600\t-\t620\t-\nTOKEN\t660\t99\t675\t99999\ndone-depth\n"), "done-depth")
 	if e != nil {
 		t.Fatal(e)
 	}
 	r := Route{End: 659, In: leg("TOKEN", "3", "a")}
-	if n, old := b.nanograms(r); n == nil || n.String() != "5" || old {
+	if n, old, _ := b.nanograms(r); n == nil || n.String() != "5" || old {
 		t.Fatalf("prior minute: %v", n)
 	}
 	r.End = 670
-	if n, _ := b.nanograms(r); n != nil {
+	if n, _, _ := b.nanograms(r); n != nil {
 		t.Fatal("lookahead or ignored tombstone", n)
 	}
 	r.In = leg(USDT, "1000000", "a")
-	if n, _ := b.nanograms(r); n.String() != "500000000" {
+	if n, _, _ := b.nanograms(r); n.String() != "500000000" {
 		t.Fatal(n)
 	}
 	r.Out = leg(Native, "100000000000000000001", "b")
-	if n, _ := b.nanograms(r); n.String() != r.Out.Amount {
+	if n, _, _ := b.nanograms(r); n.String() != r.Out.Amount {
 		t.Fatal("must use exact native boundary")
 	}
 	d := Day{Routes: []Route{{Dex: "stonfi", Out: r.Out}, {Dex: "tonco"}}, Ambiguous: 1}
@@ -75,20 +75,20 @@ func TestHistoricalValuation(t *testing.T) {
 }
 
 func TestLastKnownOnlyWhenNeitherBoundaryIsFresh(t *testing.T) {
-	b, err := readBook(strings.NewReader("A\t60\t1.5\t90\nB\t960\t2\t965\nUSDT\t60\t0.002\t60\nA\t1080\t-\t1085\ndone\n"), "done")
+	b, err := readBook(strings.NewReader("A\t60\t1.5\t90\t500\nB\t960\t2\t965\t2000\nUSDT\t60\t0.002\t60\t-\nA\t1080\t-\t1085\t-\ndone-depth\n"), "done-depth")
 	if err != nil {
 		t.Fatal(err)
 	}
 	r := Route{Dex: "stonfi", In: leg("A", "3", "a"), Out: leg("B", "6", "b"), End: 1030}
-	if v, old := b.nanograms(r); old || v.String() != "12" {
+	if v, old, _ := b.nanograms(r); old || v.String() != "12" {
 		t.Fatal("older input displaced fresh output", v, old)
 	}
 	r.Out = leg(USDT, "120", "b")
-	if v, old := b.nanograms(r); !old || v.String() != "5" {
+	if v, old, _ := b.nanograms(r); !old || v.String() != "5" {
 		t.Fatal("did not carry exact jetton quote", v, old)
 	}
 	r.End = 1160
-	if v, _ := b.nanograms(r); v != nil {
+	if v, _, _ := b.nanograms(r); v != nil {
 		t.Fatal("revived invalidated quote or carried USDT anchor", v)
 	}
 	routes := []Route{r, {End: 1160, In: r.In, Out: leg("C", "4", "c")}}
