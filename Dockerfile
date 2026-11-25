@@ -112,7 +112,7 @@ RUN go build -o ton-metadata-fetcher ./*.go
 FROM ubuntu:24.04 AS index-worker
 RUN DEBIAN_FRONTEND=noninteractive TZ=Etc/UTC apt-get update -y && apt-get -y install tzdata && rm -rf /var/lib/{apt,dpkg,cache,log}/
 RUN apt-get update -y \
-    && apt install -y dnsutils libpq5 libsecp256k1-1 libsodium23 libhiredis1.1.0 \
+    && apt install -y dnsutils libpq5 libsecp256k1-1 libsodium23 libhiredis1.1.0 libcurl4 \
     && rm -rf /var/lib/{apt,dpkg,cache,log}/
 
 COPY ton-index-worker/scripts/entrypoint.sh /app/entrypoint.sh
