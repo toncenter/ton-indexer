@@ -31,7 +31,8 @@ const swapsSQL = `WITH s AS (
  coalesce(((j).dex_incoming_transfer).asset::text,''),coalesce(((j).dex_incoming_transfer).amount::text,''),coalesce(((j).dex_incoming_transfer).source::text,''),
  coalesce(((j).dex_outgoing_transfer).asset::text,''),coalesce(((j).dex_outgoing_transfer).amount::text,''),coalesce(((j).dex_outgoing_transfer).destination::text,''),
  CASE WHEN n BETWEEN 2 AND 64 THEN tx_hashes::text[] END,coalesce(((j).dex_outgoing_transfer).destination_jetton_wallet::text,''),
- CASE WHEN success AND cardinality((j).peer_swaps) BETWEEN 2 AND 64 THEN to_jsonb((j).peer_swaps)::text END
+ CASE WHEN success AND cardinality((j).peer_swaps) BETWEEN 2 AND 64 THEN to_jsonb((j).peer_swaps)::text END,
+ CASE WHEN n BETWEEN 2 AND 64 THEN coalesce(((j).dex_incoming_transfer).destination_jetton_wallet::text,'') ELSE '' END
  FROM s`
 
 func ReadDay(ctx context.Context, conn *pgx.Conn, date time.Time, audit func(string, []Swap, []Route, int)) (Day, error) {
@@ -70,7 +71,7 @@ func ReadDay(ctx context.Context, conn *pgx.Conn, date time.Time, audit func(str
 			var id string
 			var a Swap
 			var hops []byte
-			if err = rows.Scan(&id, &a.StartLT, &a.End, &a.OK, &a.Dex, &a.In.Asset, &a.In.Amount, &a.In.Holder, &a.Out.Asset, &a.Out.Amount, &a.Out.Holder, &a.Hashes, &a.OutWallet, &hops); err != nil {
+			if err = rows.Scan(&id, &a.StartLT, &a.End, &a.OK, &a.Dex, &a.In.Asset, &a.In.Amount, &a.In.Holder, &a.Out.Asset, &a.Out.Amount, &a.Out.Holder, &a.Hashes, &a.OutWallet, &hops, &a.InDexWallet); err != nil {
 				rows.Close()
 				return out, err
 			}
@@ -153,7 +154,7 @@ func readGraphs(ctx context.Context, tx pgx.Tx, ids []string, swaps map[string][
 		}
 		minMC = min(minMC, start)
 		valid = append(valid, id)
-		trees[id] = &Graph{Root: id, Parent: map[string]string{}, Receiver: map[string]string{}, Start: map[int64][]string{}}
+		trees[id] = &Graph{Root: id, Parent: map[string]string{}, Receiver: map[string]string{}, Start: map[int64][]string{}, RootFunds: map[string]string{}, PtonIn: map[string]bool{}}
 	}
 	if rows.Err() != nil {
 		return nil, rows.Err()
@@ -161,17 +162,23 @@ func readGraphs(ctx context.Context, tx pgx.Tx, ids []string, swaps map[string][
 	if len(valid) == 0 {
 		return trees, nil
 	}
-	rows, err = tx.Query(ctx, `SELECT trace_id::text,tx_hash::text,msg_hash::text,direction::text,coalesce(created_lt,tx_lt),coalesce(destination::text,'')
+	rows, err = tx.Query(ctx, `SELECT trace_id::text,tx_hash::text,msg_hash::text,direction::text,coalesce(created_lt,tx_lt),coalesce(destination::text,''),
+ (source IS NULL AND direction='in' AND tx_hash=trace_id),
+ CASE WHEN direction='out' AND tx_hash=trace_id THEN coalesce(value::text,'') ELSE '' END,
+ coalesce(opcode=32736093 AND direction='in',false)
  FROM public.messages WHERE trace_id=ANY(($1::text[])::tonhash[]) AND mc_seqno BETWEEN $2 AND $3`, valid, minMC, hi)
 	if err != nil {
 		return nil, err
 	}
 	type key struct{ id, h string }
 	in, out := map[key]string{}, map[key]string{}
+	rootFunds := map[key]string{}
 	for rows.Next() {
 		var id, txh, h, dir, dest string
 		var lt int64
-		if err = rows.Scan(&id, &txh, &h, &dir, &lt, &dest); err != nil {
+		var external, pton bool
+		var attached string
+		if err = rows.Scan(&id, &txh, &h, &dir, &lt, &dest, &external, &attached, &pton); err != nil {
 			rows.Close()
 			return nil, err
 		}
@@ -188,9 +195,13 @@ func readGraphs(ctx context.Context, tx pgx.Tx, ids []string, swaps map[string][
 			}
 			in[k] = txh
 			g.Receiver[txh] = dest
+			if pton {
+				g.PtonIn[txh] = true
+			}
 			g.Start[lt] = append(g.Start[lt], txh)
 			if txh == id {
 				g.Owner = dest
+				g.External = external
 			}
 		case "out":
 			if out[k] != "" && out[k] != txh {
@@ -198,6 +209,9 @@ func readGraphs(ctx context.Context, tx pgx.Tx, ids []string, swaps map[string][
 				continue
 			}
 			out[k] = txh
+			if attached != "" {
+				rootFunds[k] = attached
+			}
 		}
 	}
 	if rows.Err() != nil {
@@ -206,6 +220,9 @@ func readGraphs(ctx context.Context, tx pgx.Tx, ids []string, swaps map[string][
 	for k, child := range in {
 		if parent := out[k]; parent != "" && trees[k.id] != nil {
 			trees[k.id].Parent[child] = parent
+			if funds, ok := rootFunds[k]; ok {
+				trees[k.id].RootFunds[child] = funds
+			}
 		}
 	}
 	// Separate root-level messages can be independent wallet commands.

@@ -27,18 +27,23 @@ func peerFlow(raw []byte, in, out Leg) (Flow, error) {
 	for i, h := range hops {
 		a := Leg{Asset: asset(h.AssetIn), Amount: h.AmountIn.String()}
 		b := Leg{Asset: asset(h.AssetOut), Amount: h.AmountOut.String()}
-		if a.Asset != prev.Asset || a.Amount != prev.Amount || a.quantity() == nil || b.quantity() == nil {
+		if a.Asset != prev.Asset || a.quantity() == nil || b.quantity() == nil ||
+			(i == 0 && a.Amount != prev.Amount) || (i > 0 && !handoff(prev.quantity(), a.quantity())) {
 			return Flow{}, nil
 		}
 		if i > 0 {
+			amount := a.Amount
+			if prev.quantity().Cmp(a.quantity()) < 0 {
+				amount = prev.Amount
+			}
 			switch a.Asset {
 			case Native:
 				if f.Gram == "" {
-					f.Gram = a.Amount
+					f.Gram = amount
 				}
 			case USDT:
 				if f.USDT == "" {
-					f.USDT = a.Amount
+					f.USDT = amount
 				}
 			}
 		}

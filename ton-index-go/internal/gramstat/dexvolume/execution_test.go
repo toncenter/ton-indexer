@@ -62,12 +62,73 @@ func TestClassifierPeerAmountsMustReconcile(t *testing.T) {
 	if e != nil || f.USDT != "81" || f.Gram != "70" {
 		t.Fatal(f, e)
 	}
-	for _, bad := range []string{strings.Replace(raw, `"amount_in":81`, `"amount_in":80`, 1), strings.Replace(raw, `"amount_out":60`, `"amount_out":61`, 1)} {
+	f, e = peerFlow([]byte(strings.Replace(raw, `"amount_in":81`, `"amount_in":80`, 1)), i, o)
+	if e != nil || f.USDT != "80" {
+		t.Fatal("use actual matched intermediate amount", f, e)
+	}
+	for _, bad := range []string{strings.Replace(raw, `"amount_in":81`, `"amount_in":64`, 1), strings.Replace(raw, `"amount_out":60`, `"amount_out":61`, 1)} {
 		f, e := peerFlow([]byte(bad), i, o)
 		if e != nil || f != (Flow{}) {
 			t.Fatal("unconfirmed peer flow", f, e)
 		}
 	}
+}
+
+func TestDisjointNativeFundingAtRoot(t *testing.T) {
+	g := Graph{Root: "w", Owner: "payer", External: true, Parent: map[string]string{"p": "w", "q": "w"}, Start: map[int64][]string{1: {"p"}, 2: {"q"}}, RootFunds: map[string]string{"p": "562600000000", "q": "437600000000"}}
+	a := sw("stonfi", 1, "p", leg(Native, "562500000000", "payer"), leg(USDT, "969874707", "payer"))
+	b := sw("dedust", 2, "q", leg(Native, "437500000000", "payer"), leg(USDT, "753244603", "payer"))
+	a.Hashes = append(a.Hashes, "w")
+	b.Hashes = append(b.Hashes, "w")
+	rs, m := Resolve([]Swap{b, a}, g)
+	if m != 0 || len(rs) != 1 || rs[0].In.Amount != "1000000000000" || rs[0].Out.Amount != "1723119310" || rs[0].Dex != "multiple" {
+		t.Fatal(rs, m)
+	}
+	reject := func() {
+		t.Helper()
+		rs, m := Resolve([]Swap{a, b}, g)
+		if len(rs) != 0 || m != 1 {
+			t.Fatal("unproven native split", rs, m)
+		}
+	}
+	g.RootFunds["p"] = "562499999999"
+	reject()
+	g.RootFunds["p"] = "562600000000"
+	b.Out.Holder = "other"
+	reject()
+	b.Out.Holder = "payer"
+	b.Out.Asset = "OTHER"
+	reject()
+	b.Out.Asset = USDT
+	g.External = false
+	reject()
+}
+
+func TestDirectPtonMessageLinksOppositeEndpoints(t *testing.T) {
+	g := Graph{Root: "root", Parent: map[string]string{"a": "root", "send": "a", "recv": "send"}, Start: map[int64][]string{1: {"a"}, 2: {"recv"}}, Receiver: map[string]string{"send": "proxyA", "recv": "proxyB"}, PtonIn: map[string]bool{"recv": true}}
+	a := sw("tonco", 1, "a", leg("UTYA", "111000000000", "user"), leg(Native, "2694750339", "proxyB"))
+	a.Hashes = append(a.Hashes, "send")
+	b := sw("stonfi_v2", 2, "recv", leg(Native, "2694750339", "proxyA"), leg(USDT, "4746351", "user"))
+	b.InDexWallet = "proxyB"
+	rs, m := Resolve([]Swap{a, b}, g)
+	if len(rs) != 1 || m != 0 || rs[0].Via.Gram != "2694750339" || rs[0].Dex != "multiple" {
+		t.Fatal(rs, m)
+	}
+	reject := func() {
+		t.Helper()
+		rs, m := Resolve([]Swap{a, b}, g)
+		if len(rs) != 0 || m != 1 {
+			t.Fatal("unproven cross-holder edge", rs, m)
+		}
+	}
+	delete(g.PtonIn, "recv")
+	reject()
+	g.PtonIn["recv"] = true
+	b.InDexWallet = "other"
+	reject()
+	b.InDexWallet = "proxyB"
+	a.Hashes = []string{"a"}
+	reject()
 }
 
 func TestTokenSpotOnlyForSmallValuations(t *testing.T) {

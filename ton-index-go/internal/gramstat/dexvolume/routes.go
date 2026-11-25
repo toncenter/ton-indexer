@@ -48,14 +48,15 @@ func (l Leg) quantity() *big.Int {
 }
 
 type Swap struct {
-	Dex       string
-	OK        bool
-	StartLT   int64
-	End       int64
-	In, Out   Leg
-	Hashes    []string
-	OutWallet string
-	Via       Flow
+	Dex         string
+	OK          bool
+	StartLT     int64
+	End         int64
+	In, Out     Leg
+	Hashes      []string
+	OutWallet   string
+	InDexWallet string // DEX-side destination wallet of the incoming transfer
+	Via         Flow
 }
 
 // Flow contains alternative measurements of the SAME complete exchange.
@@ -79,11 +80,14 @@ type Route struct {
 // Graph is scoped to one complete trace. Parent is derived from the two
 // directions of the same message, never from consecutive transaction LTs.
 type Graph struct {
-	Root     string
-	Owner    string
-	Wallet   bool
-	Parent   map[string]string
-	Receiver map[string]string
+	Root      string
+	Owner     string
+	Wallet    bool
+	External  bool
+	RootFunds map[string]string // native value attached by the root, keyed by receiving tx
+	PtonIn    map[string]bool   // receiving tx of pton_ton_transfer
+	Parent    map[string]string
+	Receiver  map[string]string
 	// The incoming message creation LT (or external transaction LT).
 	Start map[int64][]string
 }
@@ -150,11 +154,36 @@ func follows(a, b positioned) bool {
 	return len(a.path) < len(b.path) && b.path[len(a.path)-1] == a.path[len(a.path)-1]
 }
 
+// The next input (or total of all children) must be within ±20% of the
+// previous output, inclusive. Compare raw integers before rounding.
+func handoff(received, spent *big.Int) bool {
+	if received == nil || spent == nil {
+		return false
+	}
+	five := new(big.Int).Mul(spent, big.NewInt(5))
+	return five.Cmp(new(big.Int).Lsh(new(big.Int).Set(received), 2)) >= 0 &&
+		five.Cmp(new(big.Int).Mul(received, big.NewInt(6))) <= 0
+}
+
+// In a direct pTON handoff, one classifier records the destination wallet,
+// the other records the sender of the very same internal message.
+func ptonEdge(a, b positioned, g Graph) bool {
+	if a.Out.Asset != Native || b.In.Asset != Native || b.Dex != "stonfi_v2" {
+		return false
+	}
+	h := b.path[len(b.path)-1]
+	p := g.Parent[h]
+	return g.PtonIn[h] && p != "" && a.Out.Holder != "" && a.Out.Holder == b.InDexWallet &&
+		g.Receiver[h] == a.Out.Holder && b.In.Holder != "" && g.Receiver[p] == b.In.Holder &&
+		slices.Contains(a.Hashes, p) && slices.Contains(b.Hashes, h)
+}
+
 func branch(v []positioned, g Graph) (Route, bool) {
 	if len(v) == 1 {
 		return single(v[0].Swap), v[0].OK
 	}
 	children := make([][]int, len(v))
+	through := make([]string, len(v))
 	var roots []int
 	for i, b := range v {
 		parent := -1
@@ -220,15 +249,24 @@ func branch(v []positioned, g Graph) (Route, bool) {
 					break
 				}
 			}
+			input := v[j].In
+			if ptonEdge(s, v[j], g) {
+				delivered = true
+				input.Holder = s.Out.Holder
+			}
 			if !delivered {
 				return Route{}, false
 			}
-			ls = append(ls, v[j].In)
+			ls = append(ls, input)
 		}
 		funded, ok := combine(ls)
 		if !ok || funded.Asset != s.Out.Asset || funded.Holder != s.Out.Holder ||
-			s.Out.quantity() == nil || s.Out.quantity().Cmp(funded.quantity()) != 0 {
+			!handoff(s.Out.quantity(), funded.quantity()) {
 			return Route{}, false
+		}
+		through[i] = s.Out.Amount
+		if funded.quantity().Cmp(s.Out.quantity()) < 0 {
+			through[i] = funded.Amount
 		}
 	}
 	var ok bool
@@ -237,7 +275,7 @@ func branch(v []positioned, g Graph) (Route, bool) {
 		return Route{}, false
 	}
 	r.Out, _ = combine(outs) // Unlike outputs may still have a single exact input.
-	// Funding and conservation of every inter-action edge were checked above.
+	// Funding and size of every inter-action edge were checked above.
 	// Pick one measurement per successful path. A measurement before a split
 	// covers all descendants; below a split ALL successful arms must qualify.
 	cut := func(k string) string {
@@ -261,7 +299,11 @@ func branch(v []positioned, g Graph) (Route, bool) {
 		}
 		visit = func(i int) *big.Int {
 			s := v[i]
-			for _, l := range []Leg{s.In, s.Out, {Asset: k, Amount: s.Via.amount(k)}} {
+			out := s.Out
+			if through[i] != "" {
+				out.Amount = through[i]
+			}
+			for _, l := range []Leg{s.In, out, {Asset: k, Amount: s.Via.amount(k)}} {
 				if l.Asset == k {
 					if n := l.quantity(); n != nil {
 						return n
@@ -277,6 +319,54 @@ func branch(v []positioned, g Graph) (Route, bool) {
 	}
 	r.Via = Flow{Gram: cut(Native), USDT: cut(USDT)}
 	return r, true
+}
+
+// A native split can be evidenced by the root's actual outbound messages
+// even when its historical wallet code is unavailable. Require one direct
+// funded leg per venue branch, a common output, and proceeds back to the payer.
+func directSplit(groups map[string][]positioned, g Graph) (Route, bool) {
+	if !g.External || g.Owner == "" || len(groups) < 2 {
+		return Route{}, false
+	}
+	var ins, outs []Leg
+	var dex string
+	var end int64
+	for entry, v := range groups {
+		if len(v) != 1 {
+			return Route{}, false
+		}
+		s := v[0]
+		if !s.OK || len(s.path) != 2 || s.In.Asset != Native || s.In.Holder != g.Owner || s.Out.Holder != g.Owner ||
+			s.Out.Asset == "" || s.Out.Asset == Native || !slices.Contains(s.Hashes, g.Root) {
+			return Route{}, false
+		}
+		attached := (Leg{Amount: g.RootFunds[entry]}).quantity()
+		amount := s.In.quantity()
+		if attached == nil || amount == nil || attached.Cmp(amount) < 0 {
+			return Route{}, false
+		}
+		ins = append(ins, s.In)
+		outs = append(outs, s.Out)
+		end = max(end, s.End)
+		d := venue(s.Dex)
+		if dex == "" {
+			dex = d
+		} else if dex != d {
+			dex = "multiple"
+		}
+	}
+	if dex != "multiple" {
+		return Route{}, false
+	}
+	in, ok := combine(ins)
+	if !ok {
+		return Route{}, false
+	}
+	out, ok := combine(outs)
+	if !ok {
+		return Route{}, false
+	}
+	return Route{Dex: dex, End: end, In: in, Out: out}, true
 }
 
 // Resolve returns disjoint, independently priceable routes and the number
@@ -300,6 +390,9 @@ func Resolve(swaps []Swap, g Graph) ([]Route, int) {
 		// Separate outbound messages of the trace initiator are separately
 		// funded commands. Splits below one command remain in the same group.
 		groups[path[1]] = append(groups[path[1]], positioned{s, path})
+	}
+	if r, ok := directSplit(groups, g); ok {
+		return []Route{r}, 0
 	}
 	var routes []Route
 	missing := 0

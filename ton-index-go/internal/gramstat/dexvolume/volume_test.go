@@ -32,10 +32,20 @@ func TestRoutes(t *testing.T) {
 	assert([]Swap{second, first}, 0, 1, "", "")
 	g.Receiver["delivery"] = "router"
 	second.In.Amount = "299"
-	assert([]Swap{first, second}, 0, 1, "", "") // ancestry alone is not funding
+	assert([]Swap{first, second}, 1, 0, "multiple", "100")
+	for _, n := range []string{"240", "360"} {
+		second.In.Amount = n
+		assert([]Swap{first, second}, 1, 0, "multiple", "100")
+	}
+	for _, n := range []string{"239", "361"} {
+		second.In.Amount = n
+		assert([]Swap{first, second}, 0, 1, "", "")
+	}
 	second.In.Amount = "100"
 	third := sw("dedust_v2", 3, "c", leg("X", "200", "router"), leg("Y", "130", "user"))
 	assert([]Swap{third, first, second}, 1, 0, "multiple", "100")
+	third.In.Amount = "261" // Compare the total, not each child independently.
+	assert([]Swap{third, first, second}, 0, 1, "", "")
 	left := sw("stonfi_v2", 1, "a", leg(Native, "60", "router"), leg("X", "60", "user"))
 	right := sw("dedust", 4, "d", leg(Native, "40", "router"), leg("X", "40", "user"))
 	assert([]Swap{left, right}, 1, 0, "multiple", "100")
