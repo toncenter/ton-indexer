@@ -20,3 +20,9 @@ only replace changed pools, reconciling every reserve against `pool_daily`.
 Unchanged cash stays, missing prices do not. `source_mc_seqno` is the greatest
 observed pool MC through the day, not a fabricated midnight block number.
 The live ingestion and finalized price watermarks must both cover the close.
+
+Method 2 doubles the closing value of the sole core asset in a two-funded
+reserve pool, as in DefiLlama's `transformDexBalances`. The TON core list
+is pinned in the reader; all prices remain Gramstat's own. Estimates are
+reported separately, while native exposure records actual balances only.
+`--missing` includes previously published method-1 days in the rebuild.

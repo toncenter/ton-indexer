@@ -15,6 +15,30 @@ GRAM = frozenset(('', '0:8CDC1D7640AD5EE326527FC1AD0514F468B30DC84B0173F0E155F45
                   '0:671963027F7F85659AB55B821671688601CDCF1EE674FC7FBBB1A776A18D34A3'))
 VENUES = ('stonfi', 'dedust')
 
+# TON addresses from DefiLlama-Adapters/projects/helper/coreAssets.json,
+# f36c8ba1a1eb4c67c6acfc0679a73dec35f7418c. Native and the two STON.fi
+# proxy masters use our canonical GRAM valuation. Membership is not a price.
+CORE = GRAM | frozenset((
+    '0:D0A1CE4CDC187C79615EA618BD6C29617AF7A56D966F5A192A768F345EE63FD2',  # WTON
+    '-1:' + '3'*64, '0:' + '0'*64,
+    '0:9A8DA514D575D20234C3FB1395EE9138F5F1AD838ABC905DC42C2389B46BD015',  # WTON
+    '0:BAD48411974FE56BDE6DDBBC612298F166DDF6BE5D504151765204CDBAF0F5F1',  # oUSDC
+    '0:BFD58A0CF11062C4DF79973EE875C17756B91CFCDF0D7BB8108BB01BB657ADFC',  # oUSDT
+    '0:16E361EEB720DE9BDF017B57F6ECFA17A1B82187CD6E99343E70681A2959912D',  # ETH
+    '0:C2204A341D4518B0057E95332F88E77E1A44977D53EC3593068D168D380FFAFB',  # ORC
+    '0:9FECD6F7E35771384DCDD238A69E047118457C4F7CE8F9E53611956CFE772136',  # WEMIX
+    '0:729C13B6DF2C07CBF0A06AB63D34AF454F3D320EC1BCD8FB5C6D24D0806A17C2',  # jUSDT
+    USDT, '0:2F956143C461769579BAEF2E32CC2D7BC18283F40D20BB03E432CD603AC33FFC',  # NOT
+    '0:7E30FC2B7751BA58A3642F3FD59D5E96A810DDD78D8A310BFE8353BEF10500DF',  # jUSDC
+    '0:CD872FA7C5816052ACDF5332260443FAEC9AACC8C21CCA4D92E7F47034D11892',  # stTON
+    '0:BDF3FA8098D129B54B4F73B5BAC5D1E1FD91EB054169C3916DFC8CCD536D1000',  # tsTON
+    '0:8D636010DD90D8C0902AC7F9F397D8BD5E177F131EE2CCA24CE894F15D19CEEA',  # TON_STORM
+    '0:AEA78C710AE94270DC263A870CF47B4360F53CC5ED38E3DB502E9E9AFB904B11',  # USDT_STORM
+    '0:FE72F474373E97032441BDB873F9A6D3AD10BAB08E6DBC7BEFA5E42B695F5400',  # CATI
+    '0:AFC49CB8786F21C87045B19EDE78FC6B46C51048513F8E9A6D44060199C1BF0C',  # DOGS
+    '0:086FA2A675F74347B08DD4606A549B8FDB98829CB282BC1949D3B12FBAED9DCC',  # USDe
+    '0:D0E545323C7ACB7102653C073377F7E3C67F122EB94D430A250739F109D4A57D',  # tsUSDe
+))
 
 FIRST = dt.date(2022, 11, 18)
 
@@ -25,21 +49,27 @@ def value_pools(states, quotes, audit=False):
     for pool, (dex, assets, reserves) in states.items():
         if dex not in result:
             continue
-        known = native = missing = 0
+        native = missing = 0
+        values = {}
         for a, n in zip(assets, reserves):
             if not n:
                 continue
             if a in GRAM:
                 native += n
-                known += n
+                values[a] = n
             elif a not in quotes:
                 missing += 1
             else:
                 p = quotes[a]
                 # One rounding per side, to the nearest nanogram (ties upwards).
-                known += (2*n*p.numerator + p.denominator) // (2*p.denominator)
-        label = 'none' if all(n == 0 or (a not in GRAM and a not in quotes)
-                              for a, n in zip(assets, reserves)) else 'partial' if missing else 'full'
+                values[a] = (2*n*p.numerator + p.denominator) // (2*p.denominator)
+        core = [a for a in assets if a in CORE]
+        if all(reserves) and len(core) == 1 and core[0] in values:
+            # Estimate the entire pool, not an add-on to the two reserves.
+            label, known = 'estimated', 2 * values[core[0]]
+        else:
+            label = 'none' if not values else 'partial' if missing else 'full'
+            known = sum(values.values())
         c = result[dex]
         c[label] += 1
         c[label+'_nano'] += known
@@ -159,21 +189,21 @@ def advance(c, day, states, head):
 
 
 def projection(day, head, counts):
-    b={}
+    b={'method':2}
     total=priced=count=partial=0
     for v in VENUES:
         c=counts[v]
-        for key in ('full','partial','none'):
+        for key in ('full','estimated','partial','none'):
             b[v+':'+key]=c[key]
-        for key in ('full','partial','native'):
+        for key in ('full','estimated','partial','native'):
             whole,rem=divmod(c[key+'_nano'],10**9)
             if whole>=2**64:
                 raise OverflowError('priced reserves exceed storage format')
             b[v+':'+key+'_gram']=whole
             b[v+':'+key+'_nano']=rem
-        total+=c['full_nano']+c['partial_nano']
-        priced+=c['full']+c['partial']
-        count+=c['full']+c['partial']+c['none']
+        total+=c['full_nano']+c['estimated_nano']+c['partial_nano']
+        priced+=c['full']+c['estimated']+c['partial']
+        count+=c['full']+c['estimated']+c['partial']+c['none']
         partial+=c['partial']+c['none']
     if not head:
         raise ValueError("no dated source state")
