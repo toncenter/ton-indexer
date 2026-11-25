@@ -1,0 +1,421 @@
+{
+  "version": "account-types-v1",
+  "annotations": ["cron.Cron"],
+  "groups": [
+    {
+      "path": ["Wallets", "Ordinary"],
+      "roles": ["Wallet"],
+      "contracts": ["wallets/w1r1.WalletV1r1", "wallets/w1r2.WalletV1r2", "wallets/w1r3.WalletV1r3", "wallets/w2r1.WalletV2r1", "wallets/w2r2.WalletV2r2", "wallets/w3r1.WalletV3r1", "wallets/w3r2.WalletV3r2", "wallets/w4r1.WalletV4r1", "wallets/w4r2.WalletV4r2", "wallets.WalletV5r1", "wallets.WalletTg"]
+    },
+    {
+      "path": ["Wallets", "Highload"],
+      "roles": ["Wallet"],
+      "contracts": ["wallets.WalletHighloadV1r1", "wallets.WalletHighloadV1r2", "wallets.WalletHighloadV2", "wallets.WalletHighloadV2r1", "wallets.WalletHighloadV2r2", "wallets.WalletHighloadV3r1", "wallets.WalletPreprocessedV2"]
+    },
+    {
+      "path": ["Wallets", "Multisig"],
+      "roles": ["Wallet"],
+      "contracts": ["wallets.MultisigV2"]
+    },
+    {
+      "path": ["Wallets", "Vesting and lockup"],
+      "roles": ["Wallet"],
+      "contracts": ["wallets/lockup_universal.LockupUniversal", "wallets/lockup_vesting.LockupVesting", "wallets/wallet_vesting.WalletVesting"]
+    },
+    {
+      "path": ["Wallets", "Specialized"],
+      "roles": ["Wallet"],
+      "contracts": ["cocoon.CocoonWallet", "dedust.DedustX1000WalletV1", "dedust.DedustX1000WalletV2"]
+    },
+    {
+      "path": ["Jettons", "Wallets", "Standard implementations"],
+      "roles": ["Jetton wallet"],
+      "contracts": ["jettons.JettonV1Wallet", "jettons.DiscoverableJettonWallet", "jettons.Jetton2Wallet", "jettons.JettonWallet", "tep74.JettonWallet"]
+    },
+    {
+      "path": ["Jettons", "Wallets", "Governed"],
+      "roles": ["Jetton wallet"],
+      "contracts": ["jettons.StablecoinWallet", "tsUSDe.TsusdeWallet"]
+    },
+    {
+      "path": ["Jettons", "Wallets", "Mintless"],
+      "roles": ["Jetton wallet"],
+      "contracts": ["jettons.MintlessJettonWallet"]
+    },
+    {
+      "path": ["Jettons", "Wallets", "Notcoin implementation"],
+      "roles": ["Jetton wallet"],
+      "contracts": ["jettons.JettonNotcoinWallet"]
+    },
+    {
+      "path": ["Jettons", "Wallets", "LP"],
+      "roles": ["Jetton wallet"],
+      "contracts": ["bidask.BidaskDammLpWallet", "coffee.JettonWalletCoffeeLp", "stonfi.StonfiLpWalletV1", "stonfi.StonfiLpWalletV2", "storm.StormLpWallet"]
+    },
+    {
+      "path": ["Jettons", "Wallets", "Staking shares and positions"],
+      "roles": ["Jetton wallet"],
+      "contracts": ["affluent.FactorialTonWallet", "hipo.HipoWallet", "jvault.JVaultStakingWallet", "stakee.StakeedWallet", "tonstakers.TsTonWallet"]
+    },
+    {
+      "path": ["Jettons", "Wallets", "Wrapped GRAM"],
+      "roles": ["Jetton wallet"],
+      "contracts": ["megatonfi-wton.WtonWallet", "pton.PtonWalletV2"]
+    },
+    {
+      "path": ["Jettons", "Wallets", "Launchpad implementations"],
+      "roles": ["Jetton wallet"],
+      "contracts": ["TonFun.BlumMemepadWallet", "TonFun.TonFunBclWalletV1", "TonFun.TonFunBclWalletV2", "dedust.DedustUranusMemeWalletV3", "grambo.GramboJettonWallet", "stonkspump.StonksPumpCustomJettonWallet"]
+    },
+    {
+      "path": ["Jettons", "Masters", "Standard implementations"],
+      "roles": ["Jetton master"],
+      "contracts": ["jettons.JettonV1Master", "jettons.JettonV100Master", "jettons.DiscoverableJettonMaster", "jettons.Jetton2Master", "jettons.JettonMinter", "jettons.ScaledUiJettonMaster", "tep74.JettonMaster"]
+    },
+    {
+      "path": ["Jettons", "Masters", "Governed"],
+      "roles": ["Jetton master"],
+      "contracts": ["jettons.StablecoinMaster", "jettons.JettonNotcoinMaster"]
+    },
+    {
+      "path": ["Jettons", "Masters", "Mintless"],
+      "roles": ["Jetton master"],
+      "contracts": ["jettons.MintlessJettonMaster"]
+    },
+    {
+      "path": ["Jettons", "Masters", "Staking shares"],
+      "roles": ["Jetton master"],
+      "contracts": ["affluent.FactorialTonMinter", "hipo.HipoParent", "stakee.StakeedMinter", "tonstakers.TsTonMinter"]
+    },
+    {
+      "path": ["Jettons", "Masters", "LP"],
+      "roles": ["Jetton master"],
+      "contracts": ["storm.StormLpMinter"]
+    },
+    {
+      "path": ["Jettons", "Masters", "Wrapped and bridged assets"],
+      "roles": ["Jetton master"],
+      "contracts": ["TAC.TacJetton", "megatonfi-wton.WtonMinter", "pton.PtonMinterV2"]
+    },
+    {
+      "path": ["NFTs", "Items", "General implementations"],
+      "roles": ["NFT item"],
+      "contracts": ["nfts.NftV1Item", "nfts.NftV2Item", "nfts.GetgemsNftItemV2", "tep62.NftItem"]
+    },
+    {
+      "path": ["NFTs", "Items", "Editable"],
+      "roles": ["NFT item"],
+      "contracts": ["nfts.NftV1EditableItem", "nfts.NftV2EditableItem", "nfts.GetgemsNftEditableItemV2"]
+    },
+    {
+      "path": ["NFTs", "Items", "SBTs"],
+      "roles": ["NFT item"],
+      "contracts": ["sbts.SbtV1Item", "sbts.SbtV1Single"]
+    },
+    {
+      "path": ["NFTs", "Items", "DNS domains"],
+      "roles": ["NFT item"],
+      "contracts": ["dns.DnsDomainItem"]
+    },
+    {
+      "path": ["NFTs", "Items", "TeleMint collectibles"],
+      "roles": ["NFT item"],
+      "contracts": ["fragment.FragmentUsernameItem", "fragment.FragmentNumbersItem", "telemint.TelemintNftItem", "telemint.TelegramGiftNftItem"]
+    },
+    {
+      "path": ["NFTs", "Items", "Liquidity positions"],
+      "roles": ["NFT item"],
+      "contracts": ["bidask.BidaskLpMultitoken", "tonco.PositionNFT"]
+    },
+    {
+      "path": ["NFTs", "Items", "Staking positions"],
+      "roles": ["NFT item"],
+      "contracts": ["coffee.CoffeeStakingItem", "ff_vault.FfVaultPosition", "stonfi.StonfiFarmNft"]
+    },
+    {
+      "path": ["NFTs", "Items", "Withdrawal claims"],
+      "roles": ["NFT item"],
+      "contracts": ["hipo.HipoBill", "stakee.StakeePayoutItem", "tonstakers.TonstakersPayoutItem"]
+    },
+    {
+      "path": ["NFTs", "Items", "Referral and executor profiles"],
+      "roles": ["NFT item"],
+      "contracts": ["storm.StormReferral", "storm.StormExecutor"]
+    },
+    {
+      "path": ["NFTs", "Collections", "General implementations"],
+      "roles": ["NFT collection"],
+      "contracts": ["nfts.NftV1Collection", "nfts.NftV2Collection", "nfts.GetgemsNftCollectionV2", "tep62.NftCollection"]
+    },
+    {
+      "path": ["NFTs", "Collections", "DNS and collectibles"],
+      "roles": ["NFT collection"],
+      "contracts": ["dns.DnsCollection", "fragment.FragmentUsernameCollection", "fragment.FragmentNumbersCollection"]
+    },
+    {
+      "path": ["NFTs", "Collections", "Withdrawal claims"],
+      "roles": ["NFT collection"],
+      "contracts": ["hipo.HipoCollection", "stakee.StakeePayoutCollection", "tonstakers.TonstakersPayoutCollection"]
+    },
+    {
+      "path": ["NFTs", "Collections", "Staking pools"],
+      "roles": ["NFT collection"],
+      "contracts": ["jvault.JVaultPoolFactory"]
+    },
+    {
+      "path": ["NFTs", "Collections", "Trading accounts and profiles"],
+      "roles": ["NFT collection"],
+      "contracts": ["storm.SmartAccountFactory", "storm.StormReferralCollection", "storm.StormExecutorCollection"]
+    },
+    {
+      "path": ["NFT markets", "Fixed-price sales"],
+      "roles": ["NFT sale"],
+      "contracts": ["getgems.GetgemsNftFixpriceSaleV1", "getgems.GetgemsNftFixpriceSaleV2", "getgems.GetgemsNftFixpriceSaleV3", "getgems.GetgemsNftFixpriceSaleV3R2", "getgems.GetgemsNftFixpriceSaleV3R3", "getgems.GetgemsNftFixpriceSaleV4R1", "getgems.GetgemsNftSaleLegacy"]
+    },
+    {
+      "path": ["NFT markets", "Auctions"],
+      "roles": ["NFT auction"],
+      "contracts": ["getgems.GetgemsNftAuctionV1", "getgems.GetgemsNftAuctionV2", "getgems.GetgemsNftAuctionV3R2", "getgems.GetgemsNftAuctionV3R3", "getgems.GetgemsNftAuctionV4R1"]
+    },
+    {
+      "path": ["NFT markets", "Offers"],
+      "roles": ["NFT offer"],
+      "contracts": ["getgems.GetgemsNftOfferV1", "getgems.GetgemsNftOfferV1R3", "getgems.GetgemsOffchainOfferV3"]
+    },
+    {
+      "path": ["NFT markets", "Rentals"],
+      "roles": ["NFT rental"],
+      "contracts": ["MarketApp.MarketAppNftRentalV2R2Revision1", "MarketApp.MarketAppNftRentalV2R2Revision2"]
+    },
+    {
+      "path": ["NFT markets", "Swaps and raffles"],
+      "roles": ["NFT market"],
+      "contracts": ["getgems.GetgemsNftRaffle", "getgems.GetgemsNftSwap", "getgems.GetgemsLuckyBuyAttempt"]
+    },
+    {
+      "path": ["NFT markets", "Marketplaces and routing"],
+      "roles": ["NFT market"],
+      "contracts": ["getgems.GetgemsDeployer", "getgems.GetgemsNftMarketplaceV1", "getgems.GetgemsNftMarketplaceV2", "fragment.FragmentMarketappProxyKnown", "fragment.FragmentMarketappProxySimple", "fragment.FragmentMarketappProxyJetton"]
+    },
+    {
+      "path": ["DeFi", "DEX", "Pools and ranges"],
+      "roles": ["DEX pool"],
+      "contracts": ["bidask.BidaskPool", "bidask.BidaskRange", "dedust.DedustV2Cpmm", "moon.MoonClmmRange", "tegro.TegroPool"]
+    },
+    {
+      "path": ["DeFi", "DEX", "Factories"],
+      "roles": ["DEX factory"],
+      "contracts": ["bidask.BidaskPoolFactory", "coffee.CoffeeFactory", "coffee.CoffeeInit", "coffee.CoffeePoolCreator", "dedust.DedustFactoryV1", "dedust.DedustFactoryV2", "tonco.PoolFactory"]
+    },
+    {
+      "path": ["DeFi", "DEX", "Routers and execution"],
+      "roles": ["DEX router"],
+      "contracts": ["coffee.CoffeeCrossDex", "coffee.CoffeeCrossDexLegacy", "coffee.CoffeeCrossDexBidask", "coffee.CoffeeMevProtector", "coffee.CoffeeMevProtectorLegacy", "dedust.DedustOperatorV2", "frt-gram-adapter.FrtGramAdapterCoordinator", "frt-gram-adapter.FrtGramAdapterDispatcher", "frt-gram-adapter.FrtGramAdapterOrchestrator", "frt-gram-adapter.FrtGramAdapterWorker", "frt-gram-adapter.FrtGramAdapterExecutor", "frt-gram-adapter.FrtGramSwapRelay", "frt-gram-adapter.FrtGramSwapExecutor", "megatonfi-wton.MegatonRouter", "signed-cross-dex.SignedCrossDexExecutor", "stonfi.StonfiRouterV1", "stonfi.StonfiRouterV2", "tonco.Router"]
+    },
+    {
+      "path": ["DeFi", "DEX", "Vaults"],
+      "roles": ["Vault"],
+      "contracts": ["coffee.CoffeeVaultNative", "coffee.CoffeeVaultJetton", "coffee.CoffeeVaultExtra", "dedust.DedustVaultNativeV1", "dedust.DedustVaultJettonV1", "dedust.DedustVaultNativeV2", "dedust.DedustVaultJettonV2", "stonfi.StonfiVaultV2", "omniston.OmnistonFeeVault"]
+    },
+    {
+      "path": ["DeFi", "DEX", "Liquidity accounts and deposits"],
+      "roles": ["Liquidity account"],
+      "contracts": ["bidask.BidaskInternalLiquidityVault", "coffee.CoffeeLiquidityDepository", "dedust.DedustLiquidityDepositV1", "dedust.DedustLiquidityDepositV2", "stonfi.StonfiLpAccountV1", "stonfi.StonfiLpAccountV2", "tonco.Account"]
+    },
+    {
+      "path": ["DeFi", "Trading", "Orders and escrow"],
+      "roles": ["Trading order"],
+      "contracts": ["moon.MoonOrderFactory", "moon.MoonOrderOld", "moon.MoonOrderNew", "stonfi.StonfiEscrowPosition", "stonfi.StonfiEscrowFactory", "stonfi.StonfiEscrowVault"]
+    },
+    {
+      "path": ["DeFi", "Trading", "Perpetual markets"],
+      "roles": ["Perpetual market"],
+      "contracts": ["storm.StormVamm", "storm.StormVammCoinm"]
+    },
+    {
+      "path": ["DeFi", "Trading", "Positions and execution"],
+      "roles": ["Trading account"],
+      "contracts": ["storm.StormPositionManager", "storm.StormPositionManagerLegacy", "storm.StormProxySender"]
+    },
+    {
+      "path": ["DeFi", "Trading", "Vaults"],
+      "roles": ["Vault"],
+      "contracts": ["storm.StormVault", "storm.StormVaultNative", "storm.StormPrelaunch"]
+    },
+    {
+      "path": ["DeFi", "Staking", "Pools"],
+      "roles": ["Staking pool"],
+      "contracts": ["nominator_pool.NominatorPool", "single_nominator.SingleNominatorV10", "single_nominator.SingleNominatorV11", "stakee.StakeePool", "tonstakers.TonstakersPool", "whales.WhalesPool", "tgUSD.TgUsdLiquidStaking"]
+    },
+    {
+      "path": ["DeFi", "Staking", "Controllers and proxies"],
+      "roles": ["Staking controller"],
+      "contracts": ["stakee.StakeeValidatorController", "tonstakers.TonstakersValidatorController", "whales.WhalesProxy", "hipo.HipoLoan"]
+    },
+    {
+      "path": ["DeFi", "Staking", "Vaults and treasury"],
+      "roles": ["Vault"],
+      "contracts": ["hipo.HipoTreasury", "coffee.CoffeeStakingVault", "moon.MoonBooster"]
+    },
+    {
+      "path": ["DeFi", "Staking", "Withdrawal requests"],
+      "roles": ["Withdrawal request"],
+      "contracts": ["bemo.BemoUnstakeRequest"]
+    },
+    {
+      "path": ["DeFi", "Lending", "Pools"],
+      "roles": ["Lending pool"],
+      "contracts": ["evaa.EvaaMasterPyth", "evaa.EvaaMasterClassic", "affluent.Pool"]
+    },
+    {
+      "path": ["DeFi", "Lending", "Accounts"],
+      "roles": ["Lending account"],
+      "contracts": ["evaa.EvaaUser", "evaa.EvaaUserLegacy", "evaa.EvaaBlank", "affluent.Account", "affluent.Batch"]
+    },
+    {
+      "path": ["DeFi", "Vaults"],
+      "roles": ["Vault"],
+      "contracts": ["tsUSDe.TsusdeVault"]
+    },
+    {
+      "path": ["DeFi", "Launchpads", "Factories"],
+      "roles": ["Launchpad factory"],
+      "contracts": ["dedust.DedustUranusFactoryV3", "grambo.GramboFactory", "stonkspump.StonksPumpVirtualFactory"]
+    },
+    {
+      "path": ["Mixed"],
+      "roles": ["DEX pool", "Jetton master"],
+      "contracts": ["bidask.BidaskDammPool", "coffee.CoffeePoolConstantProduct", "coffee.CoffeePoolCurveFiStable", "dedust.DedustPoolV1", "dedust.DedustPoolV2", "megatonfi-wton.MegatonExchange", "moon.MoonPool", "stonfi.StonfiPoolV1", "stonfi.StonfiPoolV2ConstProduct", "stonfi.StonfiPoolV2Stableswap", "stonfi.StonfiPoolV2WeightedStableswap", "stonfi.StonfiPoolV2WeightedConstProduct"]
+    },
+    {
+      "path": ["Mixed"],
+      "roles": ["DEX pool", "NFT collection"],
+      "contracts": ["tonco.Pool"]
+    },
+    {
+      "path": ["Mixed"],
+      "roles": ["Staking pool", "Jetton master"],
+      "contracts": ["bemo.BemoFinancial", "whales.WhalesLiquidStaking"]
+    },
+    {
+      "path": ["Mixed"],
+      "roles": ["Staking pool", "NFT item"],
+      "contracts": ["jvault.JVaultPool"]
+    },
+    {
+      "path": ["Mixed"],
+      "roles": ["Staking manager", "NFT collection"],
+      "contracts": ["coffee.CoffeeStakingMaster", "ff_vault.FfVault", "stonfi.StonfiFarmCollection"]
+    },
+    {
+      "path": ["Mixed"],
+      "roles": ["Vault", "Jetton master"],
+      "contracts": ["affluent.MultiplyVault", "affluent.MultiplyVaultV2", "affluent.LendingVault", "aqua.AquaUsdMasterVault", "daolama.DaolamaVault"]
+    },
+    {
+      "path": ["Mixed"],
+      "roles": ["Launchpad", "Jetton master"],
+      "contracts": ["TonFun.TonFunBclMasterV1", "TonFun.BlumMemepadMinter", "gaspump.GasPumpMasterV0", "gaspump.GasPumpMasterV1", "gaspump.GasPumpMasterV2", "gaspump.GasPumpMasterV4", "gaspump.GasPumpMasterV5", "grambo.GramboJettonMaster", "dedust.DedustUranusMemeV2", "dedust.DedustUranusMemeV3", "stonkspump.StonksPumpVirtualMinter"]
+    },
+    {
+      "path": ["Mixed"],
+      "roles": ["Trading account", "NFT item"],
+      "contracts": ["storm.SmartAccount", "storm.SmartAccountBlank"]
+    },
+    {
+      "path": ["Mixed"],
+      "roles": ["Payments", "Jetton master"],
+      "contracts": ["xtr.XtrMaster"]
+    },
+    {
+      "path": ["Other recognized", "Wallet tools", "Extensions"],
+      "roles": ["Wallet extension"],
+      "contracts": ["tonkeeper_2fa.Tonkeeper2fa", "tonkeeper_2fa.MyTonWallet2fa", "cron.DnsRenewalTopUpper"]
+    },
+    {
+      "path": ["Other recognized", "Wallet tools", "Multisig orders"],
+      "roles": ["Multisig order"],
+      "contracts": ["wallets.MultisigOrderV2"]
+    },
+    {
+      "path": ["Other recognized", "Payments", "Subscriptions"],
+      "roles": ["Subscription"],
+      "contracts": ["subscriptions.SubscriptionV1", "subscriptions.SubscriptionV2"]
+    },
+    {
+      "path": ["Other recognized", "Payments", "Stores and invoices"],
+      "roles": ["Payments"],
+      "contracts": ["tonpay.TonpayStoreV11", "tonpay.TonpayInvoiceV9", "fragment.FragmentCheckoutPaymentProxy"]
+    },
+    {
+      "path": ["Other recognized", "Payments", "Channels"],
+      "roles": ["Payment channel"],
+      "contracts": ["payment_channels.AsyncPaymentChannel"]
+    },
+    {
+      "path": ["Other recognized", "Vesting and distribution"],
+      "roles": ["Vesting or distribution"],
+      "contracts": ["Jetton Vesting.JettonVesting", "locker.Locker", "locker.LockerBill", "airdrop.AirdropInterlockerV1", "airdrop.AirdropInterlockerV2"]
+    },
+    {
+      "path": ["Other recognized", "Infrastructure", "System"],
+      "roles": ["System contract"],
+      "contracts": ["system.Elector", "system.Config"]
+    },
+    {
+      "path": ["Other recognized", "Infrastructure", "DNS"],
+      "roles": ["DNS resolver"],
+      "contracts": ["dns.DnsRootResolver"]
+    },
+    {
+      "path": ["Other recognized", "Infrastructure", "Storage"],
+      "roles": ["Storage"],
+      "contracts": ["storages.StorageProvider", "storages.StorageContract", "storages.StorageAggregateContract"]
+    },
+    {
+      "path": ["Other recognized", "Infrastructure", "Verification and libraries"],
+      "roles": ["Developer infrastructure"],
+      "contracts": ["ton_verifier.VerifierRegistry", "ton_verifier.VerifierSourcesRegistry", "ton_verifier.VerifierSourceItem", "hipo.HipoLibrarian"]
+    },
+    {
+      "path": ["Other recognized", "Infrastructure", "Oracles and bridges"],
+      "roles": ["Oracle or bridge"],
+      "contracts": ["pyth_oracle.PythOracle", "tgbtc.TgbtcTeleport", "tgbtc.TgbtcCoordinator"]
+    },
+    {
+      "path": ["Other recognized", "Infrastructure", "Automation"],
+      "roles": ["Automation"],
+      "contracts": ["cron.Cron", "cron.CronContract"]
+    },
+    {
+      "path": ["Other recognized", "Infrastructure", "Jetton discovery"],
+      "roles": ["Jetton discovery"],
+      "contracts": ["jettons.JettonDiscovery"]
+    },
+    {
+      "path": ["Other recognized", "Infrastructure", "Testing"],
+      "roles": ["Testing"],
+      "contracts": ["acton.TreasuryContract"]
+    },
+    {
+      "path": ["Other recognized", "Applications", "Compute"],
+      "roles": ["Compute"],
+      "contracts": ["cocoon.CocoonRoot", "cocoon.CocoonProxy", "cocoon.CocoonClient", "cocoon.CocoonWorker"]
+    },
+    {
+      "path": ["Other recognized", "Applications", "Mining"],
+      "roles": ["Mining"],
+      "contracts": ["gram.GramMiner"]
+    },
+    {
+      "path": ["Other recognized", "Applications", "Games"],
+      "roles": ["Game"],
+      "contracts": ["catizen.CatizenInGameTask"]
+    },
+    {
+      "path": ["Other recognized", "Payload interfaces"],
+      "roles": ["Payload interface"],
+      "contracts": ["comments.CommentsPayloadInterface", "invoices.InvoicesPayloadInterface"]
+    }
+  ]
+}

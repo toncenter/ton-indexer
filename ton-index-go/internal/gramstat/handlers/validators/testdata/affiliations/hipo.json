@@ -1,0 +1,39 @@
+{
+  "family": "hipo_controller",
+  "holder": "Ef--B9g7wLqPbZz5V8xKybOCs9p0XSGDxqm5dA2Kw3pjgYUB",
+  "utime_since": 1756253960,
+  "anchor_mc_seqno": 51322329,
+  "anchor_root_hash": "5aH7nsrAXPVZj42iO/9sjjANfc/jiAeycYFunIS2r2o=",
+  "anchor_file_hash": "lAeT+44QkxBoZS3F/HpCumm6TrycOZsAQbooD7PdRwc=",
+  "response_sha256": "5fd8837412d32528a43ef839f6dab0d02e3079961f7b1ab6441a5ef425f97d35",
+  "body": {
+    "ok": true,
+    "result": {
+      "@type": "raw.fullAccountState",
+      "balance": "983080000",
+      "extra_currencies": [],
+      "last_transaction_id": {
+        "@type": "internal.transactionId",
+        "lt": "60882814000005",
+        "hash": "GET3tL5UyA95lNSaf1mjFeAhYajw1t980wPWK1yid4I="
+      },
+      "block_id": {
+        "@type": "ton.blockIdExt",
+        "workchain": -1,
+        "shard": "-9223372036854775808",
+        "seqno": 51322329,
+        "root_hash": "5aH7nsrAXPVZj42iO/9sjjANfc/jiAeycYFunIS2r2o=",
+        "file_hash": "lAeT+44QkxBoZS3F/HpCumm6TrycOZsAQbooD7PdRwc="
+      },
+      "code": "te6cckEBAQEAIwAIQgLguNIV0gwX1kyPywev5kpDFPDyb3KFUTanvMX2/n9UJlN+qwc=",
+      "data": "te6cckEBAQEAawAA0Z/mZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZnACLyZHP4Xe8fpchQz76O+/RmUhaVc/9BAoGyJrwJrcbz4ATk2mc+8bueFS/IL7e5ZIHJeGvPCk9EQ2+FVUrd8Vh/+0VyeEQP8KPZ8=",
+      "frozen_hash": "",
+      "sync_utime": 1756253961,
+      "state": "active",
+      "suspended": false
+    },
+    "@extra": "1794314991:0:229.118"
+  },
+  "error": "",
+  "inventory": null
+}

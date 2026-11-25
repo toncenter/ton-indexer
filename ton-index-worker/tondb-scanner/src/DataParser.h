@@ -39,10 +39,13 @@ private:
   td::Result<std::vector<schema::Transaction>> parse_transactions(const ton::BlockIdExt& blk_id, const block::gen::Block::Record &block, 
                                 const block::gen::BlockInfo::Record &info, const block::gen::BlockExtra::Record &extra,
                                 std::map<td::Bits256, AccountStateShort> &account_states);
-  td::Result<std::vector<schema::AccountState>> parse_account_states_new(ton::WorkchainId workchain_id, uint32_t gen_utime, std::map<td::Bits256, AccountStateShort> &account_states);
+  td::Result<std::vector<schema::AccountState>> parse_account_states_new(ton::WorkchainId workchain_id, uint32_t gen_utime, std::map<td::Bits256, AccountStateShort> &account_states, vm::CellDbReader& reader);
   td::Result<schema::AccountState> parse_none_account(td::Ref<vm::Cell> account_root, block::StdAddress address, uint32_t gen_utime, td::Bits256 last_trans_hash, uint64_t last_trans_lt);
 
 public: // Pure TLB-to-schema parsers reusable outside the actor pipeline.
+  static td::Status parse_block_fees(const block::gen::BlockExtra::Record& extra, schema::Block& result);
+  static td::Status parse_block_value_flow(td::Ref<vm::Cell> value_flow, schema::Block& result);
+  static td::Status parse_block_state_metrics(td::Ref<vm::Cell> state_root, schema::Block& result);
   // `global_version` is the only piece of ParseQuery state these need: it selects
   // extra_flags vs legacy ihr_fee in int_msg_info.
   static td::Result<schema::Message> parse_message(td::Ref<vm::Cell> msg_cell, int global_version);

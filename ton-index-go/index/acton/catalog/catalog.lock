@@ -1,0 +1,3 @@
+# Immutable upstream catalog. Change URL and digest together.
+ABI_CATALOG_URL=https://github.com/ton-blockchain/abis/releases/download/v0.1.3/abi-catalog.json
+ABI_CATALOG_SHA256=8397e3496291590590e16676ac3ab99a32167214dea7491ea315e1b34056d203

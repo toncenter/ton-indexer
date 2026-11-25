@@ -54,6 +54,8 @@ ADD ton-index-go/go.mod /go/app/go.mod
 ADD ton-index-go/go.sum /go/app/go.sum
 COPY --from=core-builder /app/build/ton-marker/libton-marker* /usr/lib/
 COPY --from=core-builder /app/ton-marker/src/wrapper.h /usr/local/include/wrapper.h
+RUN apt-get update -y && apt-get install -y curl ca-certificates && rm -rf /var/lib/apt/lists/*
+RUN sh /go/app/index/acton/catalog/prepare.sh
 RUN cd /go/app && swag init && go build -o ton-index-go ./main.go
 
 
@@ -71,6 +73,8 @@ ADD ton-emulate-go/models/ /go/app/models/
 ADD ton-emulate-go/main.go /go/app/main.go
 ADD ton-emulate-go/go.mod /go/app/go.mod
 ADD ton-emulate-go/go.sum /go/app/go.sum
+RUN apt-get update -y && apt-get install -y curl ca-certificates && rm -rf /var/lib/apt/lists/*
+RUN sh /go/ton-index-go/index/acton/catalog/prepare.sh
 COPY --from=core-builder /app/build/ton-marker/libton-marker* /usr/lib/
 COPY --from=core-builder /app/ton-marker/src/wrapper.h /usr/local/include/wrapper.h
 RUN cd /go/app && swag init && go build -o ton-emulate-go ./main.go

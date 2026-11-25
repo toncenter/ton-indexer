@@ -1,0 +1,488 @@
+#include <iostream>
+
+#include "GramstatPostgres.h"
+#include "TokenStatesPostgres.h"
+#include "TokenStatesSchema.h"
+#include "ValidatorRoundResultsSchema.h"
+#include "ValidatorRoundResultsPostgres.h"
+#include "postgresql_tools.h"
+
+namespace {
+
+InsertTaskStruct task(std::uint32_t seqno, std::uint32_t time, const char* total) {
+    InsertTaskStruct result;
+    result.mc_seqno_ = seqno;
+    result.parsed_block_ = std::make_shared<ParsedBlock>();
+    schema::Block block{};
+    block.workchain = -1;
+    block.seqno = seqno;
+    block.gen_utime = time;
+    block.global_balance = td::dec_string_to_int256(std::string(total));
+    result.parsed_block_->blocks_.push_back(std::move(block));
+    result.parsed_block_->account_deltas_ = schema::AccountDeltas{seqno, time, -1, 2, 0};
+    result.parsed_block_->deployments_.emplace();
+    result.parsed_block_->jetton_wallet_states_.emplace();
+    result.parsed_block_->nft_item_states_.emplace();
+    return result;
+}
+
+long long count(pqxx::connection& connection, const char* table) {
+    pqxx::read_transaction txn(connection);
+    return txn.query_value<long long>(std::string("SELECT count(*) FROM ") + table);
+}
+
+void check_jetton_history(pqxx::connection& connection, pqxx::connection& observer) {
+    {
+        pqxx::work txn(connection);
+        txn.exec0(jetton_history::postgres::SCHEMA_SQL);
+        txn.exec0(jetton_history::postgres::SCHEMA_SQL);
+        txn.exec0(nft_history::postgres::SCHEMA_SQL);
+        txn.exec0(nft_history::postgres::SCHEMA_SQL);
+        txn.commit();
+    }
+    const auto address = block::StdAddress(0, td::Bits256::zero());
+    const std::string amount = "100000000000000000000000000000000000000000000000001";
+    std::vector<InsertTaskStruct> tasks;
+    for (auto seqno : {101U, 100U, 102U, 103U}) {
+        auto item = task(seqno, 1788220800, "1");
+        // History has no dependency on optional Gramstat snapshots or Kvrocks.
+        item.parsed_block_->account_deltas_.reset();
+        schema::JettonWalletState row{address, seqno, 1788220800, 9007199254740993ULL + seqno, std::nullopt, {}};
+        if (seqno == 100 || seqno == 103) {
+            row.existing = true;
+            row.balance = seqno == 100 ? td::dec_string_to_int256(amount) : td::make_refint(0);
+        } else if (seqno == 102) {
+            row.existing = false;
+        }
+        item.parsed_block_->jetton_wallet_states_->push_back(row);
+        item.parsed_block_->nft_item_states_->push_back({address, seqno, row.gen_utime, row.last_tx_lt,
+            row.existing, row.existing == true ? std::optional<block::StdAddress>(
+                block::StdAddress(seqno == 100 ? 0 : -1, td::Bits256::zero())) : std::nullopt});
+        tasks.push_back(std::move(item));
+    }
+    {
+        pqxx::work txn(connection);
+        jetton_history::postgres::insert_states(txn, tasks);
+        nft_history::postgres::insert_states(txn, tasks);
+        CHECK(count(observer, "jetton_wallet_states") == 0);
+        CHECK(count(observer, "nft_item_states") == 0);
+    }
+    CHECK(count(observer, "jetton_wallet_states") == 0);
+    CHECK(count(observer, "nft_item_states") == 0);
+    {
+        pqxx::work txn(connection);
+        jetton_history::postgres::insert_states(txn, tasks);
+        jetton_history::postgres::insert_states(txn, tasks);
+        nft_history::postgres::insert_states(txn, tasks);
+        nft_history::postgres::insert_states(txn, tasks);
+        auto nfts = txn.exec("SELECT existing, owner::text FROM nft_item_states ORDER BY mc_seqno");
+        CHECK(nfts.size() == 4 && nfts[0][0].as<bool>() && nfts[0][1].as<std::string>().substr(0, 2) == "0:");
+        CHECK(nfts[1][0].is_null() && nfts[1][1].is_null());
+        CHECK(!nfts[2][0].as<bool>() && nfts[2][1].is_null());
+        CHECK(nfts[3][0].as<bool>() && nfts[3][1].as<std::string>().substr(0, 3) == "-1:");
+        auto rows = txn.exec("SELECT existing, balance::text, nonzero FROM jetton_wallet_states ORDER BY mc_seqno");
+        CHECK(rows.size() == 4 && rows[0][1].as<std::string>() == amount && rows[0][2].as<bool>());
+        CHECK(rows[1][0].is_null() && rows[1][1].is_null() && rows[1][2].is_null());
+        CHECK(!rows[2][0].as<bool>() && rows[2][1].is_null() && !rows[2][2].as<bool>());
+        CHECK(rows[3][0].as<bool>() && rows[3][1].as<std::string>() == "0" && !rows[3][2].as<bool>());
+        txn.commit();
+    }
+    for (int failure = 0; failure < 3; ++failure) {
+        auto bad = task(104, 1788220800, "1");
+        if (failure == 0) {
+            bad.parsed_block_->jetton_wallet_states_.reset();
+        } else {
+            bad.parsed_block_->jetton_wallet_states_->push_back({address, failure == 1 ? 99U : 104U,
+                1788220800, 200, false, failure == 2 ? td::make_refint(1) : td::RefInt256{}});
+        }
+        bool rejected = false;
+        std::vector<InsertTaskStruct> bad_tasks;
+        bad_tasks.push_back(std::move(bad));
+        try {
+            pqxx::work txn(connection);
+            jetton_history::postgres::insert_states(txn, bad_tasks);
+            txn.commit();
+        } catch (const std::exception&) {
+            rejected = true;
+        }
+        CHECK(rejected && count(observer, "jetton_wallet_states") == 4);
+    }
+    {
+        pqxx::work txn(connection);
+        auto& repaired = tasks[0].parsed_block_->jetton_wallet_states_->front();
+        repaired.existing = true;
+        repaired.balance = td::make_refint(5);
+        jetton_history::postgres::insert_states(txn, tasks);
+        CHECK(txn.query_value<bool>("SELECT nonzero FROM jetton_wallet_states WHERE mc_seqno=101"));
+        std::vector<InsertTaskStruct> empty;
+        empty.push_back(task(104, 1788220800, "1"));
+        jetton_history::postgres::insert_states(txn, empty);
+        txn.commit();
+    }
+    CHECK(count(observer, "jetton_wallet_states") == 4);
+    CHECK(count(observer, "nft_item_states") == 4);
+    for (int failure = 0; failure < 3; ++failure) {
+        std::vector<InsertTaskStruct> bad_tasks;
+        bad_tasks.push_back(task(104, 1788220800, "1"));
+        auto& bad = *bad_tasks[0].parsed_block_;
+        if (failure == 0) {
+            bad.nft_item_states_.reset();
+        } else {
+            bad.nft_item_states_->push_back({address, failure == 1 ? 99U : 104U,
+                1788220800, 200, false, failure == 2 ? std::optional<block::StdAddress>(address) : std::nullopt});
+        }
+        bool rejected = false;
+        try {
+            pqxx::work txn(connection);
+            jetton_history::postgres::insert_states(txn, tasks);
+            nft_history::postgres::insert_states(txn, bad_tasks);
+            txn.commit();
+        } catch (const std::exception&) {
+            rejected = true;
+        }
+        CHECK(rejected && count(observer, "nft_item_states") == 4);
+    }
+    {
+        pqxx::work txn(connection);
+        auto& repaired = tasks[0].parsed_block_->nft_item_states_->front();
+        repaired.existing = true;
+        repaired.owner = address;
+        nft_history::postgres::insert_states(txn, tasks);
+        CHECK(txn.query_value<long long>("SELECT count(DISTINCT account) FROM nft_item_states "
+            "WHERE existing IS TRUE AND owner IS NOT NULL AND owner LIKE '0:%'") == 1);
+        // Replay changes the owner at the same key, and can represent addr_none.
+        repaired.owner.reset();
+        nft_history::postgres::insert_states(txn, tasks);
+        CHECK(txn.query_value<bool>("SELECT existing AND owner IS NULL FROM nft_item_states WHERE mc_seqno=101"));
+        std::vector<InsertTaskStruct> empty;
+        empty.push_back(task(104, 1788220800, "1"));
+        nft_history::postgres::insert_states(txn, empty);
+        txn.commit();
+    }
+}
+
+void check_round_results(pqxx::connection& connection, pqxx::connection& observer) {
+    {
+        pqxx::work txn(connection);
+        txn.exec0(elector::postgres::SCHEMA_SQL);
+        txn.exec0(elector::postgres::SCHEMA_SQL);
+        txn.commit();
+    }
+    std::vector<InsertTaskStruct> tasks;
+    auto item = task(100, 1788220800, "1");
+    item.parsed_block_->validator_round_results_.push_back({1788000000, std::string(64, 'A'),
+        td::dec_string_to_int256(std::string("900719925474099312345")), td::make_refint(123456789),
+        100, 1788220800, 9007199254740993ULL, td::Bits256::zero()});
+    tasks.push_back(std::move(item));
+    {
+        pqxx::work txn(connection);
+        elector::postgres::insert_round_results(txn, tasks);
+        CHECK(count(observer, "validator_round_results") == 0);
+    }
+    CHECK(count(observer, "validator_round_results") == 0);
+    {
+        pqxx::work txn(connection);
+        elector::postgres::insert_round_results(txn, tasks);
+        elector::postgres::insert_round_results(txn, tasks);
+        CHECK(txn.query_value<std::string>("SELECT total_stake::text FROM validator_round_results") == "900719925474099312345");
+        CHECK(txn.query_value<long long>("SELECT unfreeze_tx_lt FROM validator_round_results") == 9007199254740993LL);
+        txn.commit();
+    }
+    CHECK(count(observer, "validator_round_results") == 1);
+    // A corrected replay replaces the result, including smaller rewards.
+    auto& row = tasks[0].parsed_block_->validator_round_results_[0];
+    row.bonuses = td::make_refint(0);
+    {
+        pqxx::work txn(connection);
+        elector::postgres::insert_round_results(txn, tasks);
+        CHECK(txn.query_value<long long>("SELECT bonuses FROM validator_round_results") == 0);
+        txn.commit();
+    }
+    row.total_stake = td::make_refint(-1);
+    bool rejected = false;
+    try {
+        pqxx::work txn(connection);
+        elector::postgres::insert_round_results(txn, tasks);
+        txn.commit();
+    } catch (const std::exception&) { rejected = true; }
+    CHECK(rejected && count(observer, "validator_round_results") == 1);
+}
+
+void check_resume(pqxx::connection& connection, pqxx::connection& observer) {
+    const auto previous_blocks = count(observer, "blocks");
+    const auto previous_deltas = count(observer, "gramstat.account_deltas");
+    const auto completed = std::string("SELECT count(*) FROM blocks WHERE workchain = -1 "
+                                       "AND seqno BETWEEN 1499 AND 3001") +
+                           gramstat::postgres::completed_block_condition(true);
+    std::vector<InsertTaskStruct> tasks;
+    for (auto seqno : {3001U, 1499U, 1500U, 1501U, 2999U, 3000U}) {
+        auto item = task(seqno, 1788220800, "100000000000000000102");
+        tasks.push_back(std::move(item));
+    }
+    {
+        pqxx::work txn(connection);
+        txn.exec0("INSERT INTO blocks VALUES (-1,1499),(-1,1500),(-1,1501),(-1,2999),(-1,3000),(-1,3001)");
+        for (int retry = 0; retry < 2; ++retry) {
+            gramstat::postgres::insert_deployments(txn, tasks);
+            gramstat::postgres::insert_account_deltas(txn, tasks);
+        }
+        CHECK(txn.query_value<int>("SELECT count(*) FROM gramstat.account_deltas WHERE mc_seqno BETWEEN 1499 AND 3001") == 6);
+        CHECK(txn.query_value<int>(completed) == 6);
+        // Old NULL metrics and former supply-sampling boundaries do not trigger
+        // an unrequested historical replay after the upgrade.
+        CHECK(txn.query_value<int>("SELECT count(*) FROM blocks WHERE seqno BETWEEN 1499 AND 3001 AND global_balance IS NULL") == 6);
+        txn.exec0("DELETE FROM gramstat.account_deltas WHERE mc_seqno=1499");
+        CHECK(txn.query_value<int>(completed) == 5);
+        gramstat::postgres::insert_account_deltas(txn, tasks);
+        CHECK(txn.query_value<int>(completed) == 6);
+
+        // Empty deployment batches still commit their completion markers.
+        std::vector<InsertTaskStruct> skipped;
+        for (auto seqno : {601U, 602U}) {
+            auto item = task(seqno, 1788220800, "100000000000000000102");
+            skipped.push_back(std::move(item));
+        }
+        txn.exec0("INSERT INTO blocks VALUES (-1,601),(-1,602)");
+        gramstat::postgres::insert_deployments(txn, skipped);
+        gramstat::postgres::insert_account_deltas(txn, skipped);
+        CHECK(txn.query_value<int>(std::string("SELECT count(*) FROM blocks WHERE workchain=-1 AND seqno IN (601,602)") +
+                                  gramstat::postgres::completed_block_condition(true)) == 2);
+        // Roll back this fixture so the documented chart tests retain their inputs.
+    }
+    CHECK(count(observer, "blocks") == previous_blocks);
+    CHECK(count(observer, "gramstat.account_deltas") == previous_deltas);
+
+    for (bool missing : {true, false}) {
+        std::vector<InsertTaskStruct> bad;
+        auto item = task(4500, 1788220800, "100000000000000000102");
+        if (missing) {
+            item.parsed_block_->account_deltas_.reset();
+        } else {
+            item.parsed_block_->account_deltas_->mc_seqno++;
+        }
+        bad.push_back(std::move(item));
+        bool rejected = false;
+        try {
+            pqxx::work txn(connection);
+            gramstat::postgres::insert_account_deltas(txn, bad);
+            txn.commit();
+        } catch (const std::runtime_error&) { rejected = true; }
+        CHECK(rejected && count(observer, "gramstat.account_deltas") == previous_deltas);
+    }
+}
+
+}  // namespace
+
+int main(int argc, char** argv) {
+    CHECK(argc == 2);  // The test runner supplies a fresh, private PostgreSQL cluster.
+    pqxx::connection connection(argv[1]);
+    pqxx::connection observer(argv[1]);
+    {
+        pqxx::work txn(connection);
+        // The ordinary migrations create these domains before Gramstat's 1.3.2 DDL.
+        txn.exec0("CREATE DOMAIN tonaddr AS varchar; CREATE DOMAIN tonhash AS char(44);");
+        gramstat::postgres::ensure_schema(txn);
+        gramstat::postgres::ensure_schema(txn);
+        txn.exec0("CREATE TABLE blocks (workchain int, seqno bigint, shard bigint DEFAULT 0, "
+                  "mc_block_seqno bigint DEFAULT 0, transaction_fees numeric(38,0), import_fees numeric(38,0), "
+                  "created numeric(38,0), burned numeric(38,0), gen_utime bigint DEFAULT 0, "
+                  "global_balance numeric(38,0), out_msg_queue_size bigint, "
+                  "PRIMARY KEY (workchain, shard, seqno, mc_block_seqno))");
+        txn.commit();
+    }
+    check_jetton_history(connection, observer);
+    check_round_results(connection, observer);
+    std::vector<InsertTaskStruct> tasks;
+    tasks.push_back(task(101, 1788224399, "100000000000000000102"));
+    tasks.push_back(task(100, 1788224399, "100000000000000000101"));
+    tasks.push_back(task(103, 1788228000, "100000000000000000104"));
+    const auto address = block::StdAddress(0, td::Bits256::zero());
+    const auto hash = td::Bits256::zero();
+    tasks[0].parsed_block_->deployments_->push_back({101, 1788220799, address, 9007199254740993ULL, hash, hash, 0});
+    tasks[0].parsed_block_->deployments_->push_back({101, 1788220800, address, 9007199254740994ULL, hash, std::nullopt, 2});
+
+    // All writes are invisible to other connections and roll back together.
+    {
+        pqxx::work txn(connection);
+        txn.exec0("INSERT INTO blocks VALUES (-1, 100), (-1, 101), (-1, 103)");
+        gramstat::postgres::insert_deployments(txn, tasks);
+        gramstat::postgres::insert_account_deltas(txn, tasks);
+        CHECK(count(observer, "blocks") == 0);
+        CHECK(count(observer, "gramstat.account_deltas") == 0);
+        CHECK(count(observer, "gramstat.deployments") == 0);
+    }
+    CHECK(count(observer, "blocks") == 0);
+    CHECK(count(observer, "gramstat.account_deltas") == 0);
+    CHECK(count(observer, "gramstat.deployments") == 0);
+    {
+        pqxx::work txn(connection);
+        txn.exec0("INSERT INTO blocks VALUES (-1, 100), (-1, 101), (-1, 103)");
+        gramstat::postgres::insert_deployments(txn, tasks);
+        gramstat::postgres::insert_account_deltas(txn, tasks);
+        txn.commit();
+    }
+    {
+        pqxx::work txn(connection);
+        gramstat::postgres::insert_deployments(txn, tasks);
+        gramstat::postgres::insert_account_deltas(txn, tasks);
+        txn.commit();
+    }
+    CHECK(count(observer, "gramstat.account_deltas") == 3);
+    CHECK(count(observer, "gramstat.deployments") == 2);
+    {
+        pqxx::work txn(connection);
+        auto rows = txn.exec("SELECT lt, gen_utime, init_code_hash::text, out_msgs_count "
+                             "FROM gramstat.deployments ORDER BY lt");
+        CHECK(rows[0][0].as<long long>() == 9007199254740993LL);
+        CHECK(rows[0][1].as<int>() == 1788220799);
+        CHECK(rows[0][2].as<std::string>() == td::base64_encode(hash.as_slice()));
+        CHECK(rows[1][2].is_null() && rows[1][3].as<int>() == 2);
+        tasks[0].parsed_block_->deployments_->front().out_msgs_count = 3;
+        gramstat::postgres::insert_deployments(txn, tasks);
+        CHECK(txn.query_value<int>("SELECT out_msgs_count FROM gramstat.deployments WHERE lt=9007199254740993") == 3);
+        CHECK(txn.query_value<int>("SELECT count(*) FROM gramstat.deployments") == 2);
+        txn.commit();
+    }
+
+    // Legacy block without metrics: bounded backfill / standby must not skip it.
+    const auto completed = std::string("SELECT count(*) FROM blocks WHERE workchain = -1") +
+                           gramstat::postgres::completed_block_condition(true);
+    {
+        pqxx::work txn(connection);
+        txn.exec0("INSERT INTO blocks VALUES (-1, 104), (0, 105)");
+        CHECK(txn.query_value<long long>(completed) == 3);
+        CHECK(std::string(gramstat::postgres::completed_block_condition(false)).empty());
+        txn.commit();
+    }
+    std::vector<InsertTaskStruct> repair;
+    repair.push_back(task(104, 1788307200, "100000000000000000105"));
+    {
+        pqxx::work txn(connection);
+        gramstat::postgres::insert_deployments(txn, repair);  // calculated zero events
+        CHECK(txn.query_value<long long>(completed) == 3);
+        gramstat::postgres::insert_account_deltas(txn, repair);
+        CHECK(txn.query_value<long long>(completed) == 4);
+        txn.commit();
+    }
+    std::vector<InsertTaskStruct> bad;
+    bool rejected = false;
+    {
+        pqxx::work txn(connection);
+        CHECK(txn.query_value<long long>("SELECT count(*) FROM blocks WHERE transaction_fees IS NULL") == 5);
+        // A previous fees-only replay must not prevent filling created/burned.
+        txn.exec0("UPDATE blocks SET transaction_fees=100000000000000000001, import_fees=23 WHERE seqno=100");
+        std::initializer_list<std::string_view> columns = {
+            "workchain", "shard", "seqno", "mc_block_seqno", "transaction_fees", "import_fees", "created", "burned",
+            "global_balance", "out_msg_queue_size"};
+        for (int retry = 0; retry < 2; ++retry) {
+            PopulateTableStream stream(txn, "blocks", columns, 1000);
+            configure_block_aggregates_upsert(stream);
+            stream.insert_row(std::make_tuple(-1, 0, 100, 0,
+                td::dec_string_to_int256(std::string("100000000000000000001")), td::make_refint(23),
+                td::dec_string_to_int256(std::string("100000000000000000007")), td::make_refint(0),
+                td::dec_string_to_int256(std::string("100000000000000000009")), std::optional<std::uint64_t>(0)));
+            stream.finish();
+        }
+        CHECK(txn.query_value<std::string>("SELECT (transaction_fees + import_fees)::text "
+                                           "FROM blocks WHERE seqno = 100") == "100000000000000000024");
+        CHECK(txn.query_value<long long>("SELECT count(*) FROM blocks WHERE transaction_fees IS NULL") == 4);
+        CHECK(txn.query_value<std::string>("SELECT created::text FROM blocks WHERE seqno=100") == "100000000000000000007");
+        CHECK(txn.query_value<int>("SELECT burned FROM blocks WHERE seqno=100") == 0);
+        CHECK(txn.query_value<std::string>("SELECT global_balance::text FROM blocks WHERE seqno=100") == "100000000000000000009");
+        CHECK(txn.query_value<int>("SELECT out_msg_queue_size FROM blocks WHERE seqno=100") == 0);
+        CHECK(txn.query_value<int>("SELECT count(*) FROM blocks WHERE out_msg_queue_size IS NULL") == 4);
+        CHECK(txn.query_value<long long>("SELECT count(*) FROM blocks WHERE created IS NULL OR burned IS NULL") == 4);
+        CHECK(txn.query_value<long long>("SELECT count(*) FROM blocks") == 5);
+        txn.commit();
+    }
+    // The default COPY path must preserve shard NULLs, an actual zero and uint48.
+    {
+        pqxx::work txn(connection);
+        PopulateTableStream stream(txn, "blocks",
+            {"workchain", "shard", "seqno", "mc_block_seqno", "global_balance", "out_msg_queue_size"}, 1000, true);
+        stream.insert_row(std::make_tuple(0, 0, 5000, 5000, td::RefInt256{}, std::optional<std::uint64_t>{}));
+        stream.insert_row(std::make_tuple(-1, 0, 5000, 5000, td::make_refint(0), std::optional<std::uint64_t>(0)));
+        stream.insert_row(std::make_tuple(-1, 0, 5001, 5001,
+            td::dec_string_to_int256(std::string("100000000000000000001")),
+            std::optional<std::uint64_t>((1ULL << 48) - 1)));
+        stream.finish();
+        CHECK(txn.query_value<bool>("SELECT global_balance IS NULL AND out_msg_queue_size IS NULL FROM blocks WHERE workchain=0 AND seqno=5000"));
+        CHECK(txn.query_value<bool>("SELECT global_balance=0 AND out_msg_queue_size=0 FROM blocks WHERE workchain=-1 AND seqno=5000"));
+        CHECK(txn.query_value<std::string>("SELECT global_balance::text FROM blocks WHERE workchain=-1 AND seqno=5001") == "100000000000000000001");
+        CHECK(txn.query_value<long long>("SELECT out_msg_queue_size FROM blocks WHERE workchain=-1 AND seqno=5001") == (1LL << 48) - 1);
+        // Rollback keeps the chart fixtures unchanged.
+    }
+    // Missing or mismatched deltas must roll back the block insert.
+    for (bool missing : {true, false}) {
+        bad.clear();
+        bad.push_back(task(106, 1788307201, "100000000000000000106"));
+        if (missing) {
+            bad[0].parsed_block_->account_deltas_.reset();
+        } else {
+            bad[0].parsed_block_->account_deltas_->mc_seqno++;
+        }
+        rejected = false;
+        try {
+            pqxx::work txn(connection);
+            txn.exec0("INSERT INTO blocks VALUES (-1, 106)");
+            gramstat::postgres::insert_account_deltas(txn, bad);
+            txn.commit();
+        } catch (const std::runtime_error&) {
+            rejected = true;
+        }
+        CHECK(rejected && count(observer, "blocks") == 5);
+        CHECK(count(observer, "gramstat.account_deltas") == 4);
+    }
+    // Missing results, wrong MC ownership and a DB error all roll back deployments
+    // with the rest of the batch, never leaving the completion marker behind.
+    for (int failure = 0; failure < 3; ++failure) {
+        bad.clear();
+        bad.push_back(task(106, 1788307201, "100000000000000000106"));
+        if (failure == 0) {
+            bad[0].parsed_block_->deployments_.reset();
+        } else {
+            bad[0].parsed_block_->deployments_->push_back({106, 1788307201, address, 20, hash, hash, 0});
+            bad[0].parsed_block_->deployments_->push_back({failure == 1 ? 99U : 106U, 1788307201,
+                address, 21, hash, hash, failure == 2 ? UINT32_MAX : 0});
+        }
+        rejected = false;
+        try {
+            pqxx::work txn(connection);
+            txn.exec0("INSERT INTO blocks VALUES (-1, 106)");
+            gramstat::postgres::insert_deployments(txn, bad);
+            gramstat::postgres::insert_account_deltas(txn, bad);
+            txn.commit();
+        } catch (const std::exception&) {
+            rejected = true;
+        }
+        CHECK(rejected && count(observer, "blocks") == 5);
+        CHECK(count(observer, "gramstat.account_deltas") == 4);
+        CHECK(count(observer, "gramstat.deployments") == 2);
+    }
+    check_resume(connection, observer);
+    // A complete small prefix for the documented chart SQL (run by the runner).
+    std::vector<InsertTaskStruct> history;
+    for (const auto& delta : std::vector<schema::AccountDeltas>{
+        {1, 1788220799, 10, 20, 1}, {3, 1788307199, 0, -1, 1},
+        {2, 1788220800, -2, 3, 0}, {4, 1788307200, 0, 0, 0},
+        {5, 1788350400, 100, 0, -1}, {7, 1788354000, 0, 0, 0}}) {
+        auto row = task(delta.mc_seqno, delta.gen_utime, "100000000000000000101");
+        row.parsed_block_->account_deltas_ = delta;
+        history.push_back(std::move(row));
+    }
+    {
+        pqxx::work txn(connection);
+        gramstat::postgres::insert_account_deltas(txn, history);
+        txn.commit();
+    }
+    history[4].parsed_block_->account_deltas_->delta_uninit = 1;
+    {
+        pqxx::work txn(connection);
+        gramstat::postgres::insert_account_deltas(txn, history);  // corrected replay
+        gramstat::postgres::insert_account_deltas(txn, history);  // identical replay
+        CHECK(txn.query_value<int>("SELECT delta_uninit FROM gramstat.account_deltas WHERE mc_seqno=5") == 1);
+        CHECK(txn.query_value<long long>("SELECT count(*) FROM gramstat.account_deltas") == 10);
+        txn.commit();
+    }
+    std::cout << "PostgreSQL Gramstat exact amounts, atomic writes, retries, backfill and charts: OK\n";
+}

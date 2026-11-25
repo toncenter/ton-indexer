@@ -147,7 +147,10 @@ func ParseOrder(order string) (actions []models.OrderAction, err error) {
 		return nil, fmt.Errorf("failed to wrap hashmap: %w", err)
 	}
 
-	slice := dictCell.BeginParse()
+	slice, err := dictCell.BeginParse()
+	if err != nil {
+		return nil, err
+	}
 	dict, err := slice.LoadDict(8)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load dictionary: %w", err)
@@ -184,11 +187,17 @@ func parseOrderAction(kv cell.DictKV) (models.OrderAction, error) {
 		return models.OrderAction{}, fmt.Errorf("failed to load ref cell: %w", err)
 	}
 
-	orderSlice := r.BeginParse()
+	orderSlice, err := r.BeginParse()
+	if err != nil {
+		return models.OrderAction{}, err
+	}
 	orderType, err := orderSlice.PreloadUInt(32)
+	if err != nil {
+		return models.OrderAction{}, err
+	}
 	if orderType == 0xf1381e5b {
 		var orderAction orderSendMessageActionTlb
-		err = tlb.LoadFromCell(&orderAction, r.BeginParse())
+		err = tlb.LoadFromCell(&orderAction, orderSlice)
 		if err != nil {
 			return models.OrderAction{}, fmt.Errorf("failed to load order action from cell: %w", err)
 		}
@@ -224,7 +233,7 @@ func parseOrderAction(kv cell.DictKV) (models.OrderAction, error) {
 		}, nil
 	} else if orderType == 0x1d0cfbd3 {
 		var orderAction orderUpdateMultisigParamsActionTlb
-		err = tlb.LoadFromCell(&orderAction, r.BeginParse())
+		err = tlb.LoadFromCell(&orderAction, orderSlice)
 		if err != nil {
 			return models.OrderAction{}, fmt.Errorf("failed to load order action from cell: %w", err)
 		}
@@ -251,7 +260,10 @@ func parseMessageBody(bodyCell *cell.Cell) (models.ParsedBody, error) {
 		return &models.TonTransferMessage{}, nil
 	}
 
-	slice := bodyCell.BeginParse()
+	slice, err := bodyCell.BeginParse()
+	if err != nil {
+		return nil, err
+	}
 
 	// Check if there's enough data for opcode
 	if slice.BitsLeft() < 32 {
@@ -264,8 +276,7 @@ func parseMessageBody(bodyCell *cell.Cell) (models.ParsedBody, error) {
 		return parseSimpleMessage(slice)
 	}
 
-	// Reset slice to parse from beginning
-	slice = bodyCell.BeginParse()
+	// PreloadUInt leaves the slice at the beginning.
 
 	switch opcode {
 	case 0x0f8a7ea5: // JettonTransfer
@@ -328,7 +339,11 @@ func parseJettonTransferBodyTlb(slice *cell.Slice) (*models.JettonTransferBody, 
 	// Handle forward payload
 	if tlbStruct.ForwardPayload != nil {
 		jt.ForwardPayload = tlbStruct.ForwardPayload.ToBOC()
-		parseForwardPayload(tlbStruct.ForwardPayload.BeginParse(), jt)
+		payload, err := tlbStruct.ForwardPayload.BeginParse()
+		if err != nil {
+			return nil, err
+		}
+		parseForwardPayload(payload, jt)
 	}
 
 	return jt, nil
@@ -571,7 +586,10 @@ func parseJettonCallToBody(slice *cell.Slice) (*models.JettonCallToBody, error) 
 	}
 
 	// Determine action type by examining the action reference
-	actionSlice := tlbStruct.ActionRef.BeginParse()
+	actionSlice, err := tlbStruct.ActionRef.BeginParse()
+	if err != nil {
+		return nil, err
+	}
 	var actionType string
 
 	if actionSlice.BitsLeft() >= 32 {
@@ -647,7 +665,11 @@ func parseVestingInternalTransferBody(slice *cell.Slice) (*models.VestingInterna
 
 	// Parse the internal message
 	var msg tlb.Message
-	err = tlb.LoadFromCell(&msg, tlbStruct.MsgRef.BeginParse())
+	messageSlice, err := tlbStruct.MsgRef.BeginParse()
+	if err != nil {
+		return nil, err
+	}
+	err = tlb.LoadFromCell(&msg, messageSlice)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse internal message: %w", err)
 	}
@@ -663,8 +685,8 @@ func parseVestingInternalTransferBody(slice *cell.Slice) (*models.VestingInterna
 		if intMsg.Body != nil {
 			messageBody = intMsg.Body.ToBOC()
 			// Try to parse comment
-			body := intMsg.Body.BeginParse()
-			if body.BitsLeft() >= 32 {
+			body, err := intMsg.Body.BeginParse()
+			if err == nil && body.BitsLeft() >= 32 {
 				opcode, err := body.LoadUInt(32)
 				if err == nil && opcode == 0 {
 					if commentStr, err := body.LoadStringSnake(); err == nil {

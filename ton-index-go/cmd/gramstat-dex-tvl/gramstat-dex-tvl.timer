@@ -1,0 +1,9 @@
+[Unit]
+Description=Refresh closing DEX reserve valuations
+
+[Timer]
+OnCalendar=*-*-* *:37:00 UTC
+Persistent=true
+
+[Install]
+WantedBy=timers.target

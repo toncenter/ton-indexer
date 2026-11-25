@@ -96,14 +96,15 @@ MultisigOrder::MultisigOrder(block::StdAddress address,
                        td::Ref<vm::Cell> data_cell,
                        AllShardStates shard_states,
                        std::shared_ptr<block::ConfigInfo> config,
-                       td::Promise<Result> promise) :
-  address_(std::move(address)), code_cell_(std::move(code_cell)), data_cell_(std::move(data_cell)),
+                       td::Promise<Result> promise,
+                       std::shared_ptr<AccountLookupContext> lookup) :
+   lookup_(std::move(lookup)), address_(std::move(address)), code_cell_(std::move(code_cell)), data_cell_(std::move(data_cell)),
   shard_states_(std::move(shard_states)), config_(std::move(config)), promise_(std::move(promise)) {}
 
 td::Result<MultisigOrder::Result> MultisigOrder::detect(
     const block::StdAddress& address, const td::Ref<vm::Cell>& code_cell,
     const td::Ref<vm::Cell>& data_cell, const AllShardStates& shard_states,
-    const std::shared_ptr<block::ConfigInfo>& config) {
+    const std::shared_ptr<block::ConfigInfo>& config, AccountLookupContext* lookup) {
   if (code_cell.is_null() || data_cell.is_null()) {
     return td::Status::Error("Code or data null");
   }
@@ -130,14 +131,14 @@ td::Result<MultisigOrder::Result> MultisigOrder::detect(
 
   TRY_RESULT_ASSIGN(data.signers, parse_address_dict(stack[4].as_cell()));
 
-  TRY_RESULT(multisig, lookup_account(shard_states, data.multisig_address));
+  TRY_RESULT(multisig, lookup_account(shard_states, data.multisig_address, lookup));
   TRY_STATUS(verify_multisig_order(address, data.multisig_address, multisig.code, multisig.data,
                                    data.order_seqno, config));
   return data;
 }
 
 void MultisigOrder::start_up() {
-  promise_.set_result(detect(address_, code_cell_, data_cell_, shard_states_, config_));
+  promise_.set_result(detect(address_, code_cell_, data_cell_, shard_states_, config_, lookup_.get()));
   stop();
 }
 

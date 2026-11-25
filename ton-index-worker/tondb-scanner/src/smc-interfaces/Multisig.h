@@ -4,6 +4,7 @@
 #include <mc-config.h>
 
 using AllShardStates = std::vector<td::Ref<vm::Cell>>;
+class AccountLookupContext;
 
 
 class MultisigContract: public td::actor::Actor {
@@ -54,7 +55,8 @@ public:
                          td::Ref<vm::Cell> data_cell,
                          AllShardStates shard_states,
                          std::shared_ptr<block::ConfigInfo> config,
-                         td::Promise<Result> promise);
+                         td::Promise<Result> promise,
+                         std::shared_ptr<AccountLookupContext> lookup = nullptr);
 
     void start_up() override;
 
@@ -62,7 +64,8 @@ public:
                                      const td::Ref<vm::Cell>& code_cell,
                                      const td::Ref<vm::Cell>& data_cell,
                                      const AllShardStates& shard_states,
-                                     const std::shared_ptr<block::ConfigInfo>& config);
+                                     const std::shared_ptr<block::ConfigInfo>& config,
+                                     AccountLookupContext* lookup = nullptr);
 
     static td::Status verify_multisig_order(const block::StdAddress& order_address,
         block::StdAddress multisig_address, td::Ref<vm::Cell> multisig_code,
@@ -70,6 +73,7 @@ public:
         const std::shared_ptr<block::ConfigInfo>& config);
 
 private:
+    std::shared_ptr<AccountLookupContext> lookup_;
     block::StdAddress address_;
     td::Ref<vm::Cell> code_cell_;
     td::Ref<vm::Cell> data_cell_;

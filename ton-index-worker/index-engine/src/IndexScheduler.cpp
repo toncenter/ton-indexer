@@ -1,5 +1,8 @@
 #include "IndexScheduler.h"
 #include "BlockInterfacesDetector.h"
+#include "AccountDeltas.h"
+#include "Deployments.h"
+#include "AccountStateHistory.h"
 #include "Statistics.h"
 #include "common/delay.h"
 #include "td/utils/StringBuilder.h"
@@ -91,8 +94,8 @@ void IndexScheduler::alarm() {
         next_print_stats_ = td::Timestamp::in(stats_timeout_);
     }
     if (next_statistics_flush_.is_in_past()) {
-        ton::delay_action([working_dir = this->working_dir_]() {
-            auto stats = g_statistics.generate_report_and_reset();
+        ton::delay_action([working_dir = this->working_dir_, parents = parents_]() {
+            auto stats = g_statistics.generate_report_and_reset() + parents->report();
             auto path = working_dir + "/" + "stats.txt";
             auto status = td::atomic_write_file(path, std::move(stats));
             if (status.is_error()) {
@@ -511,11 +514,25 @@ void IndexScheduler::seqno_traces_assembled(std::uint32_t mc_seqno, ParsedBlockP
         }
         td::actor::send_closure(SelfId, &IndexScheduler::seqno_interfaces_processed, mc_seqno, R.move_as_ok());
     });
-    td::actor::create_actor<BlockInterfaceProcessor>("BlockInterfaceProcessor", std::move(parsed_block), std::move(P)).release();
+    // TraceAssembler already emits the canonical MC sequence in order. Publish
+    // cheap parent updates here; detector actors remain independent/parallel.
+    auto parent_view = std::make_shared<const ParentAccountView>(parents_->observe(mc_seqno, *parsed_block));
+    td::actor::create_actor<BlockInterfaceProcessor>("BlockInterfaceProcessor", std::move(parsed_block), std::move(P),
+                                                    parents_, std::move(parent_view)).release();
 }
 
 void IndexScheduler::seqno_interfaces_processed(std::uint32_t mc_seqno, ParsedBlockPtr parsed_block) {
     LOG(DEBUG) << "Interfaces processed for seqno " << mc_seqno;
+    auto history = account_history::collect_states(mc_seqno, *parsed_block);
+    if (history.is_error()) {
+        auto error = history.move_as_error();
+        LOG(ERROR) << "Failed to collect token states for seqno " << mc_seqno << ": " << error;
+        handle_seqno_failure(mc_seqno, "indexer.token_history_error", std::move(error), false);
+        return;
+    }
+    auto states = history.move_as_ok();
+    parsed_block->jetton_wallet_states_ = std::move(states.jetton_wallets);
+    parsed_block->nft_item_states_ = std::move(states.nft_items);
     finish_seqno_otel_stage(mc_seqno);
     start_seqno_otel_stage(mc_seqno, "detect_actions");
 
@@ -542,6 +559,32 @@ void IndexScheduler::seqno_actions_processed(std::uint32_t mc_seqno, ParsedBlock
         return;
     }
 
+    if (collect_gramstat_) {
+        start_seqno_otel_stage(mc_seqno, "gramstat");
+        auto deltas = gramstat::calculate_account_deltas(mc_seqno, *parsed_block);
+        if (deltas.is_error()) {
+            auto error = deltas.move_as_error();
+            LOG(ERROR) << "Failed to calculate account deltas for seqno " << mc_seqno << ": " << error;
+            handle_seqno_failure(mc_seqno, "indexer.gramstat_error", std::move(error), false);
+            return;
+        }
+        parsed_block->account_deltas_ = deltas.move_as_ok();
+        auto deployments = gramstat::collect_deployments(mc_seqno, *parsed_block);
+        if (deployments.is_error()) {
+            auto error = deployments.move_as_error();
+            LOG(ERROR) << "Failed to collect deployments for seqno " << mc_seqno << ": " << error;
+            handle_seqno_failure(mc_seqno, "indexer.gramstat_error", std::move(error), false);
+            return;
+        }
+        parsed_block->deployments_ = deployments.move_as_ok();
+        finish_seqno_otel_stage(mc_seqno);
+    }
+    insert_seqno(mc_seqno, std::move(parsed_block));
+}
+
+void IndexScheduler::insert_seqno(std::uint32_t mc_seqno, ParsedBlockPtr parsed_block) {
+    const auto* mc_block = find_masterchain_block(*parsed_block);
+    const std::int32_t block_gen_utime = mc_block ? mc_block->gen_utime : 0;
     start_seqno_otel_stage(mc_seqno, "insert_seqno");
     set_seqno_otel_attribute(mc_seqno, "ton.indexer.insert.force", is_in_sync_);
 
