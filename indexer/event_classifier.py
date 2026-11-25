@@ -49,6 +49,46 @@ logger = logging.getLogger(__name__)
 settings = Settings()
 interface_cache: LRUCache | None = None
 
+# Migration 1.2.9 seeds this value when no masterchain blocks are indexed yet.
+DEFAULT_CLASSIFIER_WATERMARK = 100
+
+
+def initialize_classifier_watermark() -> bool:
+    """Return whether the classifier can stop checking for an uninitialized watermark."""
+    with SyncSessionMaker.begin() as session:
+        if not session.execute(text("SELECT to_regclass('classifier_watermark') IS NOT NULL")).scalar_one():
+            return False
+
+        watermark, has_buffered_blocks = session.execute(text("""
+            SELECT last_scheduled_mc_seqno, EXISTS (SELECT 1 FROM blocks_to_classify)
+            FROM classifier_watermark WHERE id = 1
+        """)).one()
+        if watermark != DEFAULT_CLASSIFIER_WATERMARK:
+            return True
+        if not has_buffered_blocks:
+            return False
+
+        # Let in-flight block inserts finish before choosing the oldest buffered block.
+        session.execute(text("LOCK TABLE blocks IN SHARE MODE"))
+        first_seqno = session.execute(text("""
+            WITH first_block AS (SELECT min(mc_seqno) AS seqno FROM blocks_to_classify)
+            UPDATE classifier_watermark
+            SET last_scheduled_mc_seqno = first_block.seqno - 1
+            FROM first_block
+            WHERE id = 1 AND last_scheduled_mc_seqno = :default_watermark
+              AND first_block.seqno IS NOT NULL
+            RETURNING first_block.seqno
+        """), {"default_watermark": DEFAULT_CLASSIFIER_WATERMARK}).scalar_one_or_none()
+        if first_seqno is None:
+            return False
+
+        # Fire the existing drain trigger even if the indexer has no more blocks to insert.
+        session.execute(text("DELETE FROM blocks_to_classify WHERE mc_seqno = :seqno"), {"seqno": first_seqno})
+        session.execute(text("INSERT INTO blocks_to_classify (mc_seqno) VALUES (:seqno)"), {"seqno": first_seqno})
+
+    logger.info("Initialized classifier watermark from buffered masterchain block %s", first_seqno)
+    return True
+
 
 def add_on_conflict_ignore(conn, cursor, statement, parameters, context, executemany):
     stipped_statement = statement.lstrip().upper()
@@ -84,9 +124,19 @@ class UnclassifiedEventsReader(mp.Process):
         self.stats_queue = stats_queue
         self.batch_size = batch_size
         self.prefetch_size = prefetch_size
+        self.next_watermark_check = 0.0
         logger.info(f"Reading unclassified tasks with batch size {self.batch_size}")
     
     def read_batch(self):
+        now = time.monotonic()
+        if now >= self.next_watermark_check:
+            self.next_watermark_check = now + 1.0
+            try:
+                if initialize_classifier_watermark():
+                    self.next_watermark_check = float("inf")
+            except Exception:
+                logger.exception("Failed to initialize classifier watermark")
+
         rows = []
         with SyncSessionMaker() as session:
             try:
