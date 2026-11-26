@@ -35,7 +35,7 @@ COPY indexer/indexer/ /indexer/indexer/
 WORKDIR /app/build
 ENV CC=clang-20
 ENV CXX=clang++-20
-RUN touch /app/suppression_mappings.txt && cmake -DPGTON=1 -DCMAKE_BUILD_TYPE=Release -DPORTABLE=1 -DMCH_INDEXER_ROOT=/indexer .. && make -j$(nproc) ton-index-postgres ton-index-postgres-migrate ton-index-clickhouse ton-smc-scanner \
+RUN touch /app/suppression_mappings.txt && cmake -DPGTON=1 -DCMAKE_BUILD_TYPE=Release -DPORTABLE=1 -DMCH_INDEXER_ROOT=/indexer .. && make -j$(nproc) ton-index-postgres ton-index-postgres-migrate ton-index-clickhouse ton-smc-scanner ton-dex-snapshots-backfill \
      ton-integrity-checker ton-trace-emulator ton-finalized-streamer ton-trace-task-emulator ton-marker-cli ton-marker-core ton-marker pgton
 
 
@@ -126,6 +126,7 @@ COPY --from=core-builder /app/build/ton-index-postgres/ton-index-postgres /usr/b
 COPY --from=core-builder /app/build/ton-index-postgres/ton-index-postgres-migrate /usr/bin/ton-index-postgres-migrate
 COPY --from=core-builder /app/build/ton-index-clickhouse/ton-index-clickhouse /usr/bin/ton-index-clickhouse
 COPY --from=core-builder /app/build/ton-smc-scanner/ton-smc-scanner /usr/bin/ton-smc-scanner
+COPY --from=core-builder /app/build/ton-dex-snapshots/ton-dex-snapshots-backfill /usr/bin/ton-dex-snapshots-backfill
 COPY --from=core-builder /app/build/ton-integrity-checker/ton-integrity-checker /usr/bin/ton-integrity-checker
 COPY --from=core-builder /app/build/ton-trace-emulator/ton-trace-emulator /usr/bin/ton-trace-emulator
 COPY --from=core-builder /app/build/ton-trace-emulator/ton-finalized-streamer /usr/bin/ton-finalized-streamer

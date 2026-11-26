@@ -795,6 +795,31 @@ struct DedustPoolData {
   td::Bits256 data_hash;
 };
 
+// Trusted pool state or removal. Assets are raw jetton masters; empty means native TON.
+struct DexPoolSnapshot {
+  block::StdAddress address;
+  std::string dex;  // dedust | stonfi
+  int dex_version{0};
+  std::string pool_type;
+  td::Bits256 code_hash;
+  std::optional<block::StdAddress> router;  // STON.fi
+  bool removed{false};
+  std::string asset0;
+  std::string asset1;
+  td::RefInt256 reserve0;
+  td::RefInt256 reserve1;
+  td::RefInt256 lp_fee;  // numerators over fee_denominator (DeDust: the trade fee)
+  td::RefInt256 protocol_fee;
+  td::RefInt256 ref_fee;
+  td::RefInt256 fee_denominator;
+  td::RefInt256 amp;
+  td::RefInt256 rate;
+  td::RefInt256 w0;
+  bool is_locked{false};
+  td::RefInt256 lp_supply;
+  uint64_t last_transaction_lt{0};
+};
+
 //
 // Containers
 //
@@ -870,6 +895,7 @@ struct ParsedBlock {
   std::vector<schema::ValidatorComplaint> validator_complaints_;
 
   std::unordered_map<block::StdAddress, std::vector<schema::BlockchainInterfaceV2>> account_interfaces_;
+  std::vector<schema::DexPoolSnapshot> dex_pool_snapshots_;
 
   template <class T>
   std::vector<T> get_events() {

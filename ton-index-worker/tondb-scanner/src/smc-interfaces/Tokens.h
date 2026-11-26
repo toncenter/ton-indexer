@@ -163,12 +163,18 @@ class DedustPoolDetector: public td::actor::Actor {
 public:
   struct Result {
     block::StdAddress address;
+    int version{0};
     std::optional<block::StdAddress> asset_1;
     std::optional<block::StdAddress> asset_2;
-    bool is_stable;
+    bool is_stable{false};
+    bool is_locked{false};  // V2: the pool is not ready (status != 2), so it does not trade
+    td::RefInt256 rate_1;   // V1 stable: reserve scaling factor (10^(36 - decimals), adjustable)
+    td::RefInt256 rate_2;
     td::RefInt256 reserve_1;
     td::RefInt256 reserve_2;
-    double fee;
+    double fee{0};
+    td::RefInt256 fee_numerator;  // raw trade fee: V1 get_trade_fee(), V2 base fee in basis points
+    td::RefInt256 fee_denominator;
     td::Ref<vm::CellSlice> asset_1_slice;
     td::Ref<vm::CellSlice> asset_2_slice;
   };
@@ -182,14 +188,28 @@ public:
 
   void start_up() override;
 
-  // V1 pools require factory verification; V2 pools are self-contained.
   static td::Result<Result> detect(const block::StdAddress& address,
                                    const td::Ref<vm::Cell>& code_cell,
                                    const td::Ref<vm::Cell>& data_cell,
                                    const AllShardStates& shard_states,
                                    const std::shared_ptr<block::ConfigInfo>& config);
 
+  static td::Status verify_identity(const block::StdAddress& address,
+                                    const td::Ref<vm::Cell>& data_cell,
+                                    const AllShardStates& shard_states,
+                                    const std::shared_ptr<block::ConfigInfo>& config,
+                                    const Result& data);
+
+  // V1 stable: sets rate_1 and rate_2 from the storage; leaves them null if the layout or the reserves do not match.
+  static void read_stable_rates(const td::Ref<vm::Cell>& data_cell, Result& data);
+
 private:
+  static td::Status read_pool(const block::StdAddress& address,
+                              const td::Ref<vm::Cell>& code_cell,
+                              const td::Ref<vm::Cell>& data_cell,
+                              const std::shared_ptr<block::ConfigInfo>& config,
+                              Result& data);
+
   block::StdAddress address_;
   td::Ref<vm::Cell> code_cell_;
   td::Ref<vm::Cell> data_cell_;

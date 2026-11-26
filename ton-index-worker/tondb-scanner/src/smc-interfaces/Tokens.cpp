@@ -4,6 +4,8 @@
 #include <string>
 #include "IndexData.h"
 #include "convert-utils.h"
+#include "DexConstants.h"
+#include "DexPools.h"
 #include "DataParser.h"
 #include "Tokens.h"
 
@@ -563,19 +565,6 @@ void NftCollectionDetectorR::start_up() {
   stop();
 }
 
-const std::unordered_set<std::string> DEDUST_POOL_CODE_HASHES {
-  "1275095B6DA3911292406F4F4386F9E780099B854C6DEE9EE2895DDCE70927C1",
-  "778F0D3FE6482C50888970DF5E787F40F3A4AB282170C035A5920877058C99D3",
-  "C0F9D14FBC8E14F0D72CBA2214165EEE35836AB174130912BAF9DBFA43EAD562"
-};
-
-const std::unordered_set<std::string> DEDUST_V2_POOL_CODE_HASHES {
-  "3997A5C1EE8923E93CF3A6A98EA3EF9482C64DD8AEA2BA8365689E14D99C760D", // CPMM v2.0
-  "5851780D2386E989B9AB956DA7CEC5C69A667B9E525F628DCBA5EB02C1EE0367"  // CPMM v2.1
-};
-
-const auto DEDUST_FACTORY_ADDRESS = block::StdAddress::parse("EQBfBWT7X2BHg9tXAxzhz2aKiNTU1tpt5NsiK0uSDW_YAJ67").move_as_ok();
-
 DedustPoolDetector::DedustPoolDetector(block::StdAddress address,
                                        td::Ref<vm::Cell> code_cell,
                                        td::Ref<vm::Cell> data_cell,
@@ -627,15 +616,15 @@ bool dedust_get_asset_v2(td::Ref<vm::CellSlice> slice, std::optional<block::StdA
   return false;
 }
 
-// V1 only: ask the factory which pool address the (type, asset_1, asset_2)
-// triple derives to and require it to be the account under detection.
-td::Status verify_dedust_with_factory(td::Ref<vm::Cell> factory_code, td::Ref<vm::Cell> factory_data,
+// Factory derivation rejects pools that only copy official code.
+td::Status verify_dedust_with_factory(const block::StdAddress &factory_address,
+                                      td::Ref<vm::Cell> factory_code, td::Ref<vm::Cell> factory_data,
                                       const std::shared_ptr<block::ConfigInfo> &config,
                                       const block::StdAddress &address,
                                       const DedustPoolDetector::Result &pool_data) {
   auto pool_type = td::make_refint(pool_data.is_stable);
   auto stack_r = execute_smc_method<1>(
-    DEDUST_FACTORY_ADDRESS,
+    factory_address,
     factory_code,
     factory_data,
     config,
@@ -666,46 +655,117 @@ td::Status verify_dedust_with_factory(td::Ref<vm::Cell> factory_code, td::Ref<vm
   return td::Status::OK();
 }
 
+// Check deploy-time code so upgraded V2 pools still match their original address.
+td::Status verify_dedust_v2_pool(const block::StdAddress &address,
+                                 const td::Ref<vm::Cell> &data_cell) {
+  if (address.workchain != ton::basechainId) {
+    return td::Status::Error("V2 pool is not in the basechain");
+  }
+  try {
+    auto data = vm::load_cell_slice(data_cell);
+    if (data.size_refs() < 3) {
+      return td::Status::Error("Unexpected V2 pool data layout");
+    }
+    auto admin_cs = vm::load_cell_slice(data.prefetch_ref(2));
+    ton::WorkchainId admin_workchain;
+    ton::StdSmcAddress admin_addr;
+    if (!block::tlb::t_MsgAddressInt.extract_std_address(admin_cs, admin_workchain, admin_addr) ||
+        block::StdAddress(admin_workchain, admin_addr) != dex_constants::dedust_v2_admin) {
+      return td::Status::Error("V2 pool admin is not DeDust");
+    }
+
+    vm::CellBuilder fees;
+    fees.store_zeroes(26);  // Zero fee accumulators occupy 26 bits.
+    vm::CellBuilder admin;
+    block::tlb::t_MsgAddressInt.store_std_address(admin, admin_workchain, admin_addr);
+    admin.store_zeroes(3);  // Three empty Maybe dictionaries.
+    vm::CellBuilder init_data;
+    init_data.store_zeroes(17);  // Empty Maybe dict, uninit status, two zero int1 and three zero Coins.
+    init_data.store_ref(data.prefetch_ref(0));
+    init_data.store_ref(fees.finalize());
+    init_data.store_ref(admin.finalize());
+    auto init_data_cell = init_data.finalize();
+    for (const auto &code : dex_constants::dedust_v2_pool_library_cells) {
+      vm::CellBuilder state_init;
+      state_init.store_long(0b00110, 5);  // no split_depth, no special, code, data, no library
+      state_init.store_ref(code);
+      state_init.store_ref(init_data_cell);
+      if (state_init.finalize()->get_hash().bits().compare(address.addr.bits(), 256) == 0) {
+        return td::Status::OK();
+      }
+    }
+    return td::Status::Error("V2 pool address does not match its initial state");
+  } catch (vm::VmError &e) {
+    return td::Status::Error("Failed to parse V2 pool data: " + std::string(e.get_msg()));
+  }
+}
+
+td::Status read_dedust_v2(const block::StdAddress &address, const td::Ref<vm::Cell> &code_cell,
+                          const td::Ref<vm::Cell> &data_cell, const std::shared_ptr<block::ConfigInfo> &config,
+                          DedustPoolDetector::Result &data) {
+  // get_pool_data has 19 entries; we read 11, with nullable wallets at indices 5 and 6.
+  TRY_RESULT(stack, execute_smc_method_nullable<11>(address, code_cell, data_cell, config, "get_pool_data", {}, {
+                                          vm::StackEntry::Type::t_int, vm::StackEntry::Type::t_int, vm::StackEntry::Type::t_int,
+                                          vm::StackEntry::Type::t_slice, vm::StackEntry::Type::t_slice,
+                                          nullable(vm::StackEntry::Type::t_cell), nullable(vm::StackEntry::Type::t_cell),
+                                          nullable(vm::StackEntry::Type::t_cell),
+                                          vm::StackEntry::Type::t_int, vm::StackEntry::Type::t_int, vm::StackEntry::Type::t_int
+                                        }));
+
+  data.asset_1_slice = stack[3].as_slice();
+  data.asset_2_slice = stack[4].as_slice();
+  if (!dedust_get_asset_v2(stack[3].as_slice(), data.asset_1) || !dedust_get_asset_v2(stack[4].as_slice(), data.asset_2)) {
+    return td::Status::Error("Unsupported V2 asset encoding");
+  }
+
+  data.is_stable = false;
+  // Status 0 = not initialised, 1 = setup (awaiting jetton wallets), 2 = ready. A ready pool swaps only while
+  // swapActive (index 2) is set: activation rules can open swaps after deposits.
+  data.is_locked = td::cmp(stack[0].as_int(), td::make_refint(2)) != 0 || stack[2].as_int()->sgn() == 0;
+  auto base_fee_bps = stack[8].as_int()->to_long();
+  data.fee = base_fee_bps / static_cast<double>(kDexFeeDivider);
+  data.fee_numerator = stack[8].as_int();
+  data.fee_denominator = td::make_refint(kDexFeeDivider);
+  data.reserve_1 = stack[9].as_int();
+  data.reserve_2 = stack[10].as_int();
+  return td::Status::OK();
+}
+
 }  // namespace
 
 td::Result<DedustPoolDetector::Result> DedustPoolDetector::detect(
     const block::StdAddress &address, const td::Ref<vm::Cell> &code_cell, const td::Ref<vm::Cell> &data_cell,
     const AllShardStates &shard_states, const std::shared_ptr<block::ConfigInfo> &config) {
+  Result data;
+  TRY_STATUS(read_pool(address, code_cell, data_cell, config, data));
+  const td::Bits256 code_hash = code_cell->get_hash().bits();
+  auto& cache = dex_pool_cache();
+  auto known = cache.get(address);
+  if (!known || known->identity.code_hash != code_hash) {
+    TRY_STATUS(verify_identity(address, data_cell, shard_states, config, data));
+    cache.put(data, code_hash);
+  }
+  return data;
+}
+
+td::Status DedustPoolDetector::read_pool(const block::StdAddress &address, const td::Ref<vm::Cell> &code_cell,
+                                         const td::Ref<vm::Cell> &data_cell,
+                                         const std::shared_ptr<block::ConfigInfo> &config, Result &data) {
   if (code_cell.is_null() || data_cell.is_null()) {
     return td::Status::Error("Code or data null");
   }
 
   const auto code_hash = code_cell->get_hash().to_hex();
-  const bool is_v1 = DEDUST_POOL_CODE_HASHES.contains(code_hash);
-  const bool is_v2 = DEDUST_V2_POOL_CODE_HASHES.contains(code_hash);
+  const bool is_v1 = dex_constants::dedust_v1_pool_code_hashes.contains(code_hash);
+  const bool is_v2 = dex_constants::dedust_v2_pool_code_hashes.contains(code_hash);
   if (!is_v1 && !is_v2) {
     return td::Status::Error("Code hash mismatch");
   }
 
-  Result data;
   data.address = address;
-
+  data.version = is_v2 ? 2 : 1;
   if (is_v2) {
-    // get_pool_data returns 19 entries, only first 11 checked.
-    TRY_RESULT(stack, execute_smc_method_nullable<11>(address, code_cell, data_cell, config, "get_pool_data", {}, {
-                                            vm::StackEntry::Type::t_int, vm::StackEntry::Type::t_int, vm::StackEntry::Type::t_int,
-                                            vm::StackEntry::Type::t_slice, vm::StackEntry::Type::t_slice,
-                                            vm::StackEntry::Type::t_cell, vm::StackEntry::Type::t_cell, nullable(vm::StackEntry::Type::t_cell),
-                                            vm::StackEntry::Type::t_int, vm::StackEntry::Type::t_int, vm::StackEntry::Type::t_int
-                                          }));
-
-    data.asset_1_slice = stack[3].as_slice();
-    data.asset_2_slice = stack[4].as_slice();
-    if (!dedust_get_asset_v2(stack[3].as_slice(), data.asset_1) || !dedust_get_asset_v2(stack[4].as_slice(), data.asset_2)) {
-      return td::Status::Error("Unsupported V2 asset encoding");
-    }
-
-    data.is_stable = false;
-    auto base_fee_bps = stack[8].as_int()->to_long();
-    data.fee = base_fee_bps / 10000.0;
-    data.reserve_1 = stack[9].as_int();
-    data.reserve_2 = stack[10].as_int();
-    return data;
+    return read_dedust_v2(address, code_cell, data_cell, config, data);
   }
 
   {
@@ -734,11 +794,17 @@ td::Result<DedustPoolDetector::Result> DedustPoolDetector::detect(
     data.reserve_2 = stack[1].as_int();
   }
 
+  if (data.is_stable) {
+    read_stable_rates(data_cell, data);
+  }
+
   {
     TRY_RESULT(stack, execute_smc_method<2>(address, code_cell, data_cell, config,
       "get_trade_fee", {}, { vm::StackEntry::Type::t_int, vm::StackEntry::Type::t_int }));
     auto numerator = stack[0].as_int();
     auto denominator = stack[1].as_int();
+    data.fee_numerator = numerator;
+    data.fee_denominator = denominator;
 
     if (numerator->sgn() == 0 || denominator->sgn() == 0) {
       data.fee = 0.0;
@@ -747,9 +813,53 @@ td::Result<DedustPoolDetector::Result> DedustPoolDetector::detect(
     }
   }
 
-  TRY_RESULT(factory, lookup_account(shard_states, DEDUST_FACTORY_ADDRESS));
-  TRY_STATUS(verify_dedust_with_factory(factory.code, factory.data, config, address, data));
-  return data;
+  return td::Status::OK();
+}
+
+// DeDust v1 stable pools have no rate getter, so rates come from storage (4 refs, version, fee, 5 Coins: LP supply,
+// reserves, 2 protocol fees). v4 stores decimals in ref 3 (rate = 10^(36 - decimals)); v5+ stores two u128 rates.
+// Matching get_reserves guards against unknown layouts, leaving rates null if the check fails.
+void DedustPoolDetector::read_stable_rates(const td::Ref<vm::Cell> &data_cell, Result &data) {
+  try {
+    auto cs = vm::load_cell_slice(data_cell);
+    unsigned long long version = 0;
+    td::RefInt256 coins[5];
+    bool ok = cs.size_refs() == 4 && cs.fetch_ulong_bool(16, version) && cs.advance(16);
+    for (auto &c : coins) {
+      ok = ok && (c = block::tlb::t_Grams.as_integer_skip(cs)).not_null();
+    }
+    if (!ok || td::cmp(coins[1], data.reserve_1) != 0 || td::cmp(coins[2], data.reserve_2) != 0) {
+      return;
+    }
+    td::RefInt256 rate_1, rate_2;
+    if (version == 4 && cs.size() == 0) {
+      auto settings = vm::load_cell_slice(cs.prefetch_ref(3));
+      unsigned long long decimals_1 = 0, decimals_2 = 0;
+      if (!settings.fetch_ulong_bool(8, decimals_1) || !settings.fetch_ulong_bool(8, decimals_2) ||
+          decimals_1 > 36 || decimals_2 > 36) {
+        return;
+      }
+      rate_1 = td::make_refint(1);
+      rate_2 = td::make_refint(1);
+      for (unsigned long long i = decimals_1; i < 36; i++) rate_1 = rate_1 * 10;
+      for (unsigned long long i = decimals_2; i < 36; i++) rate_2 = rate_2 * 10;
+    } else if (!cs.fetch_int256_to(128, rate_1, false) || !cs.fetch_int256_to(128, rate_2, false)) {
+      return;
+    }
+    data.rate_1 = rate_1;
+    data.rate_2 = rate_2;
+  } catch (vm::VmError &) {
+  }
+}
+
+td::Status DedustPoolDetector::verify_identity(const block::StdAddress &address, const td::Ref<vm::Cell> &data_cell,
+                                               const AllShardStates &shard_states,
+                                               const std::shared_ptr<block::ConfigInfo> &config, const Result &data) {
+  if (data.version == 2) {
+    return verify_dedust_v2_pool(address, data_cell);
+  }
+  TRY_RESULT(factory, lookup_account(shard_states, dex_constants::dedust_v1_factory));
+  return verify_dedust_with_factory(dex_constants::dedust_v1_factory, factory.code, factory.data, config, address, data);
 }
 
 void DedustPoolDetector::start_up() {

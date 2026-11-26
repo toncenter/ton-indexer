@@ -14,6 +14,8 @@ add_library(tondb-scanner STATIC
     src/tokens-tlb.cpp
     src/Statistics.cpp
     src/smc-interfaces/Tokens.cpp
+    src/smc-interfaces/Stonfi.cpp
+    src/smc-interfaces/DexPools.cpp
     src/smc-interfaces/NftSale.cpp
     src/smc-interfaces/NftSaleV4.cpp
     src/smc-interfaces/execute-smc.cpp
@@ -24,6 +26,7 @@ add_library(tondb-scanner STATIC
     src/smc-interfaces/Vesting.cpp
     src/smc-interfaces/NominatorPool.cpp
     src/smc-interfaces/Telemint.cpp
+    src/smc-interfaces/DexConstants.cpp
 )
 
 target_include_directories(tondb-scanner 
