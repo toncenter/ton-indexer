@@ -8,6 +8,7 @@ target_compile_features(ton-index-clickhouse PRIVATE cxx_std_20)
 target_link_libraries(ton-index-clickhouse
         index-engine-core
         tondb-scanner
+        ton-dex-snapshots-writer
         ton-observability
         clickhouse-cpp-lib)
 target_link_options(ton-index-clickhouse PUBLIC -rdynamic)

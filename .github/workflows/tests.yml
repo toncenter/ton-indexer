@@ -55,6 +55,14 @@ jobs:
 
   build:
     runs-on: ubuntu-24.04
+    # The DEX pool cache restart test runs against this server.
+    services:
+      clickhouse:
+        image: clickhouse/clickhouse-server:26.9
+        ports:
+          - 9000:9000
+        env:
+          CLICKHOUSE_SKIP_USER_SETUP: 1
     env:
       CC: clang-20
       CXX: clang++-20
@@ -113,7 +121,7 @@ jobs:
           -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
 
     - name: Build C++ libraries
-      run: touch suppression_mappings.txt && cmake --build ${{github.workspace}}/build --config ${{env.BUILD_TYPE}} --target ton-index-postgres ton-index-postgres-migrate ton-index-clickhouse ton-trace-emulator ton-trace-task-emulator ton-index-go ton-streaming-go ton-mch-engine --parallel $(nproc)
+      run: touch suppression_mappings.txt && cmake --build ${{github.workspace}}/build --config ${{env.BUILD_TYPE}} --target ton-index-postgres ton-index-postgres-migrate ton-index-clickhouse ton-trace-emulator ton-trace-task-emulator ton-index-go ton-streaming-go ton-mch-engine ton-dex-snapshots-test ton-dex-snapshots-backfill --parallel $(nproc)
 
     - name: Show ccache statistics
       if: always()
@@ -132,6 +140,12 @@ jobs:
     # byte-compares two independent build-tree emissions for determinism.
     - name: Test mch engine
       working-directory: ${{github.workspace}}/build/ton-index-worker/ton-mch-engine
+      run: ctest --output-on-failure
+
+    - name: Test DEX snapshots
+      working-directory: ${{github.workspace}}/build/ton-index-worker/ton-dex-snapshots
+      env:
+        DEX_SNAPSHOTS_TEST_DSN: clickhouse://127.0.0.1:9000
       run: ctest --output-on-failure
 
     # G2: the write-back wire contract, run through ton-index-go's REAL decoder

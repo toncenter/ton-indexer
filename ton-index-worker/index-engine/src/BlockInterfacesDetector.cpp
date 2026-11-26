@@ -5,9 +5,17 @@
 // class methods
 void BlockInterfaceProcessor::start_up() {
   timer_.resume();
+  const bool dex_snapshots = dex_snapshots_enabled();
   std::unordered_map<block::StdAddress, schema::AccountState>
       account_states_to_detect;
+  std::unordered_map<block::StdAddress, const schema::AccountState *> latest_states;
   for (const auto &account_state : block_->account_states_) {
+    if (dex_snapshots) {
+      auto &latest = latest_states[account_state.account];
+      if (latest == nullptr || account_state.last_trans_lt > latest->last_trans_lt) {
+        latest = &account_state;
+      }
+    }
     if (!account_state.code_hash || !account_state.data_hash) {
       continue;
     }
@@ -47,6 +55,20 @@ void BlockInterfaceProcessor::start_up() {
   auto ig = mp.init_guard();
   ig.add_promise(std::move(P));
 
+  // A known pool whose new state has no pool code ends here; one whose pool code fails detection ends in
+  // process_address_interfaces.
+  for (const auto &[address, account_state] : latest_states) {
+    const bool has_code = account_state->code_hash.has_value() && account_state->code.not_null();
+    if (has_code && dex_constants::is_pool_code_hash(account_state->code_hash.value().to_hex())) {
+      continue;
+    }
+    auto gone = make_dex_pool_removal(address,
+                              account_state->code_hash.value_or(td::Bits256::zero()), account_state->last_trans_lt);
+    if (gone) {
+      dex_pool_snapshots_.push_back(std::move(*gone));
+      dex_removed_.insert(address);
+    }
+  }
   for (const auto &[_, account_state] : account_states_to_detect) {
     if (account_state.code.is_null()) {
       continue;
@@ -68,10 +90,19 @@ void BlockInterfaceProcessor::process_address_interfaces(
     std::vector<FullDetector::DetectedInterface> interfaces,
     td::Bits256 code_hash, td::Bits256 data_hash, uint64_t last_trans_lt,
     uint32_t last_trans_now, td::Promise<td::Unit> promise) {
+  const bool dex_snapshots = dex_snapshots_enabled();
+  bool pool_detected = false;
   for (auto &interface : interfaces) {
     std::visit(
         [&](auto &&arg) {
           using T = std::decay_t<decltype(arg)>;
+          if constexpr (std::is_same_v<T, DedustPoolDetector::Result> || std::is_same_v<T, StonfiPoolDetector::Result>) {
+            pool_detected = true;
+            // An older state of a pool removed later in this block gives no snapshot.
+            if (dex_snapshots && !dex_removed_.contains(address)) {
+              dex_pool_snapshots_.push_back(make_dex_pool_snapshot(arg, last_trans_lt, code_hash));
+            }
+          }
           if constexpr (std::is_same_v<T, JettonMasterDetectorR::Result>) {
             schema::JettonMasterDataV2 jetton_master_data;
             jetton_master_data.address = address;
@@ -320,6 +351,13 @@ void BlockInterfaceProcessor::process_address_interfaces(
         },
         interface);
   }
+  if (dex_snapshots && !pool_detected && !dex_removed_.contains(address) &&
+      dex_constants::is_pool_code_hash(code_hash.to_hex())) {
+    auto removed = make_dex_pool_removal(address, code_hash, last_trans_lt);
+    if (removed) {
+      dex_pool_snapshots_.push_back(std::move(*removed));
+    }
+  }
   promise.set_value(td::Unit());
 }
 void BlockInterfaceProcessor::finish(td::Result<td::Unit> status) {
@@ -328,6 +366,7 @@ void BlockInterfaceProcessor::finish(td::Result<td::Unit> status) {
   } else {
     block_->account_interfaces_ = std::move(interfaces_);
     block_->contract_methods_ = std::move(contract_methods_);
+    block_->dex_pool_snapshots_ = std::move(dex_pool_snapshots_);
     promise_.set_result(std::move(block_));
   }
   g_statistics.record_time(DETECT_INTERFACES_SEQNO, timer_.elapsed() * 1e3);

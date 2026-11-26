@@ -12,6 +12,9 @@
 #include "DbScanner.h"
 #include "TraceAssembler.h"
 #include "IndexScheduler.h"
+#include "smc-interfaces/DexPools.h"
+#include "PoolCache.h"
+#include "SnapshotWriter.h"
 
 
 int main(int argc, char *argv[]) {
@@ -36,6 +39,7 @@ int main(int argc, char *argv[]) {
   td::uint32 to_seqno = 0;
   bool force_index = false;
   InsertManagerClickhouse::Credential credential;
+  std::string dex_snapshots_database;
   bool testnet = false;
 
   std::uint32_t max_active_tasks = 7;
@@ -63,6 +67,16 @@ int main(int argc, char *argv[]) {
   });
   p.add_option('\0', "ch", "Clickhouse connection string",  [&](td::Slice value) {
     credential.set_conn_str(value.str());
+  });
+  p.add_checked_option('\0', "dex-snapshots-database", "Database on the same server for DEX pool snapshots (e.g. dex_snapshots); "
+                       "also turns on STON.fi pool detection", [&](td::Slice value) {
+    for (char c : value) {
+      if (!std::isalnum(static_cast<unsigned char>(c)) && c != '_') {
+        return td::Status::Error("--dex-snapshots-database must be [A-Za-z0-9_]");
+      }
+    }
+    dex_snapshots_database = value.str();
+    return td::Status::OK();
   });
   p.add_checked_option('f', "from", "Masterchain seqno to start indexing from", [&](td::Slice fname) { 
     int v;
@@ -257,13 +271,25 @@ int main(int argc, char *argv[]) {
   }
 
   NftItemDetectorR::is_testnet = testnet;
+  if (!dex_snapshots_database.empty()) {
+    try {
+      auto options = credential.get_clickhouse_options();
+      options.SetDefaultDatabase("default");
+      clickhouse::Client client(options);
+      dex_snapshots::create_schema(client, dex_snapshots_database);
+      dex_snapshots::restore_pool_cache(client, dex_snapshots_database);
+    } catch (const std::exception& e) {
+      LOG(FATAL) << "Failed to restore DEX pool identities: " << e.what();
+    }
+    enable_dex_snapshots();
+  }
 
   auto watcher = td::create_shared_destructor([] {
     td::actor::SchedulerContext::get().stop();
   });
 
   td::actor::Scheduler scheduler({td::actor::Scheduler::NodeInfo{threads, io_workers}});
-  scheduler.run_in_context([&] { insert_manager_ = td::actor::create_actor<InsertManagerClickhouse>("insertmanager", credential); });
+  scheduler.run_in_context([&] { insert_manager_ = td::actor::create_actor<InsertManagerClickhouse>("insertmanager", credential, dex_snapshots_database); });
   scheduler.run_in_context([&] { parse_manager_ = td::actor::create_actor<ParseManager>("parsemanager"); });
   scheduler.run_in_context([&] {
     db_scanner_ = td::actor::create_actor<DbScanner>("scanner", db_root, dbs_secondary,

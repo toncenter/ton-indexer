@@ -7,19 +7,23 @@
 #include "clickhouse/types/types.h"
 
 #include "convert-utils.h"
+#include "SnapshotWriter.h"
 
 #include <algorithm>
 
 
 class InsertBatchClickhouse: public td::actor::Actor {
 public:
-    InsertBatchClickhouse(clickhouse::ClientOptions client_options, std::vector<InsertTaskStruct> insert_tasks,
+    InsertBatchClickhouse(clickhouse::ClientOptions client_options, std::string dex_snapshots_database,
+                          std::vector<InsertTaskStruct> insert_tasks,
                           td::Promise<InsertManagerInterface::InsertResult> promise)
-      : client_options_(std::move(client_options)), insert_tasks_(std::move(insert_tasks)), promise_(std::move(promise)) {}
+      : client_options_(std::move(client_options)), dex_snapshots_database_(std::move(dex_snapshots_database)),
+        insert_tasks_(std::move(insert_tasks)), promise_(std::move(promise)) {}
 
     void start_up() override;
 private:
     clickhouse::ClientOptions client_options_;
+    std::string dex_snapshots_database_;
     std::vector<InsertTaskStruct> insert_tasks_;
     td::Promise<InsertManagerInterface::InsertResult> promise_;
 
@@ -30,6 +34,7 @@ private:
     void insert_account_states(clickhouse::Client& client);
     void insert_shard_state(clickhouse::Client& client);
     void insert_blocks(clickhouse::Client& client);
+    void insert_dex_pool_snapshots(clickhouse::Client& client);
 };
 
 void InsertManagerClickhouse::start_up() {
@@ -398,7 +403,7 @@ void InsertManagerClickhouse::start_up() {
 
 void InsertManagerClickhouse::create_insert_actor(std::vector<InsertTaskStruct> insert_tasks,
                                                   td::Promise<InsertManagerInterface::InsertResult> promise) {
-    td::actor::create_actor<InsertBatchClickhouse>("insert_batch_clickhouse", credential_.get_clickhouse_options(), std::move(insert_tasks), std::move(promise)).release();
+    td::actor::create_actor<InsertBatchClickhouse>("insert_batch_clickhouse", credential_.get_clickhouse_options(), dex_snapshots_database_, std::move(insert_tasks), std::move(promise)).release();
 }
 
 void InsertManagerClickhouse::get_existing_seqnos(td::Promise<std::vector<std::uint32_t>> promise, std::int32_t from_seqno, std::int32_t to_seqno)
@@ -542,6 +547,7 @@ void InsertBatchClickhouse::start_up() {
         insert_shard_state(client);
         insert_nfts(client);
         insert_jettons(client);
+        insert_dex_pool_snapshots(client);
         insert_blocks(client);
         
         // all done
@@ -558,6 +564,28 @@ void InsertBatchClickhouse::start_up() {
         promise_.set_error(td::Status::Error(ErrorCode::DB_ERROR, PSLICE() << "Error inserting batch to Clickhouse: " << e.what()));
     }
     stop();
+}
+
+// A failed insert drops the batch's snapshots with an ERROR line (refill with ton-dex-snapshots-backfill); indexing goes on.
+void InsertBatchClickhouse::insert_dex_pool_snapshots(clickhouse::Client &client) {
+    if (dex_snapshots_database_.empty()) {
+        return;
+    }
+    std::vector<dex_snapshots::BlockSnapshots> blocks;
+    for (const auto& task : insert_tasks_) {
+        if (!task.parsed_block_->dex_pool_snapshots_.empty()) {
+            blocks.push_back(dex_snapshots::parsed_block_snapshots(task.mc_seqno_, *task.parsed_block_));
+        }
+    }
+    if (blocks.empty()) {
+        return;
+    }
+    try {
+        dex_snapshots::insert_snapshots(client, dex_snapshots_database_, blocks, "live");
+    } catch (const std::exception& e) {
+        dex_snapshots::log_dropped_blocks(blocks, e.what());
+        client.ResetConnection();
+    }
 }
 
 void InsertBatchClickhouse::insert_shard_state(clickhouse::Client &client) {
