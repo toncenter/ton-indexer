@@ -102,7 +102,7 @@ var settings Settings
 var emulatedTracesRepository *emulated.EmulatedTracesRepository
 
 //	@title			TON Index (Go)
-//	@version		1.2.10
+//	@version		1.2.12
 //	@description	TON Index collects data from a full node to PostgreSQL database and provides convenient API to an indexed blockchain.
 //  @query.collection.format multi
 
@@ -1608,7 +1608,7 @@ func GetMultisigOrders(c *fiber.Ctx) error {
 
 // @summary Get Wallet Information
 //
-// @description Get wallet smart contract information. The following wallets are supported: `v1r1`, `v1r2`, `v1r3`, `v2r1`, `v2r2`, `v3r1`, `v3r2`, `v4r1`, `v4r2`, `v5beta`, `v5r1`. In case the account is not a wallet error code 409 is returned.
+// @description Get wallet smart contract information. The following wallets are supported: `v1r1`, `v1r2`, `v1r3`, `v2r1`, `v2r2`, `v3r1`, `v3r2`, `v4r1`, `v4r2`, `v5beta`, `v5r1`, `tg-wallet`. In case the account is not a wallet error code 409 is returned.
 //
 // @id api_v3_get_wallet_information
 // @tags api/v2
