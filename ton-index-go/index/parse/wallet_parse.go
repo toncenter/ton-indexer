@@ -65,6 +65,38 @@ func ParseWalletV5(data string, state *models.WalletState) error {
 	return nil
 }
 
+// WalletTg is the Telegram wallet (https://github.com/ton-blockchain/tg-wallet-contract).
+// The config[-123] trampoline and the directly deployed rev00 share this storage layout.
+// Storage is revision prefixed: uint8 revision, uint32 seqno, uint32 subwallet_id, uint256 public_key.
+// New revisions may only append fields to the end, so this prefix is stable.
+func ParseWalletTg(data string, state *models.WalletState) error {
+	boc, err := b64.StdEncoding.DecodeString(data)
+	if err != nil {
+		return err
+	}
+	c, err := cell.FromBOC(boc)
+	if err != nil {
+		return err
+	}
+	l := c.BeginParse()
+	if _, err := l.LoadUInt(8); err != nil { // storage revision
+		return err
+	}
+	seqno, err := l.LoadUInt(32)
+	if err != nil {
+		return err
+	}
+	wallet_id, err := l.LoadUInt(32)
+	if err != nil {
+		return err
+	}
+	state.Seqno = new(int64)
+	state.WalletId = new(int64)
+	*state.Seqno = int64(seqno)
+	*state.WalletId = int64(wallet_id)
+	return nil
+}
+
 func (parser *walletInfoParser) Parse(data string, state *models.WalletState) error {
 	state.IsWallet = true
 	state.WalletType = &parser.Name
@@ -87,6 +119,8 @@ var walletParsersMap = map[string]walletInfoParser{
 	"/rX/aCDi/w2Ug+fg1iyBfYRniftK5YDIeIZtlZ2r1cA=": {Name: "wallet v4 r2", ParseFunc: ParseWalletV3},
 	"89fKU0k97trCizgZhqhJQDy6w9LFhHea8IEGWvCsS5M=": {Name: "wallet v5 beta", ParseFunc: ParseWalletV5},
 	"IINLe3KxEhR+Gy+0V7hOdNGjDwT3N9T2KmaOlVLSty8=": {Name: "wallet v5 r1", ParseFunc: ParseWalletV5},
+	"kUmuUcHkaJcQzr94MCl7Fqz7rbNjqSClN4k+f/7sp2g=": {Name: "tg-wallet", ParseFunc: ParseWalletTg},
+	"4wkRQgvvEZHAnc5Yud8rTKTC2cODzDtqkRcDSf+nDiw=": {Name: "tg-wallet", ParseFunc: ParseWalletTg},
 }
 
 func ParseWalletState(state models.AccountStateFull) (*models.WalletState, error) {
