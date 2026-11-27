@@ -157,6 +157,58 @@ func TestOpcodeTypeConverterRejectsOutOfRangeValues(t *testing.T) {
 	}
 }
 
+func TestAddressInformationFromV3FrozenHash(t *testing.T) {
+	frozenHash := HashType("//////////////////////////////////////////8=")
+
+	tests := []struct {
+		name       string
+		status     string
+		frozenHash *HashType
+		expected   *string
+	}{
+		{
+			name:       "frozen account keeps its frozen hash",
+			status:     "frozen",
+			frozenHash: &frozenHash,
+			expected:   (*string)(&frozenHash),
+		},
+		{
+			name:     "active account has no frozen hash",
+			status:   "active",
+			expected: nil,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			balance := "1"
+			info, err := AddressInformationFromV3(AccountStateFull{
+				Balance:       &balance,
+				AccountStatus: &tt.status,
+				FrozenHash:    tt.frozenHash,
+			})
+			if err != nil {
+				t.Fatalf("AddressInformationFromV3 returned error: %v", err)
+			}
+			if info.Status != tt.status {
+				t.Fatalf("Status = %q, want %q", info.Status, tt.status)
+			}
+			if tt.expected == nil {
+				if info.FrozenHash != nil {
+					t.Fatalf("FrozenHash = %q, want nil", *info.FrozenHash)
+				}
+				return
+			}
+			if info.FrozenHash == nil {
+				t.Fatalf("FrozenHash = nil, want %q", *tt.expected)
+			}
+			if *info.FrozenHash != *tt.expected {
+				t.Fatalf("FrozenHash = %q, want %q", *info.FrozenHash, *tt.expected)
+			}
+		})
+	}
+}
+
 func signedOpcode(v uint32) OpcodeType {
 	return OpcodeType(int32(v))
 }
