@@ -147,3 +147,199 @@ cases:
               marketplace: getgems
               marketplace_address: 0:9A9CB80ADFBD1662F5108766D73355AC2C03304FDA1D25A479670E34EFCD72B3
               real_prev_owner: 0:C002333C4C4873FB77E57A00A6B8E4F4874FCF76E9C73A09EB837E6990440A34
+  Getgems purchase paid by another contract:
+    trace-id: JRFMKEvMmZUvCF-1d6DPieECj-Lb31jY88s138rVebs=
+    expected-actions:
+      - type: nft_transfer
+        selector: "{{ value.nft_transfer_data.is_purchase }}"
+        values:
+          tx_hashes:
+            - pN1yZWBJCWYzS5L4OI4hV2AEd+pk9wKHBa9APwJZjzk=
+            - LGrk9Gt0k0kcbNVCy3p7zQX3Sv0fhlJMImZfKK5xSHs=
+            - s/ePuTMrSPSWHdVIKkDEAxY/bKfneOYOUFdl1ee0MW4=
+            - n8CZtDToTe9GhknTLCLTUdA397EmPDd0MOK6RRVuB9U=
+          accounts:
+            - 0:620AC1811C084193D0877DFCDCF618291F6889C0A3FBA76E9903B20D93EA0B3D
+            - 0:DD6D0EE3D660C2FDBDF55EEF96DE48DB3406FDFE8213973497428E821A918DE7
+            - 0:8A18F0B0F437E5B1658F6B84BCDA9D8A237E372DDD3E2F9377BD822AFDA5C983
+          success: true
+          source: 0:620AC1811C084193D0877DFCDCF618291F6889C0A3FBA76E9903B20D93EA0B3D
+          destination: 0:8A18F0B0F437E5B1658F6B84BCDA9D8A237E372DDD3E2F9377BD822AFDA5C983
+          asset_secondary: 0:DD6D0EE3D660C2FDBDF55EEF96DE48DB3406FDFE8213973497428E821A918DE7
+          asset: 0:041EE2B4732126C13870E9EBD0AB10A96D6BBF33708867E62EA285F81A199391
+          nft_transfer_data:
+            query_id: 8549106349647567609
+            is_purchase: true
+            price: 4900000000
+            forward_amount: 1
+            custom_payload: null
+            forward_payload: te6cckEBAQEAAgAAAEysuc0=
+            response_destination: 0:8A18F0B0F437E5B1658F6B84BCDA9D8A237E372DDD3E2F9377BD822AFDA5C983
+            marketplace: getgems
+            real_prev_owner: 0:358B52AACD1793F12227A3B22899243519F57CB13363D13293CE687A98FD922D
+            marketplace_address: 0:584EE61B2DFF0837116D0FCB5078D93964BCBE9C05FD6A141B1BFCA5D6A43E18
+      - type: nft_purchase
+        values:
+          tx_hashes:
+            - +Kman+Gc6sUVUKL4FjBiJ8yEf4GcCMCUY3fFQOqHiBM=
+            - pN1yZWBJCWYzS5L4OI4hV2AEd+pk9wKHBa9APwJZjzk=
+            - n8CZtDToTe9GhknTLCLTUdA397EmPDd0MOK6RRVuB9U=
+            - LGrk9Gt0k0kcbNVCy3p7zQX3Sv0fhlJMImZfKK5xSHs=
+            - s/ePuTMrSPSWHdVIKkDEAxY/bKfneOYOUFdl1ee0MW4=
+          accounts:
+            - 0:620AC1811C084193D0877DFCDCF618291F6889C0A3FBA76E9903B20D93EA0B3D
+            - 0:DD6D0EE3D660C2FDBDF55EEF96DE48DB3406FDFE8213973497428E821A918DE7
+            - 0:358B52AACD1793F12227A3B22899243519F57CB13363D13293CE687A98FD922D
+            - 0:8A18F0B0F437E5B1658F6B84BCDA9D8A237E372DDD3E2F9377BD822AFDA5C983
+          success: true
+          source: 0:620AC1811C084193D0877DFCDCF618291F6889C0A3FBA76E9903B20D93EA0B3D
+          destination: 0:8A18F0B0F437E5B1658F6B84BCDA9D8A237E372DDD3E2F9377BD822AFDA5C983
+          asset_secondary: 0:DD6D0EE3D660C2FDBDF55EEF96DE48DB3406FDFE8213973497428E821A918DE7
+          asset: 0:041EE2B4732126C13870E9EBD0AB10A96D6BBF33708867E62EA285F81A199391
+          nft_transfer_data:
+            query_id: 8549106349647567609
+            is_purchase: true
+            price: 4900000000
+            forward_amount: 1
+            custom_payload: null
+            forward_payload: te6cckEBAQEAAgAAAEysuc0=
+            response_destination: 0:8A18F0B0F437E5B1658F6B84BCDA9D8A237E372DDD3E2F9377BD822AFDA5C983
+            marketplace: getgems
+            real_prev_owner: 0:358B52AACD1793F12227A3B22899243519F57CB13363D13293CE687A98FD922D
+            marketplace_address: 0:584EE61B2DFF0837116D0FCB5078D93964BCBE9C05FD6A141B1BFCA5D6A43E18
+            payout_amount: 4532500000
+            payout_comment_encrypted: false
+            payout_comment_encoded: false
+            payout_comment: null
+  Getgems purchase paid by another contract 2:
+    trace-id: TMZYLJVf7qNK7q4igQO6_6Jqt-rQHY8ilfd5VKenj8g=
+    expected-actions:
+      - type: nft_transfer
+        selector: "{{ value.nft_transfer_data.is_purchase }}"
+        values:
+          tx_hashes:
+            - aLSReiV5FpFCMsHq0+66xELT4VZgnvqSX+thVKs8Zzw=
+            - L9dZ4FnJ589ZvBabtcGtLUw4/r4d7LxUyy/IQuWHEiE=
+            - yUI32JKQU3cj269EAMPidr2/LTdCVcm04ILzK3982GI=
+            - jcieLQ0OlhclfRCqfcJUBULBF7zziC90EgdJtyBlzLA=
+            - 1uf05L9A3XduAzIKkA1EhaS++CwPJE2BiYzJEWZ5W0U=
+          accounts:
+            - 0:E7130CC551AF639ADDB4A36D08E72C5C187D0624C0B7BFEA37AD8F36A0133D7F
+            - 0:9D9E425A7C6F4BF331DB6D6A5B758F68B96D3D926D0A6275D9B6AF23729C8E2E
+            - 0:FCD91FD5EF7DC3C02EC27172CD88A955F164B47F3446CA05008F6B21BAE99BD9
+          success: true
+          source: 0:E7130CC551AF639ADDB4A36D08E72C5C187D0624C0B7BFEA37AD8F36A0133D7F
+          destination: 0:FCD91FD5EF7DC3C02EC27172CD88A955F164B47F3446CA05008F6B21BAE99BD9
+          asset_secondary: 0:9D9E425A7C6F4BF331DB6D6A5B758F68B96D3D926D0A6275D9B6AF23729C8E2E
+          asset: 0:48A7D6F589BB6D48E9608997E95FB6CD63B2BA77D8985D15A0EF510627650D45
+          nft_transfer_data:
+            query_id: 8549106352765607268
+            is_purchase: true
+            price: 23000000000
+            forward_amount: 1
+            custom_payload: null
+            forward_payload: te6cckEBAQEAAgAAAEysuc0=
+            response_destination: 0:FCD91FD5EF7DC3C02EC27172CD88A955F164B47F3446CA05008F6B21BAE99BD9
+            marketplace: getgems
+            real_prev_owner: 0:F5406A5C0585E7A641AFE55D6E358C833CD711453C521351B0FF3FBC9E3F6899
+            marketplace_address: 0:584EE61B2DFF0837116D0FCB5078D93964BCBE9C05FD6A141B1BFCA5D6A43E18
+      - type: nft_purchase
+        values:
+          tx_hashes:
+            - aLSReiV5FpFCMsHq0+66xELT4VZgnvqSX+thVKs8Zzw=
+            - L9dZ4FnJ589ZvBabtcGtLUw4/r4d7LxUyy/IQuWHEiE=
+            - yUI32JKQU3cj269EAMPidr2/LTdCVcm04ILzK3982GI=
+            - jcieLQ0OlhclfRCqfcJUBULBF7zziC90EgdJtyBlzLA=
+            - C1duCCHt5bntnpwFMPYy0TLZ4fH+SB+Vt09MKaNw19k=
+            - 1uf05L9A3XduAzIKkA1EhaS++CwPJE2BiYzJEWZ5W0U=
+          accounts:
+            - 0:E7130CC551AF639ADDB4A36D08E72C5C187D0624C0B7BFEA37AD8F36A0133D7F
+            - 0:9D9E425A7C6F4BF331DB6D6A5B758F68B96D3D926D0A6275D9B6AF23729C8E2E
+            - 0:FCD91FD5EF7DC3C02EC27172CD88A955F164B47F3446CA05008F6B21BAE99BD9
+            - 0:F5406A5C0585E7A641AFE55D6E358C833CD711453C521351B0FF3FBC9E3F6899
+          success: true
+          source: 0:E7130CC551AF639ADDB4A36D08E72C5C187D0624C0B7BFEA37AD8F36A0133D7F
+          destination: 0:FCD91FD5EF7DC3C02EC27172CD88A955F164B47F3446CA05008F6B21BAE99BD9
+          asset_secondary: 0:9D9E425A7C6F4BF331DB6D6A5B758F68B96D3D926D0A6275D9B6AF23729C8E2E
+          asset: 0:48A7D6F589BB6D48E9608997E95FB6CD63B2BA77D8985D15A0EF510627650D45
+          nft_transfer_data:
+            query_id: 8549106352765607268
+            is_purchase: true
+            price: 23000000000
+            forward_amount: 1
+            custom_payload: null
+            forward_payload: te6cckEBAQEAAgAAAEysuc0=
+            response_destination: 0:FCD91FD5EF7DC3C02EC27172CD88A955F164B47F3446CA05008F6B21BAE99BD9
+            marketplace: getgems
+            real_prev_owner: 0:F5406A5C0585E7A641AFE55D6E358C833CD711453C521351B0FF3FBC9E3F6899
+            marketplace_address: 0:584EE61B2DFF0837116D0FCB5078D93964BCBE9C05FD6A141B1BFCA5D6A43E18
+            payout_amount: 20125000000
+            payout_comment_encrypted: false
+            payout_comment_encoded: false
+            payout_comment: null
+  Getgems purchase paid by another contract 3:
+    trace-id: 8LA3KXb4F1i5KDsfJEpxE2yGLYIwwjEH9eYW766_lwo=
+    expected-actions:
+      - type: nft_transfer
+        selector: "{{ value.nft_transfer_data.is_purchase }}"
+        values:
+          tx_hashes:
+            - sBkklL4rnWqNTc/NAyuuxjHB5viXIA39bpS/5bYFKCk=
+            - 1yM4lQo78NXCLSSrCWjRI60mni8BSeYf1wTVdj7bRuc=
+            - XnZ2yP5SpPztrHhdX7oX1KrFlTKMvvBiFeCa7UmvyJM=
+            - C0WH31oZmuNvmnm9oJR22Lwpeli2aFh8NGxKLYDJEtM=
+            - /c56qf+nPJIBwQ8EOji9uJH7S1aOan3jVYhsP1roRHA=
+          accounts:
+            - 0:3AAC0F75421D95CD2CF4089F6E6206F6583044C61633777F69F4BF616E9D2D54
+            - 0:F967A6BE53311C92114AF9EE5C4A042EC78B1E3A18AAF2727E5B74F3AC60E4B6
+            - 0:48E91A5A30406B4A674DF0473B7809B4F7BECF1F4E6DF699FE9DB77811F95168
+          success: true
+          source: 0:48E91A5A30406B4A674DF0473B7809B4F7BECF1F4E6DF699FE9DB77811F95168
+          destination: 0:F967A6BE53311C92114AF9EE5C4A042EC78B1E3A18AAF2727E5B74F3AC60E4B6
+          asset_secondary: 0:3AAC0F75421D95CD2CF4089F6E6206F6583044C61633777F69F4BF616E9D2D54
+          asset: 0:463685D77D0474EC774386D92622ED688D34F07230741211D838C487DCFEEC64
+          nft_transfer_data:
+            query_id: 8549106349603788791
+            is_purchase: true
+            price: 1250000000
+            forward_amount: 1
+            custom_payload: null
+            forward_payload: te6cckEBAQEAAgAAAEysuc0=
+            response_destination: 0:F967A6BE53311C92114AF9EE5C4A042EC78B1E3A18AAF2727E5B74F3AC60E4B6
+            marketplace: getgems
+            real_prev_owner: 0:002B9362B38498742F9022B7AA0AC58B587C0587F298867E8848683A50F3E236
+            marketplace_address: 0:584EE61B2DFF0837116D0FCB5078D93964BCBE9C05FD6A141B1BFCA5D6A43E18
+      - type: nft_purchase
+        values:
+          tx_hashes:
+            - sBkklL4rnWqNTc/NAyuuxjHB5viXIA39bpS/5bYFKCk=
+            - 1yM4lQo78NXCLSSrCWjRI60mni8BSeYf1wTVdj7bRuc=
+            - XnZ2yP5SpPztrHhdX7oX1KrFlTKMvvBiFeCa7UmvyJM=
+            - C0WH31oZmuNvmnm9oJR22Lwpeli2aFh8NGxKLYDJEtM=
+            - /c56qf+nPJIBwQ8EOji9uJH7S1aOan3jVYhsP1roRHA=
+            - OBwvHbBxt1bpRlr6NvQQQYyLoU2IaLmXjLqTgk/Xgzw=
+          accounts:
+            - 0:3AAC0F75421D95CD2CF4089F6E6206F6583044C61633777F69F4BF616E9D2D54
+            - 0:002B9362B38498742F9022B7AA0AC58B587C0587F298867E8848683A50F3E236
+            - 0:F967A6BE53311C92114AF9EE5C4A042EC78B1E3A18AAF2727E5B74F3AC60E4B6
+            - 0:48E91A5A30406B4A674DF0473B7809B4F7BECF1F4E6DF699FE9DB77811F95168
+          success: true
+          source: 0:48E91A5A30406B4A674DF0473B7809B4F7BECF1F4E6DF699FE9DB77811F95168
+          destination: 0:F967A6BE53311C92114AF9EE5C4A042EC78B1E3A18AAF2727E5B74F3AC60E4B6
+          asset_secondary: 0:3AAC0F75421D95CD2CF4089F6E6206F6583044C61633777F69F4BF616E9D2D54
+          asset: 0:463685D77D0474EC774386D92622ED688D34F07230741211D838C487DCFEEC64
+          nft_transfer_data:
+            query_id: 8549106349603788791
+            is_purchase: true
+            price: 1250000000
+            forward_amount: 1
+            custom_payload: null
+            forward_payload: te6cckEBAQEAAgAAAEysuc0=
+            response_destination: 0:F967A6BE53311C92114AF9EE5C4A042EC78B1E3A18AAF2727E5B74F3AC60E4B6
+            marketplace: getgems
+            real_prev_owner: 0:002B9362B38498742F9022B7AA0AC58B587C0587F298867E8848683A50F3E236
+            marketplace_address: 0:584EE61B2DFF0837116D0FCB5078D93964BCBE9C05FD6A141B1BFCA5D6A43E18
+            payout_amount: 1125000000
+            payout_comment_encrypted: false
+            payout_comment_encoded: false
+            payout_comment: null

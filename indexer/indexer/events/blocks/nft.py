@@ -75,11 +75,14 @@ async def _get_nft_data(nft_address: AccountId):
     return data
 
 
-async def _try_get_nft_purchase_data(block: Block, owner: str) -> dict | None:
-    prev_block = block.previous_block
+async def _try_get_nft_purchase_data(block: Block) -> dict | None:
     event_node = block.previous_block.event_nodes[0]
-    if isinstance(prev_block, TonTransferBlock) and event_node.message.source.upper() == owner.upper():
-        nft_sale = await context.interface_repository.get().get_nft_sale(event_node.message.transaction.account)
+    # The sale contract is whoever sent the item out. Who paid it is irrelevant -
+    # the contract hands the nft to whoever pays, which may be a contract acting
+    # on the buyer's behalf.
+    sale_address = block.event_nodes[0].message.source
+    if _paid_the_sale(block):
+        nft_sale = await context.interface_repository.get().get_nft_sale(sale_address)
         if nft_sale is not None:
             return {
                 'marketplace_address': nft_sale.marketplace_address,
@@ -100,6 +103,22 @@ async def _try_get_nft_purchase_data(block: Block, owner: str) -> dict | None:
         }
 
     return None
+
+
+def _paid_the_sale(block: Block) -> bool:
+    """Whether the message before this transfer is the one that paid for it.
+
+    A purchase is a payment landing on the account that then sends the nft out,
+    whoever the payer is. Only an external message used to qualify, which left
+    out every buy paid by a contract on the buyer's behalf.
+    """
+    sale_address = block.event_nodes[0].message.source
+    destination = block.previous_block.get_message().destination
+    return (
+        sale_address is not None
+        and destination is not None
+        and destination.upper() == sale_address.upper()
+    )
 
 
 class NftTransferBlockMatcher(BlockMatcher):
@@ -141,7 +160,7 @@ class NftTransferBlockMatcher(BlockMatcher):
         if not data['nft']['exists']:
             return []
         if block.previous_block is not None:
-            nft_purchase_data = await _try_get_nft_purchase_data(block, nft_transfer_message.new_owner.to_str(False))
+            nft_purchase_data = await _try_get_nft_purchase_data(block)
             if nft_purchase_data is not None and AccountId(nft_purchase_data['nft_address']) == data['nft']['address']:
                 real_owner = AccountId(nft_purchase_data['real_prev_owner'])
                 if real_owner != data['new_owner']:
@@ -153,7 +172,9 @@ class NftTransferBlockMatcher(BlockMatcher):
                     if isinstance(block.previous_block, TonTransferBlock):
                         if block.previous_block.comment not in ['finish', 'stop']:
                             include.append(block.previous_block)
-                    elif isinstance(block.previous_block, CallContractBlock) and block.previous_block.get_message().source is None:
+                    elif isinstance(
+                        block.previous_block, CallContractBlock
+                    ) and _paid_the_sale(block):
                         include.append(block.previous_block)
 
         include.extend(other_blocks)
