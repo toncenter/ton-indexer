@@ -268,6 +268,7 @@ func AddressInformationFromV3(state AccountStateFull) (*V2AddressInformation, er
 	info.Code = (*string)(state.CodeBoc)
 	info.Data = (*string)(state.DataBoc)
 	info.LastTransactionHash = (*string)(state.LastTransactionHash)
+	info.FrozenHash = (*string)(state.FrozenHash)
 	if state.LastTransactionLt != nil {
 		info.LastTransactionLt = new(string)
 		*info.LastTransactionLt = fmt.Sprintf("%d", *state.LastTransactionLt)
