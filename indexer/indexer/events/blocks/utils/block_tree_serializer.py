@@ -57,6 +57,9 @@ from indexer.events.blocks.staking import (
     CoffeeStakingClaimRewardsBlock,
     CoffeeStakingDepositBlock,
     CoffeeStakingWithdrawBlock,
+    HipoStakeDepositBlock,
+    HipoStakeWithdrawalBlock,
+    HipoStakeWithdrawalRequestBlock,
     NominatorPoolDepositBlock,
     NominatorPoolWithdrawRequestBlock,
     TONStakersDepositBlock,
@@ -501,6 +504,63 @@ def _fill_delete_dns_record_action(block: DeleteDnsRecordBlock, action: Action):
     }
     action.asset = _addr(block.data['collection_address'])
     action.change_dns_record_data = data
+
+def _fill_hipo_deposit_action(block: HipoStakeDepositBlock, action: Action):
+    action.type = 'stake_deposit'
+    action.source = _addr(block.data.source)
+    action.source_secondary = _addr(block.data.user_jetton_wallet)
+    action.destination = _addr(block.data.pool)
+    # None on the settlement half of a deferred deposit. Both halves of such a deposit
+    # serialize to type stake_deposit, and they would otherwise carry the same GRAM twice
+    # (proxy_save_coins.coins and the later proxy_tokens_minted.coins are one number), so
+    # anything summing stake_deposit.amount over the pool would double count the inflow and
+    # a wallet history would show the same deposit twice. The settlement half reports what
+    # is actually new at settlement - tokens_minted - and joins back through ts_nft.
+    action.amount = _value(block.data.value)
+    action.asset = _addr(block.data.asset)
+    action.staking_data = {
+        'provider': 'hipo',
+        # None while the deposit is pending; the minting half of a deferred deposit is
+        # emitted as a second stake_deposit at round end, joinable through `ts_nft`.
+        'tokens_minted': _value(block.data.tokens_minted),
+        'ts_nft': _addr(block.data.bill),
+    }
+
+
+def _fill_hipo_withdrawal_request_action(block: HipoStakeWithdrawalRequestBlock, action: Action):
+    action.type = 'stake_withdrawal_request'
+    action.source = _addr(block.data.source)
+    action.source_secondary = _addr(block.data.user_jetton_wallet)
+    action.destination = _addr(block.data.pool)
+    action.amount = _value(block.data.tokens_burnt)
+    action.asset = _addr(block.data.asset)
+    action.staking_data = {
+        'provider': 'hipo',
+        # Always the bill that is outstanding *after* this action, so the request joins to
+        # whatever settles it. When a round end could not fund an unstake and re-minted it
+        # against the next round, that is the new bill, not the one that just burned - the
+        # burned one is still reachable through the action's accounts.
+        'ts_nft': _addr(block.data.bill),
+        'tokens_burnt': _value(block.data.tokens_burnt),
+    }
+
+
+def _fill_hipo_withdrawal_action(block: HipoStakeWithdrawalBlock, action: Action):
+    action.type = 'stake_withdrawal'
+    action.source = _addr(block.data.source)
+    action.source_secondary = _addr(block.data.user_jetton_wallet)
+    action.destination = _addr(block.data.pool)
+    # None when the unstake ended without a payout because the round end had nowhere left
+    # to postpone the bill to and handed the hGRAM back instead. Such an action is marked
+    # success = false and reports only the hGRAM that returned, in tokens_burnt.
+    action.amount = _value(block.data.amount)
+    action.asset = _addr(block.data.asset)
+    action.staking_data = {
+        'provider': 'hipo',
+        'ts_nft': _addr(block.data.bill),
+        'tokens_burnt': _value(block.data.tokens_burnt),
+    }
+
 
 def _fill_tonstakers_deposit_action(block: TONStakersDepositBlock, action: Action):
     action.type = 'stake_deposit'
@@ -1337,6 +1397,12 @@ def block_to_action(block: Block, trace_id: str, trace: Trace) -> Action:
             _fill_delete_dns_record_action(block, action)
         case 'renew_dns':
             _fill_dns_renew_action(block, action)
+        case "hipo_stake_deposit":
+            _fill_hipo_deposit_action(block, action)
+        case "hipo_stake_withdrawal_request":
+            _fill_hipo_withdrawal_request_action(block, action)
+        case "hipo_stake_withdrawal":
+            _fill_hipo_withdrawal_action(block, action)
         case "tonstakers_deposit":
             _fill_tonstakers_deposit_action(block, action)
         case "tonstakers_withdraw_request":
@@ -1512,6 +1578,9 @@ v1_ops = [
     'tonstakers_deposit',
     'tonstakers_withdraw_request',
     'tonstakers_withdraw',
+    'hipo_stake_deposit',
+    'hipo_stake_withdrawal_request',
+    'hipo_stake_withdrawal',
     'ethena_withdrawal_request',
     'ethena_deposit',
     'tonco_deposit_liquidity',
