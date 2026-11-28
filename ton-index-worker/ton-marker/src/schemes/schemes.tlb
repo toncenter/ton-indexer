@@ -607,7 +607,7 @@ tonstake_pool_deposit#47d54391 query_id:uint64 referral:Cell = InternalMsgBody1;
 tonstake_pool_touch#4bc7c2df query_id:uint64 = InternalMsgBody1;
 
 // tonstake_pool_set_governance_fee
-tonstake_pool_set_governance_fee#2aaa96a0 query_id:uint64 governance_fee:uint16 = InternalMsgBody1;
+tonstake_pool_set_governance_fee#2aaa96a0 query_id:uint64 governance_fee:uint24 = InternalMsgBody1;
 
 // tonstake_pool_withdraw
 tonstake_pool_withdraw#319b0cdc query_id:uint64 jetton_amount:Coins from_address:MsgAddress response_address:MsgAddress =
@@ -645,13 +645,13 @@ tonstake_controller_pool_unhalt#7247e7a5 query_id:uint64 = InternalMsgBody1;
 tonstake_controller_pool_halt#139a1b4e query_id:uint64 = InternalMsgBody1;
 
 // tonstake_imanager_set_interest
-tonstake_imanager_set_interest#c9f04485 query_id:uint64 interest_rate:uint16 = InternalMsgBody1;
+tonstake_imanager_set_interest#c9f04485 query_id:uint64 interest_rate:uint24 = InternalMsgBody1;
 
 // tonstake_imanager_operation_fee
 tonstake_imanager_operation_fee#54d37487 query_id:uint64 = InternalMsgBody1;
 
 // tonstake_imanager_request_notification
-tonstake_imanager_request_notification#b1ebae06 query_id:uint64 min_loan:Coins max_loan:Coins max_interest:uint16 = InternalMsgBody1;
+tonstake_imanager_request_notification#b1ebae06 query_id:uint64 min_loan:Coins max_loan:Coins max_interest:uint24 = InternalMsgBody1;
 
 // tonstake_imanager_stats
 tonstake_imanager_stats#c1344900 query_id:uint64 borrowed:Coins expected:Coins returned:Coins profit_sign:int1 profit:Coins total_balance:Coins = InternalMsgBody1;
